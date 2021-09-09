@@ -1,0 +1,49 @@
+[package]
+name = "benches"
+version = "0.1.0"
+edition = "2018"
+authors = ["Dock.io"]
+license = "Apache-2.0"
+
+[dependencies]
+bbs_plus = { version = "0.1.0", default-features = false, path = "../bbs_plus" }
+schnorr = { version = "0.1.0", default-features = false, path = "../schnorr" }
+vb_accumulator = { version = "0.1.0", default-features = false, path = "../vb_accumulator" }
+ark-ff = { version = "^0.3.0", default-features = false }
+ark-ec = { version = "^0.3.0", default-features = false }
+ark-std = { version = "^0.3.0", default-features = false }
+ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
+
+[dev-dependencies]
+criterion = "0.3"
+ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
+
+[[bench]]
+name = "schnorr"
+path = "benches/schnorr_protocol.rs"
+harness = false
+
+[[bench]]
+name = "bbs_plus_signature"
+path = "benches/bbs_plus_signature.rs"
+harness = false
+
+[[bench]]
+name = "bbs_plus_proof"
+path = "benches/bbs_plus_proof.rs"
+harness = false
+
+[[bench]]
+name = "positive_accumulator"
+path = "benches/positive_accumulator.rs"
+harness = false
+
+[[bench]]
+name = "universal_accumulator"
+path = "benches/universal_accumulator.rs"
+harness = false
+
+[[bench]]
+name = "accum_witness_updates"
+path = "benches/accum_witness_updates.rs"
+harness = false

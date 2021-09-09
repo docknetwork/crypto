@@ -1,0 +1,31 @@
+[package]
+name = "proof_system"
+version = "0.1.0"
+edition = "2018"
+authors = ["Dock.io"]
+license = "Apache-2.0"
+
+[lib]
+doctest = false
+path = "src/lib.rs"
+
+[dependencies]
+ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
+ark-ff = { version = "^0.3.0", default-features = false }
+ark-ec = { version = "^0.3.0", default-features = false }
+ark-std = { version = "^0.3.0", default-features = false }
+digest = "0.9"
+rayon = { version = "1", optional = true }
+bbs_plus = { version = "0.1.0", default-features = false, path = "../bbs_plus" }
+schnorr = { version = "0.1.0", default-features = false, path = "../schnorr" }
+vb_accumulator = { version = "0.1.0", default-features = false, path = "../vb_accumulator" }
+
+[dev-dependencies]
+ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
+blake2 = { version = "0.9", default-features = false }
+
+[features]
+default = [ "std", "parallel" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std"]
+print-trace = [ "ark-std/print-trace", "schnorr/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace" ]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr/parallel", "bbs_plus/parallel", "vb_accumulator/parallel" ]

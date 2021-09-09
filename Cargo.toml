@@ -1,0 +1,9 @@
+[workspace]
+
+members = [
+    "schnorr",
+    "bbs_plus",
+    "vb_accumulator",
+    "proof_system",
+    "benches"
+]

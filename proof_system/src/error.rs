@@ -1,0 +1,49 @@
+use ark_std::string::String;
+
+use ark_serialize::SerializationError;
+use ark_std::fmt::Debug;
+use bbs_plus::error::BBSPlusError;
+use schnorr::error::SchnorrError;
+use vb_accumulator::error::VBAccumulatorError;
+
+#[derive(Debug)]
+pub enum ProofSystemError {
+    OnlyOneMetaStatementSupportedForNow,
+    UnequalWitnessAndStatementCount(usize, usize),
+    WitnessIncompatibleWithStatement(usize, String, String),
+    ProofIncompatibleWithStatement(usize, String, String),
+    ProofIncompatibleWithProtocol(String),
+    BBSPlusProtocolMessageAbsent(usize, usize),
+    SubProtocolNotReadyToGenerateChallenge(usize),
+    SubProtocolAlreadyInitialized(usize),
+    SubProtocolNotReadyToGenerateProof(String),
+    WitnessResponseNotEqual(usize, usize),
+    Serialization(SerializationError),
+    SchnorrError(SchnorrError),
+    BBSPlusError(BBSPlusError),
+    VBAccumError(VBAccumulatorError),
+}
+
+impl From<SchnorrError> for ProofSystemError {
+    fn from(e: SchnorrError) -> Self {
+        Self::SchnorrError(e)
+    }
+}
+
+impl From<BBSPlusError> for ProofSystemError {
+    fn from(e: BBSPlusError) -> Self {
+        Self::BBSPlusError(e)
+    }
+}
+
+impl From<VBAccumulatorError> for ProofSystemError {
+    fn from(e: VBAccumulatorError) -> Self {
+        Self::VBAccumError(e)
+    }
+}
+
+impl From<SerializationError> for ProofSystemError {
+    fn from(e: SerializationError) -> Self {
+        Self::Serialization(e)
+    }
+}

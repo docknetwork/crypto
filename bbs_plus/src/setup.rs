@@ -1,0 +1,301 @@
+#![allow(non_snake_case)]
+
+//! Keys and setup parameters
+//! # Examples
+//!
+//! Creating signature parameters and keypair:
+//!
+//! ```
+//! use ark_bls12_381::Bls12_381;
+//! use blake2::Blake2b;
+//! use bbs_plus::setup::{SignatureParamsG1, SignatureParamsG2, KeypairG1, KeypairG2};
+//!
+//! let params_g1 = SignatureParamsG1::<Bls12_381>::generate_using_rng(&mut rng, 5);
+//! let params_g2 = SignatureParamsG2::<Bls12_381>::generate_using_rng(&mut rng, 5);
+//! let params_g1_1 = SignatureParamsG1::<Bls12_381>::new::<Blake2b>(&[1, 2, 3, 4], 5);
+//! let params_g2_1 = SignatureParamsG2::<Bls12_381>::new::<Blake2b>(&[1, 2, 3, 4], 5);
+//!
+//! let keypair_g2 = KeypairG2::<Bls12_381>::generate(&mut rng, &params_g1);
+//! let keypair_g1 = KeypairG1::<Bls12_381>::generate(&mut rng, &params_g2);
+//! ```
+
+use crate::error::BBSPlusError;
+use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ff::{to_bytes, PrimeField};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_std::collections::BTreeMap;
+use ark_std::{
+    fmt::Debug,
+    io::{Read, Write},
+    rand::RngCore,
+    vec::Vec,
+    UniformRand, Zero,
+};
+use digest::Digest;
+use schnorr::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+
+/// Secret key used by the signer to sign messages
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct SecretKey<E: PairingEngine>(pub E::Fr);
+
+// TODO: Add "prepared" version of public key
+
+macro_rules! impl_sig_params {
+    ( $name:ident, $group_affine:ident, $group_projective:ident, $other_group_affine:ident, $other_group_projective:ident ) => {
+        /// Signature params used while signing and verifying. Also used when proving knowledge of signature.
+        /// Every signer _can_ create his own params but several signers _can_ share the same parameters if
+        /// signing messages of the same size and still have their own public keys.
+        /// Size of parameters is proportional to the number of messages
+        #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+        pub struct $name<E: PairingEngine> {
+            pub g1: E::$group_affine,
+            pub g2: E::$other_group_affine,
+            pub h_0: E::$group_affine,
+            /// Vector of size same as the size of multi-message that needs to be signed.
+            pub h: Vec<E::$group_affine>,
+        }
+
+        impl<E: PairingEngine> $name<E> {
+            /// Generate params by hashing a known string. The hash function is vulnerable to timing
+            /// attack but since all this is public knowledge, it is fine.
+            /// This is useful if people need to be convinced that the discrete of group elements wrt each other is not known.
+            pub fn new<D: Digest>(label: &[u8], n: usize) -> Self {
+                // Need n+2 elements of signature group and 1 element of other group
+                let mut sig_group_elems = Vec::with_capacity(n + 2);
+                // Group element by hashing label + g1 as string.
+                let g1 = group_elem_from_try_and_incr::<E::$group_affine, D>(
+                    &to_bytes![label, " : g1".as_bytes()].unwrap(),
+                );
+                // h_0 and h[i] for i in 1 to n
+                let mut h = (0..=n)
+                    .map(|i| {
+                        group_elem_from_try_and_incr::<E::$group_affine, D>(
+                            &to_bytes![label, " : h_".as_bytes(), i as u64].unwrap(),
+                        )
+                    })
+                    .collect::<Vec<E::$group_projective>>();
+                // Convert all to affine
+                sig_group_elems.push(g1);
+                sig_group_elems.append(&mut h);
+                E::$group_projective::batch_normalization(sig_group_elems.as_mut_slice());
+                let mut sig_group_elems = sig_group_elems
+                    .into_iter()
+                    .map(|v| v.into())
+                    .collect::<Vec<E::$group_affine>>();
+                let g1 = sig_group_elems.remove(0);
+                let h_0 = sig_group_elems.remove(0);
+
+                let g2 = group_elem_from_try_and_incr::<E::$other_group_affine, D>(
+                    &to_bytes![label, " : g2".as_bytes()].unwrap(),
+                )
+                .into_affine();
+                Self {
+                    g1,
+                    g2,
+                    h_0,
+                    h: sig_group_elems,
+                }
+            }
+
+            /// Generate params using a random number generator
+            pub fn generate_using_rng<R>(rng: &mut R, n: usize) -> Self
+            where
+                R: RngCore,
+            {
+                let h = (0..n)
+                    .into_iter()
+                    .map(|_| E::$group_projective::rand(rng))
+                    .collect::<Vec<E::$group_projective>>();
+                Self {
+                    g1: E::$group_projective::rand(rng).into(),
+                    g2: E::$other_group_projective::rand(rng).into(),
+                    h_0: E::$group_projective::rand(rng).into(),
+                    h: E::$group_projective::batch_normalization_into_affine(&h),
+                }
+            }
+
+            /// Check if no group element is zero
+            pub fn is_valid(&self) -> bool {
+                !(self.g1.is_zero()
+                    || self.g2.is_zero()
+                    || self.h_0.is_zero()
+                    || self.h.iter().any(|v| v.is_zero()))
+            }
+
+            /// Maximum supported messages in the multi-message
+            pub fn max_message_count(&self) -> usize {
+                self.h.len()
+            }
+
+            /// Commit to all messages using the parameters. `b` from the paper.
+            /// `b` = g_1{h_0}^s.prod(h_i.m_i) for all indices `i` in the map.
+            /// Computes {h_0}^s.prod(h_i.m_i) using multi-scalar multiplication
+            pub fn b(
+                &self,
+                messages: BTreeMap<usize, &E::Fr>,
+                s: &E::Fr,
+            ) -> Result<E::$group_projective, BBSPlusError> {
+                let mut bases = Vec::with_capacity(messages.len());
+                let mut scalars = Vec::with_capacity(messages.len());
+                for (i, msg) in messages.into_iter() {
+                    if i >= self.max_message_count() {
+                        return Err(BBSPlusError::InvalidMessageIdx);
+                    }
+                    bases.push(self.h[i].clone());
+                    scalars.push(msg.into_repr());
+                }
+                bases.push(self.h_0.clone());
+                scalars.push(s.into_repr());
+                let b = VariableBaseMSM::multi_scalar_mul(&bases, &scalars);
+                Ok(b.add_mixed(&self.g1))
+            }
+        }
+    };
+}
+
+macro_rules! impl_public_key {
+    ( $name:ident, $group:ident ) => {
+        /// Public key of the signer. The signer can use the same public key with different
+        /// signature parameters provided all parameters use same `g2` to sign different sized
+        /// multi-messages. This helps the signer minimize his secret key storage.
+        #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+        pub struct $name<E: PairingEngine> {
+            pub w: <E as PairingEngine>::$group,
+        }
+
+        impl<E: PairingEngine> $name<E>
+        where
+            E: PairingEngine,
+        {
+            /// Public key shouldn't be 0
+            pub fn is_valid(&self) -> bool {
+                !self.w.is_zero()
+            }
+        }
+    };
+}
+
+macro_rules! impl_keypair {
+    ( $name:ident, $group:ident, $pk: ident, $params:ident ) => {
+        #[derive(Clone)]
+        pub struct $name<E: PairingEngine> {
+            pub secret_key: SecretKey<E>,
+            pub public_key: $pk<E>,
+        }
+
+        /// Create a secret key and corresponding public key
+        impl<E: PairingEngine> $name<E> {
+            pub fn generate<R: RngCore>(rng: &mut R, params: &$params<E>) -> Self {
+                let secret_key = E::Fr::rand(rng);
+                let w = params.g2.mul(secret_key.into_repr()).into();
+                let public_key = $pk { w };
+                Self {
+                    secret_key: SecretKey(secret_key),
+                    public_key,
+                }
+            }
+        }
+    };
+}
+
+impl_sig_params!(
+    SignatureParamsG1,
+    G1Affine,
+    G1Projective,
+    G2Affine,
+    G2Projective
+);
+impl_sig_params!(
+    SignatureParamsG2,
+    G2Affine,
+    G2Projective,
+    G1Affine,
+    G1Projective
+);
+impl_public_key!(PublicKeyG2, G2Affine);
+impl_public_key!(PublicKeyG1, G1Affine);
+impl_keypair!(KeypairG2, G2Projective, PublicKeyG2, SignatureParamsG1);
+impl_keypair!(KeypairG1, G1Projective, PublicKeyG1, SignatureParamsG2);
+impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKeyG2, PoKSecretKeyInPublicKeyG2Proof);
+impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKeyG1, PoKSecretKeyInPublicKeyG1Proof);
+
+/// Hash bytes to a point on the curve. This is vulnerable to timing attack and is only used input
+/// is public anyway like when generating setup parameters.
+fn group_elem_from_try_and_incr<G: AffineCurve, D: Digest>(bytes: &[u8]) -> G::Projective {
+    let mut hash = D::digest(bytes);
+    let mut g = G::from_random_bytes(&hash);
+    let mut j = 1u64;
+    while g.is_none() {
+        hash = D::digest(&to_bytes![bytes, "-attempt-".as_bytes(), j].unwrap());
+        g = G::from_random_bytes(&hash);
+        j += 1;
+    }
+    g.unwrap().mul_by_cofactor_to_projective()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_serialization;
+    use ark_bls12_381::Bls12_381;
+    use ark_std::rand::{rngs::StdRng, SeedableRng};
+    use blake2::Blake2b;
+
+    macro_rules! test_serz_des {
+        ($keypair:ident, $public_key:ident, $params:ident, $rng:ident, $message_count: ident) => {
+            let params = $params::<Bls12_381>::generate_using_rng(&mut $rng, $message_count);
+            test_serialization!($params, params);
+
+            let keypair = $keypair::<Bls12_381>::generate(&mut $rng, &params);
+            let pk = keypair.public_key;
+            test_serialization!($public_key, pk);
+        };
+    }
+
+    macro_rules! test_params {
+        ($params:ident, $message_count: ident) => {
+            let label_1 = "test1".as_bytes();
+            let params_1 = $params::<Bls12_381>::new::<Blake2b>(&label_1, $message_count);
+            assert!(params_1.is_valid());
+            assert_eq!(params_1.h.len(), $message_count);
+
+            // Same label should generate same params
+            let params_1_again = $params::<Bls12_381>::new::<Blake2b>(&label_1, $message_count);
+            assert_eq!(params_1_again, params_1);
+
+            // Different label should generate different params
+            let label_2 = "test2".as_bytes();
+            let params_2 = $params::<Bls12_381>::new::<Blake2b>(&label_2, $message_count);
+            assert_ne!(params_1, params_2);
+        };
+    }
+
+    #[test]
+    fn serz_deserz() {
+        // Test serialization of keypair, secret key, public key and signature params
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let message_count = 10;
+        test_serz_des!(
+            KeypairG2,
+            PublicKeyG2,
+            SignatureParamsG1,
+            rng,
+            message_count
+        );
+        test_serz_des!(
+            KeypairG1,
+            PublicKeyG1,
+            SignatureParamsG2,
+            rng,
+            message_count
+        );
+    }
+
+    #[test]
+    fn params_deterministically() {
+        // Test generation of signature params deterministically.
+        let message_count = 10;
+        test_params!(SignatureParamsG1, message_count);
+        test_params!(SignatureParamsG2, message_count);
+    }
+}
