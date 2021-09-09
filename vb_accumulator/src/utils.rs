@@ -53,6 +53,30 @@ pub(crate) fn group_elem_from_try_and_incr<G: AffineCurve, D: Digest>(
     g.unwrap().mul_by_cofactor_to_projective()
 }
 
+/// Return `par_iter` or `iter` depending on whether feature `parallel` is enabled
+#[macro_export]
+macro_rules! iter {
+    ($val:expr) => {{
+        #[cfg(feature = "parallel")]
+        let it = $val.par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let it = $val.iter();
+        it
+    }};
+}
+
+/// Return `into_par_iter` or `into_iter` depending on whether feature `parallel` is enabled
+#[macro_export]
+macro_rules! into_iter {
+    ($val:expr) => {{
+        #[cfg(feature = "parallel")]
+        let it = $val.into_par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let it = $val.into_iter();
+        it
+    }};
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;

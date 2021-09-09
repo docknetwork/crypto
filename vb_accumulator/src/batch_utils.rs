@@ -19,6 +19,9 @@ use ark_std::{
     vec::Vec,
 };
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 /// Naive multiplication (n^2) of 2 polynomials defined over prime fields
 fn multiply_poly<F: PrimeField>(
     left: &DensePolynomial<F>,
@@ -41,17 +44,33 @@ fn poly_from_given_updates<F: PrimeField>(updates: &[F]) -> DensePolynomial<F> {
     if updates.is_empty() {
         return DensePolynomial::zero();
     }
-    // [(updates[0]-x), (updates[1]-x), (updates[2] - x), ..., (updates[last] - x)]
+
     let minus_one = -F::one();
+    // [(updates[0]-x), (updates[1]-x), (updates[2] - x), ..., (updates[last] - x)]
+    #[cfg(not(feature = "parallel"))]
     let x_i = updates
         .iter()
         .map(|i| DensePolynomial::from_coefficients_slice(&[*i, minus_one]));
 
-    // Product (updates[0]-x) * (updates[1]-x) * (updates[2] - x)...(updates[last] - x)
-    x_i.into_iter()
-        .reduce(|a, b| multiply_poly(&a, &b))
-        .unwrap()
+    #[cfg(feature = "parallel")]
+    let x_i = updates
+        .par_iter()
+        .map(|i| DensePolynomial::from_coefficients_slice(&[*i, minus_one]));
 
+    // Product (updates[0]-x) * (updates[1]-x) * (updates[2] - x)...(updates[last] - x)
+    #[cfg(not(feature = "parallel"))]
+    let r = x_i
+        .into_iter()
+        .reduce(|a, b| multiply_poly(&a, &b))
+        .unwrap();
+
+    #[cfg(feature = "parallel")]
+    let r = x_i.into_par_iter().reduce(
+        || DensePolynomial::from_coefficients_vec(vec![F::one()]),
+        |a, b| multiply_poly(&a, &b),
+    );
+
+    r
     // Note: Using multiply operator from ark-poly is orders of magnitude slower than naive multiplication
     // x_i.into_iter().reduce(|a, b| &a * &b).unwrap()
 }
@@ -102,6 +121,8 @@ where
     /// Returns (updates[0]-x)*(updates[1]-x)*(updates[2]-x)*...(updates[n]-x)*
     pub fn eval_direct(updates: &[F], x: &F) -> F {
         updates.iter().fold(F::one(), |a, y| (*y - *x) * a)
+        // TODO: Figure out the why the following line is about 5 times slower than the sequential one above
+        // iter!(updates).map(|y| *y - *x).product()
     }
 }
 
@@ -119,7 +140,7 @@ where
             .map(|s| {
                 let factor = Self::compute_factor(s, additions, alpha);
                 let poly = if s < n - 1 {
-                    let roots: Vec<F> = additions.iter().skip(s + 1).map(|a| *a).collect();
+                    let roots: Vec<F> = iter!(additions).skip(s + 1).map(|a| *a).collect();
                     poly_from_given_updates(&roots)
                 } else {
                     DensePolynomial::from_coefficients_vec(vec![F::one()])
@@ -182,7 +203,7 @@ where
             .map(|s| {
                 let factor = Self::compute_factor(s, removals, alpha);
                 let poly = if s > 0 {
-                    let roots: Vec<F> = removals.iter().take(s).map(|a| *a).collect();
+                    let roots: Vec<F> = iter!(removals).take(s).map(|a| *a).collect();
                     poly_from_given_updates(&roots)
                 } else {
                     DensePolynomial::from_coefficients_vec(vec![F::one()])
@@ -312,8 +333,7 @@ where
         for i in 2..self.len() {
             powers_of_y.push(powers_of_y[i - 1] * element);
         }
-        let powers_of_y = powers_of_y
-            .into_iter()
+        let powers_of_y = into_iter!(powers_of_y)
             .map(|y| y.into_repr())
             .collect::<Vec<_>>();
 
@@ -324,7 +344,7 @@ where
     /// Scale the omega vector by the given `scalar`
     pub fn scaled(&self, scalar: &G::ScalarField) -> Vec<G::Projective> {
         let scalar_bigint = scalar.into_repr();
-        self.0.iter().map(|o| o.mul(scalar_bigint)).collect()
+        iter!(self.0).map(|o| o.mul(scalar_bigint)).collect()
     }
 
     pub fn len(&self) -> usize {
@@ -379,7 +399,7 @@ mod tests {
     fn polys() {
         // Test evaluation of polynomials defined above
         let mut rng = StdRng::seed_from_u64(0u64);
-        let updates = (0..10)
+        let updates = (0..100)
             .into_iter()
             .map(|_| Fr::rand(&mut rng))
             .collect::<Vec<Fr>>();
@@ -419,7 +439,7 @@ mod tests {
         assert_eq!(Poly_v_D::eval_direct(&vec![], &alpha, &x), Fr::zero());
         assert_eq!(Poly_v_D::generate(&vec![], &alpha).eval(&x), Fr::zero());
 
-        for i in vec![10, 7, 1, 0] {
+        for i in vec![100, 70, 50, 40, 35, 20, 10, 7, 1, 0] {
             let updates_1 = (0..i)
                 .into_iter()
                 .map(|_| Fr::rand(&mut rng))

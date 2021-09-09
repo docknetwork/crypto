@@ -34,11 +34,36 @@ use ark_std::{
 use digest::Digest;
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 
+#[cfg(feature = "parallel")]
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+
 /// Secret key used by the signer to sign messages
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SecretKey<E: PairingEngine>(pub E::Fr);
 
 // TODO: Add "prepared" version of public key
+
+/// Return `par_iter` or `iter` depending on whether feature `parallel` is enabled
+macro_rules! iter {
+    ($val:expr) => {{
+        #[cfg(feature = "parallel")]
+        let it = $val.par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let it = $val.iter();
+        it
+    }};
+}
+
+/// Return `into_par_iter` or `into_iter` depending on whether feature `parallel` is enabled
+macro_rules! into_iter {
+    ($val:expr) => {{
+        #[cfg(feature = "parallel")]
+        let it = $val.into_par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let it = $val.into_iter();
+        it
+    }};
+}
 
 macro_rules! impl_sig_params {
     ( $name:ident, $group_affine:ident, $group_projective:ident, $other_group_affine:ident, $other_group_projective:ident ) => {
@@ -67,7 +92,7 @@ macro_rules! impl_sig_params {
                     &to_bytes![label, " : g1".as_bytes()].unwrap(),
                 );
                 // h_0 and h[i] for i in 1 to n
-                let mut h = (0..=n)
+                let mut h = into_iter!((0..=n))
                     .map(|i| {
                         group_elem_from_try_and_incr::<E::$group_affine, D>(
                             &to_bytes![label, " : h_".as_bytes(), i as u64].unwrap(),
@@ -78,8 +103,7 @@ macro_rules! impl_sig_params {
                 sig_group_elems.push(g1);
                 sig_group_elems.append(&mut h);
                 E::$group_projective::batch_normalization(sig_group_elems.as_mut_slice());
-                let mut sig_group_elems = sig_group_elems
-                    .into_iter()
+                let mut sig_group_elems = into_iter!(sig_group_elems)
                     .map(|v| v.into())
                     .collect::<Vec<E::$group_affine>>();
                 let g1 = sig_group_elems.remove(0);
@@ -119,7 +143,7 @@ macro_rules! impl_sig_params {
                 !(self.g1.is_zero()
                     || self.g2.is_zero()
                     || self.h_0.is_zero()
-                    || self.h.iter().any(|v| v.is_zero()))
+                    || iter!(self.h).any(|v| v.is_zero()))
             }
 
             /// Maximum supported messages in the multi-message
@@ -135,15 +159,35 @@ macro_rules! impl_sig_params {
                 messages: BTreeMap<usize, &E::Fr>,
                 s: &E::Fr,
             ) -> Result<E::$group_projective, BBSPlusError> {
-                let mut bases = Vec::with_capacity(messages.len());
-                let mut scalars = Vec::with_capacity(messages.len());
-                for (i, msg) in messages.into_iter() {
-                    if i >= self.max_message_count() {
-                        return Err(BBSPlusError::InvalidMessageIdx);
+                #[cfg(feature = "parallel")]
+                let (mut bases, mut scalars): (
+                    Vec<E::$group_affine>,
+                    Vec<<<E as ark_ec::PairingEngine>::Fr as PrimeField>::BigInt>,
+                ) = {
+                    for (i, _) in messages.iter() {
+                        if *i >= self.max_message_count() {
+                            return Err(BBSPlusError::InvalidMessageIdx);
+                        }
                     }
-                    bases.push(self.h[i].clone());
-                    scalars.push(msg.into_repr());
-                }
+                    into_iter!(messages)
+                        .map(|(i, msg)| (self.h[i].clone(), msg.into_repr()))
+                        .unzip()
+                };
+
+                #[cfg(not(feature = "parallel"))]
+                let (mut bases, mut scalars) = {
+                    let mut bases = Vec::with_capacity(messages.len());
+                    let mut scalars = Vec::with_capacity(messages.len());
+                    for (i, msg) in messages.into_iter() {
+                        if i >= self.max_message_count() {
+                            return Err(BBSPlusError::InvalidMessageIdx);
+                        }
+                        bases.push(self.h[i].clone());
+                        scalars.push(msg.into_repr());
+                    }
+                    (basse, scalars)
+                };
+
                 bases.push(self.h_0.clone());
                 scalars.push(s.into_repr());
                 let b = VariableBaseMSM::multi_scalar_mul(&bases, &scalars);

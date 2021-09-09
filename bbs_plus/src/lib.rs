@@ -6,9 +6,6 @@
 //! Provides proof of knowledge of signature and corresponding messages in group G1 as that is more efficient.
 //! The implementation tries to use the same variable names as the paper and thus violate Rust's naming conventions at places.
 
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
 pub mod error;
 pub mod proof;
 pub mod setup;

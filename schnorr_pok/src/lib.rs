@@ -19,6 +19,17 @@ use rayon::prelude::*;
 
 pub mod error;
 
+/// Return `par_iter` or `iter` depending on whether feature `parallel` is enabled
+macro_rules! iter {
+    ($val:expr) => {{
+        #[cfg(feature = "parallel")]
+        let it = $val.par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let it = $val.iter();
+        it
+    }};
+}
+
 /// Trait implemented by Schnorr-based protocols for returning their contribution to the overall challenge.
 pub trait SchnorrChallengeContributor {
     fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError>;
@@ -40,7 +51,7 @@ where
     /// Create commitment as `bases[0] * blindings[0] + bases[1] * blindings[1] + ... bases[i] * blindings[i]`
     /// for step-1 of the protocol. Extra `bases` or `blindings` are ignored.
     pub fn new(bases: &[G], blindings: Vec<G::ScalarField>) -> Self {
-        let scalars = blindings.iter().map(|b| b.into_repr()).collect::<Vec<_>>();
+        let scalars = iter!(blindings).map(|b| b.into_repr()).collect::<Vec<_>>();
         let t = VariableBaseMSM::multi_scalar_mul(bases, &scalars).into_affine();
         Self { blindings, t }
     }
@@ -57,10 +68,10 @@ where
                 witnesses.len(),
             ));
         }
-        let mut responses = Vec::with_capacity(witnesses.len());
-        for i in 0..witnesses.len() {
-            responses.push(self.blindings[i] + (witnesses[i] * challenge));
-        }
+        let responses = iter!(self.blindings)
+            .zip(iter!(witnesses))
+            .map(|(b, w)| *b + (*w * *challenge))
+            .collect::<Vec<_>>();
         Ok(SchnorrResponse(responses))
     }
 
@@ -94,7 +105,7 @@ where
         }
         let mut bases = bases.to_vec();
         bases.push(*y);
-        let mut scalars = self.0.iter().map(|r| r.into_repr()).collect::<Vec<_>>();
+        let mut scalars = iter!(self.0).map(|r| r.into_repr()).collect::<Vec<_>>();
         scalars.push((-*challenge).into_repr());
         Ok(VariableBaseMSM::multi_scalar_mul(&bases, scalars.as_slice()).into_affine() == *t)
     }

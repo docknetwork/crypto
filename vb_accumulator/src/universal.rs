@@ -60,6 +60,11 @@ use ark_std::{
     One, UniformRand, Zero,
 };
 
+#[cfg(feature = "parallel")]
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
+
 /// Accumulator supporting both membership and non-membership proofs. Is capped at a size defined
 /// at setup to avoid non-membership witness forgery attack described in section 6 of the paper
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -256,16 +261,15 @@ where
         if state.has(element) {
             return Err(VBAccumulatorError::ElementPresent);
         }
+
         // f_V(alpha) is part of the current accumulator
         // d = f_V(-y).
-
-        // `terms` is a vector of terms of the form all_accumulated_i - element
-        // The following requires large memory allocation for the vector
-        let terms: Vec<E::Fr> = state.elements().map(|i| *i - element).collect();
-
         // This is expensive as a product involving all accumulated elements is needed. This can use parallelization.
         // But rayon will not work with wasm, look at https://github.com/GoogleChromeLabs/wasm-bindgen-rayon.
-        let d = terms.iter().fold(E::Fr::one(), |a, t| a * t);
+        let mut d = E::Fr::one();
+        for i in state.elements() {
+            d *= *i - element;
+        }
         if d.is_zero() {
             panic!("d shouldn't have been 0 as the check in state should have ensured that element is not present in the accumulator.")
         }
@@ -315,9 +319,9 @@ where
             d_for_witnesses.push(d);
         }
 
-        let f_V_alpha_minus_d: Vec<E::Fr> = d_for_witnesses.iter().map(|d| self.f_V - *d).collect();
+        let f_V_alpha_minus_d: Vec<E::Fr> = iter!(d_for_witnesses).map(|d| self.f_V - *d).collect();
 
-        let mut y_plus_alpha_inv: Vec<E::Fr> = elements.iter().map(|y| *y + sk.0).collect();
+        let mut y_plus_alpha_inv: Vec<E::Fr> = iter!(elements).map(|y| *y + sk.0).collect();
         batch_inversion(&mut y_plus_alpha_inv);
 
         let P_multiple = f_V_alpha_minus_d
@@ -332,9 +336,8 @@ where
             P_multiple.into_iter(),
         );
         let wits_affine = E::G1Projective::batch_normalization_into_affine(&wits);
-        Ok(wits_affine
-            .into_iter()
-            .zip(d_for_witnesses.into_iter())
+        Ok(into_iter!(wits_affine)
+            .zip(into_iter!(d_for_witnesses))
             .map(|(C, d)| NonMembershipWitness { C, d })
             .collect())
     }

@@ -1134,7 +1134,7 @@ mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
     use blake2::Blake2b;
-    use schnorr::compute_random_oracle_challenge;
+    use schnorr_pok::compute_random_oracle_challenge;
     use std::time::{Duration, Instant};
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;

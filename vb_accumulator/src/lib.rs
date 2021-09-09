@@ -11,9 +11,8 @@
 //! [`UniversalAccumulator`]: crate::universal::UniversalAccumulator
 //! [`ProofProtocol`]: crate::proofs::ProofProtocol
 
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
+#[macro_use]
+pub mod utils;
 pub mod batch_utils;
 pub mod error;
 pub mod persistence;
@@ -21,7 +20,6 @@ pub mod positive;
 pub mod proofs;
 pub mod setup;
 pub mod universal;
-pub mod utils;
 pub mod witness;
 
 #[cfg(test)]

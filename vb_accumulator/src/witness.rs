@@ -117,6 +117,9 @@ use crate::error::VBAccumulatorError;
 use crate::setup::SecretKey;
 use ark_ec::msm::VariableBaseMSM;
 
+#[cfg(feature = "parallel")]
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
 /// Trait to hold common functionality among both membership and non-membership witnesses
 trait Witness<G: AffineCurve> {
     /// Compute an update to the witness after adding a single element in the accumulator. Expects
@@ -484,7 +487,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = old_witnesses.iter().map(|w| w.0.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0.clone()).collect();
         let (_, wits) = Self::compute_update_using_secret_key_after_batch_additions(
             additions,
             members,
@@ -505,7 +508,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<MembershipWitness<G>>, VBAccumulatorError> {
-        let old: Vec<G> = old_witnesses.iter().map(|w| w.0.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0.clone()).collect();
         let (_, wits) = Self::compute_update_using_secret_key_after_batch_removals(
             removals,
             members,
@@ -527,7 +530,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<MembershipWitness<G>>, VBAccumulatorError> {
-        let old: Vec<G> = old_witnesses.iter().map(|w| w.0.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0.clone()).collect();
         let (_, wits) = Self::compute_update_using_secret_key_after_batch_updates(
             additions,
             removals,
@@ -631,7 +634,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = old_witnesses.iter().map(|w| w.C.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C.clone()).collect();
         let (d_factor, wits) = Self::compute_update_using_secret_key_after_batch_additions(
             additions,
             non_members,
@@ -656,7 +659,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = old_witnesses.iter().map(|w| w.C.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C.clone()).collect();
         let (d_factor, wits) = Self::compute_update_using_secret_key_after_batch_removals(
             removals,
             non_members,
@@ -682,7 +685,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = old_witnesses.iter().map(|w| w.C.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C.clone()).collect();
         let (d_factor, wits) = Self::compute_update_using_secret_key_after_batch_updates(
             additions,
             removals,
@@ -1650,7 +1653,7 @@ mod tests {
 
         let (params, keypair, mut accumulator, initial_elems, mut state) =
             setup_universal_accum(&mut rng, max);
-        println!("Accumulator setup done");
+        // println!("Accumulator setup done");
 
         let member = Fr::rand(&mut rng);
         let non_member = Fr::rand(&mut rng);
@@ -1685,7 +1688,7 @@ mod tests {
         let mut non_membership_add_duration = Duration::default();
         let mut non_membership_remove_duration = Duration::default();
         for i in 0..iterations {
-            println!("Iteration {} starts", i);
+            // println!("Iteration {} starts", i);
 
             let updates = (0..batch_size)
                 .map(|_| Fr::rand(&mut rng))
@@ -1807,7 +1810,7 @@ mod tests {
                 &params
             ));
 
-            println!("Iteration {} ends", i);
+            // println!("Iteration {} ends", i);
         }
 
         let updates_and_omegas = batched_public_info
