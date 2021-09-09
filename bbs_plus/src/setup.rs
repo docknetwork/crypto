@@ -32,7 +32,7 @@ use ark_std::{
     UniformRand, Zero,
 };
 use digest::Digest;
-use schnorr::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 
 /// Secret key used by the signer to sign messages
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]

@@ -4,7 +4,7 @@
 
 use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
-use schnorr::error::SchnorrError;
+use schnorr_pok::error::SchnorrError;
 
 #[derive(Debug)]
 pub enum VBAccumulatorError {

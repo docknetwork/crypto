@@ -96,8 +96,8 @@ use ark_std::{
     UniformRand,
 };
 use digest::Digest;
-use schnorr::error::SchnorrError;
-use schnorr::SchnorrChallengeContributor;
+use schnorr_pok::error::SchnorrError;
+use schnorr_pok::SchnorrChallengeContributor;
 
 /// Common elements of the membership and non-membership proving key
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -1343,15 +1343,15 @@ mod tests {
                 )
                 .unwrap();
             proof_verif_duration += start.elapsed();
-
-            println!(
-                "Time to create {} non-membership proofs is {:?}",
-                count, proof_create_duration
-            );
-            println!(
-                "Time to verify {} non-membership proofs is {:?}",
-                count, proof_verif_duration
-            );
         }
+
+        println!(
+            "Time to create {} non-membership proofs is {:?}",
+            count, proof_create_duration
+        );
+        println!(
+            "Time to verify {} non-membership proofs is {:?}",
+            count, proof_verif_duration
+        );
     }
 }

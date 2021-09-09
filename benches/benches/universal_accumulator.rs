@@ -23,6 +23,8 @@ fn batch(c: &mut Criterion) {
     let mut state_1 = state.clone();
     let mut accumulator_2 = accumulator.clone();
     let mut state_2 = state.clone();
+    let mut accumulator_3 = accumulator.clone();
+    let mut state_3 = state.clone();
 
     let batch_sizes = [10, 20, 40, 60, 100];
 
@@ -166,39 +168,53 @@ fn batch(c: &mut Criterion) {
         );
     }
 
-    for batch_size in batch_sizes {
-        c.bench_function(
-            format!(
-                "Non-membership witnesses using secret key for batch of size {}",
-                batch_size
+    for accum_size in [100, 200, 400, 800, 1600] {
+        let members = (0..accum_size)
+            .map(|_| Fr::rand(&mut rng))
+            .collect::<Vec<Fr>>();
+        accumulator_3 = accumulator_3
+            .add_batch(
+                members.clone(),
+                &keypair.secret_key,
+                &initial_elements,
+                &mut state_3,
             )
-            .as_str(),
-            |b| {
-                b.iter_custom(|iters| {
-                    let elems_batches = (0..iters)
-                        .map(|_| {
-                            (0..batch_size)
-                                .map(|_| Fr::rand(&mut rng))
-                                .collect::<Vec<Fr>>()
-                        })
-                        .collect::<Vec<_>>();
-                    let start = Instant::now();
-                    for i in 0..iters as usize {
-                        black_box({
-                            accumulator
-                                .get_non_membership_witness_for_batch(
-                                    &elems_batches[i],
-                                    &keypair.secret_key,
-                                    &mut state,
-                                    &params,
-                                )
-                                .unwrap();
-                        })
-                    }
-                    start.elapsed()
-                })
-            },
-        );
+            .unwrap();
+
+        for batch_size in batch_sizes {
+            c.bench_function(
+                format!(
+                    "Non-membership witnesses using secret key for batch of size {}, in accumulator of size {} ",
+                    batch_size, accum_size
+                )
+                    .as_str(),
+                |b| {
+                    b.iter_custom(|iters| {
+                        let elems_batches = (0..iters)
+                            .map(|_| {
+                                (0..batch_size)
+                                    .map(|_| Fr::rand(&mut rng))
+                                    .collect::<Vec<Fr>>()
+                            })
+                            .collect::<Vec<_>>();
+                        let start = Instant::now();
+                        for i in 0..iters as usize {
+                            black_box({
+                                accumulator_3
+                                    .get_non_membership_witness_for_batch(
+                                        &elems_batches[i],
+                                        &keypair.secret_key,
+                                        &mut state_3,
+                                        &params,
+                                    )
+                                    .unwrap();
+                            })
+                        }
+                        start.elapsed()
+                    })
+                },
+            );
+        }
     }
 }
 

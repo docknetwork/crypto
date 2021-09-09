@@ -645,9 +645,11 @@ pub mod tests {
             ));
         }
 
+        let start = Instant::now();
         let npn_mem_witnesses = accumulator_3
             .get_non_membership_witness_for_batch(&removals, &keypair.secret_key, &state_3, &params)
             .unwrap();
+        println!("Non-membership witnesses in accumulator of size {} using secret key for batch of size {} takes: {:?}", state_3.db.len(), removals.len(), start.elapsed());
         for i in 0..removals.len() {
             assert!(accumulator_3.verify_non_membership(
                 &removals[i],

@@ -61,7 +61,7 @@ use ark_std::{
     vec::Vec,
     One, UniformRand,
 };
-use schnorr::{SchnorrCommitment, SchnorrResponse};
+use schnorr_pok::{SchnorrCommitment, SchnorrResponse};
 
 pub use serialization::*;
 

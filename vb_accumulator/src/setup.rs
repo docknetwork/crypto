@@ -28,7 +28,7 @@ use ark_std::{
 };
 
 use digest::Digest;
-use schnorr::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 
 /// Secret key for accumulator manager
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]

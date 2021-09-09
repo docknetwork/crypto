@@ -3,7 +3,7 @@ use ark_std::string::String;
 use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
 use bbs_plus::error::BBSPlusError;
-use schnorr::error::SchnorrError;
+use schnorr_pok::error::SchnorrError;
 use vb_accumulator::error::VBAccumulatorError;
 
 #[derive(Debug)]

@@ -1,9 +1,11 @@
 [package]
-name = "schnorr"
+name = "schnorr_pok"
 version = "0.1.0"
 edition = "2018"
 authors = ["Dock.io"]
 license = "Apache-2.0"
+description = "Schnorr protocol for proof of knowledge of one or more discrete logs"
+repository = "https://github.com/docknetwork/crypto"
 
 [lib]
 doctest = false

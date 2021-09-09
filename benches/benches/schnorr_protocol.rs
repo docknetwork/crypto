@@ -8,7 +8,9 @@ use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
-use schnorr::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrCommitment};
+use schnorr_pok::{
+    error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrCommitment,
+};
 
 use ark_ec::msm::VariableBaseMSM;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};

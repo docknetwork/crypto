@@ -1877,6 +1877,6 @@ mod tests {
             batched_public_info.len(),
             mem_wit_update_multiple_time
         );
-        println!("Non-membership witness for all batch additions ({}x{}={}) and removals ({}x{}={}): {:?}", iterations, batch_size, total, iterations, batch_size, total, non_mem_wit_update_multiple_time);
+        println!("Non-membership witness for all batch additions ({}x{}={}) and removals ({}x{}={})in {} updates: {:?}", iterations, batch_size, total, iterations, batch_size, total, batched_public_info.len(), non_mem_wit_update_multiple_time);
     }
 }
