@@ -7,7 +7,7 @@ use crate::setup::SecretKey;
 use crate::utils::multiply_field_elems_refs_with_same_group_elem;
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
-use ark_ff::{One, PrimeField, Zero};
+use ark_ff::{batch_inversion, One, PrimeField, Zero};
 use ark_poly::polynomial::{univariate::DensePolynomial, UVPolynomial};
 use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
@@ -85,15 +85,19 @@ pub(crate) fn batch_normalize_projective_into_affine<G: ProjectiveCurve>(
 // Polynomials as described in section 3 of the paper
 
 /// Polynomial `d_A` and `d_D`. Same polynomial is used for both additions and removals.
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Poly_d<F: PrimeField>(pub DensePolynomial<F>);
 
 /// Polynomial `v_A`. Used for batch additions
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Poly_v_A<F: PrimeField>(pub DensePolynomial<F>);
 
 /// Polynomial `v_D`. Used for batch removals
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Poly_v_D<F: PrimeField>(pub DensePolynomial<F>);
 
 /// Polynomial `v_{A, D}`. Used when doing batch additions and removals in the same call
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Poly_v_AD<F: PrimeField>(pub DensePolynomial<F>);
 
 // TODO: Convert arguments to following functions to iterators
@@ -136,6 +140,36 @@ where
         if n == 0 {
             return Self(DensePolynomial::zero());
         }
+        if n == 1 {
+            return Self(DensePolynomial::from_coefficients_vec(vec![F::one()]));
+        }
+
+        let mut factors = vec![F::one(); n];
+        let mut polys = vec![DensePolynomial::from_coefficients_vec(vec![F::one()]); n];
+        for s in 1..n {
+            factors[s] = factors[s - 1] * (additions[s - 1] + alpha);
+            polys[n - 1 - s] = multiply_poly(
+                &polys[n - s],
+                &DensePolynomial::from_coefficients_vec(vec![additions[n - s], -F::one()]),
+            );
+        }
+
+        Self(
+            factors
+                .into_iter()
+                .zip(polys.into_iter())
+                .map(|(f, p)| &p * f)
+                .fold(DensePolynomial::zero(), |a, b| a + b),
+        )
+    }
+
+    /// Generate polynomial `v_A(x)` given the list of elements `y_A` as `updates` and the secret
+    /// key `alpha`. Slower than `Self::generate` but uses less memory
+    pub fn generate_without_memoize(additions: &[F], alpha: &F) -> Self {
+        let n = additions.len();
+        if n == 0 {
+            return Self(DensePolynomial::zero());
+        }
         let sum = (0..n)
             .map(|s| {
                 let factor = Self::compute_factor(s, additions, alpha);
@@ -158,6 +192,29 @@ where
 
     /// Evaluation of polynomial without creating the polynomial as the variables are already known.
     pub fn eval_direct(additions: &[F], alpha: &F, x: &F) -> F {
+        let n = additions.len();
+        if n == 0 {
+            return F::zero();
+        }
+        if n == 1 {
+            return F::one();
+        }
+
+        let mut factors = vec![F::one(); n];
+        let mut polys = vec![F::one(); n];
+        for s in 1..n {
+            factors[s] = factors[s - 1] * (additions[s - 1] + alpha);
+            polys[n - 1 - s] = polys[n - s] * (additions[n - s] - *x);
+        }
+        factors
+            .into_iter()
+            .zip(polys.into_iter())
+            .map(|(f, p)| p * f)
+            .fold(F::zero(), |a, b| a + b)
+    }
+
+    /// Evaluation of polynomial without creating the polynomial as the variables are already known.
+    pub fn eval_direct_without_memoize(additions: &[F], alpha: &F, x: &F) -> F {
         let n = additions.len();
         let sum = (0..n)
             .map(|s| {
@@ -199,6 +256,37 @@ where
         if n == 0 {
             return Self(DensePolynomial::zero());
         }
+
+        let mut y_plus_alpha_inv = removals.iter().map(|y| *y + *alpha).collect::<Vec<_>>();
+        batch_inversion(&mut y_plus_alpha_inv);
+
+        let mut factors = vec![F::one(); n];
+        let mut polys = vec![DensePolynomial::from_coefficients_vec(vec![F::one()]); n];
+        factors[0] = y_plus_alpha_inv[0];
+        for s in 1..n {
+            factors[s] = factors[s - 1] * y_plus_alpha_inv[s];
+            polys[s] = multiply_poly(
+                &polys[s - 1],
+                &DensePolynomial::from_coefficients_vec(vec![removals[s - 1], -F::one()]),
+            );
+        }
+
+        Self(
+            factors
+                .into_iter()
+                .zip(polys.into_iter())
+                .map(|(f, p)| &p * f)
+                .fold(DensePolynomial::zero(), |a, b| a + b),
+        )
+    }
+
+    /// Generate polynomial `v_D(x)` given the list of elements `y_D` as `updates` and the secret key
+    /// `alpha`. Slower than `Self::generate` but uses less memory
+    pub fn generate_without_memoize(removals: &[F], alpha: &F) -> Self {
+        let n = removals.len();
+        if n == 0 {
+            return Self(DensePolynomial::zero());
+        }
         let sum = (0..n)
             .map(|s| {
                 let factor = Self::compute_factor(s, removals, alpha);
@@ -221,6 +309,32 @@ where
 
     /// Evaluation of polynomial without creating the polynomial as the variables are already known.
     pub fn eval_direct(removals: &[F], alpha: &F, x: &F) -> F {
+        let n = removals.len();
+        if n == 0 {
+            return F::zero();
+        }
+
+        let mut y_plus_alpha_inv = removals.iter().map(|y| *y + *alpha).collect::<Vec<_>>();
+        batch_inversion(&mut y_plus_alpha_inv);
+
+        let mut factors = vec![F::one(); n];
+        let mut polys = vec![F::one(); n];
+        factors[0] = y_plus_alpha_inv[0];
+        for s in 1..n {
+            factors[s] = factors[s - 1] * y_plus_alpha_inv[s];
+            polys[s] = polys[s - 1] * (removals[s - 1] - *x);
+        }
+
+        factors
+            .into_iter()
+            .zip(polys.into_iter())
+            .map(|(f, p)| p * f)
+            .fold(F::zero(), |a, b| a + b)
+    }
+
+    /// Evaluation of polynomial without creating the polynomial as the variables are already known.
+    /// Slower than `Self::eval_direct` but uses less memory
+    pub fn eval_direct_without_memoize(removals: &[F], alpha: &F, x: &F) -> F {
         let n = removals.len();
         let sum = (0..n)
             .map(|s| {
@@ -386,12 +500,12 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::PairingEngine;
     use ark_ff::One;
     use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
-
-    use super::*;
+    use std::time::{Duration, Instant};
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
 
@@ -403,8 +517,10 @@ mod tests {
             .into_iter()
             .map(|_| Fr::rand(&mut rng))
             .collect::<Vec<Fr>>();
+        // let updates = vec![Fr::one(), Fr::one()+Fr::one(), Fr::one()+Fr::one()+Fr::one(), Fr::one()+Fr::one()+Fr::one()+Fr::one()];
 
         let x = Fr::rand(&mut rng);
+        // let x = Fr::one();
 
         let poly_d = Poly_d::generate(&updates);
         assert_eq!(Poly_d::eval_direct(&updates, &x), poly_d.eval(&x));
@@ -428,7 +544,23 @@ mod tests {
             Poly_v_A::eval_direct(&updates, &alpha, &x),
             poly_v_A.eval(&x)
         );
+        assert_eq!(
+            Poly_v_A::generate_without_memoize(&updates, &alpha),
+            Poly_v_A::generate(&updates, &alpha)
+        );
+        assert_eq!(
+            Poly_v_A::eval_direct_without_memoize(&updates, &alpha, &x),
+            Poly_v_A::eval_direct(&updates, &alpha, &x)
+        );
+        assert_eq!(
+            Poly_v_A::eval_direct_without_memoize(&vec![], &alpha, &x),
+            Fr::zero()
+        );
         assert_eq!(Poly_v_A::eval_direct(&vec![], &alpha, &x), Fr::zero());
+        assert_eq!(
+            Poly_v_A::generate_without_memoize(&vec![], &alpha).eval(&x),
+            Fr::zero()
+        );
         assert_eq!(Poly_v_A::generate(&vec![], &alpha).eval(&x), Fr::zero());
 
         let poly_v_D = Poly_v_D::generate(&updates, &alpha);
@@ -436,7 +568,23 @@ mod tests {
             Poly_v_D::eval_direct(&updates, &alpha, &x),
             poly_v_D.eval(&x)
         );
+        assert_eq!(
+            Poly_v_D::generate_without_memoize(&updates, &alpha),
+            Poly_v_D::generate(&updates, &alpha)
+        );
+        assert_eq!(
+            Poly_v_D::eval_direct_without_memoize(&updates, &alpha, &x),
+            Poly_v_D::eval_direct(&updates, &alpha, &x)
+        );
+        assert_eq!(
+            Poly_v_D::eval_direct_without_memoize(&vec![], &alpha, &x),
+            Fr::zero()
+        );
         assert_eq!(Poly_v_D::eval_direct(&vec![], &alpha, &x), Fr::zero());
+        assert_eq!(
+            Poly_v_D::generate_without_memoize(&vec![], &alpha).eval(&x),
+            Fr::zero()
+        );
         assert_eq!(Poly_v_D::generate(&vec![], &alpha).eval(&x), Fr::zero());
 
         for i in vec![100, 70, 50, 40, 35, 20, 10, 7, 1, 0] {
@@ -449,6 +597,49 @@ mod tests {
                 Poly_v_AD::eval_direct(&updates, &updates_1, &alpha, &x),
                 poly_v_AD.eval(&x)
             );
+        }
+
+        macro_rules! test_poly_time {
+            ($count:ident, $updates:ident, $alpha:ident, $x:ident, $poly: ident, $name: expr) => {
+                let mut poly_gen_mem_time = Duration::default();
+                let mut poly_gen_time = Duration::default();
+                let mut poly_eval_mem_time = Duration::default();
+                let mut poly_eval_time = Duration::default();
+
+                let start = Instant::now();
+                let poly_m = $poly::generate(&$updates, &$alpha);
+                poly_gen_mem_time = start.elapsed();
+
+                let start = Instant::now();
+                let poly = $poly::generate_without_memoize(&$updates, &$alpha);
+                poly_gen_time = start.elapsed();
+
+                assert_eq!(poly, poly_m);
+
+                let start = Instant::now();
+                let poly_eval_m = $poly::eval_direct(&$updates, &$alpha, &$x);
+                poly_eval_mem_time = start.elapsed();
+
+                let start = Instant::now();
+                let poly_eval = $poly::eval_direct_without_memoize(&$updates, &$alpha, &$x);
+                poly_eval_time = start.elapsed();
+
+                assert_eq!(poly_eval_m, poly_eval);
+
+                println!("For {} updates, {}::generates takes {:?} with memoization and {:?} without memoization", $count, $name, poly_gen_mem_time, poly_gen_time);
+                println!("For {} updates, {}::eval_direct takes {:?} with memoization and {:?} without memoization", $count, $name, poly_eval_mem_time, poly_eval_time);
+            }
+        };
+
+        for count in [100, 200, 400] {
+            let updates = (0..count)
+                .into_iter()
+                .map(|_| Fr::rand(&mut rng))
+                .collect::<Vec<Fr>>();
+            let x = Fr::rand(&mut rng);
+
+            test_poly_time!(count, updates, alpha, x, Poly_v_A, "Poly_v_A");
+            test_poly_time!(count, updates, alpha, x, Poly_v_D, "Poly_v_D");
         }
     }
 }
