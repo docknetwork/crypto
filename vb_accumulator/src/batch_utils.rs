@@ -159,12 +159,17 @@ where
             );
         }
 
-        Self(
-            into_iter!(factors)
-                .zip(into_iter!(polys))
-                .map(|(f, p)| &p * f)
-                .reduce(|| DensePolynomial::zero(), |a, b| a + b),
-        )
+        let product = into_iter!(factors)
+            .zip(into_iter!(polys))
+            .map(|(f, p)| &p * f);
+
+        #[cfg(feature = "parallel")]
+        let sum = product.reduce(|| DensePolynomial::zero(), |a, b| a + b);
+
+        #[cfg(not(feature = "parallel"))]
+        let sum = product.fold(DensePolynomial::zero(), |a, b| a + b);
+
+        Self(sum)
     }
 
     /// Generate polynomial `v_A(x)` given the list of elements `y_A` as `updates` and the secret
@@ -290,12 +295,17 @@ where
             );
         }
 
-        Self(
-            into_iter!(factors)
-                .zip(into_iter!(polys))
-                .map(|(f, p)| &p * f)
-                .reduce(|| DensePolynomial::zero(), |a, b| a + b),
-        )
+        let product = into_iter!(factors)
+            .zip(into_iter!(polys))
+            .map(|(f, p)| &p * f);
+
+        #[cfg(feature = "parallel")]
+        let sum = product.reduce(|| DensePolynomial::zero(), |a, b| a + b);
+
+        #[cfg(not(feature = "parallel"))]
+        let sum = product.fold(DensePolynomial::zero(), |a, b| a + b);
+
+        Self(sum)
     }
 
     /// Generate polynomial `v_D(x)` given the list of elements `y_D` as `updates` and the secret key

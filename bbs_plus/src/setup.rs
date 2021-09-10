@@ -185,7 +185,7 @@ macro_rules! impl_sig_params {
                         bases.push(self.h[i].clone());
                         scalars.push(msg.into_repr());
                     }
-                    (basse, scalars)
+                    (bases, scalars)
                 };
 
                 bases.push(self.h_0.clone());
