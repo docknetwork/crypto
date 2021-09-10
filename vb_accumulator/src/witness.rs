@@ -1688,7 +1688,7 @@ mod tests {
         let mut non_membership_add_duration = Duration::default();
         let mut non_membership_remove_duration = Duration::default();
         for i in 0..iterations {
-            // println!("Iteration {} starts", i);
+            println!("Iteration {} starts", i);
 
             let updates = (0..batch_size)
                 .map(|_| Fr::rand(&mut rng))
@@ -1810,7 +1810,7 @@ mod tests {
                 &params
             ));
 
-            // println!("Iteration {} ends", i);
+            println!("Iteration {} ends", i);
         }
 
         let updates_and_omegas = batched_public_info
