@@ -12,7 +12,9 @@ Library providing privacy enhancing cryptographic primitives.
 
 `cargo build` or `cargo build --release`
 
-By default, it uses standard library and rayon 
+By default, it uses standard library and [rayon](https://github.com/rayon-rs/rayon) for parallelization
+
+To build with standard library but without parallelization, use `cargo build --no-default-features --features=std`
 
 For [no_std] support, build as `cargo build --no-default-features`
 

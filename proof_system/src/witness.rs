@@ -16,6 +16,7 @@ pub enum Witness<E: PairingEngine> {
     PoKBBSSignatureG1(PoKBBSSignatureG1<E>),
     AccumulatorMembership(Membership<E>),
     AccumulatorNonMembership(NonMembership<E>),
+    PedersenCommitment(Vec<E::Fr>),
 }
 
 impl_collection!(Witnesses, Witness);

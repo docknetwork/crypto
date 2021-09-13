@@ -1,4 +1,4 @@
-use ark_ec::PairingEngine;
+use ark_ec::{AffineCurve, PairingEngine};
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
@@ -23,13 +23,14 @@ pub type WitnessRef = (usize, usize);
 
 /// Type of proof and the public (known to both prover and verifier) values for the proof
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Statement<E: PairingEngine> {
+pub enum Statement<E: PairingEngine, G: AffineCurve> {
     /// Proof of knowledge of BBS+ signature
     PoKBBSSignatureG1(PoKBBSSignatureG1<E>),
     /// Membership in Accumulator
     AccumulatorMembership(AccumulatorMembership<E>),
     /// Non-membership in Accumulator
     AccumulatorNonMembership(AccumulatorNonMembership<E>),
+    PedersenCommitment(PedersenCommitment<G>),
 }
 
 /// Statement describing relation between statements
@@ -72,6 +73,12 @@ pub struct AccumulatorNonMembership<E: PairingEngine> {
     pub accumulator_value: E::G1Affine,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct PedersenCommitment<G: AffineCurve> {
+    pub bases: Vec<G>,
+    pub commitment: G,
+}
+
 /// Describes equality between one or more witnesses across statements. Eg. if witness 3 of statement
 /// 0 is to be proven equal to witness 5 of statement 1, then its written as
 /// ```
@@ -104,12 +111,12 @@ impl MetaStatements {
 }
 
 /// Create a `Statement` variant for proving knowledge of BBS+ signature
-impl<E: PairingEngine> PoKBBSSignatureG1<E> {
+impl<E: PairingEngine, G: AffineCurve> PoKBBSSignatureG1<E> {
     pub fn new_as_statement(
         params: BBSSignatureParamsG1<E>,
         public_key: BBSPublicKeyG2<E>,
         revealed_messages: BTreeMap<usize, E::Fr>,
-    ) -> Statement<E> {
+    ) -> Statement<E, G> {
         Statement::PoKBBSSignatureG1(Self {
             params,
             public_key,
@@ -119,13 +126,13 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
 }
 
 /// Create a `Statement` variant for proving membership in accumulator
-impl<E: PairingEngine> AccumulatorMembership<E> {
+impl<E: PairingEngine, G: AffineCurve> AccumulatorMembership<E> {
     pub fn new_as_statement(
         params: AccumParams<E>,
         public_key: AccumPublicKey<E::G2Affine>,
         proving_key: MembershipProvingKey<E::G1Affine>,
         accumulator: E::G1Affine,
-    ) -> Statement<E> {
+    ) -> Statement<E, G> {
         Statement::AccumulatorMembership(Self {
             params,
             public_key,
@@ -136,18 +143,24 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
 }
 
 /// Create a `Statement` variant for proving non-membership in accumulator
-impl<E: PairingEngine> AccumulatorNonMembership<E> {
+impl<E: PairingEngine, G: AffineCurve> AccumulatorNonMembership<E> {
     pub fn new_as_statement(
         params: AccumParams<E>,
         public_key: AccumPublicKey<E::G2Affine>,
         proving_key: NonMembershipProvingKey<E::G1Affine>,
         accumulator: E::G1Affine,
-    ) -> Statement<E> {
+    ) -> Statement<E, G> {
         Statement::AccumulatorNonMembership(Self {
             params,
             public_key,
             proving_key,
             accumulator_value: accumulator,
         })
+    }
+}
+
+impl<E: PairingEngine, G: AffineCurve> PedersenCommitment<G> {
+    pub fn new_as_statement(bases: Vec<G>, commitment: G) -> Statement<E, G> {
+        Statement::PedersenCommitment(Self { bases, commitment })
     }
 }

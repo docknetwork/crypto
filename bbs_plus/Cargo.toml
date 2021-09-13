@@ -1,6 +1,6 @@
 [package]
 name = "bbs_plus"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 authors = ["Dock.io"]
 license = "Apache-2.0"
@@ -18,7 +18,7 @@ ark-ec = { version = "^0.3.0", default-features = false }
 ark-std = { version = "^0.3.0", default-features = false }
 digest = "0.9"
 rayon = { version = "1", optional = true }
-schnorr_pok = { version = "0.1.0", default-features = false, path = "../schnorr_pok" }
+schnorr_pok = { version = "0.2.0", default-features = false, path = "../schnorr_pok" }
 
 [dev-dependencies]
 blake2 = { version = "0.9", default-features = false }
@@ -27,5 +27,5 @@ ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "cu
 [features]
 default = [ "std", "parallel" ]
 std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std"]
-print-trace = [ "ark-std/print-trace" ]
+print-trace = [ "ark-std/print-trace", "schnorr_pok/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel"]

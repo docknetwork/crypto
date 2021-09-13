@@ -32,7 +32,7 @@
 //!                 &params_g1,
 //!             )
 //!             .unwrap();
-//! let sig_g1 = blinded_sig_g1.get_unblinded_signature(&blinding);
+//! let sig_g1 = blinded_sig_g1.unblind(&blinding);
 //! sig_g1.verify(&messages, &keypair_g2.public_key, &params_g1).unwrap();
 //!
 //! let blinded_sig_g2 = SignatureG2::<Bls12_381>::new_with_committed_messages(
@@ -43,7 +43,7 @@
 //!                 &params_g2,
 //!             )
 //!             .unwrap();
-//! let sig_g2 = blinded_sig_g2.get_unblinded_signature(&blinding);
+//! let sig_g2 = blinded_sig_g2.unblind(&blinding);
 //! sig_g2.verify(&messages, &keypair_g1.public_key, &params_g2).unwrap();
 //! ```
 
@@ -173,12 +173,12 @@ macro_rules! impl_signature_alg {
                 !self.A.is_zero()
             }
 
-            /// Used to unblind the blind signature from signer
-            pub fn get_unblinded_signature(&self, blinding: &E::Fr) -> Self {
+            /// Used to unblind a blind signature from signer
+            pub fn unblind(self, blinding: &E::Fr) -> Self {
                 Self {
-                    A: self.A.clone(),
+                    A: self.A,
                     s: self.s + blinding,
-                    e: self.e.clone(),
+                    e: self.e,
                 }
             }
 
@@ -313,7 +313,7 @@ mod tests {
                 .verify(&$messages, &keypair.public_key, &params)
                 .is_err());
 
-            let sig = blinded_sig.get_unblinded_signature(&blinding);
+            let sig = blinded_sig.unblind(&blinding);
             sig.verify(&$messages, &keypair.public_key, &params)
                 .unwrap();
 

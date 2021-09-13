@@ -1,4 +1,4 @@
-use ark_ec::PairingEngine;
+use ark_ec::{AffineCurve, PairingEngine};
 use ark_std::{
     collections::BTreeMap, fmt::Debug, format, marker::PhantomData, rand::RngCore, vec, vec::Vec,
     UniformRand,
@@ -9,7 +9,7 @@ use vb_accumulator::proofs::{MembershipProof, NonMembershipProof};
 use crate::statement::{MetaStatement, Statement, WitnessRef};
 use crate::sub_protocols::{
     AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol, PoKBBSSigG1SubProtocol,
-    SubProtocol,
+    SchnorrProtocol, SubProtocol,
 };
 use crate::witness::Witness;
 use crate::{
@@ -19,13 +19,15 @@ use crate::{
 };
 use ark_ff::{to_bytes, Field};
 use digest::Digest;
+use schnorr_pok::SchnorrResponse;
 
 /// Proof corresponding to one `Statement`
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum StatementProof<E: PairingEngine> {
+pub enum StatementProof<E: PairingEngine, G: AffineCurve> {
     PoKBBSSignatureG1(PoKOfSignatureG1Proof<E>),
     AccumulatorMembership(MembershipProof<E>),
     AccumulatorNonMembership(NonMembershipProof<E>),
+    PedersenCommitment(G, SchnorrResponse<G>),
 }
 
 /// Describes the relations that need to proven. This is known to the prover and verifier and must
@@ -38,11 +40,15 @@ pub struct ProofSpec<E: PairingEngine> {
 
 /// Created by the prover and verified by the verifier
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Proof<E: PairingEngine, D: Digest>(pub Vec<StatementProof<E>>, PhantomData<D>);
+pub struct Proof<E: PairingEngine, G: AffineCurve, D: Digest>(
+    pub Vec<StatementProof<E, G>>,
+    PhantomData<D>,
+);
 
-impl<E, D> Proof<E, D>
+impl<E, G, D> Proof<E, G, D>
 where
     E: PairingEngine,
+    G: AffineCurve,
     D: Digest,
 {
     /// Create a new proof. `context` is any arbitrary data that needs to be hashed into the proof and
@@ -84,7 +90,7 @@ where
             }
         }
 
-        let mut sub_protocols: Vec<SubProtocol<E>> = vec![];
+        let mut sub_protocols: Vec<SubProtocol<E, G>> = vec![];
 
         // Initialize sub-protocols for each statement
         for (s_idx, (statement, witness)) in proof_spec
@@ -138,6 +144,27 @@ where
                         let mut sp = AccumulatorNonMembershipSubProtocol::new(s_idx, s);
                         sp.init(rng, blinding, w)?;
                         sub_protocols.push(SubProtocol::AccumulatorNonMembership(sp));
+                    }
+                    _ => {
+                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", witness),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
+                Statement::PedersenCommitment(s) => match witness {
+                    Witness::PedersenCommitment(w) => {
+                        let mut blindings_map = BTreeMap::new();
+                        for i in 0..w.len() {
+                            match blindings.remove(&(s_idx, i)) {
+                                Some(b) => blindings_map.insert(i, b),
+                                None => None,
+                            };
+                        }
+                        let mut sp = SchnorrProtocol::new(s_idx, s);
+                        sp.init(rng, blindings_map, w)?;
+                        sub_protocols.push(SubProtocol::PoKDiscreteLogsG1(sp));
                     }
                     _ => {
                         return Err(ProofSystemError::WitnessIncompatibleWithStatement(

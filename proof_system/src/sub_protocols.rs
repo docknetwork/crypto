@@ -1,7 +1,9 @@
 use crate::error::ProofSystemError;
 use crate::proof::StatementProof;
-use crate::statement::{AccumulatorMembership, AccumulatorNonMembership, PoKBBSSignatureG1};
-use ark_ec::PairingEngine;
+use crate::statement::{
+    AccumulatorMembership, AccumulatorNonMembership, PedersenCommitment, PoKBBSSignatureG1,
+};
+use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::borrow::Borrow;
 use ark_std::collections::{BTreeMap, BTreeSet};
@@ -10,31 +12,36 @@ use ark_std::{
     format,
     io::{Read, Write},
     rand::RngCore,
+    vec,
     vec::Vec,
+    UniformRand,
 };
 
+use ark_ff::Zero;
 use bbs_plus::proof::PoKOfSignatureG1Protocol;
+use schnorr_pok::SchnorrCommitment;
 use vb_accumulator::proofs::{MembershipProofProtocol, NonMembershipProofProtocol};
 
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to
 /// form a `Proof`
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SubProtocol<E: PairingEngine> {
+pub enum SubProtocol<E: PairingEngine, G: AffineCurve> {
     PoKBBSSignatureG1(PoKBBSSigG1SubProtocol<E>),
     AccumulatorMembership(AccumulatorMembershipSubProtocol<E>),
     AccumulatorNonMembership(AccumulatorNonMembershipSubProtocol<E>),
+    PoKDiscreteLogs(SchnorrProtocol<G>),
 }
 
-pub trait ProofSubProtocol<E: PairingEngine> {
+pub trait ProofSubProtocol<E: PairingEngine, G: AffineCurve> {
     fn challenge_contribution(&self, target: &mut [u8]) -> Result<(), ProofSystemError>;
     fn gen_proof_contribution(
         &mut self,
         challenge: &E::Fr,
-    ) -> Result<StatementProof<E>, ProofSystemError>;
+    ) -> Result<StatementProof<E, G>, ProofSystemError>;
     fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E>,
+        proof: &StatementProof<E, G>,
     ) -> Result<(), ProofSystemError>;
 }
 
@@ -59,7 +66,15 @@ pub struct AccumulatorNonMembershipSubProtocol<E: PairingEngine> {
     pub protocol: Option<NonMembershipProofProtocol<E>>,
 }
 
-impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct SchnorrProtocol<G: AffineCurve> {
+    pub id: usize,
+    pub statement: PedersenCommitment<G>,
+    pub commitment: Option<SchnorrCommitment<G>>,
+    pub witnesses: Option<Vec<G::ScalarField>>,
+}
+
+impl<E: PairingEngine, G: AffineCurve> PoKBBSSigG1SubProtocol<E> {
     pub fn new(id: usize, statement: PoKBBSSignatureG1<E>) -> Self {
         Self {
             id,
@@ -74,6 +89,9 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
         blindings: BTreeMap<usize, E::Fr>,
         mut witness: crate::witness::PoKBBSSignatureG1<E>,
     ) -> Result<(), ProofSystemError> {
+        if self.protocol.is_some() {
+            return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
+        }
         // Create messages from revealed messages in statement and unrevealed in witness
         let mut messages = Vec::with_capacity(self.statement.params.max_message_count());
         let mut revealed_indices = BTreeSet::new();
@@ -120,7 +138,7 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
     fn gen_proof_contribution(
         &mut self,
         challenge: &E::Fr,
-    ) -> Result<StatementProof<E>, ProofSystemError> {
+    ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 format!("{:?}", self.statement),
@@ -134,7 +152,7 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
     pub fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E>,
+        proof: &StatementProof<E, G>,
     ) -> Result<(), ProofSystemError> {
         match proof {
             StatementProof::PoKBBSSignatureG1(p) => {
@@ -154,7 +172,7 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
     }
 }
 
-impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
+impl<E: PairingEngine, G: AffineCurve> AccumulatorMembershipSubProtocol<E> {
     pub fn new(id: usize, statement: AccumulatorMembership<E>) -> Self {
         Self {
             id,
@@ -208,7 +226,7 @@ impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
     fn gen_proof_contribution(
         &mut self,
         challenge: &E::Fr,
-    ) -> Result<StatementProof<E>, ProofSystemError> {
+    ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 format!("{:?}", self.statement),
@@ -222,7 +240,7 @@ impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
     pub fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E>,
+        proof: &StatementProof<E, G>,
     ) -> Result<(), ProofSystemError> {
         match proof {
             StatementProof::AccumulatorMembership(p) => {
@@ -243,7 +261,7 @@ impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
     }
 }
 
-impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
+impl<E: PairingEngine, G: AffineCurve> AccumulatorNonMembershipSubProtocol<E> {
     pub fn new(id: usize, statement: AccumulatorNonMembership<E>) -> Self {
         Self {
             id,
@@ -297,7 +315,7 @@ impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
     fn gen_proof_contribution(
         &mut self,
         challenge: &E::Fr,
-    ) -> Result<StatementProof<E>, ProofSystemError> {
+    ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 format!("{:?}", self.statement),
@@ -311,7 +329,7 @@ impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
     pub fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E>,
+        proof: &StatementProof<E, G>,
     ) -> Result<(), ProofSystemError> {
         match proof {
             StatementProof::AccumulatorNonMembership(p) => {
@@ -332,30 +350,95 @@ impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
     }
 }
 
-impl<E: PairingEngine> SubProtocol<E> {
+impl<G: AffineCurve> SchnorrProtocol<G> {
+    pub fn new(id: usize, statement: PedersenCommitment<G>) -> Self {
+        Self {
+            id,
+            statement,
+            commitment: None,
+            witnesses: None,
+        }
+    }
+
+    pub fn init<R: RngCore>(
+        &mut self,
+        rng: &mut R,
+        mut blindings: BTreeMap<usize, G::ScalarField>,
+        mut witnesses: Vec<G::ScalarField>,
+    ) -> Result<(), ProofSystemError> {
+        if self.commitment.is_some() {
+            return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
+        }
+        let blindings = (0..witnesses.len())
+            .map(|i| {
+                blindings
+                    .remove(&i)
+                    .unwrap_or_else(|| G::ScalarField::rand(rng))
+            })
+            .collect::<Vec<_>>();
+        self.commitment = Some(SchnorrCommitment::new(&self.statement.bases, blindings));
+        self.witnesses = Some(witnesses);
+        Ok(())
+    }
+
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ProofSystemError> {
+        if self.commitment.is_none() {
+            return Err(ProofSystemError::SubProtocolNotReadyToGenerateChallenge(
+                self.id,
+            ));
+        }
+        self.statement.bases.serialize_unchecked(&mut writer)?;
+        self.statement.commitment.serialize_unchecked(&mut writer)?;
+        self.commitment
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .challenge_contribution(writer)?;
+        Ok(())
+    }
+
+    fn gen_proof_contribution<E: PairingEngine>(
+        &mut self,
+        challenge: &G::ScalarField,
+    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+        if self.commitment.is_none() {
+            return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
+                format!("{:?}", self.statement),
+            ));
+        }
+        let commitment = self.commitment.take().unwrap();
+        let responses =
+            commitment.response(self.witnesses.borrow().as_ref().unwrap(), &challenge)?;
+        Ok(StatementProof::PedersenCommitment(commitment.t, responses))
+    }
+}
+
+impl<E: PairingEngine, G: AffineCurve> SubProtocol<E, G> {
     pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ProofSystemError> {
         match self {
             SubProtocol::PoKBBSSignatureG1(s) => s.challenge_contribution(writer),
             SubProtocol::AccumulatorMembership(s) => s.challenge_contribution(writer),
             SubProtocol::AccumulatorNonMembership(s) => s.challenge_contribution(writer),
+            SubProtocol::PoKDiscreteLogs(s) => s.challenge_contribution(writer),
         }
     }
 
     pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::Fr,
-    ) -> Result<StatementProof<E>, ProofSystemError> {
+    ) -> Result<StatementProof<E, G>, ProofSystemError> {
         match self {
             SubProtocol::PoKBBSSignatureG1(s) => s.gen_proof_contribution(challenge),
             SubProtocol::AccumulatorMembership(s) => s.gen_proof_contribution(challenge),
             SubProtocol::AccumulatorNonMembership(s) => s.gen_proof_contribution(challenge),
+            SubProtocol::PoKDiscreteLogs(s) => s.gen_proof_contribution(challenge),
         }
     }
 
     pub fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E>,
+        proof: &StatementProof<E, G>,
     ) -> Result<(), ProofSystemError> {
         match self {
             SubProtocol::PoKBBSSignatureG1(s) => s.verify_proof_contribution(challenge, proof),
@@ -363,6 +446,7 @@ impl<E: PairingEngine> SubProtocol<E> {
             SubProtocol::AccumulatorNonMembership(s) => {
                 s.verify_proof_contribution(challenge, proof)
             }
+            SubProtocol::PoKDiscreteLogs(s) => s.verify_proof_contribution(challenge, proof),
         }
     }
 }
