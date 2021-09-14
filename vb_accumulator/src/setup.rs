@@ -94,6 +94,31 @@ where
             public_key: PublicKey { Q_tilde },
         }
     }
+
+    /// Generate public key from given secret key and signature parameters
+    pub fn public_key_from_secret_key(
+        secret_key: &SecretKey<E::Fr>,
+        setup_params: &SetupParams<E>,
+    ) -> PublicKey<E::G2Affine> {
+        PublicKey {
+            Q_tilde: setup_params.P_tilde.mul(secret_key.0.into_repr()).into(),
+        }
+    }
+}
+
+impl<G: AffineCurve> PublicKey<G> {
+    // TODO: Doesn't work. I need to convert PairingEngine's affine curve type to AffineCurve
+    /*/// Generate public key from given secret key and signature parameters
+    pub fn new_from_secret_key<F: PrimeField + SquareRootField, E: PairingEngine<Fr=F>>(secret_key: &SecretKey<F>, setup_params: &SetupParams<E>) -> Self {
+        Self {
+            Q_tilde: setup_params.P_tilde.mul(secret_key.0.into_repr()).into(),
+        }
+    }*/
+
+    /// Public key shouldn't be 0
+    pub fn is_valid(&self) -> bool {
+        !self.Q_tilde.is_zero()
+    }
 }
 
 // Implement proof of knowledge of secret key in public key

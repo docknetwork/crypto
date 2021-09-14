@@ -20,7 +20,16 @@ For [no_std] support, build as `cargo build --no-default-features`
 
 For WASM, build as `cargo build --no-default-features --target wasm32-unknown-unknown`
 
+## Test
+
+`cargo test`
+
+The above maybe slower as it runs the tests in debug mode and some tests work on large inputs. 
+For running tests faster, run `cargo test --release`
+
+
 ## Benchmarking
 
-Criterion benchmarks [here](./benches)
- 
+[Criterion](https://github.com/bheisler/criterion.rs) benchmarks [here](./benches)
+
+Some tests also print time consumed by the operations, run `cargo test --release -- --nocapure [test name]`

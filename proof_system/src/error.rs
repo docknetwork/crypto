@@ -16,7 +16,8 @@ pub enum ProofSystemError {
     BBSPlusProtocolMessageAbsent(usize, usize),
     SubProtocolNotReadyToGenerateChallenge(usize),
     SubProtocolAlreadyInitialized(usize),
-    SubProtocolNotReadyToGenerateProof(String),
+    SubProtocolNotReadyToGenerateProof(usize),
+    /// This error indicates that some witnesses that were required to be equal are not equal
     WitnessResponseNotEqual(usize, usize),
     Serialization(SerializationError),
     SchnorrError(SchnorrError),

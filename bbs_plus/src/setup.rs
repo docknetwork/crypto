@@ -21,7 +21,7 @@
 
 use crate::error::BBSPlusError;
 use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{to_bytes, PrimeField};
+use ark_ff::{to_bytes, PrimeField, SquareRootField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::collections::BTreeMap;
 use ark_std::{
@@ -39,7 +39,7 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 
 /// Secret key used by the signer to sign messages
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SecretKey<E: PairingEngine>(pub E::Fr);
+pub struct SecretKey<F: PrimeField + SquareRootField>(pub F);
 
 // TODO: Add "prepared" version of public key
 
@@ -99,9 +99,9 @@ macro_rules! impl_sig_params {
                         )
                     })
                     .collect::<Vec<E::$group_projective>>();
-                // Convert all to affine
                 sig_group_elems.push(g1);
                 sig_group_elems.append(&mut h);
+                // Convert all to affine
                 E::$group_projective::batch_normalization(sig_group_elems.as_mut_slice());
                 let mut sig_group_elems = into_iter!(sig_group_elems)
                     .map(|v| v.into())
@@ -151,14 +151,15 @@ macro_rules! impl_sig_params {
                 self.h.len()
             }
 
-            /// Commit to all messages using the parameters. `b` from the paper.
-            /// `b` = g_1{h_0}^s.prod(h_i.m_i) for all indices `i` in the map.
-            /// Computes {h_0}^s.prod(h_i.m_i) using multi-scalar multiplication
-            pub fn b(
+            /// Commit to given messages using the parameters and the given blinding as a Pedersen commitment.
+            /// Eg. if given messages `m_i`, `m_j`, and `m_k` in the map, the commitment is
+            /// `params.h_0 * blinding + params.h_i * m_i + params.h_j * m_j + params.h_k * m_k`
+            /// Computes using multi-scalar multiplication
+            pub fn commit_to_messages(
                 &self,
                 messages: BTreeMap<usize, &E::Fr>,
-                s: &E::Fr,
-            ) -> Result<E::$group_projective, BBSPlusError> {
+                blinding: &E::Fr,
+            ) -> Result<E::$group_affine, BBSPlusError> {
                 #[cfg(feature = "parallel")]
                 let (mut bases, mut scalars): (
                     Vec<E::$group_affine>,
@@ -189,16 +190,26 @@ macro_rules! impl_sig_params {
                 };
 
                 bases.push(self.h_0.clone());
-                scalars.push(s.into_repr());
-                let b = VariableBaseMSM::multi_scalar_mul(&bases, &scalars);
-                Ok(b.add_mixed(&self.g1))
+                scalars.push(blinding.into_repr());
+                Ok(VariableBaseMSM::multi_scalar_mul(&bases, &scalars).into_affine())
+            }
+
+            /// Compute `b` from the paper. Commits to the given messages and adds `self.g1` to it
+            /// `b = g_1 + h_0 * s + sum(h_i * m_i)` for all indices `i` in the map.
+            pub fn b(
+                &self,
+                messages: BTreeMap<usize, &E::Fr>,
+                s: &E::Fr,
+            ) -> Result<E::$group_projective, BBSPlusError> {
+                let commitment = self.commit_to_messages(messages, s)?;
+                Ok(commitment.into_projective().add_mixed(&self.g1))
             }
         }
     };
 }
 
 macro_rules! impl_public_key {
-    ( $name:ident, $group:ident ) => {
+    ( $name:ident, $group:ident, $params:ident ) => {
         /// Public key of the signer. The signer can use the same public key with different
         /// signature parameters provided all parameters use same `g2` to sign different sized
         /// multi-messages. This helps the signer minimize his secret key storage.
@@ -211,6 +222,13 @@ macro_rules! impl_public_key {
         where
             E: PairingEngine,
         {
+            /// Generate public key from given secret key and signature parameters
+            pub fn new_from_secret_key(secret_key: &SecretKey<E::Fr>, params: &$params<E>) -> Self {
+                Self {
+                    w: params.g2.mul(secret_key.0.into_repr()).into(),
+                }
+            }
+
             /// Public key shouldn't be 0
             pub fn is_valid(&self) -> bool {
                 !self.w.is_zero()
@@ -223,7 +241,7 @@ macro_rules! impl_keypair {
     ( $name:ident, $group:ident, $pk: ident, $params:ident ) => {
         #[derive(Clone)]
         pub struct $name<E: PairingEngine> {
-            pub secret_key: SecretKey<E>,
+            pub secret_key: SecretKey<E::Fr>,
             pub public_key: $pk<E>,
         }
 
@@ -256,8 +274,8 @@ impl_sig_params!(
     G1Affine,
     G1Projective
 );
-impl_public_key!(PublicKeyG2, G2Affine);
-impl_public_key!(PublicKeyG1, G1Affine);
+impl_public_key!(PublicKeyG2, G2Affine, SignatureParamsG1);
+impl_public_key!(PublicKeyG1, G1Affine, SignatureParamsG2);
 impl_keypair!(KeypairG2, G2Projective, PublicKeyG2, SignatureParamsG1);
 impl_keypair!(KeypairG1, G1Projective, PublicKeyG1, SignatureParamsG2);
 impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKeyG2, PoKSecretKeyInPublicKeyG2Proof);

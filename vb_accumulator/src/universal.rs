@@ -38,6 +38,14 @@
 //!                 &keypair.public_key,
 //!                 &params
 //!             );
+//!
+//! // Similar to positive accumulator, additions, removals or both can be done in a batch using `add_batch`,
+//! // `remove_batch`, etc.
+//!
+//! // Similar to positive accumulator, non-membership witnesses can be calculated in a batch as
+//! let mem_witnesses = accumulator
+//!             .get_membership_witness_for_batch(&non_members, &keypair.secret_key, &state)
+//!             .unwrap();
 //! ```
 
 use crate::error::VBAccumulatorError;

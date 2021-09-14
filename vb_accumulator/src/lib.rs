@@ -22,6 +22,16 @@ pub mod setup;
 pub mod universal;
 pub mod witness;
 
+pub mod prelude {
+    pub use crate::batch_utils::Omega;
+    pub use crate::error::VBAccumulatorError;
+    pub use crate::positive::{Accumulator, PositiveAccumulator};
+    pub use crate::proofs::*;
+    pub use crate::setup::*;
+    pub use crate::universal::UniversalAccumulator;
+    pub use crate::witness::{MembershipWitness, NonMembershipWitness, Witness};
+}
+
 #[cfg(test)]
 #[macro_use]
 pub mod tests {

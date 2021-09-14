@@ -22,7 +22,7 @@
 //!                 .add(elem, &keypair.secret_key, &mut state)
 //!                 .unwrap();
 //!
-//! // Create membership witness
+//! // Create membership witness for the element `elem` just added
 //! let m_wit = new_accumulator
 //!                 .get_membership_witness(&elem, &keypair.secret_key, &state)
 //!                 .unwrap();
@@ -40,6 +40,13 @@
 //!             .add_batch(additions, &keypair.secret_key, &mut state_2)
 //!             .unwrap();
 //!
+//! // Now the accumulator manger needs to create membership witnesses for the batch `additions` he added
+//! // above. This can be done faster than doing `get_membership_witness` for each member in `additions`.
+//! // Create membership witnesses for multiple elements at once
+//! let witnesses = new_accumulator
+//!             .get_membership_witness_for_batch(&additions, &keypair.secret_key, &state)
+//!             .unwrap();
+//!
 //! // Remove multiple elements. `&removals` is a slice of elements to be removed
 //! let new_accumulator = accumulator
 //!             .remove_batch(&removals, &keypair.secret_key, &mut state)
@@ -55,10 +62,6 @@
 //!             )
 //!             .unwrap();
 //!
-//! // Create membership witnesses for multiple elements at once
-//! let witnesses = new_accumulator
-//!             .get_membership_witness_for_batch(&additions, &keypair.secret_key, &state)
-//!             .unwrap();
 //! ```
 
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};

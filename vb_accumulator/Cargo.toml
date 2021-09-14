@@ -1,6 +1,6 @@
 [package]
 name = "vb_accumulator"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2018"
 authors = ["Dock.io"]
 license = "Apache-2.0"

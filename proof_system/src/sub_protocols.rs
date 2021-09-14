@@ -5,19 +5,17 @@ use crate::statement::{
 };
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::borrow::Borrow;
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{
     fmt::Debug,
     format,
     io::{Read, Write},
     rand::RngCore,
-    vec,
     vec::Vec,
     UniformRand,
 };
 
-use ark_ff::{PrimeField, SquareRootField, Zero};
+use ark_ff::{PrimeField, SquareRootField};
 use bbs_plus::proof::PoKOfSignatureG1Protocol;
 use schnorr_pok::{SchnorrChallengeContributor, SchnorrCommitment};
 use vb_accumulator::proofs::{MembershipProofProtocol, NonMembershipProofProtocol};
@@ -128,15 +126,11 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
                 self.id,
             ));
         }
-        self.protocol
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .challenge_contribution(
-                &self.statement.revealed_messages,
-                &self.statement.params,
-                writer,
-            )?;
+        self.protocol.as_ref().unwrap().challenge_contribution(
+            &self.statement.revealed_messages,
+            &self.statement.params,
+            writer,
+        )?;
         Ok(())
     }
 
@@ -146,7 +140,7 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
-                format!("{:?}", self.statement),
+                self.id,
             ));
         }
         let protocol = self.protocol.take().unwrap();
@@ -214,17 +208,13 @@ impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
                 self.id,
             ));
         }
-        self.protocol
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .challenge_contribution(
-                &self.statement.accumulator_value,
-                &self.statement.public_key,
-                &self.statement.params,
-                &self.statement.proving_key,
-                writer,
-            )?;
+        self.protocol.as_ref().unwrap().challenge_contribution(
+            &self.statement.accumulator_value,
+            &self.statement.public_key,
+            &self.statement.params,
+            &self.statement.proving_key,
+            writer,
+        )?;
         Ok(())
     }
 
@@ -234,7 +224,7 @@ impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
-                format!("{:?}", self.statement),
+                self.id,
             ));
         }
         let protocol = self.protocol.take().unwrap();
@@ -303,17 +293,13 @@ impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
                 self.id,
             ));
         }
-        self.protocol
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .challenge_contribution(
-                &self.statement.accumulator_value,
-                &self.statement.public_key,
-                &self.statement.params,
-                &self.statement.proving_key,
-                writer,
-            )?;
+        self.protocol.as_ref().unwrap().challenge_contribution(
+            &self.statement.accumulator_value,
+            &self.statement.public_key,
+            &self.statement.params,
+            &self.statement.proving_key,
+            writer,
+        )?;
         Ok(())
     }
 
@@ -323,7 +309,7 @@ impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
-                format!("{:?}", self.statement),
+                self.id,
             ));
         }
         let protocol = self.protocol.take().unwrap();
@@ -365,6 +351,7 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
         }
     }
 
+    /// `blindings` specifies the randomness to use. If some index is not present, new randomness is generated for it.
     pub fn init<R: RngCore>(
         &mut self,
         rng: &mut R,
@@ -395,7 +382,6 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
         self.statement.bases.serialize_unchecked(&mut writer)?;
         self.statement.commitment.serialize_unchecked(&mut writer)?;
         self.commitment
-            .borrow()
             .as_ref()
             .unwrap()
             .challenge_contribution(writer)?;
@@ -408,12 +394,11 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.commitment.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
-                format!("{:?}", self.statement),
+                self.id,
             ));
         }
         let commitment = self.commitment.take().unwrap();
-        let responses =
-            commitment.response(self.witnesses.borrow().as_ref().unwrap(), &challenge)?;
+        let responses = commitment.response(self.witnesses.as_ref().unwrap(), &challenge)?;
         Ok(StatementProof::PedersenCommitment(commitment.t, responses))
     }
 

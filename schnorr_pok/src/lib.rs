@@ -80,6 +80,9 @@ impl<G> SchnorrChallengeContributor for SchnorrCommitment<G>
 where
     G: AffineCurve,
 {
+    /// The commitment's contribution to the overall challenge of the protocol. Note that
+    /// it does not include the bases or the commitment (`g_`  and `y` in `{g_i}^x_i = y`) and
+    /// they must be part of the challenge.
     fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
         self.t.serialize_unchecked(writer).map_err(|e| e.into())
     }

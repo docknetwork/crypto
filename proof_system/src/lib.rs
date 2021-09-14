@@ -17,9 +17,10 @@
 //! BBS+ signature and prove equality between the messages and also proof that combines proof of knowledge of
 //! BBS+ signature and accumulator membership and non-membership. See tests for examples.
 //!
-//! Note: This design is largely inspired from my work at Hyperledger Ursa.
 //!
-//! Note: The design is tentative and will likely change as more protocols are integrated.
+//! *Note*: This design is largely inspired from my work at Hyperledger Ursa.
+//!
+//! *Note*: The design is tentative and will likely change as more protocols are integrated.
 //!
 //! [`Statement`]: crate::statement::Statement
 //! [`MetaStatement`]: crate::statement::MetaStatement
@@ -29,16 +30,21 @@
 //! [`Proof`]: crate::proof::Proof
 //! [`SubProtocol`]: crate::sub_protocols::SubProtocol
 
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
+#[macro_use]
+pub mod util;
 pub mod error;
 pub mod proof;
 pub mod statement;
-mod sub_protocols;
+pub mod sub_protocols;
 pub mod witness;
-#[macro_use]
-pub mod util;
+
+pub mod prelude {
+    pub use crate::error::ProofSystemError;
+    pub use crate::proof::*;
+    pub use crate::statement::*;
+    pub use crate::sub_protocols::*;
+    pub use crate::witness::*;
+}
 
 #[cfg(test)]
 #[macro_use]

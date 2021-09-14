@@ -9,13 +9,12 @@ use ark_std::{
     rand::RngCore,
     vec,
     vec::Vec,
-    UniformRand,
 };
 
 use bbs_plus::proof::PoKOfSignatureG1Proof;
 use vb_accumulator::proofs::{MembershipProof, NonMembershipProof};
 
-use crate::statement::{MetaStatement, PedersenCommitment, Statement, WitnessRef};
+use crate::statement::{MetaStatement, Statement, WitnessRef};
 use crate::sub_protocols::{
     AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol, PoKBBSSigG1SubProtocol,
     SchnorrProtocol, SubProtocol,
@@ -26,7 +25,7 @@ use crate::{
     statement::{MetaStatements, Statements},
     witness::Witnesses,
 };
-use ark_ff::{to_bytes, Field, PrimeField, SquareRootField};
+use ark_ff::{to_bytes, PrimeField, SquareRootField};
 use digest::Digest;
 use schnorr_pok::SchnorrResponse;
 
@@ -56,6 +55,37 @@ pub struct Proof<E: PairingEngine, G: AffineCurve, F: PrimeField + SquareRootFie
     PhantomData<F>,
     PhantomData<D>,
 );
+
+impl<E, G> ProofSpec<E, G>
+where
+    E: PairingEngine,
+    G: AffineCurve,
+{
+    pub fn new() -> Self {
+        Self {
+            statements: Statements::new(),
+            meta_statements: MetaStatements::new(),
+        }
+    }
+
+    pub fn new_with_statements_and_meta_statements(
+        statements: Statements<E, G>,
+        meta_statements: MetaStatements,
+    ) -> Self {
+        Self {
+            statements,
+            meta_statements,
+        }
+    }
+
+    pub fn add_statement(&mut self, statement: Statement<E, G>) {
+        self.statements.add(statement);
+    }
+
+    pub fn add_meta_statement(&mut self, meta_statement: MetaStatement) {
+        self.meta_statements.add(meta_statement);
+    }
+}
 
 impl<E, G, F, D> Proof<E, G, F, D>
 where
@@ -207,11 +237,13 @@ where
         Ok(Self(statement_proofs, PhantomData, PhantomData))
     }
 
+    /// Verify the `Proof` given the `ProofSpec` and `context`
     pub fn verify(
         self,
         proof_spec: ProofSpec<E, G>,
         context: &[u8],
     ) -> Result<(), ProofSystemError> {
+        // All the distinct equalities in `ProofSpec`
         let mut witness_equalities = vec![];
 
         if !proof_spec.meta_statements.is_empty() {
@@ -440,6 +472,8 @@ where
         Ok(())
     }
 
+    /// Used to check if response (from Schnorr protocol) for a witness is equal to other witnesses that
+    /// it must be equal to. This is required when the `ProofSpec` demands certain witnesses to be equal.
     fn check_response_for_equality<'a>(
         stmt_id: usize,
         wit_id: usize,
@@ -662,8 +696,9 @@ mod tests {
     use vb_accumulator::setup::{Keypair, SetupParams};
     use vb_accumulator::universal::UniversalAccumulator;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    use crate::test_serialization;
 
+    type Fr = <Bls12_381 as PairingEngine>::Fr;
     type ProofG1 = Proof<Bls12_381, G1Affine, Fr, Blake2b>;
 
     fn sig_setup<R: RngCore>(
@@ -795,7 +830,7 @@ mod tests {
         // Prove knowledge of 2 BBS+ signatures and 3 of the messages are same among them.
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        // 1st BBS sig
+        // 1st BBS+ sig
         let msg_count_1 = 6;
         let (msgs_1, params_1, keypair_1, sig_1) = sig_setup(&mut rng, msg_count_1);
 
@@ -814,7 +849,7 @@ mod tests {
             }
         }
 
-        // 2nd BBS sig
+        // 2nd BBS+ sig
         let msg_count_2 = 10;
         let (mut msgs_2, params_2, keypair_2, _) = sig_setup(&mut rng, msg_count_2);
 
@@ -873,11 +908,16 @@ mod tests {
                 .collect::<BTreeSet<(usize, usize)>>(),
         ])));
 
-        let proof_spec = ProofSpec {
-            statements,
-            meta_statements,
-        };
+        test_serialization!(Statements, statements);
+        test_serialization!(MetaStatements, meta_statements);
 
+        // Create a proof spec, this is shared between prover and verifier
+        let proof_spec =
+            ProofSpec::new_with_statements_and_meta_statements(statements, meta_statements);
+
+        test_serialization!(ProofSpec, proof_spec);
+
+        // Prover now creates/loads it witnesses corresponding to the proof spec
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
             sig_1.clone(),
@@ -888,6 +928,10 @@ mod tests {
             unrevealed_msgs_2.clone(),
         ));
 
+        test_serialization!(Witnesses, witnesses);
+
+        // Prover now creates the proof using the proof spec and witnesses. This will be sent to the verifier
+        // Context must be known to both prover and verifier
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses, context).unwrap();
 
@@ -897,6 +941,7 @@ mod tests {
             .verify(proof_spec.clone(), "random...".as_bytes())
             .is_err());
 
+        // Verifier verifies the proof
         proof.verify(proof_spec, context).unwrap();
     }
 
@@ -913,9 +958,10 @@ mod tests {
             setup_positive_accum(&mut rng);
         let mem_prk = MembershipProvingKey::generate_using_rng(&mut rng);
 
-        // Prove knowledge of signature and membership of message with index `accum_member_1_idx` in positive accumulator
+        // Message with index `accum_member_1_idx` is added in the positive accumulator
         let accum_member_1_idx = 1;
         let accum_member_1 = msgs[accum_member_1_idx].clone();
+
         pos_accumulator = pos_accumulator
             .add(
                 accum_member_1.clone(),
@@ -956,10 +1002,12 @@ mod tests {
             mem_1_wit.clone(),
         ));
 
+        // Create meta statement describing that message in the signature at index `accum_member_1_idx` is
+        // same as the accumulator member
         let mut meta_statements = MetaStatements::new();
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![vec![
             (0, accum_member_1_idx),
-            (1, 0),
+            (1, 0), // Since accumulator (non)membership has only one (for applications) which is the (non)member, that witness is at index 0.
         ]
         .into_iter()
         .collect::<BTreeSet<(usize, usize)>>()])));
@@ -1185,6 +1233,22 @@ mod tests {
             },
         ));
 
+        let mut meta_statements = MetaStatements::new();
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
+            vec![(0, accum_member_1_idx), (1, 0)]
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+            vec![(0, accum_member_2_idx), (2, 0)]
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+            vec![(0, accum_non_member_idx), (3, 0)]
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+        ])));
+
+        test_serialization!(Statements, statements);
+        test_serialization!(MetaStatements, meta_statements);
+
         let mut witnesses = Witnesses::new();
         witnesses.add(Witness::PoKBBSSignatureG1(PoKSignatureBBSG1Wit {
             signature: sig.clone(),
@@ -1203,23 +1267,14 @@ mod tests {
             witness: non_mem_wit.clone(),
         }));
 
-        let mut meta_statements = MetaStatements::new();
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
-            vec![(0, accum_member_1_idx), (1, 0)]
-                .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
-            vec![(0, accum_member_2_idx), (2, 0)]
-                .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
-            vec![(0, accum_non_member_idx), (3, 0)]
-                .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
-        ])));
+        test_serialization!(Witnesses, witnesses);
 
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements,
         };
+
+        test_serialization!(ProofSpec, proof_spec);
 
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
@@ -1265,6 +1320,8 @@ mod tests {
             commitment: commitment_2.clone(),
         }));
 
+        test_serialization!(Statements, statements);
+
         let mut meta_statements = MetaStatements::new();
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
             vec![(0, 3), (1, 1)] // 0th statement's 3rd witness is equal to 1st statement's 1st witness
@@ -1279,10 +1336,14 @@ mod tests {
         witnesses.add(Witness::PedersenCommitment(scalars_1.clone()));
         witnesses.add(Witness::PedersenCommitment(scalars_2.clone()));
 
+        test_serialization!(Witnesses, witnesses);
+
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements: meta_statements.clone(),
         };
+
+        test_serialization!(ProofSpec, proof_spec);
 
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
@@ -1389,17 +1450,17 @@ mod tests {
                 .collect::<BTreeSet<(usize, usize)>>(),
         ])));
 
+        let proof_spec = ProofSpec {
+            statements: statements.clone(),
+            meta_statements: meta_statements.clone(),
+        };
+
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
             sig.clone(),
             msgs.clone().into_iter().enumerate().map(|t| t).collect(),
         ));
         witnesses.add(Witness::PedersenCommitment(scalars.clone()));
-
-        let proof_spec = ProofSpec {
-            statements: statements.clone(),
-            meta_statements: meta_statements.clone(),
-        };
 
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
@@ -1432,5 +1493,79 @@ mod tests {
         .unwrap();
 
         assert!(proof.verify(proof_spec_invalid, context).is_err());
+    }
+
+    #[test]
+    fn requesting_partially_blind_BBS_plus_sig() {
+        // Request a partially blind signature by first proving knowledge of values in a Pedersen commitment. The
+        // requester then unblinds the signature and verifies it.
+
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        // The total number of messages in the signature
+        let total_msg_count = 10;
+
+        // Setup params and messages
+        let (msgs, sig_params, sig_keypair, _) = sig_setup(&mut rng, total_msg_count);
+
+        // Message indices hidden from signer. Here signer does not know msgs[0], msgs[4] and msgs[6]
+        let committed_indices = vec![0, 4, 6].into_iter().collect::<BTreeSet<usize>>();
+
+        // Requester commits messages msgs[0], msgs[4] and msgs[6] as `sig_params.h_0 * blinding + params.h[0] * msgs[0] + params.h[4] * msgs[4] + params.h[6] * msgs[6]`
+        let blinding = Fr::rand(&mut rng);
+        let committed_messages = committed_indices
+            .iter()
+            .map(|i| (*i, &msgs[*i]))
+            .collect::<BTreeMap<_, _>>();
+        let commitment = sig_params
+            .commit_to_messages(committed_messages, &blinding)
+            .unwrap();
+
+        // Requester proves knowledge of committed messages
+        let mut statements = Statements::new();
+        let mut bases = vec![sig_params.h_0.clone()];
+        let mut committed_msgs = vec![blinding.clone()];
+        for i in committed_indices.iter() {
+            bases.push(sig_params.h[*i].clone());
+            committed_msgs.push(msgs[*i].clone());
+        }
+        statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+            bases: bases.clone(),
+            commitment: commitment.clone(),
+        }));
+
+        let proof_spec = ProofSpec {
+            statements: statements.clone(),
+            meta_statements: MetaStatements::new(),
+        };
+
+        let mut witnesses = Witnesses::new();
+        witnesses.add(Witness::PedersenCommitment(committed_msgs));
+
+        let context = "test".as_bytes();
+        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        proof.verify(proof_spec, context).unwrap();
+
+        // Now requester picks the messages he is revealing to the signer and prepares `uncommitted_messages`
+        // to request the blind signature
+        let uncommitted_messages = (0..total_msg_count)
+            .filter(|i| !committed_indices.contains(i))
+            .map(|i| (i, &msgs[i]))
+            .collect::<BTreeMap<_, _>>();
+
+        // Signer creates the blind signature using the commitment
+        let blinded_sig = SignatureG1::<Bls12_381>::new_with_committed_messages(
+            &mut rng,
+            &commitment,
+            uncommitted_messages,
+            &sig_keypair.secret_key,
+            &sig_params,
+        )
+        .unwrap();
+
+        let sig = blinded_sig.unblind(&blinding);
+        sig.verify(&msgs, &sig_keypair.public_key, &sig_params)
+            .unwrap();
     }
 }

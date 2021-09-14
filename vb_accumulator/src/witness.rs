@@ -121,7 +121,7 @@ use ark_ec::msm::VariableBaseMSM;
 use rayon::prelude::*;
 
 /// Trait to hold common functionality among both membership and non-membership witnesses
-trait Witness<G: AffineCurve> {
+pub trait Witness<G: AffineCurve> {
     /// Compute an update to the witness after adding a single element in the accumulator. Expects
     /// the accumulator value before the addition. Described in section 2 of the paper
     fn compute_update_after_addition(

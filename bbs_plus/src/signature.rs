@@ -24,6 +24,19 @@
 //! let sig_g2 = SignatureG2::<Bls12_381>::new(&mut rng, &messages, &keypair_g1.secret_key, &params_g2).unwrap();
 //! sig_g2.verify(&messages, &keypair_g1.public_key, &params_g2).unwrap();
 //!
+//! // Requesting a partially blind signature from the signer, i.e. where signer does not know all the messages
+//! // Requester creates a Pedersen commitment over the messages he wants to hide from the signer.
+//! // Requester creates a map of message index to message as `committed_messages` and random field element
+//! // `blinding` and commits as:
+//! let commitment_g1 = params_g1
+//!                 .commit_to_messages(committed_messages, &blinding)
+//!                 .unwrap();
+//!
+//! // Its upto the signer to verify that the commitment was created with the correct bases and checking
+//! // a proof of knowledge is sufficient for that. Check the `proof_system` crate in this repo on
+//! // how to such proof of knowledge, there is test to show this workflow.
+//!
+//! // Once the signer is satisfied, he creates a blind signature as:
 //! let blinded_sig_g1 = SignatureG1::<Bls12_381>::new_with_committed_messages(
 //!                 &mut rng,
 //!                 &commitment_g1,
@@ -32,9 +45,18 @@
 //!                 &params_g1,
 //!             )
 //!             .unwrap();
+//!
+//! // The requester unblinds the signature and verifies it to ensure correct sig.
 //! let sig_g1 = blinded_sig_g1.unblind(&blinding);
 //! sig_g1.verify(&messages, &keypair_g2.public_key, &params_g1).unwrap();
 //!
+//! // Similar process is followed to create blind signature is group G2 but the commitment here
+//! // would also be in G2 as `commitment_g2`.
+//! let commitment_g2 = params_g2
+//!                 .commit_to_messages(committed_messages, &blinding)
+//!                 .unwrap();
+//!
+//! // Signer creates blind signature
 //! let blinded_sig_g2 = SignatureG2::<Bls12_381>::new_with_committed_messages(
 //!                 &mut rng,
 //!                 &commitment_g2,
@@ -43,6 +65,8 @@
 //!                 &params_g2,
 //!             )
 //!             .unwrap();
+//!
+//!
 //! let sig_g2 = blinded_sig_g2.unblind(&blinding);
 //! sig_g2.verify(&messages, &keypair_g1.public_key, &params_g2).unwrap();
 //! ```
@@ -108,7 +132,7 @@ macro_rules! impl_signature_alg {
             pub fn new<R: RngCore>(
                 rng: &mut R,
                 messages: &[E::Fr],
-                sk: &SecretKey<E>,
+                sk: &SecretKey<E::Fr>,
                 params: &$params<E>,
             ) -> Result<Self, BBSPlusError> {
                 if messages.is_empty() {
@@ -123,7 +147,7 @@ macro_rules! impl_signature_alg {
                 // All messages are known so commitment is the zero element
                 Self::new_with_committed_messages(
                     rng,
-                    &E::$sig_group_proj::zero(),
+                    &E::$sig_group_affine::zero(),
                     msg_map,
                     sk,
                     params,
@@ -139,9 +163,9 @@ macro_rules! impl_signature_alg {
             /// knowledge of `m_0` and `m_2` in the `commitment`
             pub fn new_with_committed_messages<R: RngCore>(
                 rng: &mut R,
-                commitment: &E::$sig_group_proj, // Using projective as the signature requester will compute a fresh commitment anyway.
+                commitment: &E::$sig_group_affine,
                 uncommitted_messages: BTreeMap<usize, &E::Fr>,
-                sk: &SecretKey<E>,
+                sk: &SecretKey<E::Fr>,
                 params: &$params<E>,
             ) -> Result<Self, BBSPlusError> {
                 if uncommitted_messages.is_empty() {
@@ -161,7 +185,8 @@ macro_rules! impl_signature_alg {
                 let e_plus_x_inv = (e + sk.0).inverse().unwrap();
 
                 // {commitment + b}^{1/(e+x)}
-                let A = <E::$sig_group_proj as Group>::mul(&(*commitment + b), &e_plus_x_inv);
+                let commitment_plus_b = b.add_mixed(commitment);
+                let A = <E::$sig_group_proj as Group>::mul(&commitment_plus_b, &e_plus_x_inv);
                 Ok(Self {
                     A: A.into_affine(),
                     e,
@@ -278,7 +303,6 @@ mod tests {
 
             // 4 messages are not known to signer but are given in a commitment
             let blinding = Fr::rand(&mut $rng);
-            let mut commitment = params.h_0.into_projective().mul(&blinding.into_repr());
             // Commit messages with indices 0, 1, 4, 9
             let mut committed_indices = HashSet::new();
             committed_indices.insert(0);
@@ -286,11 +310,13 @@ mod tests {
             committed_indices.insert(4);
             committed_indices.insert(9);
 
-            for i in committed_indices.iter() {
-                commitment += params.h[*i]
-                    .into_projective()
-                    .mul(&$messages[*i].into_repr())
-            }
+            let committed_messages = committed_indices
+                .iter()
+                .map(|i| (*i, &$messages[*i]))
+                .collect::<BTreeMap<_, _>>();
+            let commitment = params
+                .commit_to_messages(committed_messages, &blinding)
+                .unwrap();
 
             let mut uncommitted_messages = BTreeMap::new();
             for (i, msg) in $messages.iter().enumerate() {
