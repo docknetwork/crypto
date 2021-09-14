@@ -118,7 +118,7 @@ use crate::setup::SecretKey;
 use ark_ec::msm::VariableBaseMSM;
 
 #[cfg(feature = "parallel")]
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 
 /// Trait to hold common functionality among both membership and non-membership witnesses
 trait Witness<G: AffineCurve> {
@@ -171,15 +171,16 @@ trait Witness<G: AffineCurve> {
         if elements.len() != old_witnesses.len() {
             return Err(VBAccumulatorError::NeedSameNoOfElementsAndWitnesses);
         }
-        // Evaluation of polynomial `d_A(y)` for each y in `elements`
-        let mut d_A = Vec::with_capacity(elements.len());
-        // Evaluation of polynomial `v_A(y)` for each y in `elements`
-        let mut v_A = Vec::with_capacity(elements.len());
-
-        for element in elements {
-            d_A.push(Poly_d::eval_direct(additions, element));
-            v_A.push(Poly_v_A::eval_direct(additions, &sk.0, element));
-        }
+        // `d_A` = Evaluation of polynomial `d_A(y)` for each y in `elements`
+        // `v_A` = Evaluation of polynomial `v_A(y)` for each y in `elements`
+        let (d_A, v_A): (Vec<_>, Vec<_>) = iter!(elements)
+            .map(|element| {
+                (
+                    Poly_d::eval_direct(additions, element),
+                    Poly_v_A::eval_direct(additions, &sk.0, element),
+                )
+            })
+            .unzip();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
         let context = WnafContext::new(4);
@@ -220,14 +221,16 @@ trait Witness<G: AffineCurve> {
         if elements.len() != old_witnesses.len() {
             return Err(VBAccumulatorError::NeedSameNoOfElementsAndWitnesses);
         }
-        // Evaluation of polynomial `d_D(y)` for each y in `elements`
-        let mut d_D = Vec::with_capacity(elements.len());
-        // Evaluation of polynomial `v_A(y)` for each y in `elements`
-        let mut v_D = Vec::with_capacity(elements.len());
-        for element in elements {
-            d_D.push(Poly_d::eval_direct(removals, element));
-            v_D.push(Poly_v_D::eval_direct(removals, &sk.0, element));
-        }
+        // `d_D` = Evaluation of polynomial `d_D(y)` for each y in `elements`
+        // `v_D` = Evaluation of polynomial `v_D(y)` for each y in `elements`
+        let (mut d_D, v_D): (Vec<_>, Vec<_>) = iter!(elements)
+            .map(|element| {
+                (
+                    Poly_d::eval_direct(removals, element),
+                    Poly_v_D::eval_direct(removals, &sk.0, element),
+                )
+            })
+            .unzip();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
         let context = WnafContext::new(4);
@@ -271,17 +274,20 @@ trait Witness<G: AffineCurve> {
         if elements.len() != old_witnesses.len() {
             return Err(VBAccumulatorError::NeedSameNoOfElementsAndWitnesses);
         }
-        // Evaluation of polynomial `d_A(y)` for each y in `elements`
-        let mut d_A = Vec::with_capacity(elements.len());
-        // Evaluation of polynomial `d_D(y)` for each y in `elements`
-        let mut d_D = Vec::with_capacity(elements.len());
-        // Evaluation of polynomial `v_{A,D}(y)` for each y in `elements`
-        let mut v_AD = Vec::with_capacity(elements.len());
-        for element in elements {
-            d_A.push(Poly_d::eval_direct(additions, element));
-            d_D.push(Poly_d::eval_direct(removals, element));
-            v_AD.push(Poly_v_AD::eval_direct(additions, removals, &sk.0, element));
-        }
+        // `d_A` = Evaluation of polynomial `d_A(y)` for each y in `elements`
+        // `d_D` = Evaluation of polynomial `d_D(y)` for each y in `elements`
+        // `v_AD` = Evaluation of polynomial `v_{A,D}(y)` for each y in `elements`
+        let (d_A, mut d_D): (Vec<_>, Vec<_>) = iter!(elements)
+            .map(|element| {
+                (
+                    Poly_d::eval_direct(additions, element),
+                    Poly_d::eval_direct(removals, element),
+                )
+            })
+            .unzip();
+        let v_AD = iter!(elements)
+            .map(|element| Poly_v_AD::eval_direct(additions, removals, &sk.0, element))
+            .collect::<Vec<_>>();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
         let context = WnafContext::new(4);
@@ -580,7 +586,7 @@ where
     }
 
     pub fn affine_points_to_membership_witnesses(wits: Vec<G>) -> Vec<MembershipWitness<G>> {
-        wits.into_iter().map(|w| MembershipWitness(w)).collect()
+        into_iter!(wits).map(|w| MembershipWitness(w)).collect()
     }
 }
 
@@ -742,9 +748,8 @@ where
         new_wits: Vec<G>,
         old_wits: &[Self],
     ) -> Vec<Self> {
-        d_factor
-            .into_iter()
-            .zip(new_wits.into_iter())
+        into_iter!(d_factor)
+            .zip(into_iter!(new_wits))
             .enumerate()
             .map(|(i, (d, C))| Self {
                 d: old_wits[i].d * d,

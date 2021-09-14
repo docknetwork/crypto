@@ -79,6 +79,9 @@ use crate::setup::{PublicKey, SecretKey, SetupParams};
 use crate::utils::multiply_field_elems_refs_with_same_group_elem;
 use crate::witness::MembershipWitness;
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 /// Accumulator supporting only membership proofs
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PositiveAccumulator<E: PairingEngine>(pub E::G1Affine);
@@ -259,7 +262,7 @@ pub trait Accumulator<E: PairingEngine> {
         }
 
         // For each element in `elements`, compute 1/(element + sk)
-        let mut y_sk: Vec<E::Fr> = elements.iter().map(|e| *e + sk.0).collect();
+        let mut y_sk: Vec<E::Fr> = iter!(elements).map(|e| *e + sk.0).collect();
         batch_inversion(&mut y_sk);
 
         Ok(

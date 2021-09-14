@@ -61,9 +61,7 @@ use ark_std::{
 };
 
 #[cfg(feature = "parallel")]
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
+use rayon::prelude::*;
 
 /// Accumulator supporting both membership and non-membership proofs. Is capped at a size defined
 /// at setup to avoid non-membership witness forgery attack described in section 6 of the paper
@@ -303,20 +301,24 @@ where
             }
         }
 
-        let mut terms_for_elements = vec![vec![]; elements.len()];
-        for elem in state.elements() {
-            for (i, e) in elements.into_iter().enumerate() {
-                terms_for_elements[i].push(*elem - *e);
-            }
-        }
+        // For all non-members `elements` and existing `members` in state, need products
+        // `(elements_0 - member_0)*(elements_0 - member_1)*..(elements_0 - member_{n-1})*`
+        // `(elements_1 - member_0)*(elements_1 - member_1)*..(elements_1 - member_{n-1})*`
+        // ...
+        // `(elements_{m-1} - member_0)*(elements_{m-1} - member_1)*..(elements_{m-1} - member_{n-1})*`
 
-        let mut d_for_witnesses = Vec::with_capacity(elements.len());
-        for terms in terms_for_elements {
-            let d = terms.iter().fold(E::Fr::one(), |a, t| a * t);
-            if d.is_zero() {
-                panic!("d shouldn't have been 0 as the check in state should have ensured that element is not present in the accumulator.")
+        // `d_for_witnesses` stores `d` corresponding to each of `elements`
+        let mut d_for_witnesses = vec![E::Fr::one(); elements.len()];
+        // Since iterating state is expensive, compute iterate over it once
+        for member in state.elements() {
+            for (i, t) in into_iter!(elements)
+                .map(|e| *member - *e)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .enumerate()
+            {
+                d_for_witnesses[i] *= t;
             }
-            d_for_witnesses.push(d);
         }
 
         let f_V_alpha_minus_d: Vec<E::Fr> = iter!(d_for_witnesses).map(|d| self.f_V - *d).collect();
