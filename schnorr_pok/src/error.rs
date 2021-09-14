@@ -7,6 +7,7 @@ use ark_std::fmt::Debug;
 pub enum SchnorrError {
     ExpectedSameSizeSequences(usize, usize),
     IndexOutOfBounds(usize, usize),
+    InvalidResponse,
     Serialization(SerializationError),
 }
 

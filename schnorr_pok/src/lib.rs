@@ -74,8 +74,13 @@ where
             .collect::<Vec<_>>();
         Ok(SchnorrResponse(responses))
     }
+}
 
-    pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
+impl<G> SchnorrChallengeContributor for SchnorrCommitment<G>
+where
+    G: AffineCurve,
+{
+    fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
         self.t.serialize_unchecked(writer).map_err(|e| e.into())
     }
 }
@@ -96,7 +101,7 @@ where
         y: &G,
         t: &G,
         challenge: &G::ScalarField,
-    ) -> Result<bool, SchnorrError> {
+    ) -> Result<(), SchnorrError> {
         if self.0.len() != bases.len() {
             return Err(SchnorrError::ExpectedSameSizeSequences(
                 self.0.len(),
@@ -107,7 +112,11 @@ where
         bases.push(*y);
         let mut scalars = iter!(self.0).map(|r| r.into_repr()).collect::<Vec<_>>();
         scalars.push((-*challenge).into_repr());
-        Ok(VariableBaseMSM::multi_scalar_mul(&bases, scalars.as_slice()).into_affine() == *t)
+        if VariableBaseMSM::multi_scalar_mul(&bases, scalars.as_slice()).into_affine() == *t {
+            Ok(())
+        } else {
+            return Err(SchnorrError::InvalidResponse);
+        }
     }
 
     /// Get response for the specified discrete log
@@ -268,7 +277,7 @@ mod tests {
 
             let resp = comm.response(&witnesses, &challenge).unwrap();
 
-            assert!(resp.is_valid(&bases, &y, &comm.t, &challenge).unwrap());
+            resp.is_valid(&bases, &y, &comm.t, &challenge).unwrap();
 
             let mut serz = vec![];
             resp.serialize(&mut serz).unwrap();

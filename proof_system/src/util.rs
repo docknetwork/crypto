@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! impl_collection {
     ($coll_name:ident, $item_name: ident) => {
-        #[derive(Clone, Debug, PartialEq, Eq)]
+        #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
         pub struct $coll_name<E: PairingEngine>(pub Vec<$item_name<E>>);
 
         impl<E: PairingEngine> $coll_name<E> {

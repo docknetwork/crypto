@@ -1,12 +1,21 @@
 use ark_ec::{AffineCurve, PairingEngine};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    collections::BTreeMap, fmt::Debug, format, marker::PhantomData, rand::RngCore, vec, vec::Vec,
+    collections::BTreeMap,
+    fmt::Debug,
+    format,
+    io::{Read, Write},
+    marker::PhantomData,
+    rand::RngCore,
+    vec,
+    vec::Vec,
     UniformRand,
 };
+
 use bbs_plus::proof::PoKOfSignatureG1Proof;
 use vb_accumulator::proofs::{MembershipProof, NonMembershipProof};
 
-use crate::statement::{MetaStatement, Statement, WitnessRef};
+use crate::statement::{MetaStatement, PedersenCommitment, Statement, WitnessRef};
 use crate::sub_protocols::{
     AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol, PoKBBSSigG1SubProtocol,
     SchnorrProtocol, SubProtocol,
@@ -17,9 +26,11 @@ use crate::{
     statement::{MetaStatements, Statements},
     witness::Witnesses,
 };
-use ark_ff::{to_bytes, Field};
+use ark_ff::{to_bytes, Field, PrimeField, SquareRootField};
 use digest::Digest;
 use schnorr_pok::SchnorrResponse;
+
+pub use serialization::*;
 
 /// Proof corresponding to one `Statement`
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,30 +43,32 @@ pub enum StatementProof<E: PairingEngine, G: AffineCurve> {
 
 /// Describes the relations that need to proven. This is known to the prover and verifier and must
 /// be agreed upon before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ProofSpec<E: PairingEngine> {
-    pub statements: Statements<E>,
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
+    pub statements: Statements<E, G>,
     pub meta_statements: MetaStatements,
 }
 
 /// Created by the prover and verified by the verifier
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Proof<E: PairingEngine, G: AffineCurve, D: Digest>(
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct Proof<E: PairingEngine, G: AffineCurve, F: PrimeField + SquareRootField, D: Digest>(
     pub Vec<StatementProof<E, G>>,
+    PhantomData<F>,
     PhantomData<D>,
 );
 
-impl<E, G, D> Proof<E, G, D>
+impl<E, G, F, D> Proof<E, G, F, D>
 where
-    E: PairingEngine,
-    G: AffineCurve,
+    E: PairingEngine<Fr = F>,
+    G: AffineCurve<ScalarField = F>,
+    F: PrimeField + SquareRootField,
     D: Digest,
 {
     /// Create a new proof. `context` is any arbitrary data that needs to be hashed into the proof and
     /// it must be kept same while creating and verifying the proof.
     pub fn new<R: RngCore>(
         rng: &mut R,
-        proof_spec: ProofSpec<E>,
+        proof_spec: ProofSpec<E, G>,
         witnesses: Witnesses<E>,
         context: &[u8],
     ) -> Result<Self, ProofSystemError> {
@@ -66,7 +79,7 @@ where
             ));
         }
 
-        let mut blindings = BTreeMap::<WitnessRef, E::Fr>::new();
+        let mut blindings = BTreeMap::<WitnessRef, F>::new();
 
         // Prepare blindings for any witnesses that need to be proven equal.
         if !proof_spec.meta_statements.is_empty() {
@@ -164,7 +177,7 @@ where
                         }
                         let mut sp = SchnorrProtocol::new(s_idx, s);
                         sp.init(rng, blindings_map, w)?;
-                        sub_protocols.push(SubProtocol::PoKDiscreteLogsG1(sp));
+                        sub_protocols.push(SubProtocol::PoKDiscreteLogs(sp));
                     }
                     _ => {
                         return Err(ProofSystemError::WitnessIncompatibleWithStatement(
@@ -191,10 +204,14 @@ where
         for mut p in sub_protocols {
             statement_proofs.push(p.gen_proof_contribution(&challenge)?);
         }
-        Ok(Self(statement_proofs, PhantomData))
+        Ok(Self(statement_proofs, PhantomData, PhantomData))
     }
 
-    pub fn verify(self, proof_spec: ProofSpec<E>, context: &[u8]) -> Result<(), ProofSystemError> {
+    pub fn verify(
+        self,
+        proof_spec: ProofSpec<E, G>,
+        context: &[u8],
+    ) -> Result<(), ProofSystemError> {
         let mut witness_equalities = vec![];
 
         if !proof_spec.meta_statements.is_empty() {
@@ -319,6 +336,38 @@ where
                         ))
                     }
                 },
+                Statement::PedersenCommitment(s) => match proof {
+                    StatementProof::PedersenCommitment(t, resp) => {
+                        for i in 0..s.bases.len() {
+                            for j in 0..witness_equalities.len() {
+                                if witness_equalities[j].contains(&(s_idx, i)) {
+                                    let r = resp.get_response(i)?;
+                                    Self::check_response_for_equality(
+                                        s_idx,
+                                        i,
+                                        j,
+                                        &mut responses_for_equalities,
+                                        r,
+                                    )?;
+                                }
+                            }
+                        }
+
+                        SchnorrProtocol::compute_challenge_contribution(
+                            &s.bases,
+                            &s.commitment,
+                            t,
+                            &mut challenge_bytes,
+                        )?;
+                    }
+                    _ => {
+                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", proof),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
             }
         }
 
@@ -373,6 +422,19 @@ where
                         ))
                     }
                 },
+                Statement::PedersenCommitment(s) => match proof {
+                    StatementProof::PedersenCommitment(ref _t, ref _resp) => {
+                        let sp = SchnorrProtocol::new(s_idx, s);
+                        sp.verify_proof_contribution(&challenge, &proof)?
+                    }
+                    _ => {
+                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", proof),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
             }
         }
         Ok(())
@@ -409,19 +471,181 @@ where
     }
 }
 
+mod serialization {
+    use super::*;
+
+    // TODO: Following code contains duplication that can possible be removed using macros
+
+    impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for StatementProof<E, G> {
+        fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+            match self {
+                Self::PoKBBSSignatureG1(s) => {
+                    0u8.serialize(&mut writer)?;
+                    s.serialize(&mut writer)
+                }
+                Self::AccumulatorMembership(s) => {
+                    1u8.serialize(&mut writer)?;
+                    s.serialize(&mut writer)
+                }
+                Self::AccumulatorNonMembership(s) => {
+                    2u8.serialize(&mut writer)?;
+                    s.serialize(&mut writer)
+                }
+                Self::PedersenCommitment(t, r) => {
+                    3u8.serialize(&mut writer)?;
+                    t.serialize(&mut writer)?;
+                    r.serialize(&mut writer)
+                }
+            }
+        }
+
+        fn serialized_size(&self) -> usize {
+            match self {
+                Self::PoKBBSSignatureG1(s) => 0u8.serialized_size() + s.serialized_size(),
+                Self::AccumulatorMembership(s) => 1u8.serialized_size() + s.serialized_size(),
+                Self::AccumulatorNonMembership(s) => 2u8.serialized_size() + s.serialized_size(),
+                Self::PedersenCommitment(t, r) => {
+                    3u8.serialized_size() + t.serialized_size() + r.serialized_size()
+                }
+            }
+        }
+
+        fn serialize_uncompressed<W: Write>(
+            &self,
+            mut writer: W,
+        ) -> Result<(), SerializationError> {
+            match self {
+                Self::PoKBBSSignatureG1(s) => {
+                    0u8.serialize_uncompressed(&mut writer)?;
+                    s.serialize_uncompressed(&mut writer)
+                }
+                Self::AccumulatorMembership(s) => {
+                    1u8.serialize_uncompressed(&mut writer)?;
+                    s.serialize_uncompressed(&mut writer)
+                }
+                Self::AccumulatorNonMembership(s) => {
+                    2u8.serialize_uncompressed(&mut writer)?;
+                    s.serialize_uncompressed(&mut writer)
+                }
+                Self::PedersenCommitment(t, r) => {
+                    3u8.serialize_uncompressed(&mut writer)?;
+                    t.serialize_uncompressed(&mut writer)?;
+                    r.serialize_uncompressed(&mut writer)
+                }
+            }
+        }
+
+        fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+            match self {
+                Self::PoKBBSSignatureG1(s) => {
+                    0u8.serialize_unchecked(&mut writer)?;
+                    s.serialize_unchecked(&mut writer)
+                }
+                Self::AccumulatorMembership(s) => {
+                    1u8.serialize_unchecked(&mut writer)?;
+                    s.serialize_unchecked(&mut writer)
+                }
+                Self::AccumulatorNonMembership(s) => {
+                    2u8.serialize_unchecked(&mut writer)?;
+                    s.serialize_unchecked(&mut writer)
+                }
+                Self::PedersenCommitment(t, r) => {
+                    3u8.serialize_unchecked(&mut writer)?;
+                    t.serialize_unchecked(&mut writer)?;
+                    r.serialize_unchecked(&mut writer)
+                }
+            }
+        }
+
+        fn uncompressed_size(&self) -> usize {
+            match self {
+                Self::PoKBBSSignatureG1(s) => 0u8.uncompressed_size() + s.uncompressed_size(),
+                Self::AccumulatorMembership(s) => 1u8.uncompressed_size() + s.uncompressed_size(),
+                Self::AccumulatorNonMembership(s) => {
+                    2u8.uncompressed_size() + s.uncompressed_size()
+                }
+                Self::PedersenCommitment(t, r) => {
+                    3u8.uncompressed_size() + t.uncompressed_size() + r.uncompressed_size()
+                }
+            }
+        }
+    }
+
+    impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for StatementProof<E, G> {
+        fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+            match u8::deserialize(&mut reader)? {
+                0u8 => Ok(Self::PoKBBSSignatureG1(
+                    PoKOfSignatureG1Proof::<E>::deserialize(&mut reader)?,
+                )),
+                1u8 => Ok(Self::AccumulatorMembership(
+                    MembershipProof::<E>::deserialize(&mut reader)?,
+                )),
+                2u8 => Ok(Self::AccumulatorNonMembership(
+                    NonMembershipProof::<E>::deserialize(&mut reader)?,
+                )),
+                3u8 => Ok(Self::PedersenCommitment(
+                    G::deserialize(&mut reader)?,
+                    SchnorrResponse::<G>::deserialize(&mut reader)?,
+                )),
+                _ => Err(SerializationError::InvalidData),
+            }
+        }
+
+        fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+            match u8::deserialize_uncompressed(&mut reader)? {
+                0u8 => Ok(Self::PoKBBSSignatureG1(
+                    PoKOfSignatureG1Proof::<E>::deserialize_uncompressed(&mut reader)?,
+                )),
+                1u8 => Ok(Self::AccumulatorMembership(
+                    MembershipProof::<E>::deserialize_uncompressed(&mut reader)?,
+                )),
+                2u8 => Ok(Self::AccumulatorNonMembership(
+                    NonMembershipProof::<E>::deserialize_uncompressed(&mut reader)?,
+                )),
+                3u8 => Ok(Self::PedersenCommitment(
+                    G::deserialize(&mut reader)?,
+                    SchnorrResponse::<G>::deserialize(&mut reader)?,
+                )),
+                _ => Err(SerializationError::InvalidData),
+            }
+        }
+
+        fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+            match u8::deserialize_unchecked(&mut reader)? {
+                0u8 => Ok(Self::PoKBBSSignatureG1(
+                    PoKOfSignatureG1Proof::<E>::deserialize_unchecked(&mut reader)?,
+                )),
+                1u8 => Ok(Self::AccumulatorMembership(
+                    MembershipProof::<E>::deserialize_unchecked(&mut reader)?,
+                )),
+                2u8 => Ok(Self::AccumulatorNonMembership(
+                    NonMembershipProof::<E>::deserialize_unchecked(&mut reader)?,
+                )),
+                3u8 => Ok(Self::PedersenCommitment(
+                    G::deserialize(&mut reader)?,
+                    SchnorrResponse::<G>::deserialize(&mut reader)?,
+                )),
+                _ => Err(SerializationError::InvalidData),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::statement::{
         AccumulatorMembership as AccumulatorMembershipStmt,
         AccumulatorNonMembership as AccumulatorNonMembershipStmt, EqualWitnesses,
-        PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        PedersenCommitment as PedersenCommitmentStmt, PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
     };
     use crate::witness::{
         Membership as MembershipWit, NonMembership as NonMembershipWit,
         PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
     };
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
+    use ark_ec::msm::VariableBaseMSM;
+    use ark_ec::ProjectiveCurve;
     use ark_std::collections::BTreeSet;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
@@ -439,6 +663,8 @@ mod tests {
     use vb_accumulator::universal::UniversalAccumulator;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
+
+    type ProofG1 = Proof<Bls12_381, G1Affine, Fr, Blake2b>;
 
     fn sig_setup<R: RngCore>(
         rng: &mut R,
@@ -663,9 +889,7 @@ mod tests {
         ));
 
         let context = "test".as_bytes();
-        let proof =
-            Proof::<Bls12_381, Blake2b>::new(&mut rng, proof_spec.clone(), witnesses, context)
-                .unwrap();
+        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses, context).unwrap();
 
         // Proof with invalid context shouldn't verify
         assert!(proof
@@ -746,13 +970,7 @@ mod tests {
         };
 
         let context = "test".as_bytes();
-        let proof = Proof::<Bls12_381, Blake2b>::new(
-            &mut rng,
-            proof_spec.clone(),
-            witnesses.clone(),
-            context,
-        )
-        .unwrap();
+        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
 
         proof.verify(proof_spec.clone(), context).unwrap();
 
@@ -768,13 +986,8 @@ mod tests {
             statements: statements.clone(),
             meta_statements: meta_statements_incorrect,
         };
-        let proof = Proof::<Bls12_381, Blake2b>::new(
-            &mut rng,
-            proof_spec_incorrect.clone(),
-            witnesses,
-            context,
-        )
-        .unwrap();
+        let proof =
+            ProofG1::new(&mut rng, proof_spec_incorrect.clone(), witnesses, context).unwrap();
         assert!(proof.verify(proof_spec_incorrect, context).is_err());
 
         // Non-member fails to verify
@@ -798,13 +1011,8 @@ mod tests {
             statements,
             meta_statements,
         };
-        let proof = Proof::<Bls12_381, Blake2b>::new(
-            &mut rng,
-            proof_spec.clone(),
-            witnesses_incorrect,
-            context,
-        )
-        .unwrap();
+        let proof =
+            ProofG1::new(&mut rng, proof_spec.clone(), witnesses_incorrect, context).unwrap();
         assert!(proof.verify(proof_spec, context).is_err());
 
         // Prove knowledge of signature and membership of message with index `accum_member_2_idx` in universal accumulator
@@ -877,13 +1085,7 @@ mod tests {
         };
 
         let context = "test".as_bytes();
-        let proof = Proof::<Bls12_381, Blake2b>::new(
-            &mut rng,
-            proof_spec.clone(),
-            witnesses.clone(),
-            context,
-        )
-        .unwrap();
+        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
 
         proof.verify(proof_spec, context).unwrap();
 
@@ -944,13 +1146,7 @@ mod tests {
         };
 
         let context = "test".as_bytes();
-        let proof = Proof::<Bls12_381, Blake2b>::new(
-            &mut rng,
-            proof_spec.clone(),
-            witnesses.clone(),
-            context,
-        )
-        .unwrap();
+        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
 
         proof.verify(proof_spec, context).unwrap();
 
@@ -1026,14 +1222,215 @@ mod tests {
         };
 
         let context = "test".as_bytes();
-        let proof = Proof::<Bls12_381, Blake2b>::new(
+        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        proof.verify(proof_spec, context).unwrap();
+    }
+
+    #[test]
+    fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
+        // Prove knowledge of commitment in Pedersen commitments and equality between committed elements
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        let bases_1 = (0..5)
+            .map(|_| G1Projective::rand(&mut rng).into_affine())
+            .collect::<Vec<_>>();
+        let scalars_1 = (0..5).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
+        let commitment_1 = VariableBaseMSM::multi_scalar_mul(
+            &bases_1,
+            &scalars_1.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
+        )
+        .into_affine();
+
+        let bases_2 = (0..10)
+            .map(|_| G1Projective::rand(&mut rng).into_affine())
+            .collect::<Vec<_>>();
+        let mut scalars_2 = (0..10).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
+        // Make 2 of the scalars same
+        scalars_2[1] = scalars_1[3].clone();
+        scalars_2[4] = scalars_1[0].clone();
+        let commitment_2 = VariableBaseMSM::multi_scalar_mul(
+            &bases_2,
+            &scalars_2.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
+        )
+        .into_affine();
+
+        let mut statements = Statements::new();
+        statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+            bases: bases_1.clone(),
+            commitment: commitment_1.clone(),
+        }));
+        statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+            bases: bases_2.clone(),
+            commitment: commitment_2.clone(),
+        }));
+
+        let mut meta_statements = MetaStatements::new();
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
+            vec![(0, 3), (1, 1)] // 0th statement's 3rd witness is equal to 1st statement's 1st witness
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+            vec![(0, 0), (1, 4)] // 0th statement's 0th witness is equal to 1st statement's 4th witness
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+        ])));
+
+        let mut witnesses = Witnesses::new();
+        witnesses.add(Witness::PedersenCommitment(scalars_1.clone()));
+        witnesses.add(Witness::PedersenCommitment(scalars_2.clone()));
+
+        let proof_spec = ProofSpec {
+            statements: statements.clone(),
+            meta_statements: meta_statements.clone(),
+        };
+
+        let context = "test".as_bytes();
+        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        proof.verify(proof_spec, context).unwrap();
+
+        // Wrong commitment should fail to verify
+        let mut statements_wrong = Statements::new();
+        statements_wrong.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+            bases: bases_1.clone(),
+            commitment: commitment_1.clone(),
+        }));
+        // The commitment is wrong
+        statements_wrong.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+            bases: bases_2.clone(),
+            commitment: commitment_1.clone(),
+        }));
+
+        let proof_spec_invalid = ProofSpec {
+            statements: statements_wrong.clone(),
+            meta_statements: meta_statements.clone(),
+        };
+
+        let context = "test".as_bytes();
+        let proof = ProofG1::new(
             &mut rng,
-            proof_spec.clone(),
+            proof_spec_invalid.clone(),
+            witnesses.clone(),
+            context,
+        )
+        .unwrap();
+        assert!(proof.verify(proof_spec_invalid, context).is_err());
+
+        // Wrong message equality should fail to verify
+        let mut meta_statements_wrong = MetaStatements::new();
+        meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
+            vec![(0, 3), (1, 0)] // this equality doesn't hold
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+            vec![(0, 0), (1, 4)] // 0th statement's 0th witness is equal to 1st statement's 4th witness
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+        ])));
+
+        let proof_spec_invalid = ProofSpec {
+            statements: statements.clone(),
+            meta_statements: meta_statements_wrong,
+        };
+
+        let context = "test".as_bytes();
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec_invalid.clone(),
             witnesses.clone(),
             context,
         )
         .unwrap();
 
+        assert!(proof.verify(proof_spec_invalid, context).is_err());
+    }
+
+    #[test]
+    fn pok_of_knowledge_in_pedersen_commitment_and_BBS_plus_sig() {
+        // Prove knowledge of commitment in Pedersen commitments and equality with a BBS+ signature.
+        // Useful when requesting a blind signature and proving knowledge of a signature along with
+        // some the equality of certain messages in the commitment and signature
+
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        let msg_count = 6;
+        let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
+
+        let bases = (0..5)
+            .map(|_| G1Projective::rand(&mut rng).into_affine())
+            .collect::<Vec<_>>();
+        let mut scalars = (0..5).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
+        // Make 2 of the messages in the commitment same as in the signature
+        scalars[1] = msgs[0].clone();
+        scalars[4] = msgs[5].clone();
+        let commitment = VariableBaseMSM::multi_scalar_mul(
+            &bases,
+            &scalars.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
+        )
+        .into_affine();
+
+        let mut statements = Statements::new();
+        statements.add(Statement::PoKBBSSignatureG1(PoKSignatureBBSG1Stmt {
+            params: sig_params.clone(),
+            public_key: sig_keypair.public_key.clone(),
+            revealed_messages: BTreeMap::new(),
+        }));
+        statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+            bases: bases.clone(),
+            commitment: commitment.clone(),
+        }));
+
+        let mut meta_statements = MetaStatements::new();
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
+            vec![(0, 0), (1, 1)] // 0th statement's 0th witness is equal to 1st statement's 1st witness
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+            vec![(0, 5), (1, 4)] // 0th statement's 5th witness is equal to 1st statement's 4th witness
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+        ])));
+
+        let mut witnesses = Witnesses::new();
+        witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig.clone(),
+            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        ));
+        witnesses.add(Witness::PedersenCommitment(scalars.clone()));
+
+        let proof_spec = ProofSpec {
+            statements: statements.clone(),
+            meta_statements: meta_statements.clone(),
+        };
+
+        let context = "test".as_bytes();
+        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
         proof.verify(proof_spec, context).unwrap();
+
+        // Wrong message equality should fail to verify
+        let mut meta_statements_wrong = MetaStatements::new();
+        meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
+            vec![(0, 3), (1, 0)] // this equality doesn't hold
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+            vec![(0, 5), (1, 4)] // 0th statement's 0th witness is equal to 1st statement's 4th witness
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+        ])));
+
+        let proof_spec_invalid = ProofSpec {
+            statements: statements.clone(),
+            meta_statements: meta_statements_wrong,
+        };
+
+        let context = "test".as_bytes();
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec_invalid.clone(),
+            witnesses.clone(),
+            context,
+        )
+        .unwrap();
+
+        assert!(proof.verify(proof_spec_invalid, context).is_err());
     }
 }

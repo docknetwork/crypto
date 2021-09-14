@@ -61,7 +61,7 @@ use ark_std::{
     vec::Vec,
     One, UniformRand,
 };
-use schnorr_pok::{SchnorrCommitment, SchnorrResponse};
+use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 
 pub use serialization::*;
 
@@ -325,12 +325,22 @@ where
         let mut A_bar_minus_d = self.A_bar.into_projective();
         A_bar_minus_d -= self.d.into_projective();
         let A_bar_minus_d = A_bar_minus_d.into_affine();
-        if !self
+        match self
+            .sc_resp_1
+            .is_valid(&bases_1, &A_bar_minus_d, &self.T1, challenge)
+        {
+            Ok(()) => (),
+            Err(SchnorrError::InvalidResponse) => {
+                return Err(BBSPlusError::FirstSchnorrVerificationFailed)
+            }
+            Err(other) => return Err(BBSPlusError::SchnorrError(other)),
+        }
+        /*if !self
             .sc_resp_1
             .is_valid(&bases_1, &A_bar_minus_d, &self.T1, challenge)?
         {
             return Err(BBSPlusError::FirstSchnorrVerificationFailed);
-        }
+        }*/
 
         // Verify the 2nd Schnorr proof
         let mut bases_2 = Vec::with_capacity(2 + params.max_message_count() - revealed_msgs.len());
@@ -354,12 +364,19 @@ where
         // pr = g1 * h1^-m1 * h2^-m2.... = (g1 * h1^m1 * h2^m2....)^-1 for all disclosed messages m_i
         let pr = -VariableBaseMSM::multi_scalar_mul(&bases_disclosed, &exponents);
         let pr = pr.into_affine();
-        if !self
+        match self.sc_resp_2.is_valid(&bases_2, &pr, &self.T2, challenge) {
+            Ok(()) => (),
+            Err(SchnorrError::InvalidResponse) => {
+                return Err(BBSPlusError::SecondSchnorrVerificationFailed)
+            }
+            Err(other) => return Err(BBSPlusError::SchnorrError(other)),
+        }
+        /*if !self
             .sc_resp_2
             .is_valid(&bases_2, &pr, &self.T2, challenge)?
         {
             return Err(BBSPlusError::SecondSchnorrVerificationFailed);
-        }
+        }*/
 
         Ok(())
     }
