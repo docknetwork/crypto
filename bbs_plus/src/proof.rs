@@ -589,7 +589,7 @@ mod tests {
             .map(|_| Fr::rand(rng))
             .collect();
         let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, message_count);
-        let keypair = KeypairG2::<Bls12_381>::generate(rng, &params);
+        let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
         let sig =
             SignatureG1::<Bls12_381>::new(rng, &messages, &keypair.secret_key, &params).unwrap();
         (messages, params, keypair, sig)
@@ -685,8 +685,8 @@ mod tests {
             SignatureParamsG1::<Bls12_381>::new::<Blake2b>("test".as_bytes(), message_1_count);
         let params_2 =
             SignatureParamsG1::<Bls12_381>::new::<Blake2b>("test-1".as_bytes(), message_2_count);
-        let keypair_1 = KeypairG2::<Bls12_381>::generate(&mut rng, &params_1);
-        let keypair_2 = KeypairG2::<Bls12_381>::generate(&mut rng, &params_2);
+        let keypair_1 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_1);
+        let keypair_2 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_2);
 
         let mut messages_1: Vec<Fr> = (0..message_1_count - 1)
             .into_iter()

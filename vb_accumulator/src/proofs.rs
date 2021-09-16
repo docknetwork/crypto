@@ -83,7 +83,6 @@
 
 use crate::error::VBAccumulatorError;
 use crate::setup::{PublicKey, SetupParams};
-use crate::utils::group_elem_from_try_and_incr;
 use crate::witness::{MembershipWitness, NonMembershipWitness};
 use ark_ec::wnaf::WnafContext;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
@@ -96,6 +95,7 @@ use ark_std::{
     UniformRand,
 };
 use digest::Digest;
+use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
 use schnorr_pok::error::SchnorrError;
 use schnorr_pok::SchnorrChallengeContributor;
 
@@ -135,9 +135,15 @@ where
     fn generate_proving_key_using_hash<D: Digest>(label: &[u8]) -> ProvingKey<G> {
         // 3 G1 elements
         let mut elems: [G::Projective; 3] = [
-            group_elem_from_try_and_incr::<G, D>(&to_bytes![label, " : X".as_bytes()].unwrap()),
-            group_elem_from_try_and_incr::<G, D>(&to_bytes![label, " : Y".as_bytes()].unwrap()),
-            group_elem_from_try_and_incr::<G, D>(&to_bytes![label, " : Z".as_bytes()].unwrap()),
+            projective_group_elem_from_try_and_incr::<G, D>(
+                &to_bytes![label, " : X".as_bytes()].unwrap(),
+            ),
+            projective_group_elem_from_try_and_incr::<G, D>(
+                &to_bytes![label, " : Y".as_bytes()].unwrap(),
+            ),
+            projective_group_elem_from_try_and_incr::<G, D>(
+                &to_bytes![label, " : Z".as_bytes()].unwrap(),
+            ),
         ];
         G::Projective::batch_normalization(&mut elems);
         let [X, Y, Z] = [elems[0].into(), elems[1].into(), elems[2].into()];
@@ -179,8 +185,10 @@ where
         let XYZ = ProvingKey::generate_proving_key_using_hash::<D>(label);
         Self {
             XYZ,
-            K: group_elem_from_try_and_incr::<G, D>(&to_bytes![label, " : K".as_bytes()].unwrap())
-                .into(),
+            K: projective_group_elem_from_try_and_incr::<G, D>(
+                &to_bytes![label, " : K".as_bytes()].unwrap(),
+            )
+            .into(),
         }
     }
 

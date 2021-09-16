@@ -1,11 +1,9 @@
 use ark_ec::wnaf::WnafContext;
-use ark_ec::{AffineCurve, ProjectiveCurve};
-use ark_ff::to_bytes;
+use ark_ec::ProjectiveCurve;
 use ark_std::{
     iter::{IntoIterator, Iterator},
     vec::Vec,
 };
-use digest::Digest;
 
 // TODO: Window size should not be hardcoded. It can be inferred from `group_elem`
 
@@ -35,22 +33,6 @@ pub(crate) fn multiply_field_elems_with_same_group_elem<G: ProjectiveCurve>(
         .into_iter()
         .map(|e| context.mul_with_table(&table, &e).unwrap())
         .collect()
-}
-
-/// Hash bytes to a point on the curve. This is vulnerable to timing attack and is only used input
-/// is public anyway like when generating setup parameters.
-pub(crate) fn group_elem_from_try_and_incr<G: AffineCurve, D: Digest>(
-    bytes: &[u8],
-) -> G::Projective {
-    let mut hash = D::digest(bytes);
-    let mut g = G::from_random_bytes(&hash);
-    let mut j = 1u64;
-    while g.is_none() {
-        hash = D::digest(&to_bytes![bytes, "-attempt-".as_bytes(), j].unwrap());
-        g = G::from_random_bytes(&hash);
-        j += 1;
-    }
-    g.unwrap().mul_by_cofactor_to_projective()
 }
 
 /// Return `par_iter` or `iter` depending on whether feature `parallel` is enabled
@@ -84,7 +66,7 @@ pub mod tests {
 
     use ark_bls12_381::Bls12_381;
     use ark_ec::msm::VariableBaseMSM;
-    use ark_ec::{group::Group, PairingEngine};
+    use ark_ec::{group::Group, AffineCurve, PairingEngine};
     use ark_ff::PrimeField;
     use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
 

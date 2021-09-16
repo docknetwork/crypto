@@ -31,8 +31,12 @@ use ark_std::{
     vec::Vec,
     UniformRand, Zero,
 };
-use digest::Digest;
+use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+
+use dock_crypto_utils::hashing_utils::{
+    field_elem_from_seed, projective_group_elem_from_try_and_incr,
+};
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -65,6 +69,19 @@ macro_rules! into_iter {
     }};
 }
 
+impl<F: PrimeField + SquareRootField> SecretKey<F> {
+    pub fn generate_using_seed<D>(seed: &[u8]) -> Self
+    where
+        F: PrimeField,
+        D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    {
+        Self(field_elem_from_seed::<F, D>(
+            seed,
+            "BBS-SIG-KEYGEN-SALT-".as_bytes(),
+        ))
+    }
+}
+
 macro_rules! impl_sig_params {
     ( $name:ident, $group_affine:ident, $group_projective:ident, $other_group_affine:ident, $other_group_projective:ident ) => {
         /// Signature params used while signing and verifying. Also used when proving knowledge of signature.
@@ -88,13 +105,13 @@ macro_rules! impl_sig_params {
                 // Need n+2 elements of signature group and 1 element of other group
                 let mut sig_group_elems = Vec::with_capacity(n + 2);
                 // Group element by hashing label + g1 as string.
-                let g1 = group_elem_from_try_and_incr::<E::$group_affine, D>(
+                let g1 = projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
                     &to_bytes![label, " : g1".as_bytes()].unwrap(),
                 );
                 // h_0 and h[i] for i in 1 to n
                 let mut h = into_iter!((0..=n))
                     .map(|i| {
-                        group_elem_from_try_and_incr::<E::$group_affine, D>(
+                        projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
                             &to_bytes![label, " : h_".as_bytes(), i as u64].unwrap(),
                         )
                     })
@@ -109,7 +126,7 @@ macro_rules! impl_sig_params {
                 let g1 = sig_group_elems.remove(0);
                 let h_0 = sig_group_elems.remove(0);
 
-                let g2 = group_elem_from_try_and_incr::<E::$other_group_affine, D>(
+                let g2 = projective_group_elem_from_try_and_incr::<E::$other_group_affine, D>(
                     &to_bytes![label, " : g2".as_bytes()].unwrap(),
                 )
                 .into_affine();
@@ -223,7 +240,10 @@ macro_rules! impl_public_key {
             E: PairingEngine,
         {
             /// Generate public key from given secret key and signature parameters
-            pub fn new_from_secret_key(secret_key: &SecretKey<E::Fr>, params: &$params<E>) -> Self {
+            pub fn generate_using_secret_key(
+                secret_key: &SecretKey<E::Fr>,
+                params: &$params<E>,
+            ) -> Self {
                 Self {
                     w: params.g2.mul(secret_key.0.into_repr()).into(),
                 }
@@ -247,12 +267,23 @@ macro_rules! impl_keypair {
 
         /// Create a secret key and corresponding public key
         impl<E: PairingEngine> $name<E> {
-            pub fn generate<R: RngCore>(rng: &mut R, params: &$params<E>) -> Self {
-                let secret_key = E::Fr::rand(rng);
-                let w = params.g2.mul(secret_key.into_repr()).into();
-                let public_key = $pk { w };
+            pub fn generate_using_seed<D>(seed: &[u8], params: &$params<E>) -> Self
+            where
+                D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+            {
+                let secret_key = SecretKey::<E::Fr>::generate_using_seed::<D>(seed);
+                let public_key = $pk::generate_using_secret_key(&secret_key, params);
                 Self {
-                    secret_key: SecretKey(secret_key),
+                    secret_key,
+                    public_key,
+                }
+            }
+
+            pub fn generate_using_rng<R: RngCore>(rng: &mut R, params: &$params<E>) -> Self {
+                let secret_key = SecretKey(E::Fr::rand(rng));
+                let public_key = $pk::generate_using_secret_key(&secret_key, params);
+                Self {
+                    secret_key,
                     public_key,
                 }
             }
@@ -281,20 +312,6 @@ impl_keypair!(KeypairG1, G1Projective, PublicKeyG1, SignatureParamsG2);
 impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKeyG2, PoKSecretKeyInPublicKeyG2Proof);
 impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKeyG1, PoKSecretKeyInPublicKeyG1Proof);
 
-/// Hash bytes to a point on the curve. This is vulnerable to timing attack and is only used input
-/// is public anyway like when generating setup parameters.
-fn group_elem_from_try_and_incr<G: AffineCurve, D: Digest>(bytes: &[u8]) -> G::Projective {
-    let mut hash = D::digest(bytes);
-    let mut g = G::from_random_bytes(&hash);
-    let mut j = 1u64;
-    while g.is_none() {
-        hash = D::digest(&to_bytes![bytes, "-attempt-".as_bytes(), j].unwrap());
-        g = G::from_random_bytes(&hash);
-        j += 1;
-    }
-    g.unwrap().mul_by_cofactor_to_projective()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,7 +325,7 @@ mod tests {
             let params = $params::<Bls12_381>::generate_using_rng(&mut $rng, $message_count);
             test_serialization!($params, params);
 
-            let keypair = $keypair::<Bls12_381>::generate(&mut $rng, &params);
+            let keypair = $keypair::<Bls12_381>::generate_using_rng(&mut $rng, &params);
             let pk = keypair.public_key;
             test_serialization!($public_key, pk);
         };

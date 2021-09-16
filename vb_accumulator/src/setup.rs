@@ -16,7 +16,6 @@
 //! let keypair = Keypair::<Bls12_381>::generate(&mut rng, &params);
 //! ```
 
-use crate::utils::group_elem_from_try_and_incr;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{to_bytes, PrimeField, SquareRootField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
@@ -27,8 +26,12 @@ use ark_std::{
     UniformRand,
 };
 
-use digest::Digest;
+use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+
+use dock_crypto_utils::hashing_utils::{
+    field_elem_from_seed, projective_group_elem_from_try_and_incr,
+};
 
 /// Secret key for accumulator manager
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -53,6 +56,19 @@ pub struct SetupParams<E: PairingEngine> {
     pub P_tilde: E::G2Affine,
 }
 
+impl<F: PrimeField + SquareRootField> SecretKey<F> {
+    pub fn generate_using_seed<D>(seed: &[u8]) -> Self
+    where
+        F: PrimeField,
+        D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    {
+        Self(field_elem_from_seed::<F, D>(
+            seed,
+            "VB-ACCUM-KEYGEN-SALT-".as_bytes(),
+        ))
+    }
+}
+
 impl<E> SetupParams<E>
 where
     E: PairingEngine,
@@ -69,11 +85,11 @@ where
     /// attack but since all this is public knowledge, it is fine.
     /// This is useful if people need to be convinced that the discrete of group elements wrt each other is not known.
     pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let P = group_elem_from_try_and_incr::<E::G1Affine, D>(
+        let P = projective_group_elem_from_try_and_incr::<E::G1Affine, D>(
             &to_bytes![label, " : P".as_bytes()].unwrap(),
         )
         .into();
-        let P_tilde = group_elem_from_try_and_incr::<E::G2Affine, D>(
+        let P_tilde = projective_group_elem_from_try_and_incr::<E::G2Affine, D>(
             &to_bytes![label, " : P_tilde".as_bytes()].unwrap(),
         )
         .into();
@@ -85,13 +101,26 @@ impl<E> Keypair<E>
 where
     E: PairingEngine,
 {
-    /// Create a secret key and corresponding public key
-    pub fn generate<R: RngCore>(rng: &mut R, setup_params: &SetupParams<E>) -> Self {
-        let secret_key = E::Fr::rand(rng);
-        let Q_tilde = setup_params.P_tilde.mul(secret_key.into_repr()).into();
+    /// Create a secret key and corresponding public key using seed
+    pub fn generate_using_seed<D>(seed: &[u8], setup_params: &SetupParams<E>) -> Self
+    where
+        D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    {
+        let secret_key = SecretKey::<E::Fr>::generate_using_seed::<D>(seed);
+        let public_key = Self::public_key_from_secret_key(&secret_key, &setup_params);
         Self {
-            secret_key: SecretKey(secret_key),
-            public_key: PublicKey { Q_tilde },
+            secret_key,
+            public_key,
+        }
+    }
+
+    /// Create a secret key and corresponding public key using given pseudo random number generator
+    pub fn generate_using_rng<R: RngCore>(rng: &mut R, setup_params: &SetupParams<E>) -> Self {
+        let secret_key = SecretKey(E::Fr::rand(rng));
+        let public_key = Self::public_key_from_secret_key(&secret_key, &setup_params);
+        Self {
+            secret_key,
+            public_key,
         }
     }
 
@@ -143,7 +172,7 @@ mod tests {
         let params_1 = SetupParams::<Bls12_381>::new::<Blake2b>("test".as_bytes());
         test_serialization!(SetupParams, params_1);
 
-        let keypair = Keypair::<Bls12_381>::generate(&mut rng, &params);
+        let keypair = Keypair::<Bls12_381>::generate_using_rng(&mut rng, &params);
         test_serialization!(Keypair, keypair);
         test_serialization!(SecretKey, keypair.secret_key);
         test_serialization!(PublicKey, keypair.public_key);

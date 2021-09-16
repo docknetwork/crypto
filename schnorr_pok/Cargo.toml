@@ -1,6 +1,6 @@
 [package]
 name = "schnorr_pok"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2018"
 authors = ["Dock.io"]
 license = "Apache-2.0"
@@ -10,6 +10,7 @@ repository = "https://github.com/docknetwork/crypto"
 [lib]
 doctest = false
 path = "src/lib.rs"
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
 ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
@@ -18,6 +19,7 @@ ark-ec = { version = "^0.3.0", default-features = false }
 ark-std = { version = "^0.3.0", default-features = false }
 rayon = { version = "1", optional = true }
 digest = "0.9"
+dock-crypto-utils = { version = "0.1.0", default-features = false, path = "../dock-crypto-utils" }
 
 [dev-dependencies]
 blake2 = { version = "0.9", default-features = false }
@@ -25,6 +27,6 @@ ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "cu
 
 [features]
 default = [ "std", "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std"]
-print-trace = [ "ark-std/print-trace" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock-crypto-utils/std"]
+print-trace = [ "ark-std/print-trace", "dock-crypto-utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon" ]

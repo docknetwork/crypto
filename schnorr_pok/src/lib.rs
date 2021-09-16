@@ -5,7 +5,7 @@
 use crate::error::SchnorrError;
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
-use ark_ff::{to_bytes, PrimeField};
+use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     fmt::Debug,
@@ -201,17 +201,7 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
 
 /// Uses try-and-increment. Vulnerable to side channel attacks.
 pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes: &[u8]) -> F {
-    let mut i = 0u64;
-    let mut challenge = None;
-    while challenge.is_none() {
-        let hash_input = to_bytes![challenge_bytes, i].unwrap();
-        let hash = D::digest(&hash_input);
-        challenge = F::from_random_bytes(&hash);
-
-        i += 1;
-    }
-
-    challenge.unwrap()
+    dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr::<F, D>(challenge_bytes)
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ license = "Apache-2.0"
 
 [dependencies]
 bbs_plus = { version = "0.3.0", default-features = false, path = "../bbs_plus" }
-schnorr_pok = { version = "0.2.0", default-features = false, path = "../schnorr_pok" }
+schnorr_pok = { version = "0.3.0", default-features = false, path = "../schnorr_pok" }
 vb_accumulator = { version = "0.3.0", default-features = false, path = "../vb_accumulator" }
 ark-ff = { version = "^0.3.0", default-features = false }
 ark-ec = { version = "^0.3.0", default-features = false }

@@ -18,7 +18,7 @@ macro_rules! setup_bbs_plus {
             .collect::<Vec<_>>();
         let $keypair_range = $params_range
             .iter()
-            .map(|p| $keypair::<Bls12_381>::generate(&mut $rng, p))
+            .map(|p| $keypair::<Bls12_381>::generate_using_rng(&mut $rng, p))
             .collect::<Vec<_>>();
     };
 }

@@ -281,7 +281,7 @@ mod tests {
     macro_rules! test_sig_verif {
         ($keypair:ident, $params:ident, $sig:ident, $rng:ident, $message_count: ident, $messages: ident) => {
             let params = $params::<Bls12_381>::generate_using_rng(&mut $rng, $message_count);
-            let keypair = $keypair::<Bls12_381>::generate(&mut $rng, &params);
+            let keypair = $keypair::<Bls12_381>::generate_using_rng(&mut $rng, &params);
             let start = Instant::now();
             // All messages are known to signer
             let sig = $sig::<Bls12_381>::new(&mut $rng, &$messages, &keypair.secret_key, &params)

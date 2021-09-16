@@ -25,10 +25,11 @@ use crate::{
     statement::{MetaStatements, Statements},
     witness::Witnesses,
 };
-use ark_ff::{to_bytes, PrimeField, SquareRootField};
+use ark_ff::{PrimeField, SquareRootField};
 use digest::Digest;
 use schnorr_pok::SchnorrResponse;
 
+use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 pub use serialization::*;
 
 /// Proof corresponding to one `Statement`
@@ -493,15 +494,7 @@ where
     /// Hash bytes to a field element. This is vulnerable to timing attack and is only used input
     /// is public anyway like when generating setup parameters or challenge
     fn generate_challenge_from_bytes(bytes: &[u8]) -> E::Fr {
-        let mut hash = D::digest(bytes);
-        let mut f = E::Fr::from_random_bytes(&hash);
-        let mut j = 1u64;
-        while f.is_none() {
-            hash = D::digest(&to_bytes![bytes, "-attempt-".as_bytes(), j].unwrap());
-            f = E::Fr::from_random_bytes(&hash);
-            j += 1;
-        }
-        f.unwrap()
+        field_elem_from_try_and_incr::<F, D>(bytes)
     }
 }
 
@@ -715,7 +708,7 @@ mod tests {
             .map(|_| Fr::rand(rng))
             .collect();
         let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, message_count);
-        let keypair = KeypairG2::<Bls12_381>::generate(rng, &params);
+        let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
         let sig =
             SignatureG1::<Bls12_381>::new(rng, &messages, &keypair.secret_key, &params).unwrap();
         sig.verify(&messages, &keypair.public_key, &params).unwrap();
@@ -792,7 +785,7 @@ mod tests {
         InMemoryState<Fr>,
     ) {
         let params = SetupParams::<Bls12_381>::generate_using_rng(rng);
-        let keypair = Keypair::<Bls12_381>::generate(rng, &params);
+        let keypair = Keypair::<Bls12_381>::generate_using_rng(rng, &params);
 
         let accumulator = PositiveAccumulator::initialize(&params);
         let state = InMemoryState::new();
@@ -811,7 +804,7 @@ mod tests {
         InMemoryState<Fr>,
     ) {
         let params = SetupParams::<Bls12_381>::generate_using_rng(rng);
-        let keypair = Keypair::<Bls12_381>::generate(rng, &params);
+        let keypair = Keypair::<Bls12_381>::generate_using_rng(rng, &params);
 
         let mut initial_elements = InMemoryInitialElements::new();
         let accumulator = UniversalAccumulator::initialize(

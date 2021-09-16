@@ -415,7 +415,7 @@ pub mod tests {
         InMemoryState<Fr>,
     ) {
         let params = SetupParams::<Bls12_381>::generate_using_rng(rng);
-        let keypair = Keypair::<Bls12_381>::generate(rng, &params);
+        let keypair = Keypair::<Bls12_381>::generate_using_rng(rng, &params);
 
         let mut initial_elements = InMemoryInitialElements::new();
         let accumulator = UniversalAccumulator::initialize(
