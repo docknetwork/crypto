@@ -20,14 +20,14 @@ where
     F: PrimeField,
     D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
 {
-    // IKM || I2OSP(0, 1)
+    // IKM || I2OSP(0, 1), append 1 byte as 0 to `ikm`
     let mut ikm_appended = ikm.to_vec();
     ikm_appended.extend_from_slice(&ZERO_AS_OCTET);
 
     // log_2(r), byte size of the field order
     let field_size_in_bytes = (F::size_in_bits() + 7) / 8;
 
-    // I2OSP(L, 2)
+    // I2OSP(L, 2), convert `L` to a 2 byte array
     // L = ceil(3 * log_2(r) / 16)
     let L: u16 = (3 * field_size_in_bytes as u16 + 15) / 16;
     let L_as_bytes = L.to_be_bytes();
@@ -35,7 +35,7 @@ where
     loop {
         let salt_hash = D::digest(salt);
         let (_, hkdf) = Hkdf::<D>::extract(Some(&salt_hash), &ikm_appended);
-        let mut okm = vec![0; field_size_in_bytes];
+        let mut okm = vec![0u8; field_size_in_bytes];
 
         // This cannot fail
         hkdf.expand(&L_as_bytes, &mut okm).unwrap();

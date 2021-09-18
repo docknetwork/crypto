@@ -297,7 +297,7 @@ pub trait Accumulator<E: PairingEngine> {
         E::product_of_pairings(&[
             (
                 E::G1Prepared::from(witness.0),
-                E::G2Prepared::from((P_tilde_times_y + pk.Q_tilde.into_projective()).into_affine()),
+                E::G2Prepared::from((P_tilde_times_y + pk.0.into_projective()).into_affine()),
             ),
             (
                 E::G1Prepared::from(*self.value()),

@@ -14,6 +14,15 @@ use ark_std::{
 };
 use digest::Digest;
 
+use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
+
+#[cfg(feature = "use-serde")]
+use dock_crypto_utils::serde_utils::*;
+#[cfg(feature = "use-serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "use-serde")]
+use serde_with::serde_as;
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -36,11 +45,15 @@ pub trait SchnorrChallengeContributor {
 }
 
 /// Commitment to randomness during step 1 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
+#[cfg_attr(feature = "use-serde", serde_as)]
+#[cfg_attr(feature = "use-serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SchnorrCommitment<G: AffineCurve> {
     /// Randomness. 1 per discrete log
+    #[serde_as(as = "Vec<ScalarFieldBytes>")]
     pub blindings: Vec<G::ScalarField>,
     /// The commitment to all the randomnesses
+    #[serde_as(as = "AffineGroupBytes")]
     pub t: G,
 }
 
@@ -89,8 +102,12 @@ where
 }
 
 /// Response during step 3 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
+#[cfg_attr(feature = "use-serde", serde_as)]
+#[cfg_attr(feature = "use-serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SchnorrResponse<G: AffineCurve>(pub Vec<G::ScalarField>);
+pub struct SchnorrResponse<G: AffineCurve>(
+    #[serde_as(as = "Vec<ScalarFieldBytes>")] pub Vec<G::ScalarField>,
+);
 
 impl<G> SchnorrResponse<G>
 where
@@ -201,7 +218,7 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
 
 /// Uses try-and-increment. Vulnerable to side channel attacks.
 pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes: &[u8]) -> F {
-    dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr::<F, D>(challenge_bytes)
+    field_elem_from_try_and_incr::<F, D>(challenge_bytes)
 }
 
 #[cfg(test)]

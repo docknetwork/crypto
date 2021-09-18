@@ -62,7 +62,9 @@ use ark_std::{
     One, UniformRand,
 };
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
-
+use serde_with::serde_as;
+// use crate::serde_utils::*;
+use serde::{Deserialize, Serialize};
 pub use serialization::*;
 
 /// Stateful protocol to prove knowledge of signature. The protocol randomizes the signature and executes 2 Schnorr
@@ -72,30 +74,44 @@ pub use serialization::*;
 /// challenge and post-challenge (`gen_proof`). Thus, several instances of the protocol can be used
 /// together where the pre-challenge phase of all protocols is used to create a combined challenge and then
 /// that challenge is used in post-challenge phase of all protocols.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[serde_as]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct PoKOfSignatureG1Protocol<E: PairingEngine> {
+    #[serde_as(as = "AffineGroupBytes")]
     pub A_prime: E::G1Affine,
+    #[serde_as(as = "AffineGroupBytes")]
     pub A_bar: E::G1Affine,
+    #[serde_as(as = "AffineGroupBytes")]
     pub d: E::G1Affine,
     /// For proving relation a_bar / d == a_prime^{-e} * h_0^r2
     pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
+    #[serde_as(as = "[PrimeFieldBytes; 2]")]
     sc_wits_1: [E::Fr; 2],
     /// For proving relation g1 * h1^m1 * h2^m2.... for all disclosed messages m_i == d^r3 * h_0^{-s_prime} * h1^-m1 * h2^-m2.... for all undisclosed messages m_i
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
+    #[serde_as(as = "Vec<PrimeFieldBytes>")]
     sc_wits_2: Vec<E::Fr>,
 }
 
 /// Proof of knowledge of the signature. It contains the randomized signature, commitment (Schnorr step 1)
 /// and response (Schnorr step 3) to both Schnorr protocols in `T_` and `sc_resp_`
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct PoKOfSignatureG1Proof<E: PairingEngine> {
+    #[serde_as(as = "AffineGroupBytes")]
     pub A_prime: E::G1Affine,
+    #[serde_as(as = "AffineGroupBytes")]
     pub A_bar: E::G1Affine,
+    #[serde_as(as = "AffineGroupBytes")]
     pub d: E::G1Affine,
     /// Proof of relation a_bar / d == a_prime^{-e} * h_0^r2
+    #[serde_as(as = "AffineGroupBytes")]
     pub T1: E::G1Affine,
     pub sc_resp_1: SchnorrResponse<E::G1Affine>,
     /// Proof of relation g1 * h1^m1 * h2^m2.... for all disclosed messages m_i == d^r3 * h_0^{-s_prime} * h1^-m1 * h2^-m2.... for all undisclosed messages m_i
+    #[serde_as(as = "AffineGroupBytes")]
     pub T2: E::G1Affine,
     pub sc_resp_2: SchnorrResponse<E::G1Affine>,
 }
@@ -308,7 +324,7 @@ where
 
         // Verify the randomized signature
         if !E::product_of_pairings(&[
-            (E::G1Prepared::from(self.A_prime), E::G2Prepared::from(pk.w)),
+            (E::G1Prepared::from(self.A_prime), E::G2Prepared::from(pk.0)),
             (
                 E::G1Prepared::from(-self.A_bar),
                 E::G2Prepared::from(params.g2),
@@ -335,12 +351,6 @@ where
             }
             Err(other) => return Err(BBSPlusError::SchnorrError(other)),
         }
-        /*if !self
-            .sc_resp_1
-            .is_valid(&bases_1, &A_bar_minus_d, &self.T1, challenge)?
-        {
-            return Err(BBSPlusError::FirstSchnorrVerificationFailed);
-        }*/
 
         // Verify the 2nd Schnorr proof
         let mut bases_2 = Vec::with_capacity(2 + params.max_message_count() - revealed_msgs.len());
@@ -371,12 +381,6 @@ where
             }
             Err(other) => return Err(BBSPlusError::SchnorrError(other)),
         }
-        /*if !self
-            .sc_resp_2
-            .is_valid(&bases_2, &pr, &self.T2, challenge)?
-        {
-            return Err(BBSPlusError::SecondSchnorrVerificationFailed);
-        }*/
 
         Ok(())
     }
@@ -432,10 +436,12 @@ mod serialization {
             self.A_prime.serialize(&mut writer)?;
             self.A_bar.serialize(&mut writer)?;
             self.d.serialize(&mut writer)?;
-            self.sc_comm_1.serialize(&mut writer)?;
+            // self.sc_comm_1.serialize(&mut writer)?;
+            ark_serialize::CanonicalSerialize::serialize(&self.sc_comm_1, &mut writer)?;
             self.sc_wits_1[0].serialize(&mut writer)?;
             self.sc_wits_1[1].serialize(&mut writer)?;
-            self.sc_comm_2.serialize(&mut writer)?;
+            // self.sc_comm_2.serialize(&mut writer)?;
+            ark_serialize::CanonicalSerialize::serialize(&self.sc_comm_2, &mut writer)?;
             self.sc_wits_2.serialize(&mut writer)
         }
 
@@ -492,12 +498,14 @@ mod serialization {
             let A_prime = E::G1Affine::deserialize(&mut reader)?;
             let A_bar = E::G1Affine::deserialize(&mut reader)?;
             let d = E::G1Affine::deserialize(&mut reader)?;
-            let sc_comm_1 = <SchnorrCommitment<E::G1Affine>>::deserialize(&mut reader)?;
+            // let sc_comm_1 = <SchnorrCommitment<E::G1Affine>>::deserialize(&mut reader)?;
+            let sc_comm_1 = ark_serialize::CanonicalDeserialize::deserialize(&mut reader)?;
             let sc_wits_1 = [
                 E::Fr::deserialize(&mut reader)?,
                 E::Fr::deserialize(&mut reader)?,
             ];
-            let sc_comm_2 = <SchnorrCommitment<E::G1Affine>>::deserialize(&mut reader)?;
+            // let sc_comm_2 = <SchnorrCommitment<E::G1Affine>>::deserialize(&mut reader)?;
+            let sc_comm_2 = ark_serialize::CanonicalDeserialize::deserialize(&mut reader)?;
             let sc_wits_2 = <Vec<E::Fr>>::deserialize(&mut reader)?;
             Ok(Self {
                 A_prime,
@@ -626,7 +634,13 @@ mod tests {
         proof_create_duration += start.elapsed();
 
         // Protocol can be serialized
-        test_serialization!(PoKOfSignatureG1Protocol, pok);
+        test_serialization!(PoKOfSignatureG1Protocol<Bls12_381>, pok);
+        let pok_json = serde_json::to_string(&pok).unwrap();
+        println!("serde pok ser={:?}", pok_json);
+        let pok_json_deser =
+            serde_json::from_str::<PoKOfSignatureG1Protocol<Bls12_381>>(&pok_json).unwrap();
+        println!("serde pok deser={:?}", pok_json_deser);
+        assert_eq!(pok_json_deser, pok);
 
         let mut chal_bytes_prover = vec![];
         pok.challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_prover)
@@ -657,7 +671,7 @@ mod tests {
         proof_verif_duration += start.elapsed();
 
         // Proof can be serialized
-        test_serialization!(PoKOfSignatureG1Proof, proof);
+        test_serialization!(PoKOfSignatureG1Proof<Bls12_381>, proof);
 
         println!(
             "Time to create proof with message size {} and revealing {} messages is {:?}",

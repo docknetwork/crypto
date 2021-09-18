@@ -460,7 +460,7 @@ trait ProofProtocol<E: PairingEngine> {
         let r_rho = E::Fr::rand(rng);
         let r_delta_rho = E::Fr::rand(rng);
 
-        // R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, pk.Q_tilde)^(-r_sigma - r_rho)
+        // R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho)
         let mut E_C_times_r_y = E_C.clone();
         E_C_times_r_y *= r_y;
         let P_tilde_prepared = E::G2Prepared::from(params.P_tilde);
@@ -481,7 +481,7 @@ trait ProofProtocol<E: PairingEngine> {
                     ),
                     P_tilde_prepared.clone(),
                 ),
-                // e(prk.Z, pk.Q_tilde)^(-r_sigma - r_rho) = e((-r_sigma - r_rho) * prk.Z, pk.Q_tilde)
+                // e(prk.Z, Q_tilde)^(-r_sigma - r_rho) = e((-r_sigma - r_rho) * prk.Z, Q_tilde)
                 (
                     E::G1Prepared::from(
                         context
@@ -489,7 +489,7 @@ trait ProofProtocol<E: PairingEngine> {
                             .unwrap()
                             .into_affine(),
                     ),
-                    E::G2Prepared::from(pk.Q_tilde),
+                    E::G2Prepared::from(pk.0),
                 ),
             ]
             .iter()
@@ -564,7 +564,7 @@ trait ProofProtocol<E: PairingEngine> {
         randomized_witness.challenge_contribution(&mut writer)?;
         schnorr_commit.challenge_contribution(&mut writer)?;
         accumulator_value.serialize_unchecked(&mut writer)?;
-        pk.Q_tilde.serialize_unchecked(&mut writer)?;
+        pk.0.serialize_unchecked(&mut writer)?;
         params.P.serialize_unchecked(&mut writer)?;
         params.P_tilde.serialize_unchecked(&mut writer)?;
         prk.X.serialize_unchecked(&mut writer)?;
@@ -660,7 +660,7 @@ trait ProofProtocol<E: PairingEngine> {
         }
 
         let P_tilde_prepared = E::G2Prepared::from(params.P_tilde);
-        let Q_tilde_prepared = E::G2Prepared::from(pk.Q_tilde);
+        let Q_tilde_prepared = E::G2Prepared::from(pk.0);
 
         let R_E = E::product_of_pairings(
             [
@@ -687,7 +687,7 @@ trait ProofProtocol<E: PairingEngine> {
                     ),
                     P_tilde_prepared.clone(),
                 ),
-                // e(Z, pk.Q_tilde)^(s_sigma - s_rho) = e((s_sigma - s_rho) * Z, pk.Q_tilde)
+                // e(Z, Q_tilde)^(s_sigma - s_rho) = e((s_sigma - s_rho) * Z, Q_tilde)
                 (
                     E::G1Prepared::from(
                         context
@@ -709,7 +709,7 @@ trait ProofProtocol<E: PairingEngine> {
                     ),
                     P_tilde_prepared.clone(),
                 ),
-                // e(E_C, pk.Q_tilde)^challenge = e(challenge * E_C, pk.Q_tilde)
+                // e(E_C, Q_tilde)^challenge = e(challenge * E_C, Q_tilde)
                 (
                     E::G1Prepared::from(
                         context
@@ -883,8 +883,8 @@ where
         R_B *= r_u;
         R_B += context.mul_with_table(&K_table, &r_w).unwrap();
 
-        // new R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, pk.Q_tilde)^(-r_sigma - r_rho) * e(prk.K, params.P_tilde)^-r_v
-        // sc.R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, pk.Q_tilde)^(-r_sigma - r_rho)
+        // new R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho) * e(prk.K, params.P_tilde)^-r_v
+        // sc.R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho)
         // => new R_E = e(prk.K, params.P_tilde)^-r_v * sc.R_E = e(-r_v * prk.K, params.P_tilde) * sc.R_E
         let (rw, sc, bl) = Self::randomize_witness_and_compute_commitments(
             rng,

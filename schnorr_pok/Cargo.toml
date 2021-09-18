@@ -10,7 +10,7 @@ repository = "https://github.com/docknetwork/crypto"
 [lib]
 doctest = false
 path = "src/lib.rs"
-crate-type = ["cdylib", "lib"]
+#crate-type = ["cdylib", "lib"]
 
 [dependencies]
 ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
@@ -20,6 +20,8 @@ ark-std = { version = "^0.3.0", default-features = false }
 rayon = { version = "1", optional = true }
 digest = "0.9"
 dock-crypto-utils = { version = "0.1.0", default-features = false, path = "../dock-crypto-utils" }
+serde = { version = "1.0", optional = true, default-features = false, features = ["derive"] }
+serde_with = { version = "1.10.0", optional = true, default-features = false, features = ["macros"] }
 
 [dev-dependencies]
 blake2 = { version = "0.9", default-features = false }
@@ -27,6 +29,7 @@ ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "cu
 
 [features]
 default = [ "std", "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock-crypto-utils/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock-crypto-utils/std", "serde/std"]
 print-trace = [ "ark-std/print-trace", "dock-crypto-utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon" ]
+with-serde = ["serde", "serde_with", "dock-crypto-utils/with-serde"]

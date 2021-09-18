@@ -10,7 +10,7 @@ repository = "https://github.com/docknetwork/crypto"
 [lib]
 doctest = false
 path = "src/lib.rs"
-crate-type = ["cdylib", "lib"]
+#crate-type = ["cdylib", "lib"]
 
 [dependencies]
 ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
