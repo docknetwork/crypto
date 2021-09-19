@@ -109,6 +109,11 @@ use ark_std::{
     vec::Vec,
 };
 
+use dock_crypto_utils::serde_utils::*;
+
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
 use crate::batch_utils::Omega;
 use crate::batch_utils::{
     batch_normalize_projective_into_affine, Poly_d, Poly_v_A, Poly_v_AD, Poly_v_D,
@@ -439,13 +444,21 @@ pub trait Witness<G: AffineCurve> {
 }
 
 /// Witness to check membership
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct MembershipWitness<G: AffineCurve>(pub G);
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct MembershipWitness<G: AffineCurve>(#[serde_as(as = "AffineGroupBytes")] pub G);
 
 /// Witness to check non-membership
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct NonMembershipWitness<G: AffineCurve> {
+    #[serde_as(as = "ScalarFieldBytes")]
     pub d: G::ScalarField,
+    #[serde_as(as = "AffineGroupBytes")]
     pub C: G,
 }
 
@@ -1219,7 +1232,7 @@ mod tests {
             accumulator_3.value(),
             &keypair.secret_key,
         );
-        test_serialization!(Omega, omega_both);
+        test_serialization!(Omega<<Bls12_381 as PairingEngine>::G1Affine>, omega_both);
 
         let omega_add_only = Omega::new(
             &additions_3,
@@ -1227,7 +1240,10 @@ mod tests {
             accumulator_3_cloned.value(),
             &keypair.secret_key,
         );
-        test_serialization!(Omega, omega_add_only);
+        test_serialization!(
+            Omega<<Bls12_381 as PairingEngine>::G1Affine>,
+            omega_add_only
+        );
 
         let omega_remove_only = Omega::new(
             &[],
@@ -1235,7 +1251,10 @@ mod tests {
             accumulator_4_new.value(),
             &keypair.secret_key,
         );
-        test_serialization!(Omega, omega_remove_only);
+        test_serialization!(
+            Omega<<Bls12_381 as PairingEngine>::G1Affine>,
+            omega_remove_only
+        );
 
         for i in 0..remaining.len() {
             let new_wit = witnesses_4[i]

@@ -74,6 +74,10 @@ use ark_std::{
     vec::Vec,
     One,
 };
+use dock_crypto_utils::serde_utils::*;
+
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::batch_utils::Poly_d;
 use crate::error::VBAccumulatorError;
@@ -86,8 +90,13 @@ use crate::witness::MembershipWitness;
 use rayon::prelude::*;
 
 /// Accumulator supporting only membership proofs
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PositiveAccumulator<E: PairingEngine>(pub E::G1Affine);
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct PositiveAccumulator<E: PairingEngine>(
+    #[serde_as(as = "AffineGroupBytes")] pub E::G1Affine,
+);
 
 /// Trait to hold common functionality among both positive and universal accumulator
 pub trait Accumulator<E: PairingEngine> {
@@ -422,7 +431,7 @@ pub mod tests {
 
         let (params, keypair, mut accumulator, mut state) = setup_positive_accum(&mut rng);
 
-        test_serialization!(PositiveAccumulator, accumulator);
+        test_serialization!(PositiveAccumulator<Bls12_381>, accumulator);
 
         let mut total_mem_check_time = Duration::default();
         let count = 100;
@@ -451,7 +460,10 @@ pub mod tests {
             assert_eq!(expected_V, *accumulator.value());
 
             // Witness can be serialized
-            test_serialization!(MembershipWitness, m_wit);
+            test_serialization!(
+                MembershipWitness<<Bls12_381 as PairingEngine>::G1Affine>,
+                m_wit
+            );
 
             let start = Instant::now();
             assert!(accumulator.verify_membership(&elem, &m_wit, &keypair.public_key, &params));

@@ -68,17 +68,27 @@ use ark_std::{
     One, UniformRand, Zero,
 };
 
+use dock_crypto_utils::serde_utils::*;
+
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Accumulator supporting both membership and non-membership proofs. Is capped at a size defined
 /// at setup to avoid non-membership witness forgery attack described in section 6 of the paper
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct UniversalAccumulator<E: PairingEngine> {
     /// This is the accumulated value. It is considered a digest of state of the accumulator.
+    #[serde_as(as = "AffineGroupBytes")]
     pub V: E::G1Affine,
     /// This is f_V(alpha) and is the discrete log of `V` wrt. P from setup parameters. Accumulator
     /// manager persists it for efficient computation of non-membership witnesses
+    #[serde_as(as = "ScalarFieldBytes")]
     pub f_V: E::Fr,
     /// The maximum elements the accumulator can store
     pub max_size: u64,
@@ -438,7 +448,7 @@ pub mod tests {
         let (params, keypair, mut accumulator, initial_elements, mut state) =
             setup_universal_accum(&mut rng, max);
 
-        test_serialization!(UniversalAccumulator, accumulator);
+        test_serialization!(UniversalAccumulator<Bls12_381>, accumulator);
 
         let mut total_mem_check_time = Duration::default();
         let mut total_non_mem_check_time = Duration::default();
@@ -474,7 +484,10 @@ pub mod tests {
             ));
             total_non_mem_check_time += start.elapsed();
 
-            test_serialization!(NonMembershipWitness, nm_wit);
+            test_serialization!(
+                NonMembershipWitness<<Bls12_381 as PairingEngine>::G1Affine>,
+                nm_wit
+            );
 
             assert!(accumulator
                 .remove(&elem, &keypair.secret_key, &initial_elements, &mut state)

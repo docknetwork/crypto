@@ -16,11 +16,8 @@ use digest::Digest;
 
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
-#[cfg(feature = "use-serde")]
 use dock_crypto_utils::serde_utils::*;
-#[cfg(feature = "use-serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "use-serde")]
 use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
@@ -45,9 +42,10 @@ pub trait SchnorrChallengeContributor {
 }
 
 /// Commitment to randomness during step 1 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
-#[cfg_attr(feature = "use-serde", serde_as)]
-#[cfg_attr(feature = "use-serde", derive(Serialize, Deserialize))]
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct SchnorrCommitment<G: AffineCurve> {
     /// Randomness. 1 per discrete log
     #[serde_as(as = "Vec<ScalarFieldBytes>")]
@@ -102,9 +100,10 @@ where
 }
 
 /// Response during step 3 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
-#[cfg_attr(feature = "use-serde", serde_as)]
-#[cfg_attr(feature = "use-serde", derive(Serialize, Deserialize))]
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct SchnorrResponse<G: AffineCurve>(
     #[serde_as(as = "Vec<ScalarFieldBytes>")] pub Vec<G::ScalarField>,
 );
@@ -159,16 +158,41 @@ where
 macro_rules! impl_proof_of_knowledge_of_discrete_log {
     ($protocol_name:ident, $proof_name: ident) => {
         /// Proof of knowledge protocol for discrete log
-        #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+        #[serde_as]
+        #[derive(
+            Clone,
+            PartialEq,
+            Eq,
+            Debug,
+            CanonicalSerialize,
+            CanonicalDeserialize,
+            Serialize,
+            Deserialize,
+        )]
         pub struct $protocol_name<G: AffineCurve> {
+            #[serde_as(as = "AffineGroupBytes")]
             pub t: G,
+            #[serde_as(as = "ScalarFieldBytes")]
             blinding: G::ScalarField,
+            #[serde_as(as = "ScalarFieldBytes")]
             witness: G::ScalarField,
         }
 
-        #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+        #[serde_as]
+        #[derive(
+            Clone,
+            PartialEq,
+            Eq,
+            Debug,
+            CanonicalSerialize,
+            CanonicalDeserialize,
+            Serialize,
+            Deserialize,
+        )]
         pub struct $proof_name<G: AffineCurve> {
+            #[serde_as(as = "AffineGroupBytes")]
             pub t: G,
+            #[serde_as(as = "ScalarFieldBytes")]
             pub response: G::ScalarField,
         }
 
@@ -235,34 +259,41 @@ mod tests {
 
     #[macro_export]
     macro_rules! test_serialization {
-        ($obj_type:ident, $obj: ident) => {
+        ($obj_type:ty, $obj: ident) => {
+            // Test ark serialization
             let mut serz = vec![];
-            $obj.serialize(&mut serz).unwrap();
-            println!("serialize size {}", serz.len());
-            assert_eq!($obj_type::deserialize(&serz[..]).unwrap(), $obj);
+            ark_serialize::CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
+            let deserz: $obj_type =
+                ark_serialize::CanonicalDeserialize::deserialize(&serz[..]).unwrap();
+            assert_eq!(deserz, $obj);
 
             let mut serz = vec![];
             $obj.serialize_unchecked(&mut serz).unwrap();
-            println!("serialize_unchecked size {}", serz.len());
-            assert_eq!($obj_type::deserialize_unchecked(&serz[..]).unwrap(), $obj);
+            let deserz: $obj_type = CanonicalDeserialize::deserialize_unchecked(&serz[..]).unwrap();
+            assert_eq!(deserz, $obj);
 
             let mut serz = vec![];
             $obj.serialize_uncompressed(&mut serz).unwrap();
-            println!("serialize_uncompressed size {}", serz.len());
-            assert_eq!(
-                $obj_type::deserialize_uncompressed(&serz[..]).unwrap(),
-                $obj
-            );
+            let deserz: $obj_type =
+                CanonicalDeserialize::deserialize_uncompressed(&serz[..]).unwrap();
+            assert_eq!(deserz, $obj);
+
+            // Test JSON serialization with serde
+            let obj_ser = serde_json::to_string(&$obj).unwrap();
+            let obj_deser = serde_json::from_str::<$obj_type>(&obj_ser).unwrap();
+            assert_eq!($obj, obj_deser);
         };
     }
 
     macro_rules! test_schnorr_in_group {
-        ( $group_element:ident ) => {
+        ( $group_element_proj:ident, $group_element_affine:ident ) => {
             let mut rng = StdRng::seed_from_u64(0u64);
             let count = 10;
             let bases = (0..count)
                 .into_iter()
-                .map(|_| <Bls12_381 as PairingEngine>::$group_element::rand(&mut rng).into_affine())
+                .map(|_| {
+                    <Bls12_381 as PairingEngine>::$group_element_proj::rand(&mut rng).into_affine()
+                })
                 .collect::<Vec<_>>();
             let witnesses = (0..count)
                 .into_iter()
@@ -281,7 +312,10 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let comm = SchnorrCommitment::new(&bases, blindings);
-            test_serialization!(SchnorrCommitment, comm);
+            test_serialization!(
+                SchnorrCommitment<<Bls12_381 as PairingEngine>::$group_element_affine>,
+                comm
+            );
 
             let challenge = Fr::rand(&mut rng);
 
@@ -289,16 +323,17 @@ mod tests {
 
             resp.is_valid(&bases, &y, &comm.t, &challenge).unwrap();
 
-            let mut serz = vec![];
-            resp.serialize(&mut serz).unwrap();
-            test_serialization!(SchnorrResponse, resp);
+            test_serialization!(
+                SchnorrResponse<<Bls12_381 as PairingEngine>::$group_element_affine>,
+                resp
+            );
         };
     }
 
     #[test]
     fn schnorr_vector() {
-        test_schnorr_in_group!(G1Projective);
-        test_schnorr_in_group!(G2Projective);
+        test_schnorr_in_group!(G1Projective, G1Affine);
+        test_schnorr_in_group!(G2Projective, G2Affine);
     }
 
     #[test]
@@ -321,10 +356,10 @@ mod tests {
                     .challenge_contribution(&mut chal_contrib_prover)
                     .unwrap();
 
-                let mut serz = vec![];
-                protocol.serialize(&mut serz).unwrap();
-
-                test_serialization!($protocol_name, protocol);
+                test_serialization!(
+                    $protocol_name<<Bls12_381 as PairingEngine>::$group_affine>,
+                    protocol
+                );
 
                 let challenge = Fr::rand(&mut rng);
                 let proof = protocol.gen_proof(&challenge);
@@ -337,7 +372,10 @@ mod tests {
                 assert!(proof.verify(&y, &base, &challenge));
                 assert_eq!(chal_contrib_prover, chal_contrib_verifier);
 
-                test_serialization!($proof_name, proof);
+                test_serialization!(
+                    $proof_name<<Bls12_381 as PairingEngine>::$group_affine>,
+                    proof
+                );
             };
         }
 

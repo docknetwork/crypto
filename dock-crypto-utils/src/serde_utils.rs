@@ -1,14 +1,14 @@
 use ark_ec::AffineCurve;
-use ark_ff::{PrimeField, SquareRootField};
+use ark_ff::{Field, PrimeField, SquareRootField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
 use serde::de::{SeqAccess, Visitor};
 use serde::{Deserializer, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 
-pub struct PrimeFieldBytes;
+pub struct FieldBytes;
 
-impl<F: PrimeField> SerializeAs<F> for PrimeFieldBytes {
+impl<F: Field> SerializeAs<F> for FieldBytes {
     fn serialize_as<S>(elem: &F, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -19,18 +19,18 @@ impl<F: PrimeField> SerializeAs<F> for PrimeFieldBytes {
     }
 }
 
-impl<'de, F: PrimeField> DeserializeAs<'de, F> for PrimeFieldBytes {
+impl<'de, F: Field> DeserializeAs<'de, F> for FieldBytes {
     fn deserialize_as<D>(deserializer: D) -> Result<F, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct FVisitor<F: PrimeField>(PhantomData<F>);
+        struct FVisitor<F: Field>(PhantomData<F>);
 
-        impl<'a, F: PrimeField> Visitor<'a> for FVisitor<F> {
+        impl<'a, F: Field> Visitor<'a> for FVisitor<F> {
             type Value = F;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("expected prime field element")
+                formatter.write_str("expected field element")
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -49,6 +49,8 @@ impl<'de, F: PrimeField> DeserializeAs<'de, F> for PrimeFieldBytes {
         deserializer.deserialize_seq(FVisitor::<F>(PhantomData))
     }
 }
+
+// TODO: ScalarFieldBytes isn't needed, `FieldBytes` should be sufficient
 
 pub struct ScalarFieldBytes;
 

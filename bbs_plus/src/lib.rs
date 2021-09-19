@@ -10,7 +10,6 @@ pub mod error;
 pub mod proof;
 pub mod setup;
 pub mod signature;
-// pub mod serde_utils;
 
 pub mod prelude {
     pub use crate::error::BBSPlusError;
@@ -25,28 +24,27 @@ pub mod tests {
     #[macro_export]
     macro_rules! test_serialization {
         ($obj_type:ty, $obj: ident) => {
+            // Test ark serialization
             let mut serz = vec![];
-            // $obj.serialize(&mut serz).unwrap();
             CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
             let deserz: $obj_type = CanonicalDeserialize::deserialize(&serz[..]).unwrap();
             assert_eq!(deserz, $obj);
-            // assert_eq!($obj_type::deserialize(&serz[..]).unwrap(), $obj);
-            // assert_eq!(ark_serialize::CanonicalDeserialize::deserialize::<$obj_type>(&serz[..]).unwrap(), $obj);
 
             let mut serz = vec![];
             $obj.serialize_unchecked(&mut serz).unwrap();
             let deserz: $obj_type = CanonicalDeserialize::deserialize_unchecked(&serz[..]).unwrap();
             assert_eq!(deserz, $obj);
-            // assert_eq!($obj_type::deserialize_unchecked(&serz[..]).unwrap(), $obj);
 
             let mut serz = vec![];
             $obj.serialize_uncompressed(&mut serz).unwrap();
-            let deserz: $obj_type = CanonicalDeserialize::deserialize_uncompressed(&serz[..]).unwrap();
+            let deserz: $obj_type =
+                CanonicalDeserialize::deserialize_uncompressed(&serz[..]).unwrap();
             assert_eq!(deserz, $obj);
-            /*assert_eq!(
-                $obj_type::deserialize_uncompressed(&serz[..]).unwrap(),
-                $obj
-            );*/
+
+            // Test JSON serialization
+            let ser = serde_json::to_string(&$obj).unwrap();
+            let deser = serde_json::from_str::<$obj_type>(&ser).unwrap();
+            assert_eq!($obj, deser);
         };
     }
 }

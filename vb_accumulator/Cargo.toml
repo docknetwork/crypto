@@ -22,13 +22,16 @@ digest = "0.9"
 rayon = { version = "1", optional = true }
 schnorr_pok = { version = "0.3.0", default-features = false, path = "../schnorr_pok" }
 dock-crypto-utils = { version = "0.1.0", default-features = false, path = "../dock-crypto-utils" }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
 
 [dev-dependencies]
 blake2 = { version = "0.9", default-features = false }
 ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
+serde_json = "1.0"
 
 [features]
 default = [ "std", "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock-crypto-utils/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock-crypto-utils/std", "serde/std"]
 print-trace = [ "ark-std/print-trace", "schnorr_pok/print-trace", "dock-crypto-utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-poly/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel" ]

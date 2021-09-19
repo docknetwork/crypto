@@ -73,20 +73,19 @@
 
 use crate::error::BBSPlusError;
 use ark_ec::{group::Group, AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{fields::Field, PrimeField, SquareRootField};
+use ark_ff::{fields::Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     fmt::Debug,
     io::{Read, Write},
     rand::RngCore,
-    vec, One, UniformRand, Zero,
+    One, UniformRand, Zero,
 };
 
 use crate::setup::{PublicKeyG1, PublicKeyG2, SecretKey, SignatureParamsG1, SignatureParamsG2};
-// use crate::serde_utils::*;
 use ark_std::collections::BTreeMap;
-use serde::de::{Error, Visitor};
-use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
+use dock_crypto_utils::serde_utils::*;
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 // TODO: Zeroize secret key and other cloned/copied elements
@@ -106,14 +105,11 @@ macro_rules! impl_signature_struct {
             Deserialize,
         )]
         pub struct $name<E: PairingEngine> {
-            // #[serde(serialize_with = "to_affine_group", deserialize_with = "from_affine_group")]
             #[serde_as(as = "AffineGroupBytes")]
             pub A: E::$group,
-            // #[serde(serialize_with = "to_prime_field", deserialize_with = "from_prime_field")]
-            #[serde_as(as = "PrimeFieldBytes")]
+            #[serde_as(as = "ScalarFieldBytes")]
             pub e: E::Fr,
-            // #[serde(serialize_with = "to_prime_field", deserialize_with = "from_prime_field")]
-            #[serde_as(as = "PrimeFieldBytes")]
+            #[serde_as(as = "ScalarFieldBytes")]
             pub s: E::Fr,
         }
     };
@@ -145,7 +141,7 @@ macro_rules! pairing_check_for_g2_sig {
 }
 
 macro_rules! impl_signature_alg {
-    ( $name_str:expr, $name:ident, $params:ident, $pk:ident, $sig_group_proj:ident, $sig_group_affine:ident, $pairing:tt ) => {
+    ( $name:ident, $params:ident, $pk:ident, $sig_group_proj:ident, $sig_group_affine:ident, $pairing:tt ) => {
         /// Signature creation and verification
         impl<E: PairingEngine> $name<E> {
             /// Create a new signature with all messages known to the signer.
@@ -263,31 +259,10 @@ macro_rules! impl_signature_alg {
                 Ok(())
             }
         }
-
-        /*impl<E: PairingEngine> Serialize for $name<E> {
-            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-                where
-                    S: Serializer,
-            {
-                let mut bytes = vec![];
-                CanonicalSerialize::serialize(&self.A, &mut bytes).map_err(serde::ser::Error::custom)?;
-                let mut bytes_2 = vec![];
-                CanonicalSerialize::serialize(&self.e, &mut bytes_2).map_err(serde::ser::Error::custom)?;
-                let mut bytes_3 = vec![];
-                CanonicalSerialize::serialize(&self.s, &mut bytes_3).map_err(serde::ser::Error::custom)?;
-
-                let mut state = serializer.serialize_struct($name_str, 3)?;
-                state.serialize_field("A", &bytes)?;
-                state.serialize_field("e", &bytes_2)?;
-                state.serialize_field("s", &bytes_3)?;
-                state.end()
-            }
-        }*/
     };
 }
 
 impl_signature_alg!(
-    "SignatureG1",
     SignatureG1,
     SignatureParamsG1,
     PublicKeyG2,
@@ -296,7 +271,6 @@ impl_signature_alg!(
     pairing_check_for_g1_sig
 );
 impl_signature_alg!(
-    "SignatureG2",
     SignatureG2,
     SignatureParamsG2,
     PublicKeyG1,
@@ -385,14 +359,8 @@ mod tests {
             sig.verify(&$messages, &keypair.public_key, &params)
                 .unwrap();
 
-            // sig and blinded_sig have same struct so just checking on sig
+            // sig and blinded_sig have same struct so just checking serialization on sig
             test_serialization!($sig<Bls12_381>, sig);
-
-            let json_sig = serde_json::to_string(&sig).unwrap();
-            println!("serde sig ser={:?}", json_sig);
-            let json_sig_deser = serde_json::from_str::<$sig<Bls12_381>>(&json_sig).unwrap();
-            println!("serde sig deser={:?}", json_sig_deser);
-            assert_eq!(json_sig_deser, sig);
         };
     }
 

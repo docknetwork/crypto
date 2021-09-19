@@ -17,20 +17,27 @@
 //!
 //! let keypair_g2 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_g1);
 //! let keypair_g1 = KeypairG1::<Bls12_381>::generate_using_rng(&mut rng, &params_g2);
+//!
+//! // Generate keypair using a secret `seed`. The same seed will return same keypair. The seed
+//! // is hashed (along with other things) using the given hash function, the example below use Blake2b
+//! // let seed: &[u8] = <Some secret seed>
+//! let keypair_g21 = KeypairG2::<Bls12_381>::generate_using_seed::<Blake2b>(seed, &params);
+//!
+//! // Another way to generate keypair is
+//! let sk = SecretKey::generate_using_seed::<Blake2b>(&seed);
+//! let pk = KeypairG2::public_key_from_secret_key(&sk, &params);
+//! KeypairG2 {secret_key: sk, public_key: pk}
 //! ```
 
 use crate::error::BBSPlusError;
-use crate::serde_utils::*;
 use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{to_bytes, PrimeField, SquareRootField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::collections::BTreeMap;
 use ark_std::{
-    fmt,
     fmt::Debug,
     io::{Read, Write},
     rand::RngCore,
-    vec,
     vec::Vec,
     UniformRand, Zero,
 };
@@ -40,101 +47,19 @@ use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 use dock_crypto_utils::hashing_utils::{
     field_elem_from_seed, projective_group_elem_from_try_and_incr,
 };
+use dock_crypto_utils::serde_utils::*;
 
-use ark_std::marker::PhantomData;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use serde::de::{SeqAccess, Visitor};
-use serde::ser::SerializeSeq;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 /// Secret key used by the signer to sign messages
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SecretKey<F: PrimeField + SquareRootField>(pub F);
-
-impl<F: PrimeField + SquareRootField> Serialize for SecretKey<F> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut bytes = vec![];
-        CanonicalSerialize::serialize(self, &mut bytes).map_err(serde::ser::Error::custom)?;
-        // println!("In sk ser={:?}", bytes);
-        // serializer.serialize_newtype_struct("SecretKey", &bytes)
-        serializer.serialize_bytes(&bytes)
-        /*let mut seq = serializer.serialize_seq(Some(bytes.len()))?;
-        for element in bytes {
-            seq.serialize_element(&element)?;
-        }
-        seq.end()*/
-    }
-}
-
-impl<'a, F: PrimeField + SquareRootField> Deserialize<'a> for SecretKey<F> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'a>,
-    {
-        struct SkVisitor<F: PrimeField + SquareRootField>(PhantomData<F>);
-
-        impl<'a, F: PrimeField + SquareRootField> Visitor<'a> for SkVisitor<F> {
-            type Value = SecretKey<F>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("expected SecretKey")
-            }
-
-            fn visit_bytes<E>(self, bytes: &[u8]) -> Result<SecretKey<F>, E>
-            where
-                E: serde::de::Error,
-            {
-                // println!("in visit_bytes");
-                let f =
-                    CanonicalDeserialize::deserialize(bytes).map_err(serde::de::Error::custom)?;
-                Ok(SecretKey(f))
-            }
-
-            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<SecretKey<F>, D::Error>
-            where
-                D: Deserializer<'a>,
-            {
-                // println!("in visit_newtype_struct");
-                let bytes: &[u8] = Deserialize::deserialize(deserializer)?;
-                // println!("got bytes {:?}", &bytes);
-                let f =
-                    CanonicalDeserialize::deserialize(bytes).map_err(serde::de::Error::custom)?;
-                Ok(SecretKey(f))
-                // unimplemented!()
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'a>,
-            {
-                // println!("in visit_seq {:?}", seq.size_hint());
-                let mut bytes: Vec<u8> = Vec::with_capacity(seq.size_hint().unwrap_or(32));
-                while let Some(b) = seq.next_element()? {
-                    bytes.push(b);
-                }
-                let f = CanonicalDeserialize::deserialize(bytes.as_slice())
-                    .map_err(serde::de::Error::custom)?;
-                Ok(SecretKey(f))
-            }
-
-            /*fn visit_borrowed_bytes<E>(self, v: &'a [u8]) -> Result<Self::Value, E>
-                where
-                    E: serde::de::Error,
-            {
-                println!("in visit_borrowed_bytes");
-                unimplemented!()
-            }*/
-        }
-
-        // deserializer.deserialize_newtype_struct("SecretKey", SkVisitor::<F>(PhantomData))
-        deserializer.deserialize_seq(SkVisitor::<F>(PhantomData))
-    }
-}
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct SecretKey<F: PrimeField + SquareRootField>(#[serde_as(as = "ScalarFieldBytes")] pub F);
 
 // TODO: Add "prepared" version of public key
 
@@ -191,17 +116,13 @@ macro_rules! impl_sig_params {
             Deserialize,
         )]
         pub struct $name<E: PairingEngine> {
-            // #[serde(serialize_with = "to_affine_group", deserialize_with = "from_affine_group")]
             #[serde_as(as = "AffineGroupBytes")]
             pub g1: E::$group_affine,
-            // #[serde(serialize_with = "to_affine_group", deserialize_with = "from_affine_group")]
             #[serde_as(as = "AffineGroupBytes")]
             pub g2: E::$other_group_affine,
-            // #[serde(serialize_with = "to_affine_group", deserialize_with = "from_affine_group")]
             #[serde_as(as = "AffineGroupBytes")]
             pub h_0: E::$group_affine,
             /// Vector of size same as the size of multi-message that needs to be signed.
-            // #[serde(skip)]
             #[serde_as(as = "Vec<AffineGroupBytes>")]
             pub h: Vec<E::$group_affine>,
         }
@@ -339,8 +260,20 @@ macro_rules! impl_public_key {
         /// Public key of the signer. The signer can use the same public key with different
         /// signature parameters provided all parameters use same `g2` to sign different sized
         /// multi-messages. This helps the signer minimize his secret key storage.
-        #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-        pub struct $name<E: PairingEngine>(pub <E as PairingEngine>::$group);
+        #[serde_as]
+        #[derive(
+            Clone,
+            PartialEq,
+            Eq,
+            Debug,
+            CanonicalSerialize,
+            CanonicalDeserialize,
+            Serialize,
+            Deserialize,
+        )]
+        pub struct $name<E: PairingEngine>(
+            #[serde_as(as = "AffineGroupBytes")] pub <E as PairingEngine>::$group,
+        );
 
         impl<E: PairingEngine> $name<E>
         where
@@ -359,71 +292,22 @@ macro_rules! impl_public_key {
                 !self.0.is_zero()
             }
         }
-
-        impl<E: PairingEngine> Serialize for $name<E> {
-            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-            where
-                S: Serializer,
-            {
-                let mut bytes = vec![];
-                CanonicalSerialize::serialize(self, &mut bytes)
-                    .map_err(serde::ser::Error::custom)?;
-                // serializer.serialize_bytes(&bytes)
-                let mut seq = serializer.serialize_seq(Some(bytes.len()))?;
-                for element in bytes {
-                    seq.serialize_element(&element)?;
-                }
-                seq.end()
-            }
-        }
-
-        impl<'a, E: PairingEngine> Deserialize<'a> for $name<E> {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: Deserializer<'a>,
-            {
-                struct PkVisitor<E: PairingEngine>(PhantomData<E>);
-
-                impl<'a, E: PairingEngine> Visitor<'a> for PkVisitor<E> {
-                    type Value = $name<E>;
-
-                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                        formatter.write_str("expected PublicKey")
-                    }
-
-                    fn visit_bytes<Er>(self, bytes: &[u8]) -> Result<$name<E>, Er>
-                    where
-                        Er: serde::de::Error,
-                    {
-                        CanonicalDeserialize::deserialize(bytes).map_err(serde::de::Error::custom)
-                    }
-
-                    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-                    where
-                        A: SeqAccess<'a>,
-                    {
-                        // println!("in visit_seq {:?}", seq.size_hint());
-                        let mut bytes: Vec<u8> = Vec::with_capacity(seq.size_hint().unwrap_or(48));
-
-                        while let Some(b) = seq.next_element()? {
-                            bytes.push(b);
-                        }
-                        let f = CanonicalDeserialize::deserialize(bytes.as_slice())
-                            .map_err(serde::de::Error::custom)?;
-                        Ok($name(f))
-                    }
-                }
-
-                // deserializer.deserialize_bytes(PkVisitor::<E>(PhantomData))
-                deserializer.deserialize_seq(PkVisitor::<E>(PhantomData))
-            }
-        }
     };
 }
 
 macro_rules! impl_keypair {
     ( $name:ident, $group:ident, $pk: ident, $params:ident ) => {
-        #[derive(Clone, Serialize, Deserialize)]
+        #[serde_as]
+        #[derive(
+            Clone,
+            Debug,
+            Eq,
+            PartialEq,
+            CanonicalSerialize,
+            CanonicalDeserialize,
+            Serialize,
+            Deserialize,
+        )]
         pub struct $name<E: PairingEngine> {
             pub secret_key: SecretKey<E::Fr>,
             pub public_key: $pk<E>,
@@ -490,28 +374,14 @@ mod tests {
             test_serialization!($params<Bls12_381>, params);
 
             let keypair = $keypair::<Bls12_381>::generate_using_rng(&mut $rng, &params);
+
+            // TODO: Figure out why the following fails
+            // test_serialization!($keypair<Bls12_381>, keypair);
+
             let pk = keypair.public_key;
+            let sk = keypair.secret_key;
             test_serialization!($public_key<Bls12_381>, pk);
-
-            let sk_ser = serde_json::to_string(&keypair.secret_key).unwrap();
-            println!("serde sk={:?}", sk_ser);
-            let sk_deser =
-                serde_json::from_str::<SecretKey<<Bls12_381 as PairingEngine>::Fr>>(&sk_ser)
-                    .unwrap();
-            println!("serde sk deser={:?}", sk_deser);
-            assert_eq!(keypair.secret_key, sk_deser);
-
-            let pk_ser = serde_json::to_string(&pk).unwrap();
-            println!("serde pk={:?}", pk_ser);
-            let pk_deser = serde_json::from_str::<$public_key<Bls12_381>>(&pk_ser).unwrap();
-            println!("serde pk deser={:?}", pk_deser);
-            assert_eq!(pk, pk_deser);
-
-            let params_ser = serde_json::to_string(&params).unwrap();
-            println!("serde params={:?}", params_ser);
-            let params_deser = serde_json::from_str::<$params<Bls12_381>>(&params_ser).unwrap();
-            println!("serde params deser={:?}", params_deser);
-            assert_eq!(params, params_deser);
+            test_serialization!(SecretKey<<Bls12_381 as PairingEngine>::Fr>, sk);
         };
     }
 
@@ -531,6 +401,33 @@ mod tests {
             let params_2 = $params::<Bls12_381>::new::<Blake2b>(&label_2, $message_count);
             assert_ne!(params_1, params_2);
         };
+    }
+
+    macro_rules! test_keypair {
+        ($keypair:ident, $public_key:ident, $params:ident) => {
+            let params = $params::<Bls12_381>::new::<Blake2b>("test".as_bytes(), 5);
+            let seed = [0, 1, 2, 10, 11];
+
+            let sk = SecretKey::generate_using_seed::<Blake2b>(&seed);
+            assert_eq!(sk, SecretKey::generate_using_seed::<Blake2b>(&seed));
+
+            let pk = $public_key::<Bls12_381>::generate_using_secret_key(&sk, &params);
+
+            let keypair = $keypair::<Bls12_381>::generate_using_seed::<Blake2b>(&seed, &params);
+            assert_eq!(
+                keypair,
+                $keypair {
+                    secret_key: sk,
+                    public_key: pk
+                }
+            );
+        };
+    }
+
+    #[test]
+    fn keypair() {
+        test_keypair!(KeypairG2, PublicKeyG2, SignatureParamsG1);
+        test_keypair!(KeypairG1, PublicKeyG1, SignatureParamsG2);
     }
 
     #[test]

@@ -18,6 +18,10 @@ use ark_std::{
     vec,
     vec::Vec,
 };
+use dock_crypto_utils::serde_utils::*;
+
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -448,8 +452,11 @@ where
 }
 
 /// Published by the accumulator manager to allow witness updates without secret info. Defined in section 4.1 of the paper
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Omega<G: AffineCurve>(pub Vec<G>);
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct Omega<G: AffineCurve>(#[serde_as(as = "Vec<AffineGroupBytes>")] pub Vec<G>);
 
 impl<G> Omega<G>
 where
