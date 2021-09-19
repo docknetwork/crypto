@@ -320,8 +320,8 @@ pub struct MembershipSchnorrCommit<E: PairingEngine>(pub SchnorrCommit<E>);
 pub struct MembershipSchnorrResponse<F: PrimeField + SquareRootField>(pub SchnorrResponse<F>);
 
 /// Proof of knowledge of the member and the membership witness
-
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 pub struct MembershipProof<E: PairingEngine> {
     pub randomized_witness: MembershipRandomizedWitness<E::G1Affine>,
     pub schnorr_commit: MembershipSchnorrCommit<E>,
@@ -399,6 +399,7 @@ pub struct NonMembershipSchnorrResponse<F: PrimeField + SquareRootField> {
 }
 
 /// Proof of knowledge of the non-member and the non-membership witness
+
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct NonMembershipProof<E: PairingEngine> {
     pub randomized_witness: NonMembershipRandomizedWitness<E::G1Affine>,
