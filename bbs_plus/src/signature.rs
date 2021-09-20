@@ -107,9 +107,9 @@ macro_rules! impl_signature_struct {
         pub struct $name<E: PairingEngine> {
             #[serde_as(as = "AffineGroupBytes")]
             pub A: E::$group,
-            #[serde_as(as = "ScalarFieldBytes")]
+            #[serde_as(as = "FieldBytes")]
             pub e: E::Fr,
-            #[serde_as(as = "ScalarFieldBytes")]
+            #[serde_as(as = "FieldBytes")]
             pub s: E::Fr,
         }
     };

@@ -59,24 +59,5 @@ pub mod tests {
             let deser = serde_json::from_str::<$obj_type>(&ser).unwrap();
             assert_eq!($obj, deser);
         };
-
-        // Temporarily omit JSON serialization for some types
-        ($obj_type:ty, $obj: expr, $skip: ident) => {
-            let mut serz = vec![];
-            CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
-            let deserz: $obj_type = CanonicalDeserialize::deserialize(&serz[..]).unwrap();
-            assert_eq!(deserz, $obj);
-
-            let mut serz = vec![];
-            $obj.serialize_unchecked(&mut serz).unwrap();
-            let deserz: $obj_type = CanonicalDeserialize::deserialize_unchecked(&serz[..]).unwrap();
-            assert_eq!(deserz, $obj);
-
-            let mut serz = vec![];
-            $obj.serialize_uncompressed(&mut serz).unwrap();
-            let deserz: $obj_type =
-                CanonicalDeserialize::deserialize_uncompressed(&serz[..]).unwrap();
-            assert_eq!(deserz, $obj);
-        };
     }
 }

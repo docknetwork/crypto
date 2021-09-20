@@ -456,7 +456,7 @@ pub struct MembershipWitness<G: AffineCurve>(#[serde_as(as = "AffineGroupBytes")
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct NonMembershipWitness<G: AffineCurve> {
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub d: G::ScalarField,
     #[serde_as(as = "AffineGroupBytes")]
     pub C: G,
