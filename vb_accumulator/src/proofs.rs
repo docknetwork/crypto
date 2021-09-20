@@ -122,7 +122,10 @@ pub struct ProvingKey<G: AffineCurve> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipProvingKey<G: AffineCurve>(pub ProvingKey<G>);
+pub struct MembershipProvingKey<G: AffineCurve>(
+    #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
+    pub  ProvingKey<G>,
+);
 
 /// Used between prover and verifier only to prove knowledge of non-member and corresponding witness
 #[serde_as]
@@ -130,6 +133,7 @@ pub struct MembershipProvingKey<G: AffineCurve>(pub ProvingKey<G>);
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct NonMembershipProvingKey<G: AffineCurve> {
+    #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
     pub XYZ: ProvingKey<G>,
     #[serde_as(as = "AffineGroupBytes")]
     pub K: G,
@@ -296,45 +300,82 @@ pub struct SchnorrResponse<F: PrimeField + SquareRootField> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipRandomizedWitness<G: AffineCurve>(pub RandomizedWitness<G>);
+pub struct MembershipRandomizedWitness<G: AffineCurve>(
+    #[serde(
+        bound = "RandomizedWitness<G>: Serialize, for<'a> RandomizedWitness<G>: Deserialize<'a>"
+    )]
+    pub RandomizedWitness<G>,
+);
 
 /// Blindings used during membership proof protocol
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipBlindings<F: PrimeField + SquareRootField>(pub Blindings<F>);
+pub struct MembershipBlindings<F: PrimeField + SquareRootField>(
+    #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
+    pub  Blindings<F>,
+);
 
 /// Commitments from various Schnorr protocols used during membership proof protocol
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipSchnorrCommit<E: PairingEngine>(pub SchnorrCommit<E>);
+pub struct MembershipSchnorrCommit<E: PairingEngine>(
+    #[serde(bound = "SchnorrCommit<E>: Serialize, for<'a> SchnorrCommit<E>: Deserialize<'a>")]
+    pub  SchnorrCommit<E>,
+);
 
 /// Responses from various Schnorr protocols used during membership proof protocol
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipSchnorrResponse<F: PrimeField + SquareRootField>(pub SchnorrResponse<F>);
+pub struct MembershipSchnorrResponse<F: PrimeField + SquareRootField>(
+    #[serde(bound = "SchnorrResponse<F>: Serialize, for<'a> SchnorrResponse<F>: Deserialize<'a>")]
+    pub SchnorrResponse<F>,
+);
 
 /// Proof of knowledge of the member and the membership witness
 #[serde_as]
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct MembershipProof<E: PairingEngine> {
+    #[serde(
+        bound = "MembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> MembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
+    )]
     pub randomized_witness: MembershipRandomizedWitness<E::G1Affine>,
+    #[serde(
+        bound = "MembershipSchnorrCommit<E>: Serialize, for<'a> MembershipSchnorrCommit<E>: Deserialize<'a>"
+    )]
     pub schnorr_commit: MembershipSchnorrCommit<E>,
+    #[serde(
+        bound = "MembershipSchnorrResponse<E::Fr>: Serialize, for<'a> MembershipSchnorrResponse<E::Fr>: Deserialize<'a>"
+    )]
     pub schnorr_response: MembershipSchnorrResponse<E::Fr>,
 }
 
 /// Protocol for proving knowledge of the member and the membership witness
-
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct MembershipProofProtocol<E: PairingEngine> {
+    #[serde_as(as = "ScalarFieldBytes")]
     pub element: E::Fr,
+    #[serde(
+        bound = "MembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> MembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
+    )]
     pub randomized_witness: MembershipRandomizedWitness<E::G1Affine>,
+    #[serde(
+        bound = "MembershipSchnorrCommit<E>: Serialize, for<'a> MembershipSchnorrCommit<E>: Deserialize<'a>"
+    )]
     pub schnorr_commit: MembershipSchnorrCommit<E>,
+    #[serde(
+        bound = "MembershipSchnorrResponse<E::Fr>: Serialize, for<'a> MembershipSchnorrResponse<E::Fr>: Deserialize<'a>"
+    )]
     pub schnorr_blindings: MembershipBlindings<E::Fr>,
 }
 
@@ -344,6 +385,9 @@ pub struct MembershipProofProtocol<E: PairingEngine> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct NonMembershipRandomizedWitness<G: AffineCurve> {
+    #[serde(
+        bound = "RandomizedWitness<G>: Serialize, for<'a> RandomizedWitness<G>: Deserialize<'a>"
+    )]
     pub C: RandomizedWitness<G>,
     #[serde_as(as = "AffineGroupBytes")]
     pub E_d: G,
@@ -357,6 +401,7 @@ pub struct NonMembershipRandomizedWitness<G: AffineCurve> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct NonMembershipBlindings<F: PrimeField + SquareRootField> {
+    #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
     pub C: Blindings<F>,
     #[serde_as(as = "ScalarFieldBytes")]
     pub tau: F,
@@ -376,6 +421,7 @@ pub struct NonMembershipBlindings<F: PrimeField + SquareRootField> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct NonMembershipSchnorrCommit<E: PairingEngine> {
+    #[serde(bound = "SchnorrCommit<E>: Serialize, for<'a> SchnorrCommit<E>: Deserialize<'a>")]
     pub C: SchnorrCommit<E>,
     #[serde_as(as = "AffineGroupBytes")]
     pub R_A: E::G1Affine,
@@ -389,6 +435,7 @@ pub struct NonMembershipSchnorrCommit<E: PairingEngine> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct NonMembershipSchnorrResponse<F: PrimeField + SquareRootField> {
+    #[serde(bound = "SchnorrResponse<F>: Serialize, for<'a> SchnorrResponse<F>: Deserialize<'a>")]
     pub C: SchnorrResponse<F>,
     #[serde_as(as = "ScalarFieldBytes")]
     pub s_u: F,
@@ -399,23 +446,46 @@ pub struct NonMembershipSchnorrResponse<F: PrimeField + SquareRootField> {
 }
 
 /// Proof of knowledge of the non-member and the non-membership witness
-
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct NonMembershipProof<E: PairingEngine> {
+    #[serde(
+        bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
+    )]
     pub randomized_witness: NonMembershipRandomizedWitness<E::G1Affine>,
+    #[serde(
+        bound = "NonMembershipSchnorrCommit<E>: Serialize, for<'a> NonMembershipSchnorrCommit<E>: Deserialize<'a>"
+    )]
     pub schnorr_commit: NonMembershipSchnorrCommit<E>,
+    #[serde(
+        bound = "NonMembershipBlindings<E::Fr>: Serialize, for<'a> NonMembershipBlindings<E::Fr>: Deserialize<'a>"
+    )]
     pub schnorr_response: NonMembershipSchnorrResponse<E::Fr>,
 }
 
 /// Protocol for proving knowledge of the non-member and the non-membership witness
-
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct NonMembershipProofProtocol<E: PairingEngine> {
+    #[serde_as(as = "ScalarFieldBytes")]
     pub element: E::Fr,
-
+    #[serde_as(as = "ScalarFieldBytes")]
     pub d: E::Fr,
+    #[serde(
+        bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
+    )]
     pub randomized_witness: NonMembershipRandomizedWitness<E::G1Affine>,
+    #[serde(
+        bound = "NonMembershipSchnorrCommit<E>: Serialize, for<'a> NonMembershipSchnorrCommit<E>: Deserialize<'a>"
+    )]
     pub schnorr_commit: NonMembershipSchnorrCommit<E>,
+    #[serde(
+        bound = "NonMembershipBlindings<E::Fr>: Serialize, for<'a> NonMembershipBlindings<E::Fr>: Deserialize<'a>"
+    )]
     pub schnorr_blindings: NonMembershipBlindings<E::Fr>,
 }
 
@@ -1249,8 +1319,7 @@ mod tests {
 
         test_serialization!(
             MembershipProvingKey<<Bls12_381 as PairingEngine>::G1Affine>,
-            prk,
-            skip
+            prk
         );
 
         let mut elems = vec![];
@@ -1289,7 +1358,7 @@ mod tests {
             );
             proof_create_duration += start.elapsed();
 
-            test_serialization!(MembershipProofProtocol<Bls12_381>, protocol, skip);
+            test_serialization!(MembershipProofProtocol<Bls12_381>, protocol);
 
             let mut chal_bytes_prover = vec![];
             protocol
@@ -1309,7 +1378,7 @@ mod tests {
             proof_create_duration += start.elapsed();
 
             // Proof can be serialized
-            test_serialization!(MembershipProof<Bls12_381>, proof, skip);
+            test_serialization!(MembershipProof<Bls12_381>, proof);
 
             let mut chal_bytes_verifier = vec![];
             proof
@@ -1361,8 +1430,7 @@ mod tests {
 
         test_serialization!(
             NonMembershipProvingKey<<Bls12_381 as PairingEngine>::G1Affine>,
-            prk,
-            skip
+            prk
         );
 
         let mut elems = vec![];
@@ -1406,7 +1474,7 @@ mod tests {
             );
             proof_create_duration += start.elapsed();
 
-            test_serialization!(NonMembershipProofProtocol<Bls12_381>, protocol, skip);
+            test_serialization!(NonMembershipProofProtocol<Bls12_381>, protocol);
 
             let mut chal_bytes_prover = vec![];
             protocol
@@ -1440,7 +1508,7 @@ mod tests {
 
             assert_eq!(challenge_prover, challenge_verifier);
 
-            test_serialization!(NonMembershipProof<Bls12_381>, proof, skip);
+            test_serialization!(NonMembershipProof<Bls12_381>, proof);
 
             let start = Instant::now();
             proof

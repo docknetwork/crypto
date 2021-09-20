@@ -88,7 +88,7 @@ pub struct UniversalAccumulator<E: PairingEngine> {
     pub V: E::G1Affine,
     /// This is f_V(alpha) and is the discrete log of `V` wrt. P from setup parameters. Accumulator
     /// manager persists it for efficient computation of non-membership witnesses
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub f_V: E::Fr,
     /// The maximum elements the accumulator can store
     pub max_size: u64,

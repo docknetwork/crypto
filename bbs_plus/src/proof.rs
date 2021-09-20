@@ -85,11 +85,11 @@ pub struct PoKOfSignatureG1Protocol<E: PairingEngine> {
     pub d: E::G1Affine,
     /// For proving relation a_bar / d == a_prime^{-e} * h_0^r2
     pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
-    #[serde_as(as = "[ScalarFieldBytes; 2]")]
+    #[serde_as(as = "[FieldBytes; 2]")]
     sc_wits_1: [E::Fr; 2],
     /// For proving relation g1 * h1^m1 * h2^m2.... for all disclosed messages m_i == d^r3 * h_0^{-s_prime} * h1^-m1 * h2^-m2.... for all undisclosed messages m_i
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
-    #[serde_as(as = "Vec<ScalarFieldBytes>")]
+    #[serde_as(as = "Vec<FieldBytes>")]
     sc_wits_2: Vec<E::Fr>,
 }
 

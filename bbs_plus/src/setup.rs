@@ -59,7 +59,7 @@ use serde_with::serde_as;
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct SecretKey<F: PrimeField + SquareRootField>(#[serde_as(as = "ScalarFieldBytes")] pub F);
+pub struct SecretKey<F: PrimeField + SquareRootField>(#[serde_as(as = "FieldBytes")] pub F);
 
 // TODO: Add "prepared" version of public key
 

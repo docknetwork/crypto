@@ -48,7 +48,7 @@ pub trait SchnorrChallengeContributor {
 )]
 pub struct SchnorrCommitment<G: AffineCurve> {
     /// Randomness. 1 per discrete log
-    #[serde_as(as = "Vec<ScalarFieldBytes>")]
+    #[serde_as(as = "Vec<FieldBytes>")]
     pub blindings: Vec<G::ScalarField>,
     /// The commitment to all the randomnesses
     #[serde_as(as = "AffineGroupBytes")]
@@ -105,7 +105,7 @@ where
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct SchnorrResponse<G: AffineCurve>(
-    #[serde_as(as = "Vec<ScalarFieldBytes>")] pub Vec<G::ScalarField>,
+    #[serde_as(as = "Vec<FieldBytes>")] pub Vec<G::ScalarField>,
 );
 
 impl<G> SchnorrResponse<G>
@@ -172,9 +172,9 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
         pub struct $protocol_name<G: AffineCurve> {
             #[serde_as(as = "AffineGroupBytes")]
             pub t: G,
-            #[serde_as(as = "ScalarFieldBytes")]
+            #[serde_as(as = "FieldBytes")]
             blinding: G::ScalarField,
-            #[serde_as(as = "ScalarFieldBytes")]
+            #[serde_as(as = "FieldBytes")]
             witness: G::ScalarField,
         }
 
@@ -192,7 +192,7 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
         pub struct $proof_name<G: AffineCurve> {
             #[serde_as(as = "AffineGroupBytes")]
             pub t: G,
-            #[serde_as(as = "ScalarFieldBytes")]
+            #[serde_as(as = "FieldBytes")]
             pub response: G::ScalarField,
         }
 
