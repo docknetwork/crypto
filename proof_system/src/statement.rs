@@ -17,13 +17,18 @@ use vb_accumulator::{
     setup::{PublicKey as AccumPublicKey, SetupParams as AccumParams},
 };
 
+use dock_crypto_utils::serde_utils::*;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
 use crate::impl_collection;
 
 /// Reference to a witness described as the tuple (`statement_id`, `witness_id`)
 pub type WitnessRef = (usize, usize);
 
 /// Type of proof and the public (known to both prover and verifier) values for the proof
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[serde_as]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Statement<E: PairingEngine, G: AffineCurve> {
     /// Proof of knowledge of BBS+ signature
     PoKBBSSignatureG1(PoKBBSSignatureG1<E>),
@@ -36,56 +41,79 @@ pub enum Statement<E: PairingEngine, G: AffineCurve> {
 }
 
 /// Statement describing relation between statements
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MetaStatement {
     WitnessEquality(EqualWitnesses),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 pub struct MetaStatements(pub Vec<MetaStatement>);
 
 // impl_collection!(Statements, Statement);
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Statements<E, G>(pub Vec<Statement<E, G>>)
+#[serde_as]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+pub struct Statements<E, G>(
+    // #[serde(bound = "Vec<Statement<E, G>>: Serialize, for<'a> Vec<Statement<E, G>>: Deserialize<'a>")] pub Vec<Statement<E, G>>
+    pub Vec<Statement<E, G>>
+)
 where
     E: PairingEngine,
     G: AffineCurve;
 
 /// Public values like setup params, public key and revealed messages for proving knowledge of BBS+ signature.
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct PoKBBSSignatureG1<E: PairingEngine> {
+    #[serde(bound = "BBSSignatureParamsG1<E>: Serialize, for<'a> BBSSignatureParamsG1<E>: Deserialize<'a>")]
     pub params: BBSSignatureParamsG1<E>,
+    #[serde(bound = "BBSPublicKeyG2<E>: Serialize, for<'a> BBSPublicKeyG2<E>: Deserialize<'a>")]
     pub public_key: BBSPublicKeyG2<E>,
     /// Messages being revealed.
+    #[serde_as(as = "BTreeMap<_, FieldBytes>")]
     pub revealed_messages: BTreeMap<usize, E::Fr>,
 }
 
 /// Public values like setup params, public key, proving key and accumulator for proving membership
 /// in positive and universal accumulator.
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct AccumulatorMembership<E: PairingEngine> {
     pub params: AccumParams<E>,
     pub public_key: AccumPublicKey<E::G2Affine>,
     pub proving_key: MembershipProvingKey<E::G1Affine>,
+    #[serde_as(as = "AffineGroupBytes")]
     pub accumulator_value: E::G1Affine,
 }
 
 /// Public values like setup params, public key, proving key and accumulator for proving non-membership
 /// in universal accumulator.
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct AccumulatorNonMembership<E: PairingEngine> {
     pub params: AccumParams<E>,
     pub public_key: AccumPublicKey<E::G2Affine>,
     pub proving_key: NonMembershipProvingKey<E::G1Affine>,
+    #[serde_as(as = "AffineGroupBytes")]
     pub accumulator_value: E::G1Affine,
 }
 
 /// Proving knowledge of scalars `s_i` in Pedersen commitment `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct PedersenCommitment<G: AffineCurve> {
     /// The bases `g_i` in `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
+    #[serde_as(as = "Vec<AffineGroupBytes>")]
     pub bases: Vec<G>,
     /// The Pedersen commitment `C` in `g_i` in `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
+    #[serde_as(as = "AffineGroupBytes")]
     pub commitment: G,
 }
 
@@ -99,7 +127,9 @@ pub struct PedersenCommitment<G: AffineCurve> {
 /// eq.insert((1, 5));
 /// let eq_w = EqualWitnesses(vec![eq]);
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct EqualWitnesses(pub Vec<BTreeSet<WitnessRef>>);
 
 impl MetaStatements {
@@ -207,20 +237,20 @@ mod serialization {
         fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
             match self {
                 Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialize(&mut writer)?;
-                    s.serialize(&mut writer)
+                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
                 }
                 Self::AccumulatorMembership(s) => {
-                    1u8.serialize(&mut writer)?;
-                    s.serialize(&mut writer)
+                    CanonicalSerialize::serialize(&1u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
                 }
                 Self::AccumulatorNonMembership(s) => {
-                    2u8.serialize(&mut writer)?;
-                    s.serialize(&mut writer)
+                    CanonicalSerialize::serialize(&2u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
                 }
                 Self::PedersenCommitment(s) => {
-                    3u8.serialize(&mut writer)?;
-                    s.serialize(&mut writer)
+                    CanonicalSerialize::serialize(&3u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
                 }
             }
         }
@@ -293,18 +323,19 @@ mod serialization {
 
     impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for Statement<E, G> {
         fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize(&mut reader)? {
+            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
+            match t {
                 0u8 => Ok(Self::PoKBBSSignatureG1(
-                    PoKBBSSignatureG1::<E>::deserialize(&mut reader)?,
+                    CanonicalDeserialize::deserialize(&mut reader)?
                 )),
                 1u8 => Ok(Self::AccumulatorMembership(
-                    AccumulatorMembership::<E>::deserialize(&mut reader)?,
+                    CanonicalDeserialize::deserialize(&mut reader)?
                 )),
                 2u8 => Ok(Self::AccumulatorNonMembership(
-                    AccumulatorNonMembership::<E>::deserialize(&mut reader)?,
+                    CanonicalDeserialize::deserialize(&mut reader)?
                 )),
                 3u8 => Ok(Self::PedersenCommitment(
-                    PedersenCommitment::<G>::deserialize(&mut reader)?,
+                    CanonicalDeserialize::deserialize(&mut reader)?
                 )),
                 _ => Err(SerializationError::InvalidData),
             }
@@ -351,8 +382,8 @@ mod serialization {
         fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
             match self {
                 Self::WitnessEquality(s) => {
-                    0u8.serialize(&mut writer)?;
-                    s.serialize(&mut writer)
+                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
                 }
             }
         }
@@ -393,10 +424,11 @@ mod serialization {
 
     impl CanonicalDeserialize for MetaStatement {
         fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize(&mut reader)? {
-                0u8 => Ok(Self::WitnessEquality(EqualWitnesses::deserialize(
-                    &mut reader,
-                )?)),
+            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
+            match t {
+                0u8 => Ok(Self::WitnessEquality(
+                    CanonicalDeserialize::deserialize(&mut reader)?
+                )),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -418,5 +450,31 @@ mod serialization {
                 _ => Err(SerializationError::InvalidData),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_std::{
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
+    use crate::test_utils::{sig_setup, setup_positive_accum, setup_universal_accum};
+    use crate::test_serialization;
+    use ark_bls12_381::Bls12_381;
+
+    #[test]
+    fn serialization_deserialization() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let (msgs_1, params_1, keypair_1, sig_1) = sig_setup(&mut rng, 5);
+
+        let mut statements: Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine> = Statements::new();
+        statements.add(PoKBBSSignatureG1::new_as_statement(
+            params_1.clone(),
+            keypair_1.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
     }
 }
