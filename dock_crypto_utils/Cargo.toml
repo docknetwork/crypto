@@ -1,5 +1,5 @@
 [package]
-name = "dock-crypto-utils"
+name = "dock_crypto_utils"
 version = "0.1.0"
 edition = "2018"
 authors = ["Dock.io"]
@@ -10,7 +10,6 @@ repository = "https://github.com/docknetwork/crypto"
 [lib]
 doctest = false
 path = "src/lib.rs"
-#crate-type = ["cdylib", "lib"]
 
 [dependencies]
 ark-ff = { version = "^0.3.0", default-features = false }

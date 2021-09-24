@@ -1,9 +1,9 @@
 use ark_ec::AffineCurve;
 use ark_ff::{Field, PrimeField, SquareRootField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_std::{fmt, io, marker::PhantomData, string::ToString, vec, vec::Vec};
 use serde::de::{SeqAccess, Visitor};
-use serde::{Deserializer, Serializer};
+use serde::{Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 
 pub struct FieldBytes;
@@ -138,4 +138,26 @@ impl<'de, G: AffineCurve> DeserializeAs<'de, G> for AffineGroupBytes {
         }
         deserializer.deserialize_seq(GVisitor::<G>(PhantomData))
     }
+}
+
+#[derive(Serialize)]
+#[serde(remote = "SerializationError")]
+pub enum ArkSerializationError {
+    /// During serialization, we didn't have enough space to write extra info.
+    NotEnoughSpace,
+    /// During serialization, the data was invalid.
+    InvalidData,
+    /// During serialization, non-empty flags were given where none were
+    /// expected.
+    UnexpectedFlags,
+    /// During serialization, we countered an I/O error.
+    #[serde(serialize_with = "io_error_string")]
+    IoError(io::Error),
+}
+
+fn io_error_string<S>(error: &io::Error, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&error.to_string())
 }

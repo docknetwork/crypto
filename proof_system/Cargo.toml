@@ -22,7 +22,7 @@ rayon = { version = "1", optional = true }
 bbs_plus = { version = "0.3.0", default-features = false, path = "../bbs_plus" }
 schnorr_pok = { version = "0.3.0", default-features = false, path = "../schnorr_pok" }
 vb_accumulator = { version = "0.3.0", default-features = false, path = "../vb_accumulator" }
-dock-crypto-utils = { version = "0.1.0", default-features = false, path = "../dock-crypto-utils" }
+dock_crypto_utils = { version = "0.1.0", default-features = false, path = "../dock_crypto_utils" }
 
 [dev-dependencies]
 ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
@@ -30,6 +30,6 @@ blake2 = { version = "0.9", default-features = false }
 
 [features]
 default = [ "std", "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock-crypto-utils/std" ]
-print-trace = [ "ark-std/print-trace", "schnorr_pok/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace", "dock-crypto-utils/print-trace" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std" ]
+print-trace = [ "ark-std/print-trace", "schnorr_pok/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace", "dock_crypto_utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel" ]

@@ -4,9 +4,11 @@
 
 use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
+use dock_crypto_utils::serde_utils::ArkSerializationError;
 use schnorr_pok::error::SchnorrError;
+use serde::Serialize;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum VBAccumulatorError {
     /// Element not allowed in the accumulator
     ProhibitedElement,
@@ -28,6 +30,7 @@ pub enum VBAccumulatorError {
     PairingResponseInvalid,
     E_d_ResponseInvalid,
     E_d_inv_ResponseInvalid,
+    #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
 }

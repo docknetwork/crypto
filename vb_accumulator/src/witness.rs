@@ -2,7 +2,7 @@
 #![allow(non_camel_case_types)]
 
 //! Protocols for updating single or a batch of membership and non-membership witnesses with and
-//! without using the secret key. Described in sections 2 and 6 of the paper
+//! without using the secret key. Described in sections 2, 3 and 6 of the paper
 //! # Examples
 //!
 //! ```

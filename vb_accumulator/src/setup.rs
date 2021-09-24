@@ -29,7 +29,7 @@
 //! ```
 
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{to_bytes, PrimeField, SquareRootField};
+use ark_ff::{to_bytes, PrimeField, SquareRootField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     fmt::Debug,
@@ -123,6 +123,11 @@ where
         .into();
         Self { P, P_tilde }
     }
+
+    /// Params shouldn't be 0
+    pub fn is_valid(&self) -> bool {
+        !self.P.is_zero() && !self.P_tilde.is_zero()
+    }
 }
 
 impl<E> Keypair<E>
@@ -190,12 +195,28 @@ mod tests {
     fn keypair() {
         // Same seed generates same keypair
         let params = SetupParams::<Bls12_381>::new::<Blake2b>("test".as_bytes());
+        assert!(params.is_valid());
+        let mut invalid_params = params.clone();
+        invalid_params.P = <Bls12_381 as PairingEngine>::G1Affine::zero();
+        assert!(!invalid_params.is_valid());
+        let mut invalid_params = params.clone();
+        invalid_params.P_tilde = <Bls12_381 as PairingEngine>::G2Affine::zero();
+        assert!(!invalid_params.is_valid());
+        let mut invalid_params = params.clone();
+        invalid_params.P = <Bls12_381 as PairingEngine>::G1Affine::zero();
+        invalid_params.P_tilde = <Bls12_381 as PairingEngine>::G2Affine::zero();
+        assert!(!invalid_params.is_valid());
+
         let seed = vec![0, 1, 4, 6, 2, 10];
 
         let sk = SecretKey::generate_using_seed::<Blake2b>(&seed);
         assert_eq!(sk, SecretKey::generate_using_seed::<Blake2b>(&seed));
 
         let pk = Keypair::public_key_from_secret_key(&sk, &params);
+        assert!(pk.is_valid());
+        let mut invalid_pk = pk.clone();
+        invalid_pk.0 = <Bls12_381 as PairingEngine>::G2Affine::zero();
+        assert!(!invalid_pk.is_valid());
 
         let keypair = Keypair::generate_using_seed::<Blake2b>(&seed, &params);
         assert_eq!(

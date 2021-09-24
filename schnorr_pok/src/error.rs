@@ -2,12 +2,15 @@
 
 use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
+use dock_crypto_utils::serde_utils::ArkSerializationError;
+use serde::Serialize;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum SchnorrError {
     ExpectedSameSizeSequences(usize, usize),
     IndexOutOfBounds(usize, usize),
     InvalidResponse,
+    #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
 }
 
