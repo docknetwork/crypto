@@ -1,5 +1,5 @@
 use crate::error::ProofSystemError;
-use crate::proof::StatementProof;
+use crate::proof::{PedersenCommitmentProof, StatementProof};
 use crate::statement::{
     AccumulatorMembership, AccumulatorNonMembership, PedersenCommitment, PoKBBSSignatureG1,
 };
@@ -399,7 +399,9 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
         }
         let commitment = self.commitment.take().unwrap();
         let responses = commitment.response(self.witnesses.as_ref().unwrap(), &challenge)?;
-        Ok(StatementProof::PedersenCommitment(commitment.t, responses))
+        Ok(StatementProof::PedersenCommitment(
+            PedersenCommitmentProof::new(commitment.t, responses),
+        ))
     }
 
     pub fn verify_proof_contribution<E: PairingEngine>(
@@ -408,11 +410,11 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
         proof: &StatementProof<E, G>,
     ) -> Result<(), ProofSystemError> {
         match proof {
-            StatementProof::PedersenCommitment(t, resp) => {
-                resp.is_valid(
+            StatementProof::PedersenCommitment(p) => {
+                p.response.is_valid(
                     self.statement.bases.as_slice(),
                     &self.statement.commitment,
-                    t,
+                    &p.t,
                     challenge,
                 )?;
                 Ok(())

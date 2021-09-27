@@ -27,8 +27,8 @@ use crate::impl_collection;
 pub type WitnessRef = (usize, usize);
 
 /// Type of proof and the public (known to both prover and verifier) values for the proof
-#[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub enum Statement<E: PairingEngine, G: AffineCurve> {
     /// Proof of knowledge of BBS+ signature
     PoKBBSSignatureG1(PoKBBSSignatureG1<E>),
@@ -52,14 +52,11 @@ pub enum MetaStatement {
 pub struct MetaStatements(pub Vec<MetaStatement>);
 
 // impl_collection!(Statements, Statement);
-#[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct Statements<E, G>(
-    // #[serde(bound = "Vec<Statement<E, G>>: Serialize, for<'a> Vec<Statement<E, G>>: Deserialize<'a>")] pub Vec<Statement<E, G>>
-    pub Vec<Statement<E, G>>,
-)
+#[serde(bound = "")]
+pub struct Statements<E, G>(pub Vec<Statement<E, G>>)
 where
     E: PairingEngine,
     G: AffineCurve;
@@ -69,12 +66,9 @@ where
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct PoKBBSSignatureG1<E: PairingEngine> {
-    #[serde(
-        bound = "BBSSignatureParamsG1<E>: Serialize, for<'a> BBSSignatureParamsG1<E>: Deserialize<'a>"
-    )]
     pub params: BBSSignatureParamsG1<E>,
-    #[serde(bound = "BBSPublicKeyG2<E>: Serialize, for<'a> BBSPublicKeyG2<E>: Deserialize<'a>")]
     pub public_key: BBSPublicKeyG2<E>,
     /// Messages being revealed.
     #[serde_as(as = "BTreeMap<_, FieldBytes>")]
@@ -87,6 +81,7 @@ pub struct PoKBBSSignatureG1<E: PairingEngine> {
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct AccumulatorMembership<E: PairingEngine> {
     pub params: AccumParams<E>,
     pub public_key: AccumPublicKey<E::G2Affine>,
@@ -101,6 +96,7 @@ pub struct AccumulatorMembership<E: PairingEngine> {
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct AccumulatorNonMembership<E: PairingEngine> {
     pub params: AccumParams<E>,
     pub public_key: AccumPublicKey<E::G2Affine>,
@@ -114,6 +110,7 @@ pub struct AccumulatorNonMembership<E: PairingEngine> {
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct PedersenCommitment<G: AffineCurve> {
     /// The bases `g_i` in `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
     #[serde_as(as = "Vec<AffineGroupBytes>")]
@@ -465,23 +462,81 @@ mod tests {
     use crate::test_serialization;
     use crate::test_utils::{setup_positive_accum, setup_universal_accum, sig_setup};
     use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{fr::Fr, g1::G1Projective as G1Proj};
+    use ark_ec::msm::VariableBaseMSM;
+    use ark_ec::ProjectiveCurve;
+    use ark_ff::fields::PrimeField;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
+    use vb_accumulator::prelude::Accumulator;
 
     #[test]
-    fn serialization_deserialization() {
+    fn statement_serialization_deserialization() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let (msgs_1, params_1, keypair_1, sig_1) = sig_setup(&mut rng, 5);
+        let (_, params_1, keypair_1, _) = sig_setup(&mut rng, 5);
+        let (pos_params, pos_keypair, pos_accumulator, _) = setup_positive_accum(&mut rng);
+        let (uni_params, uni_keypair, uni_accumulator, _, _) = setup_universal_accum(&mut rng, 100);
+        let mem_prk =
+            MembershipProvingKey::<<Bls12_381 as PairingEngine>::G1Affine>::generate_using_rng(
+                &mut rng,
+            );
+        let non_mem_prk =
+            NonMembershipProvingKey::<<Bls12_381 as PairingEngine>::G1Affine>::generate_using_rng(
+                &mut rng,
+            );
 
         let mut statements: Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine> =
             Statements::new();
-        statements.add(PoKBBSSignatureG1::new_as_statement(
+
+        let stmt_1 = PoKBBSSignatureG1::new_as_statement(
             params_1.clone(),
             keypair_1.public_key.clone(),
             BTreeMap::new(),
-        ));
+        );
+        test_serialization!(Statement<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, stmt_1);
+
+        statements.add(stmt_1);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+
+        let stmt_2 =
+            AccumulatorMembership::new_as_statement::<<Bls12_381 as PairingEngine>::G1Affine>(
+                pos_params.clone(),
+                pos_keypair.public_key.clone(),
+                mem_prk.clone(),
+                pos_accumulator.value().clone(),
+            );
+        test_serialization!(Statement<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, stmt_2);
+
+        statements.add(stmt_2);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+
+        let stmt_3 =
+            AccumulatorNonMembership::new_as_statement::<<Bls12_381 as PairingEngine>::G1Affine>(
+                uni_params.clone(),
+                uni_keypair.public_key.clone(),
+                non_mem_prk.clone(),
+                uni_accumulator.value().clone(),
+            );
+        test_serialization!(Statement<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, stmt_3);
+
+        statements.add(stmt_3);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+
+        let bases = (0..5)
+            .map(|_| G1Proj::rand(&mut rng).into_affine())
+            .collect::<Vec<_>>();
+        let scalars = (0..5).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
+        let commitment = VariableBaseMSM::multi_scalar_mul(
+            &bases,
+            &scalars.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
+        )
+        .into_affine();
+        let stmt_4 = Statement::PedersenCommitment(PedersenCommitment { bases, commitment });
+        test_serialization!(Statement<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, stmt_4);
+
+        statements.add(stmt_4);
         test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
     }
 }

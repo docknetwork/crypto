@@ -33,42 +33,18 @@
 #[macro_use]
 pub mod util;
 pub mod error;
-// pub mod proof;
+pub mod proof;
 pub mod statement;
-// pub mod sub_protocols;
-// pub mod witness;
+pub mod sub_protocols;
+pub mod witness;
 #[cfg(test)]
 #[macro_use]
 mod test_utils;
 
 pub mod prelude {
     pub use crate::error::ProofSystemError;
-    // pub use crate::proof::*;
+    pub use crate::proof::*;
     pub use crate::statement::*;
-    // pub use crate::sub_protocols::*;
-    // pub use crate::witness::*;
+    pub use crate::sub_protocols::*;
+    pub use crate::witness::*;
 }
-
-/*#[cfg(test)]
-#[macro_use]
-pub mod tests {
-    #[macro_export]
-    macro_rules! test_serialization {
-        ($obj_type:ident, $obj: ident) => {
-            let mut serz = vec![];
-            $obj.serialize(&mut serz).unwrap();
-            assert_eq!($obj_type::deserialize(&serz[..]).unwrap(), $obj);
-
-            let mut serz = vec![];
-            $obj.serialize_unchecked(&mut serz).unwrap();
-            assert_eq!($obj_type::deserialize_unchecked(&serz[..]).unwrap(), $obj);
-
-            let mut serz = vec![];
-            $obj.serialize_uncompressed(&mut serz).unwrap();
-            assert_eq!(
-                $obj_type::deserialize_uncompressed(&serz[..]).unwrap(),
-                $obj
-            );
-        };
-    }
-}*/

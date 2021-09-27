@@ -1,21 +1,17 @@
-use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
-use ark_ec::PairingEngine;
+use ark_bls12_381::fr::Fr;
+use ark_bls12_381::Bls12_381;
 use ark_std::{
-    rand::{rngs::StdRng, RngCore, SeedableRng},
+    rand::{rngs::StdRng, RngCore},
     UniformRand,
 };
 use bbs_plus::setup::{KeypairG2, SignatureParamsG1};
 use bbs_plus::signature::SignatureG1;
-use blake2::Blake2b;
 use std::collections::HashSet;
 use std::hash::Hash;
 use vb_accumulator::persistence::{InitialElementsStore, State, UniversalAccumulatorState};
-use vb_accumulator::positive::{Accumulator, PositiveAccumulator};
-use vb_accumulator::proofs::{MembershipProvingKey, NonMembershipProvingKey};
+use vb_accumulator::positive::PositiveAccumulator;
 use vb_accumulator::setup::{Keypair, SetupParams};
 use vb_accumulator::universal::UniversalAccumulator;
-
-type Fr = <Bls12_381 as PairingEngine>::Fr;
 
 pub fn sig_setup<R: RngCore>(
     rng: &mut R,

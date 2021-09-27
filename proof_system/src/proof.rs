@@ -30,32 +30,70 @@ use digest::Digest;
 use schnorr_pok::SchnorrResponse;
 
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
+use dock_crypto_utils::serde_utils::*;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 pub use serialization::*;
 
 /// Proof corresponding to one `Statement`
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub enum StatementProof<E: PairingEngine, G: AffineCurve> {
     PoKBBSSignatureG1(PoKOfSignatureG1Proof<E>),
     AccumulatorMembership(MembershipProof<E>),
     AccumulatorNonMembership(NonMembershipProof<E>),
-    PedersenCommitment(G, SchnorrResponse<G>),
+    PedersenCommitment(PedersenCommitmentProof<G>),
+}
+
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct PedersenCommitmentProof<G: AffineCurve> {
+    #[serde_as(as = "AffineGroupBytes")]
+    pub t: G,
+    pub response: SchnorrResponse<G>,
+}
+
+impl<G: AffineCurve> PedersenCommitmentProof<G> {
+    pub fn new(t: G, response: SchnorrResponse<G>) -> Self {
+        Self { t, response }
+    }
 }
 
 /// Describes the relations that need to proven. This is known to the prover and verifier and must
 /// be agreed upon before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
     pub statements: Statements<E, G>,
     pub meta_statements: MetaStatements,
 }
 
 /// Created by the prover and verified by the verifier
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct Proof<E: PairingEngine, G: AffineCurve, F: PrimeField + SquareRootField, D: Digest>(
     pub Vec<StatementProof<E, G>>,
     PhantomData<F>,
     PhantomData<D>,
 );
+
+impl<E: PairingEngine, G: AffineCurve, F: PrimeField + SquareRootField, D: Digest> PartialEq
+    for Proof<E, G, F, D>
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<E: PairingEngine, G: AffineCurve, F: PrimeField + SquareRootField, D: Digest> Eq
+    for Proof<E, G, F, D>
+{
+}
 
 impl<E, G> ProofSpec<E, G>
 where
@@ -370,11 +408,11 @@ where
                     }
                 },
                 Statement::PedersenCommitment(s) => match proof {
-                    StatementProof::PedersenCommitment(t, resp) => {
+                    StatementProof::PedersenCommitment(p) => {
                         for i in 0..s.bases.len() {
                             for j in 0..witness_equalities.len() {
                                 if witness_equalities[j].contains(&(s_idx, i)) {
-                                    let r = resp.get_response(i)?;
+                                    let r = p.response.get_response(i)?;
                                     Self::check_response_for_equality(
                                         s_idx,
                                         i,
@@ -389,7 +427,7 @@ where
                         SchnorrProtocol::compute_challenge_contribution(
                             &s.bases,
                             &s.commitment,
-                            t,
+                            &p.t,
                             &mut challenge_bytes,
                         )?;
                     }
@@ -456,7 +494,7 @@ where
                     }
                 },
                 Statement::PedersenCommitment(s) => match proof {
-                    StatementProof::PedersenCommitment(ref _t, ref _resp) => {
+                    StatementProof::PedersenCommitment(ref _p) => {
                         let sp = SchnorrProtocol::new(s_idx, s);
                         sp.verify_proof_contribution(&challenge, &proof)?
                     }
@@ -507,21 +545,20 @@ mod serialization {
         fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
             match self {
                 Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialize(&mut writer)?;
-                    s.serialize(&mut writer)
+                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
                 }
                 Self::AccumulatorMembership(s) => {
-                    1u8.serialize(&mut writer)?;
-                    s.serialize(&mut writer)
+                    CanonicalSerialize::serialize(&1u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
                 }
                 Self::AccumulatorNonMembership(s) => {
-                    2u8.serialize(&mut writer)?;
-                    s.serialize(&mut writer)
+                    CanonicalSerialize::serialize(&2u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
                 }
-                Self::PedersenCommitment(t, r) => {
-                    3u8.serialize(&mut writer)?;
-                    t.serialize(&mut writer)?;
-                    r.serialize(&mut writer)
+                Self::PedersenCommitment(s) => {
+                    CanonicalSerialize::serialize(&3u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
                 }
             }
         }
@@ -531,9 +568,7 @@ mod serialization {
                 Self::PoKBBSSignatureG1(s) => 0u8.serialized_size() + s.serialized_size(),
                 Self::AccumulatorMembership(s) => 1u8.serialized_size() + s.serialized_size(),
                 Self::AccumulatorNonMembership(s) => 2u8.serialized_size() + s.serialized_size(),
-                Self::PedersenCommitment(t, r) => {
-                    3u8.serialized_size() + t.serialized_size() + r.serialized_size()
-                }
+                Self::PedersenCommitment(s) => 3u8.serialized_size() + s.serialized_size(),
             }
         }
 
@@ -554,10 +589,9 @@ mod serialization {
                     2u8.serialize_uncompressed(&mut writer)?;
                     s.serialize_uncompressed(&mut writer)
                 }
-                Self::PedersenCommitment(t, r) => {
+                Self::PedersenCommitment(s) => {
                     3u8.serialize_uncompressed(&mut writer)?;
-                    t.serialize_uncompressed(&mut writer)?;
-                    r.serialize_uncompressed(&mut writer)
+                    s.serialize_uncompressed(&mut writer)
                 }
             }
         }
@@ -576,10 +610,9 @@ mod serialization {
                     2u8.serialize_unchecked(&mut writer)?;
                     s.serialize_unchecked(&mut writer)
                 }
-                Self::PedersenCommitment(t, r) => {
+                Self::PedersenCommitment(s) => {
                     3u8.serialize_unchecked(&mut writer)?;
-                    t.serialize_unchecked(&mut writer)?;
-                    r.serialize_unchecked(&mut writer)
+                    s.serialize_unchecked(&mut writer)
                 }
             }
         }
@@ -591,29 +624,27 @@ mod serialization {
                 Self::AccumulatorNonMembership(s) => {
                     2u8.uncompressed_size() + s.uncompressed_size()
                 }
-                Self::PedersenCommitment(t, r) => {
-                    3u8.uncompressed_size() + t.uncompressed_size() + r.uncompressed_size()
-                }
+                Self::PedersenCommitment(s) => 3u8.uncompressed_size() + s.uncompressed_size(),
             }
         }
     }
 
     impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for StatementProof<E, G> {
         fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize(&mut reader)? {
-                0u8 => Ok(Self::PoKBBSSignatureG1(
-                    PoKOfSignatureG1Proof::<E>::deserialize(&mut reader)?,
-                )),
+            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
+            match t {
+                0u8 => Ok(Self::PoKBBSSignatureG1(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
                 1u8 => Ok(Self::AccumulatorMembership(
-                    MembershipProof::<E>::deserialize(&mut reader)?,
+                    CanonicalDeserialize::deserialize(&mut reader)?,
                 )),
                 2u8 => Ok(Self::AccumulatorNonMembership(
-                    NonMembershipProof::<E>::deserialize(&mut reader)?,
+                    CanonicalDeserialize::deserialize(&mut reader)?,
                 )),
-                3u8 => Ok(Self::PedersenCommitment(
-                    G::deserialize(&mut reader)?,
-                    SchnorrResponse::<G>::deserialize(&mut reader)?,
-                )),
+                3u8 => Ok(Self::PedersenCommitment(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -630,8 +661,7 @@ mod serialization {
                     NonMembershipProof::<E>::deserialize_uncompressed(&mut reader)?,
                 )),
                 3u8 => Ok(Self::PedersenCommitment(
-                    G::deserialize(&mut reader)?,
-                    SchnorrResponse::<G>::deserialize(&mut reader)?,
+                    PedersenCommitmentProof::<G>::deserialize_uncompressed(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
             }
@@ -649,8 +679,7 @@ mod serialization {
                     NonMembershipProof::<E>::deserialize_unchecked(&mut reader)?,
                 )),
                 3u8 => Ok(Self::PedersenCommitment(
-                    G::deserialize(&mut reader)?,
-                    SchnorrResponse::<G>::deserialize(&mut reader)?,
+                    PedersenCommitmentProof::<G>::deserialize_unchecked(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
             }
@@ -678,18 +707,13 @@ mod tests {
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use bbs_plus::setup::{KeypairG2, SignatureParamsG1};
     use bbs_plus::signature::SignatureG1;
     use blake2::Blake2b;
-    use std::collections::HashSet;
-    use std::hash::Hash;
-    use vb_accumulator::persistence::{InitialElementsStore, State, UniversalAccumulatorState};
-    use vb_accumulator::positive::{Accumulator, PositiveAccumulator};
+    use vb_accumulator::positive::Accumulator;
     use vb_accumulator::proofs::{MembershipProvingKey, NonMembershipProvingKey};
-    use vb_accumulator::setup::{Keypair, SetupParams};
-    use vb_accumulator::universal::UniversalAccumulator;
 
     use crate::test_serialization;
+    use crate::test_utils::{setup_positive_accum, setup_universal_accum, sig_setup};
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
     type ProofG1 = Proof<Bls12_381, G1Affine, Fr, Blake2b>;
@@ -777,14 +801,14 @@ mod tests {
                 .collect::<BTreeSet<(usize, usize)>>(),
         ])));
 
-        test_serialization!(Statements, statements);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
         test_serialization!(MetaStatements, meta_statements);
 
         // Create a proof spec, this is shared between prover and verifier
         let proof_spec =
             ProofSpec::new_with_statements_and_meta_statements(statements, meta_statements);
 
-        test_serialization!(ProofSpec, proof_spec);
+        test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
 
         // Prover now creates/loads it witnesses corresponding to the proof spec
         let mut witnesses = Witnesses::new();
@@ -797,7 +821,7 @@ mod tests {
             unrevealed_msgs_2.clone(),
         ));
 
-        test_serialization!(Witnesses, witnesses);
+        test_serialization!(Witnesses<Bls12_381>, witnesses);
 
         // Prover now creates the proof using the proof spec and witnesses. This will be sent to the verifier
         // Context must be known to both prover and verifier
@@ -810,6 +834,7 @@ mod tests {
             .verify(proof_spec.clone(), "random...".as_bytes())
             .is_err());
 
+        test_serialization!(ProofG1, proof);
         // Verifier verifies the proof
         proof.verify(proof_spec, context).unwrap();
     }
@@ -881,13 +906,21 @@ mod tests {
         .into_iter()
         .collect::<BTreeSet<(usize, usize)>>()])));
 
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+        test_serialization!(MetaStatements, meta_statements);
+        test_serialization!(Witnesses<Bls12_381>, witnesses);
+
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements,
         };
 
+        test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        test_serialization!(ProofG1, proof);
 
         proof.verify(proof_spec.clone(), context).unwrap();
 
@@ -996,13 +1029,21 @@ mod tests {
         .into_iter()
         .collect::<BTreeSet<(usize, usize)>>()])));
 
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+        test_serialization!(MetaStatements, meta_statements);
+        test_serialization!(Witnesses<Bls12_381>, witnesses);
+
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements,
         };
 
+        test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        test_serialization!(ProofG1, proof);
 
         proof.verify(proof_spec, context).unwrap();
 
@@ -1057,13 +1098,21 @@ mod tests {
         .into_iter()
         .collect::<BTreeSet<(usize, usize)>>()])));
 
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+        test_serialization!(MetaStatements, meta_statements);
+        test_serialization!(Witnesses<Bls12_381>, witnesses);
+
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements,
         };
 
+        test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        test_serialization!(ProofG1, proof);
 
         proof.verify(proof_spec, context).unwrap();
 
@@ -1115,7 +1164,7 @@ mod tests {
                 .collect::<BTreeSet<(usize, usize)>>(),
         ])));
 
-        test_serialization!(Statements, statements);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
         test_serialization!(MetaStatements, meta_statements);
 
         let mut witnesses = Witnesses::new();
@@ -1136,17 +1185,19 @@ mod tests {
             witness: non_mem_wit.clone(),
         }));
 
-        test_serialization!(Witnesses, witnesses);
+        test_serialization!(Witnesses<Bls12_381>, witnesses);
 
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements,
         };
 
-        test_serialization!(ProofSpec, proof_spec);
+        test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
 
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        test_serialization!(ProofG1, proof);
 
         proof.verify(proof_spec, context).unwrap();
     }
@@ -1189,7 +1240,7 @@ mod tests {
             commitment: commitment_2.clone(),
         }));
 
-        test_serialization!(Statements, statements);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
 
         let mut meta_statements = MetaStatements::new();
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
@@ -1205,17 +1256,19 @@ mod tests {
         witnesses.add(Witness::PedersenCommitment(scalars_1.clone()));
         witnesses.add(Witness::PedersenCommitment(scalars_2.clone()));
 
-        test_serialization!(Witnesses, witnesses);
+        test_serialization!(Witnesses<Bls12_381>, witnesses);
 
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements: meta_statements.clone(),
         };
 
-        test_serialization!(ProofSpec, proof_spec);
+        test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
 
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        test_serialization!(ProofG1, proof);
 
         proof.verify(proof_spec, context).unwrap();
 
@@ -1309,6 +1362,8 @@ mod tests {
             commitment: commitment.clone(),
         }));
 
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+
         let mut meta_statements = MetaStatements::new();
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
             vec![(0, 0), (1, 1)] // 0th statement's 0th witness is equal to 1st statement's 1st witness
@@ -1324,6 +1379,8 @@ mod tests {
             meta_statements: meta_statements.clone(),
         };
 
+        test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
             sig.clone(),
@@ -1331,8 +1388,12 @@ mod tests {
         ));
         witnesses.add(Witness::PedersenCommitment(scalars.clone()));
 
+        test_serialization!(Witnesses<Bls12_381>, witnesses);
+
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        test_serialization!(ProofG1, proof);
 
         proof.verify(proof_spec, context).unwrap();
 
@@ -1403,16 +1464,24 @@ mod tests {
             commitment: commitment.clone(),
         }));
 
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements: MetaStatements::new(),
         };
 
+        test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+
         let mut witnesses = Witnesses::new();
         witnesses.add(Witness::PedersenCommitment(committed_msgs));
 
+        test_serialization!(Witnesses<Bls12_381>, witnesses);
+
         let context = "test".as_bytes();
         let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+
+        test_serialization!(ProofG1, proof);
 
         proof.verify(proof_spec, context).unwrap();
 
