@@ -1,9 +1,9 @@
 use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
+use ark_ec::PairingEngine;
 use ark_std::{
-    rand::{rngs::StdRng, SeedableRng, RngCore},
+    rand::{rngs::StdRng, RngCore, SeedableRng},
     UniformRand,
 };
-use ark_ec::PairingEngine;
 use bbs_plus::setup::{KeypairG2, SignatureParamsG1};
 use bbs_plus::signature::SignatureG1;
 use blake2::Blake2b;
@@ -32,8 +32,7 @@ pub fn sig_setup<R: RngCore>(
         .collect();
     let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, message_count);
     let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
-    let sig =
-        SignatureG1::<Bls12_381>::new(rng, &messages, &keypair.secret_key, &params).unwrap();
+    let sig = SignatureG1::<Bls12_381>::new(rng, &messages, &keypair.secret_key, &params).unwrap();
     sig.verify(&messages, &keypair.public_key, &params).unwrap();
     (messages, params, keypair, sig)
 }
@@ -156,8 +155,7 @@ macro_rules! test_serialization {
 
         let mut serz = vec![];
         $obj.serialize_uncompressed(&mut serz).unwrap();
-        let deserz: $obj_type =
-            CanonicalDeserialize::deserialize_uncompressed(&serz[..]).unwrap();
+        let deserz: $obj_type = CanonicalDeserialize::deserialize_uncompressed(&serz[..]).unwrap();
         assert_eq!(deserz, $obj);
 
         // Test JSON serialization

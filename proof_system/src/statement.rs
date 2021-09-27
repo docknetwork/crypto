@@ -46,15 +46,19 @@ pub enum MetaStatement {
     WitnessEquality(EqualWitnesses),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct MetaStatements(pub Vec<MetaStatement>);
 
 // impl_collection!(Statements, Statement);
 #[serde_as]
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct Statements<E, G>(
     // #[serde(bound = "Vec<Statement<E, G>>: Serialize, for<'a> Vec<Statement<E, G>>: Deserialize<'a>")] pub Vec<Statement<E, G>>
-    pub Vec<Statement<E, G>>
+    pub Vec<Statement<E, G>>,
 )
 where
     E: PairingEngine,
@@ -66,7 +70,9 @@ where
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct PoKBBSSignatureG1<E: PairingEngine> {
-    #[serde(bound = "BBSSignatureParamsG1<E>: Serialize, for<'a> BBSSignatureParamsG1<E>: Deserialize<'a>")]
+    #[serde(
+        bound = "BBSSignatureParamsG1<E>: Serialize, for<'a> BBSSignatureParamsG1<E>: Deserialize<'a>"
+    )]
     pub params: BBSSignatureParamsG1<E>,
     #[serde(bound = "BBSPublicKeyG2<E>: Serialize, for<'a> BBSPublicKeyG2<E>: Deserialize<'a>")]
     pub public_key: BBSPublicKeyG2<E>,
@@ -325,18 +331,18 @@ mod serialization {
         fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
             let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
             match t {
-                0u8 => Ok(Self::PoKBBSSignatureG1(
-                    CanonicalDeserialize::deserialize(&mut reader)?
-                )),
+                0u8 => Ok(Self::PoKBBSSignatureG1(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
                 1u8 => Ok(Self::AccumulatorMembership(
-                    CanonicalDeserialize::deserialize(&mut reader)?
+                    CanonicalDeserialize::deserialize(&mut reader)?,
                 )),
                 2u8 => Ok(Self::AccumulatorNonMembership(
-                    CanonicalDeserialize::deserialize(&mut reader)?
+                    CanonicalDeserialize::deserialize(&mut reader)?,
                 )),
-                3u8 => Ok(Self::PedersenCommitment(
-                    CanonicalDeserialize::deserialize(&mut reader)?
-                )),
+                3u8 => Ok(Self::PedersenCommitment(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -426,9 +432,9 @@ mod serialization {
         fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
             let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
             match t {
-                0u8 => Ok(Self::WitnessEquality(
-                    CanonicalDeserialize::deserialize(&mut reader)?
-                )),
+                0u8 => Ok(Self::WitnessEquality(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -456,20 +462,21 @@ mod serialization {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_serialization;
+    use crate::test_utils::{setup_positive_accum, setup_universal_accum, sig_setup};
+    use ark_bls12_381::Bls12_381;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use crate::test_utils::{sig_setup, setup_positive_accum, setup_universal_accum};
-    use crate::test_serialization;
-    use ark_bls12_381::Bls12_381;
 
     #[test]
     fn serialization_deserialization() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let (msgs_1, params_1, keypair_1, sig_1) = sig_setup(&mut rng, 5);
 
-        let mut statements: Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine> = Statements::new();
+        let mut statements: Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine> =
+            Statements::new();
         statements.add(PoKBBSSignatureG1::new_as_statement(
             params_1.clone(),
             keypair_1.public_key.clone(),

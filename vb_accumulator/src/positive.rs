@@ -2,8 +2,7 @@
 
 //! Positive accumulator that support single as well as batched additions, removals and generating
 //! membership witness for single or a multiple elements at once. Described in section 2 of the paper.
-//! Creating proof of knowledge of signature and verifying it:
-//! # Examples
+//! Creating accumulator, adding/removing from it, creating and verifying membership witness:
 //!
 //! ```
 //! use ark_bls12_381::Bls12_381;
@@ -62,6 +61,17 @@
 //!             )
 //!             .unwrap();
 //!
+//! // Above methods to update accumulator and generate witness require access to `State`. In cases when its
+//! // not possible to provide access to `State`, use methods starting with `compute_` to compute the required
+//! // value.
+//!
+//! // Adding an element. Assume that `State` has been checked for the absence of `new_elem`
+//! let new = accumulator.compute_new_post_add(&new_elem, &keypair.secret_key);
+//!
+//! // Initialize accumulator from above update. Assume that `new_elem` will be added to the `State`
+//! let new_accumulator = PositiveAccumulator::from_value(new);
+//!
+//! // Similarly, `compute_new_post_remove`, `compute_new_post_add_batch`, `compute_membership_witness`, etc
 //! ```
 
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
@@ -89,7 +99,9 @@ use crate::witness::MembershipWitness;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-/// Accumulator supporting only membership proofs
+/// Accumulator supporting only membership proofs. For more docs, check [`Accumulator`]
+///
+/// [`Accumulator`]: crate::positive::Accumulator
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -99,6 +111,20 @@ pub struct PositiveAccumulator<E: PairingEngine>(
 );
 
 /// Trait to hold common functionality among both positive and universal accumulator
+/// Methods changing or reading accumulator state take a mutable or immutable reference to `State` which
+/// is a trait that should be implemented by a persistent database that tracks the accumulator's members.
+/// Methods starting with `compute_` (or `_compute_` for common logic between Positive and Universal
+/// accumulator) do not depend on `State` and contain the logic only for that operation. This is useful
+/// when it is not possible to make the persistent database available to this code like when writing a WASM
+/// wrapper or when the persistent database cannot be made to satisfy one or functions of the trait `State`.
+/// Eg. function `_add` is used when adding a new element to the accumulator, it checks if the new element
+/// is not already part of the `State` and if not, computes the new accumulator and adds the element
+/// to the `State` but function `_compute_new_post_add` only computes the new accumulator, it does not
+/// modify (check or add) the `State` and hence does not need the reference to it. However, note that it
+/// is important to do the required checks and updates in `State`, eg. just by using `_compute_new_post_add`,
+/// a membership witness can be created for an element not present in the accumulator that will satisfy the
+/// verification (pairing) equation and thus make `verify_membership` return true. Thus, before creating
+/// a membership witness, `State` should be checked.
 pub trait Accumulator<E: PairingEngine> {
     /// The accumulated value of all the members. It is considered a digest of state of the accumulator
     fn value(&self) -> &E::G1Affine;
@@ -128,7 +154,20 @@ pub trait Accumulator<E: PairingEngine> {
         Ok(())
     }
 
-    /// Common code for adding a single member in both accumulators. Described in section 2 of the paper
+    /// Compute new accumulated value after addition. Described in section 2 of the paper
+    fn _compute_new_post_add(
+        &self,
+        element: &E::Fr,
+        sk: &SecretKey<E::Fr>,
+    ) -> (E::Fr, E::G1Affine) {
+        // (element + sk) * self.V
+        let y_plus_alpha = *element + sk.0;
+        let newV = self.value().mul(y_plus_alpha.into_repr()).into_affine();
+        (y_plus_alpha, newV)
+    }
+
+    /// Common code for adding a single member in both accumulators. Reads and writes to state. Described
+    /// in section 2 of the paper
     fn _add(
         &self,
         element: E::Fr,
@@ -136,16 +175,26 @@ pub trait Accumulator<E: PairingEngine> {
         state: &mut dyn State<E::Fr>,
     ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
         self.check_before_add(&element, state)?;
-        // (element + sk) * self.V
-        let y_plus_alpha = element + sk.0;
-        let newV = self.value().mul(y_plus_alpha.into_repr());
-
+        let t = self._compute_new_post_add(&element, sk);
         state.add(element);
-
-        Ok((y_plus_alpha, newV.into_affine()))
+        Ok(t)
     }
 
-    /// Common code for adding a batch of members in both accumulators. Described in section 2 of the paper
+    /// Compute new accumulated value after batch addition. Described in section 3 of the paper
+    fn _compute_new_post_add_batch(
+        &self,
+        elements: &[E::Fr],
+        sk: &SecretKey<E::Fr>,
+    ) -> (E::Fr, E::G1Affine) {
+        // d_A(-alpha)
+        let d_alpha = Poly_d::<E::Fr>::eval_direct(&elements, &-sk.0);
+        // d_A(-alpha) * self.V
+        let newV = self.value().mul(d_alpha.into_repr()).into_affine();
+        (d_alpha, newV)
+    }
+
+    /// Common code for adding a batch of members in both accumulators. Reads and writes to state. Described
+    /// in section 3 of the paper
     fn _add_batch(
         &self,
         elements: Vec<E::Fr>,
@@ -155,19 +204,27 @@ pub trait Accumulator<E: PairingEngine> {
         for element in elements.iter() {
             self.check_before_add(&element, state)?;
         }
-        // d_A(-alpha)
-        let d_alpha = Poly_d::<E::Fr>::eval_direct(&elements, &-sk.0);
-        // d_A(-alpha) * self.V
-        let newV = self.value().mul(d_alpha.into_repr());
-
+        let t = self._compute_new_post_add_batch(&elements, sk);
         for element in elements {
             state.add(element);
         }
-
-        Ok((d_alpha, newV.into_affine()))
+        Ok(t)
     }
 
-    /// Common code for removing a single member from both accumulators. Described in section 2 of the paper
+    /// Compute new accumulated value after removal. Described in section 2 of the paper
+    fn _compute_new_post_remove(
+        &self,
+        element: &E::Fr,
+        sk: &SecretKey<E::Fr>,
+    ) -> (E::Fr, E::G1Affine) {
+        // 1/(element + sk) * self.V
+        let y_plus_alpha_inv = (*element + sk.0).inverse().unwrap(); // Unwrap is fine as element has to equal secret key for it to panic
+        let newV = self.value().mul(y_plus_alpha_inv.into_repr()).into_affine();
+        (y_plus_alpha_inv, newV)
+    }
+
+    /// Common code for removing a single member from both accumulators. Reads and writes to state.
+    /// Described in section 2 of the paper
     fn _remove(
         &self,
         element: &E::Fr,
@@ -175,16 +232,26 @@ pub trait Accumulator<E: PairingEngine> {
         state: &mut dyn State<E::Fr>,
     ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
         self.check_before_remove(&element, state)?;
-        // 1/(element + sk) * self.V
-        let y_plus_alpha_inv = (*element + sk.0).inverse().unwrap(); // Unwrap is fine as element has to equal secret key for it to panic
-        let newV = self.value().mul(y_plus_alpha_inv.into_repr());
-
+        let t = self._compute_new_post_remove(element, sk);
         state.remove(&element);
-
-        Ok((y_plus_alpha_inv, newV.into_affine()))
+        Ok(t)
     }
 
-    /// Common code for removing a batch of members from both accumulators. Described in section 3 of the paper
+    /// Compute new accumulated value after batch removals. Described in section 3 of the paper
+    fn _compute_new_post_remove_batch(
+        &self,
+        elements: &[E::Fr],
+        sk: &SecretKey<E::Fr>,
+    ) -> (E::Fr, E::G1Affine) {
+        // 1/d_D(-alpha) * self.V
+        let d_alpha = Poly_d::<E::Fr>::eval_direct(&elements, &-sk.0);
+        let d_alpha_inv = d_alpha.inverse().unwrap(); // Unwrap is fine as 1 or more elements has to equal secret key for it to panic
+        let newV = self.value().mul(d_alpha_inv.into_repr()).into_affine();
+        (d_alpha_inv, newV)
+    }
+
+    /// Common code for removing a batch of members from both accumulators. Reads and writes to state.
+    /// Described in section 3 of the paper
     fn _remove_batch(
         &self,
         elements: &[E::Fr],
@@ -194,18 +261,35 @@ pub trait Accumulator<E: PairingEngine> {
         for element in elements {
             self.check_before_remove(&element, state)?;
         }
-        // 1/d_D(-alpha) * self.V
-        let d_alpha = Poly_d::<E::Fr>::eval_direct(&elements, &-sk.0);
-        let d_alpha_inv = d_alpha.inverse().unwrap(); // Unwrap is fine as 1 or more elements has to equal secret key for it to panic
-        let newV = self.value().mul(d_alpha_inv.into_repr());
-
+        let t = self._compute_new_post_remove_batch(elements, sk);
         for element in elements {
             state.remove(element);
         }
-        Ok((d_alpha_inv, newV.into_affine()))
+        Ok(t)
     }
 
-    /// Common code for adding and removing batches (1 batch each) of elements in both accumulators. Described in section 3 of the paper
+    /// Compute new accumulated value after batch additions and removals. Described in section 3 of the paper
+    fn _compute_new_post_batch_updates(
+        &self,
+        additions: &[E::Fr],
+        removals: &[E::Fr],
+        sk: &SecretKey<E::Fr>,
+    ) -> (E::Fr, E::G1Affine) {
+        // d_A(-alpha)/d_D(-alpha) * self.V
+        let d_alpha_add = Poly_d::<E::Fr>::eval_direct(&additions, &-sk.0);
+        let d_alpha = if removals.len() > 0 {
+            let d_alpha_rem = Poly_d::<E::Fr>::eval_direct(removals, &-sk.0);
+            let d_alpha_rem_inv = d_alpha_rem.inverse().unwrap(); // Unwrap is fine as 1 or more elements has to equal secret key for it to panic
+            d_alpha_add * d_alpha_rem_inv
+        } else {
+            d_alpha_add
+        };
+        let newV = self.value().mul(d_alpha.into_repr()).into_affine();
+        (d_alpha, newV)
+    }
+
+    /// Common code for adding and removing batches (1 batch each) of elements in both accumulators.
+    /// Reads and writes to state. Described in section 3 of the paper
     fn _batch_updates(
         &self,
         additions: Vec<E::Fr>,
@@ -219,25 +303,26 @@ pub trait Accumulator<E: PairingEngine> {
         for element in removals {
             self.check_before_remove(&element, state)?;
         }
-
-        // d_A(-alpha)/d_D(-alpha) * self.V
-        let d_alpha_add = Poly_d::<E::Fr>::eval_direct(&additions, &-sk.0);
-        let d_alpha = if removals.len() > 0 {
-            let d_alpha_rem = Poly_d::<E::Fr>::eval_direct(removals, &-sk.0);
-            let d_alpha_rem_inv = d_alpha_rem.inverse().unwrap(); // Unwrap is fine as 1 or more elements has to equal secret key for it to panic
-            d_alpha_add * d_alpha_rem_inv
-        } else {
-            d_alpha_add
-        };
-        let newV = self.value().mul(d_alpha.into_repr());
-
+        let t = self._compute_new_post_batch_updates(&additions, removals, sk);
         for element in additions {
             state.add(element);
         }
         for element in removals {
             state.remove(element);
         }
-        Ok((d_alpha, newV.into_affine()))
+        Ok(t)
+    }
+
+    /// Compute membership witness
+    fn compute_membership_witness(
+        &self,
+        element: &E::Fr,
+        sk: &SecretKey<E::Fr>,
+    ) -> MembershipWitness<E::G1Affine> {
+        // 1/(element + sk) * self.V
+        let y_plus_alpha_inv = (*element + sk.0).inverse().unwrap();
+        let witness = self.value().mul(y_plus_alpha_inv.into_repr());
+        MembershipWitness(witness.into_affine())
     }
 
     /// Get membership witness for an element present in accumulator. Described in section 2 of the paper
@@ -250,12 +335,25 @@ pub trait Accumulator<E: PairingEngine> {
         if !state.has(element) {
             return Err(VBAccumulatorError::ElementAbsent);
         }
+        Ok(self.compute_membership_witness(element, sk))
+    }
 
-        // 1/(element + sk) * self.V
-        let y_plus_alpha_inv = (*element + sk.0).inverse().unwrap();
-        let witness = self.value().mul(y_plus_alpha_inv.into_repr());
-
-        Ok(MembershipWitness(witness.into_affine()))
+    /// Compute membership witness for batch
+    fn compute_membership_witness_for_batch(
+        &self,
+        elements: &[E::Fr],
+        sk: &SecretKey<E::Fr>,
+    ) -> Vec<MembershipWitness<E::G1Affine>> {
+        // For each element in `elements`, compute 1/(element + sk)
+        let mut y_sk: Vec<E::Fr> = iter!(elements).map(|e| *e + sk.0).collect();
+        batch_inversion(&mut y_sk);
+        MembershipWitness::projective_points_to_membership_witnesses(
+            multiply_field_elems_refs_with_same_group_elem(
+                4,
+                self.value().into_projective(),
+                y_sk.iter(),
+            ),
+        )
     }
 
     /// Get membership witnesses for multiple elements present in accumulator. Returns witnesses in the
@@ -272,20 +370,7 @@ pub trait Accumulator<E: PairingEngine> {
                 return Err(VBAccumulatorError::ElementAbsent);
             }
         }
-
-        // For each element in `elements`, compute 1/(element + sk)
-        let mut y_sk: Vec<E::Fr> = iter!(elements).map(|e| *e + sk.0).collect();
-        batch_inversion(&mut y_sk);
-
-        Ok(
-            MembershipWitness::projective_points_to_membership_witnesses(
-                multiply_field_elems_refs_with_same_group_elem(
-                    4,
-                    self.value().into_projective(),
-                    y_sk.iter(),
-                ),
-            ),
-        )
+        Ok(self.compute_membership_witness_for_batch(elements, sk))
     }
 
     /// Check if element present in accumulator. Described in section 2 of the paper
@@ -299,14 +384,17 @@ pub trait Accumulator<E: PairingEngine> {
         // e(witness, element*P_tilde + Q_tilde) == e(self.V, P_tilde) => e(witness, element*P_tilde + Q_tilde) * e(self.V, P_tilde)^-1 == 1
 
         // element * P_tilde
-        let mut P_tilde_times_y = params.P_tilde.into_projective();
-        P_tilde_times_y *= *element;
+        let mut P_tilde_times_y_plus_Q_tilde = params.P_tilde.into_projective();
+        P_tilde_times_y_plus_Q_tilde *= *element;
+
+        // element * P_tilde + Q_tilde
+        P_tilde_times_y_plus_Q_tilde.add_assign_mixed(&pk.0);
 
         // e(witness, element*P_tilde + Q_tilde) * e(self.V, -P_tilde) == 1
         E::product_of_pairings(&[
             (
                 E::G1Prepared::from(witness.0),
-                E::G2Prepared::from((P_tilde_times_y + pk.0.into_projective()).into_affine()),
+                E::G2Prepared::from(P_tilde_times_y_plus_Q_tilde.into_affine()),
             ),
             (
                 E::G1Prepared::from(*self.value()),
@@ -335,6 +423,11 @@ where
         Self(setup_params.P.clone())
     }
 
+    /// Compute new accumulated value after addition
+    pub fn compute_new_post_add(&self, element: &E::Fr, sk: &SecretKey<E::Fr>) -> E::G1Affine {
+        self._compute_new_post_add(element, sk).1
+    }
+
     /// Add an element to the accumulator and state
     pub fn add(
         &self,
@@ -344,6 +437,15 @@ where
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._add(element, sk, state)?;
         Ok(Self(acc_pub))
+    }
+
+    /// Compute new accumulated value after batch addition
+    pub fn compute_new_post_add_batch(
+        &self,
+        elements: &[E::Fr],
+        sk: &SecretKey<E::Fr>,
+    ) -> E::G1Affine {
+        self._compute_new_post_add_batch(elements, sk).1
     }
 
     /// Add a batch of members in the accumulator
@@ -357,6 +459,11 @@ where
         Ok(Self(acc_pub))
     }
 
+    /// Compute new accumulated value after removal
+    pub fn compute_new_post_remove(&self, element: &E::Fr, sk: &SecretKey<E::Fr>) -> E::G1Affine {
+        self._compute_new_post_remove(element, sk).1
+    }
+
     /// Remove an element from the accumulator and state
     pub fn remove(
         &self,
@@ -366,6 +473,15 @@ where
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._remove(element, sk, state)?;
         Ok(Self(acc_pub))
+    }
+
+    /// Compute new accumulated value after batch removal
+    pub fn compute_new_post_remove_batch(
+        &self,
+        elements: &[E::Fr],
+        sk: &SecretKey<E::Fr>,
+    ) -> E::G1Affine {
+        self._compute_new_post_remove_batch(elements, sk).1
     }
 
     /// Removing a batch of members from the accumulator
@@ -379,6 +495,17 @@ where
         Ok(Self(acc_pub))
     }
 
+    /// Compute new accumulated value after batch additions and removals
+    pub fn compute_new_post_batch_updates(
+        &self,
+        additions: &[E::Fr],
+        removals: &[E::Fr],
+        sk: &SecretKey<E::Fr>,
+    ) -> E::G1Affine {
+        self._compute_new_post_batch_updates(additions, removals, sk)
+            .1
+    }
+
     /// Adding and removing batches of elements from the accumulator
     pub fn batch_updates(
         &self,
@@ -389,6 +516,10 @@ where
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._batch_updates(additions, removals, sk, state)?;
         Ok(Self(acc_pub))
+    }
+
+    pub fn from_value(value: E::G1Affine) -> Self {
+        Self(value)
     }
 }
 
@@ -443,9 +574,11 @@ pub mod tests {
                 .is_err());
 
             assert!(!state.has(&elem));
+            let computed_new = accumulator.compute_new_post_add(&elem, &keypair.secret_key);
             accumulator = accumulator
                 .add(elem.clone(), &keypair.secret_key, &mut state)
                 .unwrap();
+            assert_eq!(computed_new, *accumulator.value());
             assert!(state.has(&elem));
 
             assert!(accumulator
@@ -458,6 +591,11 @@ pub mod tests {
             let mut expected_V = m_wit.0.into_projective();
             expected_V *= elem + keypair.secret_key.0;
             assert_eq!(expected_V, *accumulator.value());
+
+            assert_eq!(
+                accumulator.compute_membership_witness(&elem, &keypair.secret_key),
+                m_wit
+            );
 
             // Witness can be serialized
             test_serialization!(
@@ -473,9 +611,11 @@ pub mod tests {
 
         for elem in elems {
             assert!(state.has(&elem));
+            let computed_new = accumulator.compute_new_post_remove(&elem, &keypair.secret_key);
             accumulator = accumulator
                 .remove(&elem, &keypair.secret_key, &mut state)
                 .unwrap();
+            assert_eq!(computed_new, *accumulator.value());
             assert!(!state.has(&elem));
             assert!(accumulator
                 .get_membership_witness(&elem, &keypair.secret_key, &state)
@@ -518,18 +658,24 @@ pub mod tests {
         }
 
         // Adding empty batch does not change accumulator
+        let computed_new = accumulator_1.compute_new_post_add_batch(&[], &keypair.secret_key);
         let accumulator_same = accumulator_1
             .add_batch(vec![], &keypair.secret_key, &mut state_1)
             .unwrap();
         assert_eq!(*accumulator_1.value(), *accumulator_same.value());
+        assert_eq!(*accumulator_1.value(), computed_new);
 
         assert_ne!(*accumulator_1.value(), *accumulator_2.value());
+
         // Add as a batch
+        let computed_new =
+            accumulator_2.compute_new_post_add_batch(&additions, &keypair.secret_key);
         accumulator_2 = accumulator_2
             .add_batch(additions.clone(), &keypair.secret_key, &mut state_2)
             .unwrap();
         assert_eq!(*accumulator_1.value(), *accumulator_2.value());
         assert_eq!(state_1.db, state_2.db);
+        assert_eq!(computed_new, *accumulator_2.value());
 
         // Remove one by one
         for i in 0..removals.len() {
@@ -539,18 +685,24 @@ pub mod tests {
         }
 
         // Removing empty batch does not change accumulator
+        let computed_new = accumulator_1.compute_new_post_remove_batch(&[], &keypair.secret_key);
         let accumulator_same = accumulator_1
             .remove_batch(&[], &keypair.secret_key, &mut state_1)
             .unwrap();
         assert_eq!(*accumulator_1.value(), *accumulator_same.value());
+        assert_eq!(*accumulator_1.value(), computed_new);
 
         assert_ne!(*accumulator_1.value(), *accumulator_2.value());
+
         // Remove as a batch
+        let computed_new =
+            accumulator_2.compute_new_post_remove_batch(&removals, &keypair.secret_key);
         accumulator_2 = accumulator_2
             .remove_batch(&removals, &keypair.secret_key, &mut state_2)
             .unwrap();
         assert_eq!(*accumulator_1.value(), *accumulator_2.value());
         assert_eq!(state_1.db, state_2.db);
+        assert_eq!(computed_new, *accumulator_2.value());
 
         // Need to make `accumulator_3` same as `accumulator_1` and `accumulator_2` by doing batch addition and removal simultaneously.
         // To do the removals, first they need to be added to the accumulator and the additions elements need to be adjusted.
@@ -566,6 +718,11 @@ pub mod tests {
         assert_ne!(*accumulator_2.value(), *accumulator_3.value());
 
         // Add and remove in call as a batch
+        let computed_new = accumulator_3.compute_new_post_batch_updates(
+            &new_additions,
+            &removals,
+            &keypair.secret_key,
+        );
         accumulator_3 = accumulator_3
             .batch_updates(
                 new_additions.clone(),
@@ -578,6 +735,7 @@ pub mod tests {
         assert_eq!(*accumulator_2.value(), *accumulator_3.value());
         assert_eq!(state_1.db, state_3.db);
         assert_eq!(state_2.db, state_3.db);
+        assert_eq!(computed_new, *accumulator_3.value());
 
         let witnesses = accumulator_3
             .get_membership_witness_for_batch(&new_additions, &keypair.secret_key, &state_3)
@@ -590,15 +748,26 @@ pub mod tests {
                 &params
             ));
         }
+        assert_eq!(
+            accumulator_3.compute_membership_witness_for_batch(&new_additions, &keypair.secret_key),
+            witnesses
+        );
 
         // Add a batch
+        let computed_new =
+            accumulator_4.compute_new_post_batch_updates(&additions, &[], &keypair.secret_key);
         accumulator_4 = accumulator_4
             .batch_updates(additions.clone(), &[], &keypair.secret_key, &mut state_4)
             .unwrap();
+        assert_eq!(computed_new, *accumulator_4.value());
+
         // Remove a batch
+        let computed_new =
+            accumulator_4.compute_new_post_batch_updates(&[], &removals, &keypair.secret_key);
         accumulator_4 = accumulator_4
             .batch_updates(vec![], &removals, &keypair.secret_key, &mut state_4)
             .unwrap();
+        assert_eq!(computed_new, *accumulator_4.value());
         // Effect should be same as that of adding and removing them together
         assert_eq!(*accumulator_1.value(), *accumulator_4.value());
         assert_eq!(state_1.db, state_4.db);

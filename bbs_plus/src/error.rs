@@ -2,9 +2,11 @@
 
 use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
+use dock_crypto_utils::serde_utils::ArkSerializationError;
 use schnorr_pok::error::SchnorrError;
+use serde::Serialize;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum BBSPlusError {
     NoMessageToSign,
     MessageCountIncompatibleWithSigParams,
@@ -20,6 +22,7 @@ pub enum BBSPlusError {
     /// 2nd schnorr proof failed during verification of proof of knowledge of signature
     SecondSchnorrVerificationFailed,
     InvalidMsgIdxForResponse(usize),
+    #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
 }

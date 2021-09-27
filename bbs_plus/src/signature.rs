@@ -210,7 +210,8 @@ macro_rules! impl_signature_alg {
                 })
             }
 
-            fn is_valid(&self) -> bool {
+            /// Checks that the elliptic curve point in the signature is non-zero
+            pub fn is_non_zero(&self) -> bool {
                 !self.A.is_zero()
             }
 
@@ -236,7 +237,7 @@ macro_rules! impl_signature_alg {
                 if messages.len() != params.max_message_count() {
                     return Err(BBSPlusError::MessageCountIncompatibleWithSigParams);
                 }
-                if !self.is_valid() {
+                if !self.is_non_zero() {
                     return Err(BBSPlusError::ZeroSignature);
                 }
 
