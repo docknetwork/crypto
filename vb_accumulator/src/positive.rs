@@ -316,11 +316,11 @@ pub trait Accumulator<E: PairingEngine> {
     /// Compute membership witness
     fn compute_membership_witness(
         &self,
-        element: &E::Fr,
+        member: &E::Fr,
         sk: &SecretKey<E::Fr>,
     ) -> MembershipWitness<E::G1Affine> {
         // 1/(element + sk) * self.V
-        let y_plus_alpha_inv = (*element + sk.0).inverse().unwrap();
+        let y_plus_alpha_inv = (*member + sk.0).inverse().unwrap();
         let witness = self.value().mul(y_plus_alpha_inv.into_repr());
         MembershipWitness(witness.into_affine())
     }
@@ -328,24 +328,24 @@ pub trait Accumulator<E: PairingEngine> {
     /// Get membership witness for an element present in accumulator. Described in section 2 of the paper
     fn get_membership_witness(
         &self,
-        element: &E::Fr,
+        member: &E::Fr,
         sk: &SecretKey<E::Fr>,
         state: &dyn State<E::Fr>,
     ) -> Result<MembershipWitness<E::G1Affine>, VBAccumulatorError> {
-        if !state.has(element) {
+        if !state.has(member) {
             return Err(VBAccumulatorError::ElementAbsent);
         }
-        Ok(self.compute_membership_witness(element, sk))
+        Ok(self.compute_membership_witness(member, sk))
     }
 
     /// Compute membership witness for batch
     fn compute_membership_witness_for_batch(
         &self,
-        elements: &[E::Fr],
+        members: &[E::Fr],
         sk: &SecretKey<E::Fr>,
     ) -> Vec<MembershipWitness<E::G1Affine>> {
         // For each element in `elements`, compute 1/(element + sk)
-        let mut y_sk: Vec<E::Fr> = iter!(elements).map(|e| *e + sk.0).collect();
+        let mut y_sk: Vec<E::Fr> = iter!(members).map(|e| *e + sk.0).collect();
         batch_inversion(&mut y_sk);
         MembershipWitness::projective_points_to_membership_witnesses(
             multiply_field_elems_refs_with_same_group_elem(
@@ -361,22 +361,22 @@ pub trait Accumulator<E: PairingEngine> {
     /// it uses windowed multiplication and batch invert. Will throw error even if one element is not present
     fn get_membership_witness_for_batch(
         &self,
-        elements: &[E::Fr],
+        members: &[E::Fr],
         sk: &SecretKey<E::Fr>,
         state: &dyn State<E::Fr>,
     ) -> Result<Vec<MembershipWitness<E::G1Affine>>, VBAccumulatorError> {
-        for element in elements {
+        for element in members {
             if !state.has(element) {
                 return Err(VBAccumulatorError::ElementAbsent);
             }
         }
-        Ok(self.compute_membership_witness_for_batch(elements, sk))
+        Ok(self.compute_membership_witness_for_batch(members, sk))
     }
 
     /// Check if element present in accumulator. Described in section 2 of the paper
     fn verify_membership(
         &self,
-        element: &E::Fr,
+        member: &E::Fr,
         witness: &MembershipWitness<E::G1Affine>,
         pk: &PublicKey<E::G2Affine>,
         params: &SetupParams<E>,
@@ -385,7 +385,7 @@ pub trait Accumulator<E: PairingEngine> {
 
         // element * P_tilde
         let mut P_tilde_times_y_plus_Q_tilde = params.P_tilde.into_projective();
-        P_tilde_times_y_plus_Q_tilde *= *element;
+        P_tilde_times_y_plus_Q_tilde *= *member;
 
         // element * P_tilde + Q_tilde
         P_tilde_times_y_plus_Q_tilde.add_assign_mixed(&pk.0);

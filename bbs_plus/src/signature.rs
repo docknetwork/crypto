@@ -193,14 +193,14 @@ macro_rules! impl_signature_alg {
                 }
 
                 let s = E::Fr::rand(rng);
-                // `b` is the part of signature on uncommitted messages, i.e. partial_sig = g_1{h_0}^s.prod(h_i.m_i) for all i in uncommitted_messages
+                // `b` is the part of signature on uncommitted messages, i.e. partial_sig = g_1 + {h_0}*s + sum(h_i * m_i) for all i in uncommitted_messages
                 let b = params.b(uncommitted_messages, &s)?;
 
                 let e = E::Fr::rand(rng);
                 // 1/(e+x)
                 let e_plus_x_inv = (e + sk.0).inverse().unwrap();
 
-                // {commitment + b}^{1/(e+x)}
+                // {commitment + b} * {1/(e+x)}
                 let commitment_plus_b = b.add_mixed(commitment);
                 let A = <E::$sig_group_proj as Group>::mul(&commitment_plus_b, &e_plus_x_inv);
                 Ok(Self {

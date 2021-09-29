@@ -349,33 +349,33 @@ where
         Ok(self.get_updated(f_V, V))
     }
 
-    /// Compute `d` where `d = (member_0 - element)*(member_1 - element)*...(member_n - element)` where
+    /// Compute `d` where `d = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)` where
     /// each `member_i` is a member of the accumulator (except the elements added during initialization).
     /// In case the accumulator a large number of members such that its not possible to pass all of
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
-    pub fn compute_d_given_members(element: &E::Fr, members: &[E::Fr]) -> E::Fr {
+    pub fn compute_d_given_members(non_member: &E::Fr, members: &[E::Fr]) -> E::Fr {
         let mut d = E::Fr::one();
         for member in members {
-            d *= *member - element;
+            d *= *member - non_member;
         }
         d
     }
 
-    /// Compute non membership witness given `d` where `d = (member_0 - element)*(member_1 - element)*...(member_n - element)` where
+    /// Compute non membership witness given `d` where `d = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)` where
     /// each `member_i` is a member of the accumulator (except the elements added during initialization)
     /// Described in section 2 of the paper
     pub fn compute_non_membership_witness_given_d(
         &self,
         d: E::Fr,
-        element: &E::Fr,
+        non_member: &E::Fr,
         sk: &SecretKey<E::Fr>,
         params: &SetupParams<E>,
     ) -> Result<NonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
         if d.is_zero() {
             return Err(VBAccumulatorError::CannotBeZero);
         }
-        let y_plus_alpha_inv = (*element + sk.0).inverse().unwrap();
+        let y_plus_alpha_inv = (*non_member + sk.0).inverse().unwrap();
         let mut C = params.P.into_projective();
         C *= (self.f_V - d) * y_plus_alpha_inv;
         Ok(NonMembershipWitness {
@@ -387,7 +387,7 @@ where
     /// Get non-membership witness for an element absent in accumulator. Described in section 2 of the paper
     pub fn get_non_membership_witness<'a>(
         &self,
-        element: &E::Fr,
+        non_member: &E::Fr,
         sk: &SecretKey<E::Fr>,
         state: &'a dyn UniversalAccumulatorState<
             'a,
@@ -396,7 +396,7 @@ where
         >,
         params: &SetupParams<E>,
     ) -> Result<NonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
-        if state.has(element) {
+        if state.has(non_member) {
             return Err(VBAccumulatorError::ElementPresent);
         }
 
@@ -406,22 +406,25 @@ where
         // But rayon will not work with wasm, look at https://github.com/GoogleChromeLabs/wasm-bindgen-rayon.
         let mut d = E::Fr::one();
         for member in state.elements() {
-            d *= *member - element;
+            d *= *member - non_member;
         }
 
-        self.compute_non_membership_witness_given_d(d, element, sk, params)
+        self.compute_non_membership_witness_given_d(d, non_member, sk, params)
     }
 
-    /// Compute a vector `d` for a batch where each `element_i` in batch has `d` as `d_i` and
-    /// `d_i = (member_0 - element_i)*(member_1 - element_i)*...(member_n - element_i)` where each `member_i`
+    /// Compute a vector `d` for a batch where each `non_member_i` in batch has `d` as `d_i` and
+    /// `d_i = (member_0 - non_member_i)*(member_1 - non_member_i)*...(member_n - non_member_i)` where each `member_i`
     /// is a member of the accumulator (except the elements added during initialization).
     /// In case the accumulator a large number of members such that its not possible to pass all of
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
-    pub fn compute_d_for_batch_given_members(elements: &[E::Fr], members: &[E::Fr]) -> Vec<E::Fr> {
-        let mut ds = vec![E::Fr::one(); elements.len()];
+    pub fn compute_d_for_batch_given_members(
+        non_members: &[E::Fr],
+        members: &[E::Fr],
+    ) -> Vec<E::Fr> {
+        let mut ds = vec![E::Fr::one(); non_members.len()];
         for member in members {
-            for (i, t) in into_iter!(elements)
+            for (i, t) in into_iter!(non_members)
                 .map(|e| *member - *e)
                 .collect::<Vec<_>>()
                 .into_iter()
@@ -434,12 +437,12 @@ where
     }
 
     /// Compute non membership witnesses for a batch given `d`s for all of them where each `element_i` in
-    /// batch has `d` as `d_i` and `d_i = (member_0 - element_i)*(member_1 - element_i)*...(member_n - element_i)` where
+    /// batch has `d` as `d_i` and `d_i = (member_0 - non_member_i)*(member_1 - non_member_i)*...(member_n - non_member_i)` where
     /// each `member_i` is a member of the accumulator (except the elements added during initialization)
     pub fn compute_non_membership_witness_for_batch_given_d(
         &self,
         d: Vec<E::Fr>,
-        elements: &[E::Fr],
+        non_members: &[E::Fr],
         sk: &SecretKey<E::Fr>,
         params: &SetupParams<E>,
     ) -> Result<Vec<NonMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
@@ -448,7 +451,7 @@ where
         }
         let f_V_alpha_minus_d: Vec<E::Fr> = iter!(d).map(|d| self.f_V - *d).collect();
 
-        let mut y_plus_alpha_inv: Vec<E::Fr> = iter!(elements).map(|y| *y + sk.0).collect();
+        let mut y_plus_alpha_inv: Vec<E::Fr> = iter!(non_members).map(|y| *y + sk.0).collect();
         batch_inversion(&mut y_plus_alpha_inv);
 
         let P_multiple = f_V_alpha_minus_d
@@ -474,7 +477,7 @@ where
     /// it uses windowed multiplication and batch invert. Will throw error even if one element is not present
     pub fn get_non_membership_witness_for_batch<'a>(
         &self,
-        elements: &[E::Fr],
+        non_members: &[E::Fr],
         sk: &SecretKey<E::Fr>,
         state: &'a dyn UniversalAccumulatorState<
             'a,
@@ -483,7 +486,7 @@ where
         >,
         params: &SetupParams<E>,
     ) -> Result<Vec<NonMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
-        for element in elements {
+        for element in non_members {
             if state.has(element) {
                 return Err(VBAccumulatorError::ElementPresent);
             }
@@ -496,10 +499,10 @@ where
         // `(elements_{m-1} - member_0)*(elements_{m-1} - member_1)*..(elements_{m-1} - member_{n-1})*`
 
         // `d_for_witnesses` stores `d` corresponding to each of `elements`
-        let mut d_for_witnesses = vec![E::Fr::one(); elements.len()];
+        let mut d_for_witnesses = vec![E::Fr::one(); non_members.len()];
         // Since iterating state is expensive, compute iterate over it once
         for member in state.elements() {
-            for (i, t) in into_iter!(elements)
+            for (i, t) in into_iter!(non_members)
                 .map(|e| *member - *e)
                 .collect::<Vec<_>>()
                 .into_iter()
@@ -509,13 +512,18 @@ where
             }
         }
 
-        self.compute_non_membership_witness_for_batch_given_d(d_for_witnesses, elements, sk, params)
+        self.compute_non_membership_witness_for_batch_given_d(
+            d_for_witnesses,
+            non_members,
+            sk,
+            params,
+        )
     }
 
     /// Check if element is absent in accumulator. Described in section 2 of the paper
     pub fn verify_non_membership(
         &self,
-        element: &E::Fr,
+        non_member: &E::Fr,
         witness: &NonMembershipWitness<E::G1Affine>,
         pk: &PublicKey<E::G2Affine>,
         params: &SetupParams<E>,
@@ -529,7 +537,7 @@ where
 
         // element * P_tilde
         let mut P_tilde_times_y_plus_Q_tilde = params.P_tilde.into_projective();
-        P_tilde_times_y_plus_Q_tilde *= *element;
+        P_tilde_times_y_plus_Q_tilde *= *non_member;
         // element*P_tilde + Q_tilde
         P_tilde_times_y_plus_Q_tilde.add_assign_mixed(&pk.0);
 
