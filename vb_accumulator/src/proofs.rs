@@ -103,6 +103,10 @@ use schnorr_pok::SchnorrChallengeContributor;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+/// The public parameters (in addition to public key, accumulator setup params) used during the proof
+/// of membership and non-membership are called `ProvingKey`. These are mutually agreed upon by the
+/// prover and verifier and can be different between different provers and verifiers but using the
+/// same accumulator parameters and keys.
 /// Common elements of the membership and non-membership proving key
 #[serde_as]
 #[derive(

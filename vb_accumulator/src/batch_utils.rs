@@ -462,6 +462,8 @@ impl<G> Omega<G>
 where
     G: AffineCurve,
 {
+    /// Create new `Omega` after `additions` are added and `removals` are removed from `old_accumulator`.
+    /// Note that `old_accumulator` is the accumulated value before the updates were made.
     pub fn new(
         additions: &[G::ScalarField],
         removals: &[G::ScalarField],
@@ -514,6 +516,10 @@ where
     /// Coefficient (`c_i`) at the _ith_ position
     pub fn coefficient(&self, i: usize) -> &G {
         &self.0[i]
+    }
+
+    pub fn from(coeffs: Vec<G>) -> Self {
+        Self(coeffs)
     }
 
     #[cfg(test)]

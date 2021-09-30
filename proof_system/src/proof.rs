@@ -134,7 +134,9 @@ where
     D: Digest,
 {
     /// Create a new proof. `context` is any arbitrary data that needs to be hashed into the proof and
-    /// it must be kept same while creating and verifying the proof.
+    /// it must be kept same while creating and verifying the proof. Eg of `context` are the
+    /// purpose of the proof or the verifier's identity or some verifier-specific identity of the holder
+    /// or all of the above combined.
     pub fn new<R: RngCore>(
         rng: &mut R,
         proof_spec: ProofSpec<E, G>,
