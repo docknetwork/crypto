@@ -239,23 +239,23 @@ pub struct RandomizedWitness<G: AffineCurve> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct Blindings<F: PrimeField + SquareRootField> {
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub sigma: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub rho: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub delta_sigma: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub delta_rho: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub r_y: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub r_sigma: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub r_rho: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub r_delta_sigma: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub r_delta_rho: F,
 }
 
@@ -283,15 +283,15 @@ pub struct SchnorrCommit<E: PairingEngine> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct SchnorrResponse<F: PrimeField + SquareRootField> {
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub s_y: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub s_sigma: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub s_rho: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub s_delta_sigma: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub s_delta_rho: F,
 }
 
@@ -363,7 +363,7 @@ pub struct MembershipProof<E: PairingEngine> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct MembershipProofProtocol<E: PairingEngine> {
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub element: E::Fr,
     #[serde(
         bound = "MembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> MembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
@@ -403,15 +403,15 @@ pub struct NonMembershipRandomizedWitness<G: AffineCurve> {
 pub struct NonMembershipBlindings<F: PrimeField + SquareRootField> {
     #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
     pub C: Blindings<F>,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub tau: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub pi: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub r_u: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub r_v: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub r_w: F,
 }
 
@@ -437,11 +437,11 @@ pub struct NonMembershipSchnorrCommit<E: PairingEngine> {
 pub struct NonMembershipSchnorrResponse<F: PrimeField + SquareRootField> {
     #[serde(bound = "SchnorrResponse<F>: Serialize, for<'a> SchnorrResponse<F>: Deserialize<'a>")]
     pub C: SchnorrResponse<F>,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub s_u: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub s_v: F,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub s_w: F,
 }
 
@@ -471,9 +471,9 @@ pub struct NonMembershipProof<E: PairingEngine> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct NonMembershipProofProtocol<E: PairingEngine> {
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub element: E::Fr,
-    #[serde_as(as = "ScalarFieldBytes")]
+    #[serde_as(as = "FieldBytes")]
     pub d: E::Fr,
     #[serde(
         bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
