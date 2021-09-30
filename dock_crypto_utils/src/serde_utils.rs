@@ -1,5 +1,5 @@
 use ark_ec::AffineCurve;
-use ark_ff::{Field, PrimeField, SquareRootField};
+use ark_ff::Field;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{fmt, io, marker::PhantomData, string::ToString, vec, vec::Vec};
 use serde::de::{SeqAccess, Visitor};
