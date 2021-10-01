@@ -16,9 +16,12 @@ use digest::Digest;
 
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
+#[cfg(feature = "serde-support")]
 use dock_crypto_utils::serde_utils::*;
+#[cfg(feature = "serde-support")]
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
+#[cfg(feature = "serde-support")]
+use serde_with::{serde, serde_as, As};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -42,16 +45,17 @@ pub trait SchnorrChallengeContributor {
 }
 
 /// Commitment to randomness during step 1 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+// #[serde_as]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct SchnorrCommitment<G: AffineCurve> {
     /// Randomness. 1 per discrete log
-    #[serde_as(as = "Vec<FieldBytes>")]
+    // #[serde_as(as = "Vec<FieldBytes>")]
+    #[cfg_attr(feature = "serde-support", serde(with = "As::Vec<FieldBytes>"))]
     pub blindings: Vec<G::ScalarField>,
     /// The commitment to all the randomnesses
-    #[serde_as(as = "AffineGroupBytes")]
+    // #[serde_as(as = "AffineGroupBytes")]
+    #[cfg_attr(feature = "serde-support", serde(with = "As::AffineGroupBytes"))]
     pub t: G,
 }
 
@@ -100,12 +104,13 @@ where
 }
 
 /// Response during step 3 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+// #[serde_as]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct SchnorrResponse<G: AffineCurve>(
-    #[serde_as(as = "Vec<FieldBytes>")] pub Vec<G::ScalarField>,
+    // #[serde_as(as = "Vec<FieldBytes>")] pub Vec<G::ScalarField>,
+    #[cfg_attr(feature = "serde-support", serde(with = "As::Vec<FieldBytes>"))]
+    pub  Vec<G::ScalarField>,
 );
 
 impl<G> SchnorrResponse<G>
@@ -158,41 +163,30 @@ where
 macro_rules! impl_proof_of_knowledge_of_discrete_log {
     ($protocol_name:ident, $proof_name: ident) => {
         /// Proof of knowledge protocol for discrete log
-        #[serde_as]
-        #[derive(
-            Clone,
-            PartialEq,
-            Eq,
-            Debug,
-            CanonicalSerialize,
-            CanonicalDeserialize,
-            Serialize,
-            Deserialize,
-        )]
+        // #[serde_as]
+        #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+        #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
         pub struct $protocol_name<G: AffineCurve> {
-            #[serde_as(as = "AffineGroupBytes")]
+            // #[serde_as(as = "AffineGroupBytes")]
+            #[cfg_attr(feature = "serde-support", serde(with = "As::AffineGroupBytes"))]
             pub t: G,
-            #[serde_as(as = "FieldBytes")]
+            // #[serde_as(as = "FieldBytes")]
+            #[cfg_attr(feature = "serde-support", serde(with = "As::FieldBytes"))]
             blinding: G::ScalarField,
-            #[serde_as(as = "FieldBytes")]
+            // #[serde_as(as = "FieldBytes")]
+            #[cfg_attr(feature = "serde-support", serde(with = "As::FieldBytes"))]
             witness: G::ScalarField,
         }
 
-        #[serde_as]
-        #[derive(
-            Clone,
-            PartialEq,
-            Eq,
-            Debug,
-            CanonicalSerialize,
-            CanonicalDeserialize,
-            Serialize,
-            Deserialize,
-        )]
+        // #[serde_as]
+        #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+        #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
         pub struct $proof_name<G: AffineCurve> {
-            #[serde_as(as = "AffineGroupBytes")]
+            // #[serde_as(as = "AffineGroupBytes")]
+            #[cfg_attr(feature = "serde-support", serde(with = "As::AffineGroupBytes"))]
             pub t: G,
-            #[serde_as(as = "FieldBytes")]
+            // #[serde_as(as = "FieldBytes")]
+            #[cfg_attr(feature = "serde-support", serde(with = "As::FieldBytes"))]
             pub response: G::ScalarField,
         }
 
@@ -278,10 +272,13 @@ mod tests {
                 CanonicalDeserialize::deserialize_uncompressed(&serz[..]).unwrap();
             assert_eq!(deserz, $obj);
 
-            // Test JSON serialization with serde
-            let obj_ser = serde_json::to_string(&$obj).unwrap();
-            let obj_deser = serde_json::from_str::<$obj_type>(&obj_ser).unwrap();
-            assert_eq!($obj, obj_deser);
+            #[cfg(feature = "serde-support")]
+            {
+                // Test JSON serialization with serde
+                let obj_ser = serde_json::to_string(&$obj).unwrap();
+                let obj_deser = serde_json::from_str::<$obj_type>(&obj_ser).unwrap();
+                assert_eq!($obj, obj_deser);
+            }
         };
     }
 

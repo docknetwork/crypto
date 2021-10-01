@@ -18,9 +18,9 @@ ark-ec = { version = "^0.3.0", default-features = false }
 ark-std = { version = "^0.3.0", default-features = false }
 rayon = { version = "1", optional = true }
 digest = "0.9"
-dock_crypto_utils = { version = "0.1.0", default-features = false, path = "../dock_crypto_utils" }
-serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
+dock_crypto_utils = { version = "0.1.0", default-features = false, path = "../dock_crypto_utils", features = ["serde-support"] }
+serde = { version = "1.0", optional = true, default-features = false, features = ["derive"] }
+serde_with = { version = "1.10.0", optional = true, default-features = false, features = ["macros"] }
 
 [dev-dependencies]
 blake2 = { version = "0.9", default-features = false }
@@ -32,4 +32,4 @@ default = [ "std", "parallel" ]
 std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "serde/std"]
 print-trace = [ "ark-std/print-trace", "dock_crypto_utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon" ]
-#with-serde = ["serde", "serde_with", "dock_crypto_utils/with-serde"]
+serde-support = ["serde/derive", "serde_with/macros", "dock_crypto_utils/serde-support"]

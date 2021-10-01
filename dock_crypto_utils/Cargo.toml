@@ -28,6 +28,6 @@ serde_json = "1.0"
 
 [features]
 default = [ "std" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std"]
 print-trace = [ "ark-std/print-trace" ]
 serde-support = ["serde", "serde_with"]
