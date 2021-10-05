@@ -63,7 +63,8 @@ impl<G: AffineCurve> PedersenCommitmentProof<G> {
 }
 
 /// Describes the relations that need to proven. This is known to the prover and verifier and must
-/// be agreed upon before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s
+/// be agreed upon before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s.
+// Note: Consider optional support of `context` in `ProofSpec`
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
@@ -150,6 +151,8 @@ where
             ));
         }
 
+        // Keep blinding for each witness reference that is part of an equality. This means that for
+        // any 2 witneses that are equal, same blinding will be stored.
         let mut blindings = BTreeMap::<WitnessRef, F>::new();
 
         // Prepare blindings for any witnesses that need to be proven equal.
@@ -541,151 +544,12 @@ where
 mod serialization {
     use super::*;
 
-    // TODO: Following code contains duplication that can possible be removed using macros
-
     impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for StatementProof<E, G> {
-        fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::AccumulatorMembership(s) => {
-                    CanonicalSerialize::serialize(&1u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    CanonicalSerialize::serialize(&2u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::PedersenCommitment(s) => {
-                    CanonicalSerialize::serialize(&3u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-            }
-        }
-
-        fn serialized_size(&self) -> usize {
-            match self {
-                Self::PoKBBSSignatureG1(s) => 0u8.serialized_size() + s.serialized_size(),
-                Self::AccumulatorMembership(s) => 1u8.serialized_size() + s.serialized_size(),
-                Self::AccumulatorNonMembership(s) => 2u8.serialized_size() + s.serialized_size(),
-                Self::PedersenCommitment(s) => 3u8.serialized_size() + s.serialized_size(),
-            }
-        }
-
-        fn serialize_uncompressed<W: Write>(
-            &self,
-            mut writer: W,
-        ) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::AccumulatorMembership(s) => {
-                    1u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::PedersenCommitment(s) => {
-                    3u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-            }
-        }
-
-        fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::AccumulatorMembership(s) => {
-                    1u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::PedersenCommitment(s) => {
-                    3u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-            }
-        }
-
-        fn uncompressed_size(&self) -> usize {
-            match self {
-                Self::PoKBBSSignatureG1(s) => 0u8.uncompressed_size() + s.uncompressed_size(),
-                Self::AccumulatorMembership(s) => 1u8.uncompressed_size() + s.uncompressed_size(),
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.uncompressed_size() + s.uncompressed_size()
-                }
-                Self::PedersenCommitment(s) => 3u8.uncompressed_size() + s.uncompressed_size(),
-            }
-        }
+        impl_serialize!();
     }
 
     impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for StatementProof<E, G> {
-        fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
-            match t {
-                0u8 => Ok(Self::PoKBBSSignatureG1(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_uncompressed(&mut reader)? {
-                0u8 => Ok(Self::PoKBBSSignatureG1(
-                    PoKOfSignatureG1Proof::<E>::deserialize_uncompressed(&mut reader)?,
-                )),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    MembershipProof::<E>::deserialize_uncompressed(&mut reader)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    NonMembershipProof::<E>::deserialize_uncompressed(&mut reader)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(
-                    PedersenCommitmentProof::<G>::deserialize_uncompressed(&mut reader)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_unchecked(&mut reader)? {
-                0u8 => Ok(Self::PoKBBSSignatureG1(
-                    PoKOfSignatureG1Proof::<E>::deserialize_unchecked(&mut reader)?,
-                )),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    MembershipProof::<E>::deserialize_unchecked(&mut reader)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    NonMembershipProof::<E>::deserialize_unchecked(&mut reader)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(
-                    PedersenCommitmentProof::<G>::deserialize_unchecked(&mut reader)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
+        impl_deserialize!();
     }
 }
 
@@ -721,13 +585,43 @@ mod tests {
     type ProofG1 = Proof<Bls12_381, G1Affine, Fr, Blake2b>;
 
     #[test]
-    fn pok_of_2_bbs_plus_sig_and_message_equality() {
-        // Prove knowledge of 2 BBS+ signatures and 3 of the messages are same among them.
+    fn pok_of_3_bbs_plus_sig_and_message_equality() {
+        // Prove knowledge of 3 BBS+ signatures and 3 of the messages are same among them.
         let mut rng = StdRng::seed_from_u64(0u64);
 
         // 1st BBS+ sig
         let msg_count_1 = 6;
         let (msgs_1, params_1, keypair_1, sig_1) = sig_setup(&mut rng, msg_count_1);
+
+        // 2nd BBS+ sig
+        let msg_count_2 = 10;
+        let (mut msgs_2, params_2, keypair_2, _) = sig_setup(&mut rng, msg_count_2);
+
+        // 3rd BBS+ sig
+        let msg_count_3 = 12;
+        let (mut msgs_3, params_3, keypair_3, _) = sig_setup(&mut rng, msg_count_3);
+
+        // Make 3 messages same
+        msgs_2[9] = msgs_1[5].clone();
+        msgs_3[9] = msgs_1[5].clone();
+        msgs_2[8] = msgs_1[4].clone();
+        msgs_3[8] = msgs_1[4].clone();
+        msgs_2[7] = msgs_1[3].clone();
+        msgs_3[7] = msgs_1[3].clone();
+
+        let sig_2 =
+            SignatureG1::<Bls12_381>::new(&mut rng, &msgs_2, &keypair_2.secret_key, &params_2)
+                .unwrap();
+        sig_2
+            .verify(&msgs_2, &keypair_2.public_key, &params_2)
+            .unwrap();
+
+        let sig_3 =
+            SignatureG1::<Bls12_381>::new(&mut rng, &msgs_3, &keypair_3.secret_key, &params_3)
+                .unwrap();
+        sig_3
+            .verify(&msgs_3, &keypair_3.public_key, &params_3)
+            .unwrap();
 
         // Prepare revealed messages for the proof of knowledge of 1st signature
         let mut revealed_indices_1 = BTreeSet::new();
@@ -743,22 +637,6 @@ mod tests {
                 unrevealed_msgs_1.insert(i, msgs_1[i]);
             }
         }
-
-        // 2nd BBS+ sig
-        let msg_count_2 = 10;
-        let (mut msgs_2, params_2, keypair_2, _) = sig_setup(&mut rng, msg_count_2);
-
-        // Make 3 messages same
-        msgs_2[9] = msgs_1[5].clone();
-        msgs_2[8] = msgs_1[4].clone();
-        msgs_2[7] = msgs_1[3].clone();
-
-        let sig_2 =
-            SignatureG1::<Bls12_381>::new(&mut rng, &msgs_2, &keypair_2.secret_key, &params_2)
-                .unwrap();
-        sig_2
-            .verify(&msgs_2, &keypair_2.public_key, &params_2)
-            .unwrap();
 
         // Prepare revealed messages for the proof of knowledge of 2nd signature
         let mut revealed_indices_2 = BTreeSet::new();
@@ -776,6 +654,12 @@ mod tests {
             }
         }
 
+        let unrevealed_msgs_3 = msgs_3
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (i, m.clone()))
+            .collect::<BTreeMap<_, _>>();
+
         // Since proving knowledge of 2 BBS+ signatures, add 2 statements, both of the same type though.
         let mut statements = Statements::new();
         statements.add(PoKSignatureBBSG1Stmt::new_as_statement(
@@ -788,17 +672,22 @@ mod tests {
             keypair_2.public_key.clone(),
             revealed_msgs_2.clone(),
         ));
+        statements.add(PoKSignatureBBSG1Stmt::new_as_statement(
+            params_3.clone(),
+            keypair_3.public_key.clone(),
+            BTreeMap::new(),
+        ));
 
-        // Since 2 of the messages are being proven equal, add a `MetaStatement` describing that
+        // Since 3 of the messages are being proven equal, add a `MetaStatement` describing that
         let mut meta_statements = MetaStatements::new();
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(vec![
-            vec![(0, 5), (1, 9)] // 0th statement's 5th witness is equal to 1st statement's 9th witness
+            vec![(0, 5), (1, 9), (2, 9)] // 0th statement's 5th witness is equal to 1st statement's 9th witness
                 .into_iter()
                 .collect::<BTreeSet<(usize, usize)>>(),
-            vec![(0, 4), (1, 8)] // 0th statement's 4th witness is equal to 1st statement's 8th witness
+            vec![(0, 4), (1, 8), (2, 8)] // 0th statement's 4th witness is equal to 1st statement's 8th witness
                 .into_iter()
                 .collect::<BTreeSet<(usize, usize)>>(),
-            vec![(0, 3), (1, 7)] // 0th statement's 3rd witness is equal to 1st statement's 7th witness
+            vec![(0, 3), (1, 7), (2, 7)] // 0th statement's 3rd witness is equal to 1st statement's 7th witness
                 .into_iter()
                 .collect::<BTreeSet<(usize, usize)>>(),
         ])));
@@ -821,6 +710,10 @@ mod tests {
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
             sig_2.clone(),
             unrevealed_msgs_2.clone(),
+        ));
+        witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig_3.clone(),
+            unrevealed_msgs_3.clone(),
         ));
 
         test_serialization!(Witnesses<Bls12_381>, witnesses);

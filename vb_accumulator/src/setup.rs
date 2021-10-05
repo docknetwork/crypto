@@ -63,7 +63,6 @@ pub struct SecretKey<F: PrimeField + SquareRootField>(#[serde_as(as = "FieldByte
 )]
 pub struct PublicKey<G: AffineCurve>(#[serde_as(as = "AffineGroupBytes")] pub G);
 
-#[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]

@@ -134,7 +134,7 @@ macro_rules! impl_sig_params {
             pub fn new<D: Digest>(label: &[u8], n: usize) -> Self {
                 // Need n+2 elements of signature group and 1 element of other group
                 let mut sig_group_elems = Vec::with_capacity(n + 2);
-                // Group element by hashing label + g1 as string.
+                // Group element by hashing `label`||`g1` as string.
                 let g1 = projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
                     &to_bytes![label, " : g1".as_bytes()].unwrap(),
                 );
@@ -297,7 +297,6 @@ macro_rules! impl_public_key {
 
 macro_rules! impl_keypair {
     ( $name:ident, $group:ident, $pk: ident, $params:ident ) => {
-        #[serde_as]
         #[derive(
             Clone,
             Debug,
@@ -308,6 +307,7 @@ macro_rules! impl_keypair {
             Serialize,
             Deserialize,
         )]
+        #[serde(bound = "")]
         pub struct $name<E: PairingEngine> {
             pub secret_key: SecretKey<E::Fr>,
             pub public_key: $pk<E>,
@@ -374,9 +374,7 @@ mod tests {
             test_serialization!($params<Bls12_381>, params);
 
             let keypair = $keypair::<Bls12_381>::generate_using_rng(&mut $rng, &params);
-
-            // TODO: Figure out why the following fails
-            // test_serialization!($keypair<Bls12_381>, keypair);
+            test_serialization!($keypair<Bls12_381>, keypair);
 
             let pk = keypair.public_key;
             let sk = keypair.secret_key;

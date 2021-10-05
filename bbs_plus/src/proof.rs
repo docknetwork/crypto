@@ -83,11 +83,11 @@ pub struct PoKOfSignatureG1Protocol<E: PairingEngine> {
     pub A_bar: E::G1Affine,
     #[serde_as(as = "AffineGroupBytes")]
     pub d: E::G1Affine,
-    /// For proving relation a_bar / d == a_prime^{-e} * h_0^r2
+    /// For proving relation `A_bar - d = A_prime * -e + h_0 * r2`
     pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "[FieldBytes; 2]")]
     sc_wits_1: [E::Fr; 2],
-    /// For proving relation g1 * h1^m1 * h2^m2.... for all disclosed messages m_i == d^r3 * h_0^{-s_prime} * h1^-m1 * h2^-m2.... for all undisclosed messages m_i
+    /// For proving relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s_prime} + h1*{-m1} + h2*{-m2} + .... + h_j*m_j` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<FieldBytes>")]
     sc_wits_2: Vec<E::Fr>,
@@ -106,11 +106,11 @@ pub struct PoKOfSignatureG1Proof<E: PairingEngine> {
     pub A_bar: E::G1Affine,
     #[serde_as(as = "AffineGroupBytes")]
     pub d: E::G1Affine,
-    /// Proof of relation a_bar / d == a_prime^{-e} * h_0^r2
+    /// Proof of relation `A_bar - d = A_prime * -e + h_0 * r2`
     #[serde_as(as = "AffineGroupBytes")]
     pub T1: E::G1Affine,
     pub sc_resp_1: SchnorrResponse<E::G1Affine>,
-    /// Proof of relation g1 * h1^m1 * h2^m2.... for all disclosed messages m_i == d^r3 * h_0^{-s_prime} * h1^-m1 * h2^-m2.... for all undisclosed messages m_i
+    /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s_prime} + h1*{-m1} + h2*{-m2} + .... + h_j*m_j` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
     #[serde_as(as = "AffineGroupBytes")]
     pub T2: E::G1Affine,
     pub sc_resp_2: SchnorrResponse<E::G1Affine>,
@@ -178,18 +178,18 @@ where
         // s' = s - r2*r3
         let s_prime = signature.s - (r2 * r3);
 
-        // For proving relation a_bar / d == a_prime^{-e} * h_0^r2
+        // For proving relation A_bar - d == A'*{-e} + h_0*r2
         let bases_1 = [A_prime_affine, params.h_0.clone()];
         let wits_1 = [-signature.e, r2];
         let sc_comm_1 = SchnorrCommitment::new(&bases_1, vec![E::Fr::rand(rng), E::Fr::rand(rng)]);
 
-        // For proving relation g1 * h1^m1 * h2^m2.... for all disclosed messages m_i == d^r3 * h_0^{-s_prime} * h1^-m1 * h2^-m2.... for all undisclosed messages m_j
+        // For proving relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s_prime} + h1*{-m1} + h2*{-m2} + .... + h_j*m_j` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
         // Usually the number of disclosed messages is much less than the number of undisclosed messages, its better to avoid negations in hidden messages and do
         // them in revealed messages. So transform the relation
-        // g1 * h1^m1 * h2^m2.... * h_i^m_i for disclosed messages m_i = d^r3 * h_0^{-s_prime} * h1^-m1 * h2^-m2.... * h_j^-m_j for all undisclosed messages m_j
+        // `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s_prime} + h1*{-m1} + h2*{-m2} + .... + h_j*m_j` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
         // into
-        // d^{-r3} * h_0^s_prime * h1^m1 * h2^m2.... * h_j^m_j = g1 * h1^-m1 * h2^-m2.... * h_i^-m_i. Moreover g1 * h1^-m1 * h2^-m2.... * h_i^-m_i is public
-        // and can be efficiently computed as (g1 * h1^m1 * h2^m2.... * h_i^m_i)^-1 and inverse in elliptic group is a point negation which is very cheap
+        // d*{-r3} + h_0*s_prime + h1*m1 + h2*m2.... + h_j*m_j = -g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i} for all disclosed messages `m_i` and for all undisclosed messages `m_j`.
+        // Moreover -g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i} is public and can be efficiently computed as -(g1 + h1*m1 + h2*m2 +.... * h_i*m_i)
 
         let mut bases_2 = Vec::with_capacity(2 + blindings.len());
         let mut scalars_2 = Vec::with_capacity(2 + blindings.len());
@@ -371,7 +371,7 @@ where
                 bases_2.push(params.h[i]);
             }
         }
-        // pr = g1 * h1^-m1 * h2^-m2.... = (g1 * h1^m1 * h2^m2....)^-1 for all disclosed messages m_i
+        // pr = -g1 + h1*-m1 + h2*-m2.... = -(g1 + h1*m1 * h2*m2....) for all disclosed messages m_i
         let pr = -VariableBaseMSM::multi_scalar_mul(&bases_disclosed, &exponents);
         let pr = pr.into_affine();
         match self.sc_resp_2.is_valid(&bases_2, &pr, &self.T2, challenge) {

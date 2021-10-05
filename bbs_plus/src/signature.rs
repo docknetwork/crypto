@@ -187,7 +187,8 @@ macro_rules! impl_signature_alg {
                 if uncommitted_messages.is_empty() {
                     return Err(BBSPlusError::NoMessageToSign);
                 }
-                // `>` as commitment will have one or more messages (preventing accidents only)
+                // `>` as commitment will have 0 or more messages. In practice, commitment should have
+                // at least 1 message
                 if uncommitted_messages.len() > params.max_message_count() {
                     return Err(BBSPlusError::MessageCountIncompatibleWithSigParams);
                 }
@@ -251,7 +252,7 @@ macro_rules! impl_signature_alg {
                 let g2_e = params.g2.mul(self.e.into_repr());
                 if !$pairing!(
                     self.A,
-                    (g2_e.add_mixed(&pk.0)).into_affine(), // g2^e + w
+                    (g2_e.add_mixed(&pk.0)).into_affine(), // g2*e + w
                     -params.g2,
                     b.into_affine()
                 ) {

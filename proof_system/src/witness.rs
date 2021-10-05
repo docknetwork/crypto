@@ -10,7 +10,7 @@ use ark_std::{
 use bbs_plus::signature::SignatureG1 as BBSSignatureG1;
 use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
+use serde_with::{serde_as, Same};
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
 
 pub use serialization::*;
@@ -43,7 +43,7 @@ where
 #[serde(bound = "")]
 pub struct PoKBBSSignatureG1<E: PairingEngine> {
     pub signature: BBSSignatureG1<E>,
-    #[serde_as(as = "BTreeMap<_, FieldBytes>")]
+    #[serde_as(as = "BTreeMap<Same, FieldBytes>")]
     pub unrevealed_messages: BTreeMap<usize, E::Fr>,
 }
 
@@ -125,151 +125,12 @@ impl<E: PairingEngine> NonMembership<E> {
 mod serialization {
     use super::*;
 
-    // TODO: Following code contains duplication that can possible be removed using macros
-
     impl<E: PairingEngine> CanonicalSerialize for Witness<E> {
-        fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::AccumulatorMembership(s) => {
-                    CanonicalSerialize::serialize(&1u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    CanonicalSerialize::serialize(&2u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::PedersenCommitment(s) => {
-                    CanonicalSerialize::serialize(&3u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-            }
-        }
-
-        fn serialized_size(&self) -> usize {
-            match self {
-                Self::PoKBBSSignatureG1(s) => 0u8.serialized_size() + s.serialized_size(),
-                Self::AccumulatorMembership(s) => 1u8.serialized_size() + s.serialized_size(),
-                Self::AccumulatorNonMembership(s) => 2u8.serialized_size() + s.serialized_size(),
-                Self::PedersenCommitment(s) => 3u8.serialized_size() + s.serialized_size(),
-            }
-        }
-
-        fn serialize_uncompressed<W: Write>(
-            &self,
-            mut writer: W,
-        ) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::AccumulatorMembership(s) => {
-                    1u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::PedersenCommitment(s) => {
-                    3u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-            }
-        }
-
-        fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::AccumulatorMembership(s) => {
-                    1u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::PedersenCommitment(s) => {
-                    3u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-            }
-        }
-
-        fn uncompressed_size(&self) -> usize {
-            match self {
-                Self::PoKBBSSignatureG1(s) => 0u8.uncompressed_size() + s.uncompressed_size(),
-                Self::AccumulatorMembership(s) => 1u8.uncompressed_size() + s.uncompressed_size(),
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.uncompressed_size() + s.uncompressed_size()
-                }
-                Self::PedersenCommitment(s) => 3u8.uncompressed_size() + s.uncompressed_size(),
-            }
-        }
+        impl_serialize!();
     }
 
     impl<E: PairingEngine> CanonicalDeserialize for Witness<E> {
-        fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
-            match t {
-                0u8 => Ok(Self::PoKBBSSignatureG1(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_uncompressed(&mut reader)? {
-                0u8 => Ok(Self::PoKBBSSignatureG1(
-                    PoKBBSSignatureG1::<E>::deserialize_uncompressed(&mut reader)?,
-                )),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    Membership::<E>::deserialize_uncompressed(&mut reader)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    NonMembership::<E>::deserialize_uncompressed(&mut reader)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(
-                    Vec::<E::Fr>::deserialize_uncompressed(&mut reader)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_unchecked(&mut reader)? {
-                0u8 => Ok(Self::PoKBBSSignatureG1(
-                    PoKBBSSignatureG1::<E>::deserialize_unchecked(&mut reader)?,
-                )),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    Membership::<E>::deserialize_unchecked(&mut reader)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    NonMembership::<E>::deserialize_unchecked(&mut reader)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(
-                    Vec::<E::Fr>::deserialize_unchecked(&mut reader)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
+        impl_deserialize!();
     }
 }
 
