@@ -488,7 +488,7 @@ mod tests {
                         .is_some());
                 }
             };
-        };
+        }
 
         check!(
             vec![

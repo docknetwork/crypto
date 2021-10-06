@@ -8,7 +8,6 @@ use vb_accumulator::error::VBAccumulatorError;
 
 #[derive(Debug)]
 pub enum ProofSystemError {
-    OnlyOneMetaStatementSupportedForNow,
     UnequalWitnessAndStatementCount(usize, usize),
     WitnessIncompatibleWithStatement(usize, String, String),
     ProofIncompatibleWithStatement(usize, String, String),
@@ -23,6 +22,7 @@ pub enum ProofSystemError {
     SchnorrError(SchnorrError),
     BBSPlusError(BBSPlusError),
     VBAccumError(VBAccumulatorError),
+    InvalidProofSpec,
 }
 
 impl From<SchnorrError> for ProofSystemError {

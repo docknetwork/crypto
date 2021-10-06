@@ -125,6 +125,19 @@ where
     pub fn add_meta_statement(&mut self, meta_statement: MetaStatement) {
         self.meta_statements.add(meta_statement);
     }
+
+    pub fn is_valid(&self) -> bool {
+        for mt in &self.meta_statements.0 {
+            match mt {
+                MetaStatement::WitnessEquality(w) => {
+                    if !w.is_valid() {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
 }
 
 impl<E, G, F, D> Proof<E, G, F, D>
@@ -144,6 +157,9 @@ where
         witnesses: Witnesses<E>,
         context: &[u8],
     ) -> Result<Self, ProofSystemError> {
+        if !proof_spec.is_valid() {
+            return Err(ProofSystemError::InvalidProofSpec);
+        }
         if proof_spec.statements.len() != witnesses.len() {
             return Err(ProofSystemError::UnequalWitnessAndStatementCount(
                 proof_spec.statements.len(),
@@ -277,6 +293,10 @@ where
         proof_spec: ProofSpec<E, G>,
         context: &[u8],
     ) -> Result<(), ProofSystemError> {
+        if !proof_spec.is_valid() {
+            return Err(ProofSystemError::InvalidProofSpec);
+        }
+
         // All the distinct equalities in `ProofSpec`
         let mut witness_equalities = vec![];
 
@@ -591,6 +611,8 @@ mod tests {
         msgs_2[7] = msgs_1[3].clone();
         msgs_3[7] = msgs_1[3].clone();
 
+        msgs_3[5] = msgs_3[7].clone();
+
         let sig_2 =
             SignatureG1::<Bls12_381>::new(&mut rng, &msgs_2, &keypair_2.secret_key, &params_2)
                 .unwrap();
@@ -663,17 +685,22 @@ mod tests {
         // Since 3 of the messages are being proven equal, add a `MetaStatement` describing that
         let mut meta_statements = MetaStatements::new();
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-            vec![(0, 5), (1, 9), (2, 9)] // 0th statement's 5th witness is equal to 1st statement's 9th witness
+            vec![(0, 5), (1, 9), (2, 9)] // 0th statement's 5th witness is equal to 1st statement's 9th witness and 2nd statement's 9th witness
                 .into_iter()
                 .collect::<BTreeSet<(usize, usize)>>(),
         )));
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-            vec![(0, 4), (1, 8), (2, 8)] // 0th statement's 4th witness is equal to 1st statement's 8th witness
+            vec![(0, 4), (1, 8), (2, 8)] // 0th statement's 4th witness is equal to 1st statement's 8th witness and 2nd statement's 8th witness
                 .into_iter()
                 .collect::<BTreeSet<(usize, usize)>>(),
         )));
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-            vec![(0, 3), (1, 7), (2, 7)] // 0th statement's 3rd witness is equal to 1st statement's 7th witness
+            vec![(0, 3), (1, 7), (2, 7)] // 0th statement's 3rd witness is equal to 1st statement's 7th witness and 2nd statement's 7th witness
+                .into_iter()
+                .collect::<BTreeSet<(usize, usize)>>(),
+        )));
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(3, 5), (3, 7)] // 0th statement's 1th witness is equal to 2nd statement's 9th witness
                 .into_iter()
                 .collect::<BTreeSet<(usize, usize)>>(),
         )));

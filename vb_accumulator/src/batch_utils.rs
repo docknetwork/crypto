@@ -439,7 +439,7 @@ where
         e
     }
 
-    pub fn get_omega_coefficients(&self) -> &[F] {
+    pub fn get_coefficients(&self) -> &[F] {
         &self.0.coeffs
     }
 
@@ -471,7 +471,7 @@ where
         sk: &SecretKey<G::ScalarField>,
     ) -> Self {
         let poly = Poly_v_AD::generate(additions, removals, &sk.0);
-        let coeffs = poly.get_omega_coefficients();
+        let coeffs = poly.get_coefficients();
         Omega(batch_normalize_projective_into_affine::<G::Projective>(
             multiply_field_elems_refs_with_same_group_elem(
                 4,
