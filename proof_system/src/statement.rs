@@ -5,6 +5,7 @@ use ark_std::{
     collections::BTreeMap,
     fmt::Debug,
     io::{Read, Write},
+    vec,
     vec::Vec,
 };
 
@@ -128,12 +129,39 @@ pub struct PedersenCommitment<G: AffineCurve> {
 /// let mut eq = BTreeSet::new();
 /// eq.insert((0, 3));
 /// eq.insert((1, 5));
-/// let eq_w = EqualWitnesses(vec![eq]);
+/// let eq_w = EqualWitnesses(eq);
 /// ```
+///
+/// Multiple such equalities can be represented as separate `EqualWitnesses` and each will be a separate
+/// `MetaStatement`
+/// ```
+/// // 1st witness equality
+/// let mut eq_1 = BTreeSet::new();
+/// eq_1.insert((0, 3));
+/// eq_1.insert((1, 5));
+/// let eq_1_w = EqualWitnesses(eq_1);
+///
+/// // 2nd witness equality
+/// let mut eq_2 = BTreeSet::new();
+/// eq_2.insert((0, 4));
+/// eq_2.insert((1, 9));
+/// let eq_2_w = EqualWitnesses(eq_2);
+///
+/// let mut meta_statements = MetaStatements::new();
+/// meta_statements.add(MetaStatement::WitnessEquality(eq_1_w));
+/// meta_statements.add(MetaStatement::WitnessEquality(eq_2_w));
+/// ```
+///
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct EqualWitnesses(pub Vec<BTreeSet<WitnessRef>>);
+pub struct EqualWitnesses(pub BTreeSet<WitnessRef>);
+
+impl EqualWitnesses {
+    pub fn is_valid(&self) -> bool {
+        self.0.len() > 1
+    }
+}
 
 impl MetaStatements {
     pub fn new() -> Self {
@@ -150,6 +178,40 @@ impl MetaStatements {
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    /// Given multiple `MetaStatement::WitnessEquality` which might have common witness references,
+    /// return a list of `EqualWitnesses` with no common references. The objective is same as
+    /// when given a collection of sets, return a new collection of sets such that all sets in the new
+    /// collection are pairwise distinct.
+    pub fn disjoint_witness_equalities(&self) -> Vec<EqualWitnesses> {
+        let mut equalities = vec![];
+        let mut disjoints = vec![];
+        for stmt in &self.0 {
+            match stmt {
+                MetaStatement::WitnessEquality(eq_wits) => {
+                    equalities.push(eq_wits);
+                }
+            }
+        }
+        while equalities.len() > 0 {
+            // Traverse `equalities` in reverse as that doesn't change index on removal
+            let mut current = equalities.pop().unwrap().0.clone();
+            if equalities.len() > 0 {
+                let mut i = equalities.len() - 1;
+                loop {
+                    if !current.is_disjoint(&equalities[i].0) {
+                        current = current.union(&equalities.remove(i).0).cloned().collect();
+                    }
+                    if i == 0 {
+                        break;
+                    }
+                    i -= 1;
+                }
+            }
+            disjoints.push(EqualWitnesses(current));
+        }
+        disjoints
     }
 }
 
@@ -399,5 +461,105 @@ mod tests {
 
         statements.add(stmt_4);
         test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+    }
+
+    #[test]
+    fn disjoint_witness_equality() {
+        macro_rules! check {
+            ($input:expr, $output: expr) => {
+                let mut meta_statements = MetaStatements::new();
+                for i in $input.into_iter() {
+                    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+                        i.into_iter().collect::<BTreeSet<(usize, usize)>>(),
+                    )));
+                }
+                let disjoints = meta_statements.disjoint_witness_equalities();
+                assert_eq!(disjoints.len(), $output.len());
+                for o in $output.into_iter() {
+                    assert!(disjoints
+                        .iter()
+                        .position(|d| {
+                            let mut set = BTreeSet::new();
+                            for r in o.clone().into_iter() {
+                                set.insert(r);
+                            }
+                            *d == EqualWitnesses(set)
+                        })
+                        .is_some());
+                }
+            };
+        };
+
+        check!(
+            vec![
+                vec![(0, 1), (1, 1)],
+                vec![(0, 1), (1, 2)],
+                vec![(0, 3), (1, 4)]
+            ],
+            vec![vec![(0, 1), (1, 1), (1, 2)], vec![(0, 3), (1, 4)],]
+        );
+
+        check!(
+            vec![
+                vec![(0, 1), (1, 1)],
+                vec![(0, 5), (1, 2)],
+                vec![(0, 3), (1, 4)],
+            ],
+            vec![
+                vec![(0, 1), (1, 1)],
+                vec![(0, 5), (1, 2)],
+                vec![(0, 3), (1, 4)]
+            ]
+        );
+
+        check!(
+            vec![
+                vec![(0, 1), (1, 1), (2, 1)],
+                vec![(0, 5), (1, 2), (3, 1)],
+                vec![(0, 3), (1, 4), (1, 1), (3, 1)],
+            ],
+            vec![vec![
+                (0, 1),
+                (1, 1),
+                (2, 1),
+                (0, 5),
+                (1, 2),
+                (3, 1),
+                (0, 3),
+                (1, 4)
+            ]]
+        );
+
+        check!(
+            vec![
+                vec![(1, 1), (4, 1)],
+                vec![(1, 2), (6, 5)],
+                vec![(0, 3), (1, 4), (2, 1), (3, 1), (5, 2)],
+                vec![(0, 0), (1, 9), (5, 5), (6, 1)],
+                vec![(0, 0), (1, 9), (5, 6), (6, 6)]
+            ],
+            vec![
+                vec![(4, 1), (1, 1)],
+                vec![(6, 5), (1, 2)],
+                vec![(0, 3), (1, 4), (2, 1), (3, 1), (5, 2)],
+                vec![(0, 0), (1, 9), (5, 5), (5, 6), (6, 1), (6, 6)],
+            ]
+        );
+
+        check!(
+            vec![
+                vec![(0, 2), (1, 3)],
+                vec![(0, 3), (1, 4), (2, 0), (5, 0)],
+                vec![(2, 0), (5, 0)],
+                vec![(3, 0), (6, 0)],
+                vec![(4, 0), (7, 0)]
+            ],
+            vec![
+                vec![(0, 2), (1, 3)],
+                vec![(0, 3), (1, 4), (2, 0), (5, 0)],
+                vec![(3, 0), (6, 0)],
+                vec![(4, 0), (7, 0)],
+            ]
+        );
     }
 }
