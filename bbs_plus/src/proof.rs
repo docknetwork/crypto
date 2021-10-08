@@ -141,6 +141,7 @@ where
             return Err(BBSPlusError::MessageCountIncompatibleWithSigParams);
         }
 
+        // No message index should be >= max messages
         for idx in &revealed_msg_indices {
             if *idx >= messages.len() {
                 return Err(BBSPlusError::InvalidMessageIdx);

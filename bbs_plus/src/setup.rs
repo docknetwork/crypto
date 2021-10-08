@@ -212,6 +212,7 @@ macro_rules! impl_sig_params {
                     Vec<E::$group_affine>,
                     Vec<<<E as ark_ec::PairingEngine>::Fr as PrimeField>::BigInt>,
                 ) = {
+                    // No message index should be >= max supported messages
                     for (i, _) in messages.iter() {
                         if *i >= self.max_message_count() {
                             return Err(BBSPlusError::InvalidMessageIdx);
@@ -227,6 +228,7 @@ macro_rules! impl_sig_params {
                     let mut bases = Vec::with_capacity(messages.len());
                     let mut scalars = Vec::with_capacity(messages.len());
                     for (i, msg) in messages.into_iter() {
+                        // No message index should be >= max supported messages
                         if i >= self.max_message_count() {
                             return Err(BBSPlusError::InvalidMessageIdx);
                         }
