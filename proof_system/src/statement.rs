@@ -22,8 +22,6 @@ use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 
-use crate::impl_collection;
-
 /// Reference to a witness described as the tuple (`statement_id`, `witness_id`)
 pub type WitnessRef = (usize, usize);
 
@@ -52,7 +50,6 @@ pub enum MetaStatement {
 )]
 pub struct MetaStatements(pub Vec<MetaStatement>);
 
-// impl_collection!(Statements, Statement);
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
@@ -476,16 +473,13 @@ mod tests {
                 let disjoints = meta_statements.disjoint_witness_equalities();
                 assert_eq!(disjoints.len(), $output.len());
                 for o in $output.into_iter() {
-                    assert!(disjoints
-                        .iter()
-                        .position(|d| {
-                            let mut set = BTreeSet::new();
-                            for r in o.clone().into_iter() {
-                                set.insert(r);
-                            }
-                            *d == EqualWitnesses(set)
-                        })
-                        .is_some());
+                    assert!(disjoints.contains({
+                        let mut set = BTreeSet::new();
+                        for r in o.clone().into_iter() {
+                            set.insert(r);
+                        }
+                        &EqualWitnesses(set)
+                    }));
                 }
             };
         }

@@ -209,8 +209,13 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
                 }
             }
 
-            pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
-                self.t.serialize_unchecked(writer).map_err(|e| e.into())
+            pub fn challenge_contribution<W: Write>(
+                &self,
+                base: &G,
+                y: &G,
+                writer: W,
+            ) -> Result<(), SchnorrError> {
+                Self::compute_challenge_contribution(base, y, &self.t, writer)
             }
 
             pub fn gen_proof(self, challenge: &G::ScalarField) -> $proof_name<G> {
@@ -220,14 +225,30 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
                     response,
                 }
             }
+
+            pub fn compute_challenge_contribution<W: Write>(
+                base: &G,
+                y: &G,
+                t: &G,
+                mut writer: W,
+            ) -> Result<(), SchnorrError> {
+                base.serialize_unchecked(&mut writer)?;
+                y.serialize_unchecked(&mut writer)?;
+                t.serialize_unchecked(writer).map_err(|e| e.into())
+            }
         }
 
         impl<G> $proof_name<G>
         where
             G: AffineCurve,
         {
-            pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
-                self.t.serialize_unchecked(writer).map_err(|e| e.into())
+            pub fn challenge_contribution<W: Write>(
+                &self,
+                base: &G,
+                y: &G,
+                writer: W,
+            ) -> Result<(), SchnorrError> {
+                $protocol_name::compute_challenge_contribution(base, y, &self.t, writer)
             }
 
             /// base*response - y*challenge == t
@@ -254,6 +275,7 @@ mod tests {
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
+    use blake2::Blake2b;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
 
@@ -353,7 +375,7 @@ mod tests {
                 );
                 let mut chal_contrib_prover = vec![];
                 protocol
-                    .challenge_contribution(&mut chal_contrib_prover)
+                    .challenge_contribution(&base, &y, &mut chal_contrib_prover)
                     .unwrap();
 
                 test_serialization!(
@@ -361,16 +383,20 @@ mod tests {
                     protocol
                 );
 
-                let challenge = Fr::rand(&mut rng);
-                let proof = protocol.gen_proof(&challenge);
+                let challenge_prover =
+                    compute_random_oracle_challenge::<Fr, Blake2b>(&chal_contrib_prover);
+                let proof = protocol.gen_proof(&challenge_prover);
 
                 let mut chal_contrib_verifier = vec![];
                 proof
-                    .challenge_contribution(&mut chal_contrib_verifier)
+                    .challenge_contribution(&base, &y, &mut chal_contrib_verifier)
                     .unwrap();
 
-                assert!(proof.verify(&y, &base, &challenge));
+                let challenge_verifier =
+                    compute_random_oracle_challenge::<Fr, Blake2b>(&chal_contrib_verifier);
+                assert!(proof.verify(&y, &base, &challenge_verifier));
                 assert_eq!(chal_contrib_prover, chal_contrib_verifier);
+                assert_eq!(challenge_prover, challenge_verifier);
 
                 test_serialization!(
                     $proof_name<<Bls12_381 as PairingEngine>::$group_affine>,

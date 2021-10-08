@@ -367,6 +367,9 @@ mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b;
+    use schnorr_pok::compute_random_oracle_challenge;
+
+    type Fr = <Bls12_381 as PairingEngine>::Fr;
 
     macro_rules! test_serz_des {
         ($keypair:ident, $public_key:ident, $params:ident, $rng:ident, $message_count: ident) => {
@@ -455,5 +458,71 @@ mod tests {
         let message_count = 10;
         test_params!(SignatureParamsG1, message_count);
         test_params!(SignatureParamsG2, message_count);
+    }
+
+    #[test]
+    fn proof_of_knowledge_of_public_key() {
+        macro_rules! check {
+            ($group_affine:ident, $protocol_name:ident, $proof_name:ident, $public_key:ident, $params:ident) => {
+                let mut rng = StdRng::seed_from_u64(0u64);
+                let params = $params::<Bls12_381>::new::<Blake2b>("test".as_bytes(), 5);
+                let seed = [0, 1, 2, 10, 11];
+                let sk = SecretKey::generate_using_seed::<Blake2b>(&seed);
+                let pk = $public_key::<Bls12_381>::generate_using_secret_key(&sk, &params);
+
+                let base = &params.g2;
+                let witness = sk.0.clone();
+                let blinding = Fr::rand(&mut rng);
+
+                let protocol = $protocol_name::<<Bls12_381 as PairingEngine>::$group_affine>::init(
+                    witness, blinding, base,
+                );
+
+                let mut chal_contrib_prover = vec![];
+                protocol
+                    .challenge_contribution(base, &pk.0, &mut chal_contrib_prover)
+                    .unwrap();
+
+                test_serialization!(
+                    $protocol_name<<Bls12_381 as PairingEngine>::$group_affine>,
+                    protocol
+                );
+
+                let challenge_prover =
+                    compute_random_oracle_challenge::<Fr, Blake2b>(&chal_contrib_prover);
+                let proof = protocol.gen_proof(&challenge_prover);
+
+                let mut chal_contrib_verifier = vec![];
+                proof
+                    .challenge_contribution(base, &pk.0, &mut chal_contrib_verifier)
+                    .unwrap();
+
+                let challenge_verifier =
+                    compute_random_oracle_challenge::<Fr, Blake2b>(&chal_contrib_verifier);
+                assert!(proof.verify(&pk.0, base, &challenge_verifier));
+                assert_eq!(chal_contrib_prover, chal_contrib_verifier);
+                assert_eq!(challenge_prover, challenge_verifier);
+
+                test_serialization!(
+                    $proof_name<<Bls12_381 as PairingEngine>::$group_affine>,
+                    proof
+                );
+            };
+        }
+
+        check!(
+            G2Affine,
+            PoKSecretKeyInPublicKeyG2,
+            PoKSecretKeyInPublicKeyG2Proof,
+            PublicKeyG2,
+            SignatureParamsG1
+        );
+        check!(
+            G1Affine,
+            PoKSecretKeyInPublicKeyG1,
+            PoKSecretKeyInPublicKeyG1Proof,
+            PublicKeyG1,
+            SignatureParamsG2
+        );
     }
 }

@@ -1,4 +1,3 @@
-use crate::impl_collection;
 use ark_ec::PairingEngine;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
@@ -26,7 +25,6 @@ pub enum Witness<E: PairingEngine> {
     PedersenCommitment(#[serde_as(as = "Vec<FieldBytes>")] Vec<E::Fr>),
 }
 
-// impl_collection!(Witnesses, Witness);
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]

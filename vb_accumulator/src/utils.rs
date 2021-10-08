@@ -202,6 +202,7 @@ pub mod tests {
         println!("d11={:?}", d11);
         println!("d12={:?}", d12);
 
+        // Pre-Prepared vs not prepared for pairing
         let mut d13 = Duration::default();
         let mut d14 = Duration::default();
 

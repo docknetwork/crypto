@@ -1,4 +1,9 @@
 # TBD
+
+[![CI](https://github.com/docknetwork/crypto/actions/workflows/test.yml/badge.svg)](https://github.com/docknetwork/crypto/actions/workflows/test.yml)
+[![Apache-2](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/docknetwork/crypto/blob/main/LICENSE)
+[![Dependencies](https://deps.rs/repo/github/docknetwork/crypto/status.svg)](https://deps.rs/repo/github/docknetwork/crypto)
+
 Library providing privacy enhancing cryptographic primitives.
 
 ## Primitives
