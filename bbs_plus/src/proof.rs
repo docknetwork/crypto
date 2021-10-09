@@ -87,7 +87,7 @@ pub struct PoKOfSignatureG1Protocol<E: PairingEngine> {
     pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "[FieldBytes; 2]")]
     sc_wits_1: [E::Fr; 2],
-    /// For proving relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s_prime} + h1*{-m1} + h2*{-m2} + .... + h_j*m_j` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
+    /// For proving relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<FieldBytes>")]
     sc_wits_2: Vec<E::Fr>,
@@ -110,7 +110,7 @@ pub struct PoKOfSignatureG1Proof<E: PairingEngine> {
     #[serde_as(as = "AffineGroupBytes")]
     pub T1: E::G1Affine,
     pub sc_resp_1: SchnorrResponse<E::G1Affine>,
-    /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s_prime} + h1*{-m1} + h2*{-m2} + .... + h_j*m_j` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
+    /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
     #[serde_as(as = "AffineGroupBytes")]
     pub T2: E::G1Affine,
     pub sc_resp_2: SchnorrResponse<E::G1Affine>,
@@ -121,10 +121,10 @@ where
     E: PairingEngine,
 {
     /// Initiate the protocol, i.e. pre-challenge phase. This will generate the randomized signature and execute
-    /// the commit-to-randomness step (step 1) of both Schnorr protocols. Accepts the indices of the
+    /// the commit-to-randomness step (Step 1) of both Schnorr protocols. Accepts the indices of the
     /// multi-message which are revealed to the verifier and thus their knowledge is not proven.
     /// Accepts blindings (randomness) to be used for any messages in the multi-message. This is useful
-    /// when some messages need to be proven same as they will generate same response (step 3 in Schnorr protocol).
+    /// when some messages need to be proven same as they will generate same response (Step 3 in Schnorr protocol).
     /// If extra blindings are passed, or passed for revealed messages, they are ignored. eg. If the
     /// multi-message is `[m_0, m_1, m_2, m_3, m_4, m_5]` and the user is providing blindings for messages
     /// `m_0` and `m_2` and revealing messages `m_3`, `m_4` and `m_5`, `blindings` is `(0 -> m_0), (2 -> m_2)`
@@ -148,7 +148,8 @@ where
             }
         }
 
-        // Generate any blindings that are not explicitly passed
+        // Generate any blindings that are not explicitly passed. At the end of the loop, we should have
+        // a blinding for every message whose knowledge is to be proven
         for i in 0..messages.len() {
             if !revealed_msg_indices.contains(&i) && !blindings.contains_key(&i) {
                 blindings.insert(i, E::Fr::rand(rng));
@@ -159,6 +160,7 @@ where
         let r2 = E::Fr::rand(rng);
         let r3 = r1.inverse().unwrap();
 
+        // b = (e+x) * A = g1 + h_0*s + h_1*m_1 + ... + h_i*m_i
         let b = params.b(
             messages
                 .iter()
@@ -166,6 +168,7 @@ where
                 .collect::<BTreeMap<usize, &E::Fr>>(),
             &signature.s,
         )?;
+
         // A' = A * r1
         let A_prime = signature.A.mul(r1.into_repr());
         let A_prime_affine = A_prime.into_affine();
@@ -179,39 +182,55 @@ where
         // s' = s - r2*r3
         let s_prime = signature.s - (r2 * r3);
 
-        // For proving relation A_bar - d == A'*{-e} + h_0*r2
+        // Following is the 1st step of the Schnorr protocol for the relation pi in the paper. pi is a
+        // conjunction of 2 relations:
+        // 1. `A_bar - d == A'*{-e} + h_0*r2`
+        // 2. `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*-m_j` for all revealed messages `m_i` and for all unrevealed messages `m_j`
+        // For each of the above relation, a Schnorr protocol is executed.
+
+        // For relation `A_bar - d == A'*{-e} + h_0*r2`, knowledge of `-e` and `r2` needs to be proven while
+        // `h_0`, `A'`, `A_bar` and `d` are known to verifier. Thus, `-e` and `r2` are the the witness,
+        // while `h_0`, `A'` and `A_bar - d` are the instance.
         let bases_1 = [A_prime_affine, params.h_0.clone()];
+        let randomness_1 = vec![E::Fr::rand(rng), E::Fr::rand(rng)];
         let wits_1 = [-signature.e, r2];
-        let sc_comm_1 = SchnorrCommitment::new(&bases_1, vec![E::Fr::rand(rng), E::Fr::rand(rng)]);
 
-        // For proving relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s_prime} + h1*{-m1} + h2*{-m2} + .... + h_j*m_j` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
-        // Usually the number of disclosed messages is much less than the number of undisclosed messages, its better to avoid negations in hidden messages and do
-        // them in revealed messages. So transform the relation
-        // `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s_prime} + h1*{-m1} + h2*{-m2} + .... + h_j*m_j` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
-        // into
-        // d*{-r3} + h_0*s_prime + h1*m1 + h2*m2.... + h_j*m_j = -g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i} for all disclosed messages `m_i` and for all undisclosed messages `m_j`.
-        // Moreover -g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i} is public and can be efficiently computed as -(g1 + h1*m1 + h2*m2 +.... * h_i*m_i)
+        // Commit to randomness with `h_0` and `A'`, i.e. `bases_1[0]*randomness_1[0] + bases_1[1]*randomness_1[1]`
+        let sc_comm_1 = SchnorrCommitment::new(&bases_1, randomness_1);
 
-        let mut bases_2 = Vec::with_capacity(2 + blindings.len());
-        let mut scalars_2 = Vec::with_capacity(2 + blindings.len());
-        let mut wits_2 = Vec::with_capacity(2 + blindings.len());
+        // Pull the bases out of the array as array is no longer needed
         let [A_prime_affine, h_0] = bases_1;
+
+        // For relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*-m_j` for all revealed messages `m_i` and for all unrevealed messages `m_j`
+        // Usually the number of revealed messages is much less than the number of unrevealed messages, its better to avoid negations in hidden messages and do
+        // them in revealed messages. So transform the relation
+        // `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*-m_j` for all revealed messages `m_i` and for all unrevealed messages `m_j`
+        // into
+        // d*{-r3} + h_0*s' + h1*m1 + h2*m2.... + h_j*m_j = -g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i} for all revealed messages `m_i` and for all unrevealed messages `m_j`.
+        // Moreover -g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i} is public and can be efficiently computed as -(g1 + h1*m1 + h2*m2 +.... * h_i*m_i)
+        // Knowledge of all unrevealed messages `m_j` need to be proven in addition to knowledge of `-r3` and `s'`. Thus
+        // all `m_j`, `-r3` and `s'` are the witnesses, while all `h_j`, `d`, `h_0` and `-g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i}` is the instance.
+        let mut bases_2 = Vec::with_capacity(2 + blindings.len());
+        let mut randomness_2 = Vec::with_capacity(2 + blindings.len());
+        let mut wits_2 = Vec::with_capacity(2 + blindings.len());
         bases_2.push(d_affine);
-        scalars_2.push(E::Fr::rand(rng));
+        randomness_2.push(E::Fr::rand(rng));
         wits_2.push(-r3);
         bases_2.push(h_0);
-        scalars_2.push(E::Fr::rand(rng));
+        randomness_2.push(E::Fr::rand(rng));
         wits_2.push(s_prime);
 
+        // Capture all unrevealed messages `m_j` and corresponding `h_j`
         for i in 0..messages.len() {
             if !revealed_msg_indices.contains(&i) {
                 bases_2.push(params.h[i].clone());
-                scalars_2.push(blindings.remove(&i).unwrap());
+                randomness_2.push(blindings.remove(&i).unwrap());
                 wits_2.push(messages[i].clone());
             }
         }
 
-        let sc_comm_2 = SchnorrCommitment::new(&bases_2, scalars_2);
+        // Commit to randomness, i.e. `bases_2[0]*randomness_2[0] + bases_2[1]*randomness_2[1] + .... bases_2[j]*randomness_2[j]`
+        let sc_comm_2 = SchnorrCommitment::new(&bases_2, randomness_2);
         Ok(Self {
             A_prime: A_prime_affine,
             A_bar: A_bar.into_affine(),
@@ -244,7 +263,9 @@ where
 
     /// Generate proof. post-challenge phase of the protocol.
     pub fn gen_proof(self, challenge: &E::Fr) -> Result<PoKOfSignatureG1Proof<E>, BBSPlusError> {
+        // Schnorr response for relation `A_bar - d == A'*{-e} + h_0*r2`
         let resp_1 = self.sc_comm_1.response(&self.sc_wits_1, challenge)?;
+        // Schnorr response for relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*-m_j` for all revealed messages `m_i` and for all unrevealed messages `m_j`
         let resp_2 = self.sc_comm_2.response(&self.sc_wits_2, challenge)?;
 
         Ok(PoKOfSignatureG1Proof {
@@ -284,24 +305,24 @@ where
         T1.serialize_unchecked(&mut writer)?;
 
         // For 2nd Schnorr
-        // `bases_disclosed` and `exponents` below are used to create g1 * h1^-m1 * h2^-m2.... for all disclosed messages m_i
-        let mut bases_disclosed = Vec::with_capacity(1 + revealed_msgs.len());
+        // `bases_revealed` and `exponents` below are used to create g1 * h1^-m1 * h2^-m2.... for all revealed messages m_i
+        let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
         let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
 
         params.g1.serialize_unchecked(&mut writer)?;
-        bases_disclosed.push(params.g1);
+        bases_revealed.push(params.g1);
         let r = E::Fr::one().into_repr();
         r.serialize_unchecked(&mut writer)?;
         exponents.push(r);
         for (i, msg) in revealed_msgs {
             assert!(*i < params.h.len());
             params.h[*i].serialize_unchecked(&mut writer)?;
-            bases_disclosed.push(params.h[*i]);
+            bases_revealed.push(params.h[*i]);
             let r = msg.into_repr();
             r.serialize_unchecked(&mut writer)?;
             exponents.push(r);
         }
-        VariableBaseMSM::multi_scalar_mul(&bases_disclosed, &exponents)
+        VariableBaseMSM::multi_scalar_mul(&bases_revealed, &exponents)
             .serialize_unchecked(&mut writer)?;
         T2.serialize_unchecked(&mut writer).map_err(|e| e.into())
     }
@@ -358,22 +379,21 @@ where
         bases_2.push(self.d);
         bases_2.push(params.h_0);
 
-        let mut bases_disclosed = Vec::with_capacity(1 + revealed_msgs.len());
+        let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
         let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
-        // XXX: g1 should come from a setup param and not generator
-        bases_disclosed.push(params.g1);
+        bases_revealed.push(params.g1);
         exponents.push(E::Fr::one().into_repr());
         for i in 0..params.max_message_count() {
             if revealed_msgs.contains_key(&i) {
                 let message = revealed_msgs.get(&i).unwrap();
-                bases_disclosed.push(params.h[i]);
+                bases_revealed.push(params.h[i]);
                 exponents.push(message.into_repr());
             } else {
                 bases_2.push(params.h[i]);
             }
         }
-        // pr = -g1 + h1*-m1 + h2*-m2.... = -(g1 + h1*m1 * h2*m2....) for all disclosed messages m_i
-        let pr = -VariableBaseMSM::multi_scalar_mul(&bases_disclosed, &exponents);
+        // pr = -g1 + h1*-m1 + h2*-m2.... = -(g1 + h1*m1 * h2*m2....) for all revealed messages m_i
+        let pr = -VariableBaseMSM::multi_scalar_mul(&bases_revealed, &exponents);
         let pr = pr.into_affine();
         match self.sc_resp_2.is_valid(&bases_2, &pr, &self.T2, challenge) {
             Ok(()) => (),
@@ -423,7 +443,7 @@ where
                 adjusted_idx -= 1;
             }
         }
-        // 2 added to the index, since 0th and 1st index are reserved for `s_prime` and `r2`
+        // 2 added to the index, since 0th and 1st index are reserved for `s'` and `r2`
         let r = self.sc_resp_2.get_response(2 + adjusted_idx)?;
         Ok(r)
     }

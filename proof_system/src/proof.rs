@@ -72,6 +72,11 @@ impl<G: AffineCurve> PedersenCommitmentProof<G> {
 pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
     pub statements: Statements<E, G>,
     pub meta_statements: MetaStatements,
+    /// `context` is any arbitrary data that needs to be hashed into the proof and it must be kept
+    /// same while creating and verifying the proof. Eg of `context` are the purpose of
+    /// the proof or the verifier's identity or some verifier-specific identity of the holder
+    /// or all of the above combined.
+    pub context: Option<Vec<u8>>,
 }
 
 /// Created by the prover and verified by the verifier
@@ -79,6 +84,7 @@ pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
 #[serde(bound = "")]
 pub struct Proof<E: PairingEngine, G: AffineCurve, F: PrimeField + SquareRootField, D: Digest>(
     pub Vec<StatementProof<E, G>>,
+    pub Option<Vec<u8>>,
     PhantomData<F>,
     PhantomData<D>,
 );
@@ -105,16 +111,19 @@ where
         Self {
             statements: Statements::new(),
             meta_statements: MetaStatements::new(),
+            context: None,
         }
     }
 
     pub fn new_with_statements_and_meta_statements(
         statements: Statements<E, G>,
         meta_statements: MetaStatements,
+        context: Option<Vec<u8>>,
     ) -> Self {
         Self {
             statements,
             meta_statements,
+            context,
         }
     }
 
@@ -147,15 +156,15 @@ where
     F: PrimeField + SquareRootField,
     D: Digest,
 {
-    /// Create a new proof. `context` is any arbitrary data that needs to be hashed into the proof and
-    /// it must be kept same while creating and verifying the proof. Eg of `context` are the
-    /// purpose of the proof or the verifier's identity or some verifier-specific identity of the holder
-    /// or all of the above combined.
+    /// Create a new proof. `nonce` is random data that needs to be hashed into the proof and
+    /// it must be kept same while creating and verifying the proof. One use of `nonce` is for replay
+    /// protection, here the prover might have chosen its nonce to prevent the verifier from reusing
+    /// the proof as its own or the verifier might want to require the user to create fresh proof.
     pub fn new<R: RngCore>(
         rng: &mut R,
         proof_spec: ProofSpec<E, G>,
         witnesses: Witnesses<E>,
-        context: &[u8],
+        nonce: Option<Vec<u8>>,
     ) -> Result<Self, ProofSystemError> {
         if !proof_spec.is_valid() {
             return Err(ProofSystemError::InvalidProofSpec);
@@ -270,8 +279,14 @@ where
             }
         }
 
+        // Get nonce's and context's challenge contribution
+        let mut challenge_bytes = vec![];
+        match nonce.as_ref() {
+            Some(n) => challenge_bytes.extend_from_slice(n),
+            _ => (),
+        }
+        challenge_bytes.append(&mut proof_spec.context.unwrap_or_else(|| vec![]));
         // Get each sub-protocol's challenge contribution
-        let mut challenge_bytes = context.to_vec();
         for p in sub_protocols.iter() {
             p.challenge_contribution(&mut challenge_bytes)?;
         }
@@ -284,14 +299,14 @@ where
         for mut p in sub_protocols {
             statement_proofs.push(p.gen_proof_contribution(&challenge)?);
         }
-        Ok(Self(statement_proofs, PhantomData, PhantomData))
+        Ok(Self(statement_proofs, nonce, PhantomData, PhantomData))
     }
 
-    /// Verify the `Proof` given the `ProofSpec` and `context`
+    /// Verify the `Proof` given the `ProofSpec` and `nonce`
     pub fn verify(
         self,
         proof_spec: ProofSpec<E, G>,
-        context: &[u8],
+        nonce: Option<Vec<u8>>,
     ) -> Result<(), ProofSystemError> {
         if !proof_spec.is_valid() {
             return Err(ProofSystemError::InvalidProofSpec);
@@ -311,7 +326,13 @@ where
         let mut responses_for_equalities: Vec<Option<&E::Fr>> =
             vec![None; witness_equalities.len()];
 
-        let mut challenge_bytes = context.to_vec();
+        // Get nonce's and context's challenge contribution
+        let mut challenge_bytes = vec![];
+        match nonce.as_ref() {
+            Some(n) => challenge_bytes.extend_from_slice(n),
+            _ => (),
+        }
+        challenge_bytes.append(&mut proof_spec.context.unwrap_or_else(|| vec![]));
 
         // Get challenge contribution for each statement and check if response is equal for all witnesses.
         for (s_idx, (statement, proof)) in proof_spec
@@ -709,8 +730,13 @@ mod tests {
         test_serialization!(MetaStatements, meta_statements);
 
         // Create a proof spec, this is shared between prover and verifier
-        let proof_spec =
-            ProofSpec::new_with_statements_and_meta_statements(statements, meta_statements);
+        // Context must be known to both prover and verifier
+        let context = Some(b"test".to_vec());
+        let proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+            statements,
+            meta_statements,
+            context,
+        );
 
         test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
 
@@ -732,19 +758,21 @@ mod tests {
         test_serialization!(Witnesses<Bls12_381>, witnesses);
 
         // Prover now creates the proof using the proof spec and witnesses. This will be sent to the verifier
-        // Context must be known to both prover and verifier
-        let context = "test".as_bytes();
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses, context).unwrap();
+        let nonce = Some(b"some nonce".to_vec());
+        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses, nonce.clone()).unwrap();
 
-        // Proof with invalid context shouldn't verify
+        // Proof with no nonce shouldn't verify
+        assert!(proof.clone().verify(proof_spec.clone(), None).is_err());
+
+        // Proof with invalid nonce shouldn't verify
         assert!(proof
             .clone()
-            .verify(proof_spec.clone(), "random...".as_bytes())
+            .verify(proof_spec.clone(), Some(b"random...".to_vec()))
             .is_err());
 
         test_serialization!(ProofG1, proof);
         // Verifier verifies the proof
-        proof.verify(proof_spec, context).unwrap();
+        proof.verify(proof_spec, nonce).unwrap();
     }
 
     #[test]
@@ -820,19 +848,28 @@ mod tests {
         test_serialization!(MetaStatements, meta_statements);
         test_serialization!(Witnesses<Bls12_381>, witnesses);
 
+        let context = Some(b"test".to_vec());
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements,
+            context: context.clone(),
         };
 
         test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
 
-        let context = "test".as_bytes();
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+        let nonce = Some(b"test-nonce".to_vec());
+
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            nonce.clone(),
+        )
+        .unwrap();
 
         test_serialization!(ProofG1, proof);
 
-        proof.verify(proof_spec.clone(), context).unwrap();
+        proof.verify(proof_spec.clone(), nonce.clone()).unwrap();
 
         // Wrong witness reference fails to verify
         let mut meta_statements_incorrect = MetaStatements::new();
@@ -844,10 +881,16 @@ mod tests {
         let proof_spec_incorrect = ProofSpec {
             statements: statements.clone(),
             meta_statements: meta_statements_incorrect,
+            context: context.clone(),
         };
-        let proof =
-            ProofG1::new(&mut rng, proof_spec_incorrect.clone(), witnesses, context).unwrap();
-        assert!(proof.verify(proof_spec_incorrect, context).is_err());
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec_incorrect.clone(),
+            witnesses,
+            nonce.clone(),
+        )
+        .unwrap();
+        assert!(proof.verify(proof_spec_incorrect, nonce.clone()).is_err());
 
         // Non-member fails to verify
         let mut witnesses_incorrect = Witnesses::new();
@@ -871,10 +914,16 @@ mod tests {
         let proof_spec = ProofSpec {
             statements,
             meta_statements,
+            context: context.clone(),
         };
-        let proof =
-            ProofG1::new(&mut rng, proof_spec.clone(), witnesses_incorrect, context).unwrap();
-        assert!(proof.verify(proof_spec, context).is_err());
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses_incorrect,
+            nonce.clone(),
+        )
+        .unwrap();
+        assert!(proof.verify(proof_spec, nonce.clone()).is_err());
 
         // Prove knowledge of signature and membership of message with index `accum_member_2_idx` in universal accumulator
         let accum_member_2_idx = 2;
@@ -946,16 +995,22 @@ mod tests {
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements,
+            context: context.clone(),
         };
 
         test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
 
-        let context = "test".as_bytes();
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            nonce.clone(),
+        )
+        .unwrap();
 
         test_serialization!(ProofG1, proof);
 
-        proof.verify(proof_spec, context).unwrap();
+        proof.verify(proof_spec, nonce.clone()).unwrap();
 
         // Prove knowledge of signature and non-membership of message with index `accum_non_member_idx` in universal accumulator
         let accum_non_member_idx = 3;
@@ -1014,16 +1069,22 @@ mod tests {
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements,
+            context: context.clone(),
         };
 
         test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
 
-        let context = "test".as_bytes();
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            nonce.clone(),
+        )
+        .unwrap();
 
         test_serialization!(ProofG1, proof);
 
-        proof.verify(proof_spec, context).unwrap();
+        proof.verify(proof_spec, nonce.clone()).unwrap();
 
         // Prove knowledge of signature and
         // - membership of message with index `accum_member_1_idx` in positive accumulator
@@ -1103,16 +1164,22 @@ mod tests {
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements,
+            context: context.clone(),
         };
 
         test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
 
-        let context = "test".as_bytes();
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            nonce.clone(),
+        )
+        .unwrap();
 
         test_serialization!(ProofG1, proof);
 
-        proof.verify(proof_spec, context).unwrap();
+        proof.verify(proof_spec, nonce.clone()).unwrap();
     }
 
     #[test]
@@ -1173,19 +1240,28 @@ mod tests {
 
         test_serialization!(Witnesses<Bls12_381>, witnesses);
 
+        let context = Some(b"test".to_vec());
+
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements: meta_statements.clone(),
+            context: context.clone(),
         };
 
         test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
 
-        let context = "test".as_bytes();
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+        let nonce = Some(b"test nonce".to_vec());
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            nonce.clone(),
+        )
+        .unwrap();
 
         test_serialization!(ProofG1, proof);
 
-        proof.verify(proof_spec, context).unwrap();
+        proof.verify(proof_spec, nonce.clone()).unwrap();
 
         // Wrong commitment should fail to verify
         let mut statements_wrong = Statements::new();
@@ -1202,17 +1278,17 @@ mod tests {
         let proof_spec_invalid = ProofSpec {
             statements: statements_wrong.clone(),
             meta_statements: meta_statements.clone(),
+            context: context.clone(),
         };
 
-        let context = "test".as_bytes();
         let proof = ProofG1::new(
             &mut rng,
             proof_spec_invalid.clone(),
             witnesses.clone(),
-            context,
+            nonce.clone(),
         )
         .unwrap();
-        assert!(proof.verify(proof_spec_invalid, context).is_err());
+        assert!(proof.verify(proof_spec_invalid, nonce.clone()).is_err());
 
         // Wrong message equality should fail to verify
         let mut meta_statements_wrong = MetaStatements::new();
@@ -1230,18 +1306,18 @@ mod tests {
         let proof_spec_invalid = ProofSpec {
             statements: statements.clone(),
             meta_statements: meta_statements_wrong,
+            context: context.clone(),
         };
 
-        let context = "test".as_bytes();
         let proof = ProofG1::new(
             &mut rng,
             proof_spec_invalid.clone(),
             witnesses.clone(),
-            context,
+            nonce.clone(),
         )
         .unwrap();
 
-        assert!(proof.verify(proof_spec_invalid, context).is_err());
+        assert!(proof.verify(proof_spec_invalid, nonce).is_err());
     }
 
     #[test]
@@ -1293,9 +1369,11 @@ mod tests {
                 .collect::<BTreeSet<(usize, usize)>>(),
         )));
 
+        let context = Some(b"test".to_vec());
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements: meta_statements.clone(),
+            context: context.clone(),
         };
 
         test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
@@ -1309,12 +1387,18 @@ mod tests {
 
         test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-        let context = "test".as_bytes();
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+        let nonce = Some(b"test nonce".to_vec());
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            nonce.clone(),
+        )
+        .unwrap();
 
         test_serialization!(ProofG1, proof);
 
-        proof.verify(proof_spec, context).unwrap();
+        proof.verify(proof_spec, nonce.clone()).unwrap();
 
         // Wrong message equality should fail to verify
         let mut meta_statements_wrong = MetaStatements::new();
@@ -1332,18 +1416,18 @@ mod tests {
         let proof_spec_invalid = ProofSpec {
             statements: statements.clone(),
             meta_statements: meta_statements_wrong,
+            context: nonce.clone(),
         };
 
-        let context = "test".as_bytes();
         let proof = ProofG1::new(
             &mut rng,
             proof_spec_invalid.clone(),
             witnesses.clone(),
-            context,
+            nonce.clone(),
         )
         .unwrap();
 
-        assert!(proof.verify(proof_spec_invalid, context).is_err());
+        assert!(proof.verify(proof_spec_invalid, nonce).is_err());
     }
 
     #[test]
@@ -1387,9 +1471,11 @@ mod tests {
 
         test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
 
+        let context = Some(b"test".to_vec());
         let proof_spec = ProofSpec {
             statements: statements.clone(),
             meta_statements: MetaStatements::new(),
+            context: context.clone(),
         };
 
         test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
@@ -1399,12 +1485,18 @@ mod tests {
 
         test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-        let context = "test".as_bytes();
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), context).unwrap();
+        let nonce = Some(b"test nonce".to_vec());
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            nonce.clone(),
+        )
+        .unwrap();
 
         test_serialization!(ProofG1, proof);
 
-        proof.verify(proof_spec, context).unwrap();
+        proof.verify(proof_spec, nonce).unwrap();
 
         // Now requester picks the messages he is revealing to the signer and prepares `uncommitted_messages`
         // to request the blind signature
