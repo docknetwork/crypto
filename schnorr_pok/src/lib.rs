@@ -8,7 +8,7 @@
 //! Step 2: Verifier generates random challenge c and send to Prover
 //! Step 3: Prover produces s = r + x*c, and sends s to Verifier
 //! Step 4: Verifier checks that g^s = (y^c)*t
-//! 
+//!
 //! How this protocol is used in our context of multiple messages should be derivable from the code.
 
 use crate::error::SchnorrError;
@@ -101,7 +101,7 @@ impl<G> SchnorrChallengeContributor for SchnorrCommitment<G>
 where
     G: AffineCurve,
 {
-    /// The commitment's contribution to the overall challenge of the protocol, i.e. overall challenge is 
+    /// The commitment's contribution to the overall challenge of the protocol, i.e. overall challenge is
     /// of form Hash({m_i}), and this function returns the bytecode for m_j for some j. Note that
     /// it does not include the bases or the commitment (`g_i`  and `y` in `{g_i} * {x_i} = y`) and
     /// they must be part of the challenge.

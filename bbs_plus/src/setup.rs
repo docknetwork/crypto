@@ -199,7 +199,7 @@ macro_rules! impl_sig_params {
             }
 
             /// Commit to given messages using the parameters and the given blinding as a Pedersen commitment.
-            /// Eg. if given messages `m_i`, `m_j`, and `m_k` in the map, the commitment converts messages to 
+            /// Eg. if given messages `m_i`, `m_j`, and `m_k` in the map, the commitment converts messages to
             /// scalars and multiplies them by the parameter curve points:
             /// `params.h_0 * blinding + params.h_i * m_i + params.h_j * m_j + params.h_k * m_k`
             /// Computes using multi-scalar multiplication
@@ -264,7 +264,7 @@ macro_rules! impl_sig_params {
 macro_rules! impl_public_key {
     ( $name:ident, $group:ident, $params:ident ) => {
         /// Public key of the signer. The signer can use the same public key with different
-        /// signature parameters to sign different multi-messages, provided that parameter 
+        /// signature parameters to sign different multi-messages, provided that parameter
         /// `g2` is consistent with the 'g2' used to generate the public key.
         #[serde_as]
         #[derive(
