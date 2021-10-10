@@ -130,7 +130,7 @@ macro_rules! impl_sig_params {
         impl<E: PairingEngine> $name<E> {
             /// Generate params by hashing a known string. The hash function is vulnerable to timing
             /// attack but since all this is public knowledge, it is fine.
-            /// This is useful if people need to be convinced that the discrete of group elements wrt each other is not known.
+            /// This is useful if people need to be convinced that the discrete log of group elements wrt each other is not known.
             pub fn new<D: Digest>(label: &[u8], n: usize) -> Self {
                 // Need n+2 elements of signature group and 1 element of other group
                 let mut sig_group_elems = Vec::with_capacity(n + 2);
@@ -185,7 +185,7 @@ macro_rules! impl_sig_params {
                 }
             }
 
-            /// Check if no group element is zero
+            /// Check that all group elements are non-zero (returns false if any element is zero)
             pub fn is_valid(&self) -> bool {
                 !(self.g1.is_zero()
                     || self.g2.is_zero()
@@ -193,13 +193,14 @@ macro_rules! impl_sig_params {
                     || iter!(self.h).any(|v| v.is_zero()))
             }
 
-            /// Maximum supported messages in the multi-message
+            /// Maximum supported number of messages in the multi-message
             pub fn max_message_count(&self) -> usize {
                 self.h.len()
             }
 
             /// Commit to given messages using the parameters and the given blinding as a Pedersen commitment.
-            /// Eg. if given messages `m_i`, `m_j`, and `m_k` in the map, the commitment is
+            /// Eg. if given messages `m_i`, `m_j`, and `m_k` in the map, the commitment converts messages to 
+            /// scalars and multiplies them by the parameter curve points:
             /// `params.h_0 * blinding + params.h_i * m_i + params.h_j * m_j + params.h_k * m_k`
             /// Computes using multi-scalar multiplication
             pub fn commit_to_messages(
@@ -212,7 +213,9 @@ macro_rules! impl_sig_params {
                     Vec<E::$group_affine>,
                     Vec<<<E as ark_ec::PairingEngine>::Fr as PrimeField>::BigInt>,
                 ) = {
-                    // No message index should be >= max supported messages
+                    // Need to manually check that no message index exceeds the maximum number of messages allowed
+                    // because this function can be called with only uncommitted messages; so size of BTreeMap is
+                    // not representatitve of the number of messages
                     for (i, _) in messages.iter() {
                         if *i >= self.max_message_count() {
                             return Err(BBSPlusError::InvalidMessageIdx);
@@ -243,7 +246,8 @@ macro_rules! impl_sig_params {
                 Ok(VariableBaseMSM::multi_scalar_mul(&bases, &scalars).into_affine())
             }
 
-            /// Compute `b` from the paper. Commits to the given messages and adds `self.g1` to it
+            /// Compute `b` from the paper (equivalently 'A*{e+x}').
+            /// Commits to the given messages and adds `self.g1` to it,
             /// `b = g_1 + h_0 * s + sum(h_i * m_i)` for all indices `i` in the map.
             pub fn b(
                 &self,
@@ -260,8 +264,8 @@ macro_rules! impl_sig_params {
 macro_rules! impl_public_key {
     ( $name:ident, $group:ident, $params:ident ) => {
         /// Public key of the signer. The signer can use the same public key with different
-        /// signature parameters provided all parameters use same `g2` to sign different sized
-        /// multi-messages. This helps the signer minimize his secret key storage.
+        /// signature parameters to sign different multi-messages, provided that parameter 
+        /// `g2` is consistent with the 'g2' used to generate the public key.
         #[serde_as]
         #[derive(
             Clone,
@@ -281,7 +285,7 @@ macro_rules! impl_public_key {
         where
             E: PairingEngine,
         {
-            /// Generate public key from given secret key and signature parameters
+            /// Generate public key from given secret key and signature parameter g_2
             pub fn generate_using_secret_key(
                 secret_key: &SecretKey<E::Fr>,
                 params: &$params<E>,

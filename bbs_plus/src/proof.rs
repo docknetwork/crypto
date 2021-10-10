@@ -124,11 +124,11 @@ where
     /// the commit-to-randomness step (Step 1) of both Schnorr protocols. Accepts the indices of the
     /// multi-message which are revealed to the verifier and thus their knowledge is not proven.
     /// Accepts blindings (randomness) to be used for any messages in the multi-message. This is useful
-    /// when some messages need to be proven same as they will generate same response (Step 3 in Schnorr protocol).
-    /// If extra blindings are passed, or passed for revealed messages, they are ignored. eg. If the
-    /// multi-message is `[m_0, m_1, m_2, m_3, m_4, m_5]` and the user is providing blindings for messages
-    /// `m_0` and `m_2` and revealing messages `m_3`, `m_4` and `m_5`, `blindings` is `(0 -> m_0), (2 -> m_2)`
-    /// and `revealed_msg_indices` is `(3 -> m_3), (4 -> m_4), (5 -> m_5)`
+    /// when some messages need to be proven to be the same as they will generate same response (step 3 in
+    /// Schnorr protocol). If extra blindings are passed, or passed for revealed messages, they are ignored.
+    /// eg. If the multi-message is `[m_0, m_1, m_2, m_3, m_4, m_5]` and the user is providing blindings for
+    /// messages `m_0` and `m_2` and revealing messages `m_3`, `m_4` and `m_5`, `blindings` is `(0 -> m_0),
+    /// (2 -> m_2)` and `revealed_msg_indices` is `(3 -> m_3), (4 -> m_4), (5 -> m_5)`
     pub fn init<R: RngCore>(
         rng: &mut R,
         signature: &SignatureG1<E>,
@@ -201,15 +201,15 @@ where
         // Pull the bases out of the array as array is no longer needed
         let [A_prime_affine, h_0] = bases_1;
 
-        // For relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*-m_j` for all revealed messages `m_i` and for all unrevealed messages `m_j`
-        // Usually the number of revealed messages is much less than the number of unrevealed messages, its better to avoid negations in hidden messages and do
-        // them in revealed messages. So transform the relation
-        // `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*-m_j` for all revealed messages `m_i` and for all unrevealed messages `m_j`
-        // into
-        // d*{-r3} + h_0*s' + h1*m1 + h2*m2.... + h_j*m_j = -g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i} for all revealed messages `m_i` and for all unrevealed messages `m_j`.
-        // Moreover -g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i} is public and can be efficiently computed as -(g1 + h1*m1 + h2*m2 +.... * h_i*m_i)
+        // For proving relation `g1 + \sum_{i \in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s_prime} + \sum_{j \notin D}(h_j*{-m_j})`
+        // for all disclosed messages `m_i` and for all undisclosed messages `m_j`, usually the number of disclosed
+        // messages is much less than the number of undisclosed messages; so it is better to avoid negations in
+        // undisclosed messages and do them in disclosed messaged. So negate both sides of the relation to get:
+        // `d*{-r3} + h_0*s_prime + \sum_{j \notin D}(h_j*m_j)` = `-g1 + \sum_{i \in D}(h_i*{-m_i})`
+        // Moreover `-g1 + \sum_{i \in D}(h_i*{-m_i})` is public and can be efficiently computed as -(g1 + h1*m1 + h2*m2 +.... * h_i*m_i)
         // Knowledge of all unrevealed messages `m_j` need to be proven in addition to knowledge of `-r3` and `s'`. Thus
         // all `m_j`, `-r3` and `s'` are the witnesses, while all `h_j`, `d`, `h_0` and `-g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i}` is the instance.
+
         let mut bases_2 = Vec::with_capacity(2 + blindings.len());
         let mut randomness_2 = Vec::with_capacity(2 + blindings.len());
         let mut wits_2 = Vec::with_capacity(2 + blindings.len());
@@ -332,7 +332,7 @@ impl<E> PoKOfSignatureG1Proof<E>
 where
     E: PairingEngine,
 {
-    /// Verify is the proof is valid
+    /// Verify if the proof is valid
     pub fn verify(
         &self,
         revealed_msgs: &BTreeMap<usize, E::Fr>,

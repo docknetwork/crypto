@@ -194,7 +194,8 @@ macro_rules! impl_signature_alg {
                 }
 
                 let s = E::Fr::rand(rng);
-                // `b` is the part of signature on uncommitted messages, i.e. partial_sig = g_1 + {h_0}*s + sum(h_i * m_i) for all i in uncommitted_messages
+                // `b` is the part of signature on uncommitted messages, 
+                // i.e. partial_sig = g_1 + {h_0}*s + sum(h_i * m_i) for all i in uncommitted_messages
                 let b = params.b(uncommitted_messages, &s)?;
 
                 let e = E::Fr::rand(rng);

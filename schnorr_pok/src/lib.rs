@@ -1,6 +1,15 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-//! Schnorr protocol to prove knowledge of 1 or more discrete logs in zero knowledge. Refer <https://crypto.stanford.edu/cs355/19sp/lec5.pdf>
+//! Schnorr protocol to prove knowledge of 1 or more discrete logs in zero knowledge.
+//! Refer to <https://crypto.stanford.edu/cs355/19sp/lec5.pdf>
+//! We outline the steps here for your convenince, and to make this documentation more succinct.
+//! Prover wants to prove knowledge of x in y=g^x (y and g are public knowledge)
+//! Step 1: Prover generates randomness r, and sends t = g^r to Verifier
+//! Step 2: Verifier generates random challenge c and send to Prover
+//! Step 3: Prover produces s = r + x*c, and sends s to Verifier
+//! Step 4: Verifier checks that g^s = (y^c)*t
+//! 
+//! How this protocol is used in our context of multiple messages should be derivable from the code.
 
 use crate::error::SchnorrError;
 use ark_ec::msm::VariableBaseMSM;
@@ -37,6 +46,7 @@ macro_rules! iter {
 }
 
 /// Trait implemented by Schnorr-based protocols for returning their contribution to the overall challenge.
+/// i.e. overall challenge is of form Hash({m_i}), and this function returns the bytecode for m_j for some j.
 pub trait SchnorrChallengeContributor {
     fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError>;
 }
@@ -50,7 +60,7 @@ pub struct SchnorrCommitment<G: AffineCurve> {
     /// Randomness. 1 per discrete log
     #[serde_as(as = "Vec<FieldBytes>")]
     pub blindings: Vec<G::ScalarField>,
-    /// The commitment to all the randomnesses
+    /// The commitment to all the randomnesses, i.e. `bases[0] * blindings[0] + ... + bases[i] * blindings[i]`
     #[serde_as(as = "AffineGroupBytes")]
     pub t: G,
 }
@@ -59,7 +69,7 @@ impl<G> SchnorrCommitment<G>
 where
     G: AffineCurve,
 {
-    /// Create commitment as `bases[0] * blindings[0] + bases[1] * blindings[1] + ... bases[i] * blindings[i]`
+    /// Create commitment as `bases[0] * blindings[0] + bases[1] * blindings[1] + ... + bases[i] * blindings[i]`
     /// for step-1 of the protocol. Extra `bases` or `blindings` are ignored.
     pub fn new(bases: &[G], blindings: Vec<G::ScalarField>) -> Self {
         let scalars = iter!(blindings).map(|b| b.into_repr()).collect::<Vec<_>>();
@@ -91,8 +101,9 @@ impl<G> SchnorrChallengeContributor for SchnorrCommitment<G>
 where
     G: AffineCurve,
 {
-    /// The commitment's contribution to the overall challenge of the protocol. Note that
-    /// it does not include the bases or the commitment (`g_`  and `y` in `{g_i} * {x_i} = y`) and
+    /// The commitment's contribution to the overall challenge of the protocol, i.e. overall challenge is 
+    /// of form Hash({m_i}), and this function returns the bytecode for m_j for some j. Note that
+    /// it does not include the bases or the commitment (`g_i`  and `y` in `{g_i} * {x_i} = y`) and
     /// they must be part of the challenge.
     fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
         self.t.serialize_unchecked(writer).map_err(|e| e.into())
@@ -113,7 +124,7 @@ where
     G: AffineCurve,
 {
     /// Check if response is valid and thus validity of Schnorr proof
-    /// bases[0]*responses[0] + bases[0]*responses[0] + ... bases[i]*responses[i] - y*challenge == t
+    /// bases[0]*responses[0] + bases[0]*responses[0] + ... + bases[i]*responses[i] - y*challenge == t
     pub fn is_valid(
         &self,
         bases: &[G],
