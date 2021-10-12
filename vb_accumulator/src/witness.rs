@@ -98,7 +98,6 @@
 //!
 //! ```
 
-use ark_ec::wnaf::WnafContext;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::fields::Field;
 use ark_ff::{batch_inversion, One, PrimeField};
@@ -122,6 +121,7 @@ use crate::error::VBAccumulatorError;
 use crate::setup::SecretKey;
 use ark_ec::msm::VariableBaseMSM;
 
+use crate::utils::WindowTable;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -188,8 +188,11 @@ pub trait Witness<G: AffineCurve> {
             .unzip();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
-        let context = WnafContext::new(4);
-        let table = context.table(old_accumulator.into_projective());
+        let table = WindowTable::new(
+            G::ScalarField::size_in_bits(),
+            elements.len(),
+            old_accumulator.into_projective(),
+        );
 
         let mut d_factor = Vec::with_capacity(elements.len());
 
@@ -200,8 +203,7 @@ pub trait Witness<G: AffineCurve> {
             .enumerate()
             .map(|(i, (d, v))| {
                 // d*C + v*V
-                let r = old_witnesses[i].mul(d.into_repr())
-                    + context.mul_with_table(&table, &v).unwrap();
+                let r = old_witnesses[i].mul(d.into_repr()) + table.multiply(&v);
                 // d is needed for non-membership witnesses
                 d_factor.push(d);
                 r
@@ -238,8 +240,11 @@ pub trait Witness<G: AffineCurve> {
             .unzip();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
-        let context = WnafContext::new(4);
-        let table = context.table(old_accumulator.into_projective());
+        let table = WindowTable::new(
+            G::ScalarField::size_in_bits(),
+            elements.len(),
+            old_accumulator.into_projective(),
+        );
 
         let mut d_factor = Vec::with_capacity(elements.len());
 
@@ -253,8 +258,7 @@ pub trait Witness<G: AffineCurve> {
             .map(|(i, (d_inv, v))| {
                 let v_d_inv = v * d_inv;
                 // 1/d * C - v/d * V
-                let r = old_witnesses[i].mul(d_inv.into_repr())
-                    - context.mul_with_table(&table, &v_d_inv).unwrap();
+                let r = old_witnesses[i].mul(d_inv.into_repr()) - table.multiply(&v_d_inv);
                 d_factor.push(d_inv);
                 r
             })
@@ -295,8 +299,11 @@ pub trait Witness<G: AffineCurve> {
             .collect::<Vec<_>>();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
-        let context = WnafContext::new(4);
-        let table = context.table(old_accumulator.into_projective());
+        let table = WindowTable::new(
+            G::ScalarField::size_in_bits(),
+            elements.len(),
+            old_accumulator.into_projective(),
+        );
 
         let mut d_factor = Vec::with_capacity(elements.len());
 
@@ -312,8 +319,8 @@ pub trait Witness<G: AffineCurve> {
                 let d_A_times_d_D_inv = d_A_i * d_D_inv;
                 let v_d_inv = v * d_D_inv;
                 // d_A_i/d_D * C + v_{A,D}/d_D * V
-                let r = old_witnesses[i].mul(d_A_times_d_D_inv.into_repr())
-                    + context.mul_with_table(&table, &v_d_inv).unwrap();
+                let r =
+                    old_witnesses[i].mul(d_A_times_d_D_inv.into_repr()) + table.multiply(&v_d_inv);
                 d_factor.push(d_A_times_d_D_inv);
                 r
             })

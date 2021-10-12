@@ -1,38 +1,68 @@
-use ark_ec::wnaf::WnafContext;
+use ark_ec::msm::FixedBaseMSM;
 use ark_ec::ProjectiveCurve;
+use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    iter::{IntoIterator, Iterator},
+    fmt::Debug,
+    io::{Read, Write},
     vec::Vec,
 };
+use dock_crypto_utils::serde_utils::*;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
-// TODO: Window size should not be hardcoded. It can be inferred from `group_elem`
-
-/// The same group element is multiplied by each in `elements` using a window table
-pub(crate) fn multiply_field_elems_refs_with_same_group_elem<'a, G: ProjectiveCurve>(
+/// Use when same elliptic curve point is to be multiplied by several scalars.
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct WindowTable<G: ProjectiveCurve> {
+    scalar_size: usize,
     window_size: usize,
-    group_elem: G,
-    elements: impl Iterator<Item = &'a G::ScalarField>,
-) -> Vec<G> {
-    let context = WnafContext::new(window_size);
-    let table = context.table(group_elem);
-    elements
-        .into_iter()
-        .map(|e| context.mul_with_table(&table, e).unwrap())
-        .collect()
+    outerc: usize,
+    #[serde_as(as = "Vec<Vec<AffineGroupBytes>>")]
+    table: Vec<Vec<G::Affine>>,
+}
+
+impl<G: ProjectiveCurve> WindowTable<G> {
+    /// Create new table for `group_elem`. `scalar_size` is the size in bits of the scalar.
+    /// num_multiplications is the number of multiplication that need to be done and it can be an
+    /// approximation as it does not impact correctness but only performance.
+    pub fn new(scalar_size: usize, num_multiplications: usize, group_elem: G) -> Self {
+        let window_size = FixedBaseMSM::get_mul_window_size(num_multiplications);
+        let outerc = (scalar_size + window_size - 1) / window_size;
+        let table = FixedBaseMSM::get_window_table(scalar_size, window_size, group_elem);
+        Self {
+            scalar_size,
+            window_size,
+            outerc,
+            table,
+        }
+    }
+
+    /// Multiply with a single scalar
+    pub fn multiply(&self, element: &G::ScalarField) -> G {
+        FixedBaseMSM::windowed_mul(self.outerc, self.window_size, &self.table, element)
+    }
+
+    /// Multiply with a many scalars
+    pub fn multiply_many(&self, elements: &[G::ScalarField]) -> Vec<G> {
+        FixedBaseMSM::multi_scalar_mul(self.scalar_size, self.window_size, &self.table, elements)
+    }
+
+    pub fn window_size(num_multiplications: usize) -> usize {
+        FixedBaseMSM::get_mul_window_size(num_multiplications)
+    }
 }
 
 /// The same group element is multiplied by each in `elements` using a window table
-pub(crate) fn multiply_field_elems_with_same_group_elem<G: ProjectiveCurve>(
-    window_size: usize,
+pub fn multiply_field_elems_with_same_group_elem<'a, G: ProjectiveCurve>(
     group_elem: G,
-    elements: impl Iterator<Item = G::ScalarField>,
+    elements: &[G::ScalarField],
 ) -> Vec<G> {
-    let context = WnafContext::new(window_size);
-    let table = context.table(group_elem);
-    elements
-        .into_iter()
-        .map(|e| context.mul_with_table(&table, &e).unwrap())
-        .collect()
+    let scalar_size = G::ScalarField::size_in_bits();
+    let table = WindowTable::new(scalar_size, elements.len(), group_elem);
+    table.multiply_many(elements)
 }
 
 /// Return `par_iter` or `iter` depending on whether feature `parallel` is enabled
@@ -66,6 +96,7 @@ pub mod tests {
 
     use ark_bls12_381::Bls12_381;
     use ark_ec::msm::VariableBaseMSM;
+    use ark_ec::wnaf::WnafContext;
     use ark_ec::{group::Group, AffineCurve, PairingEngine};
     use ark_ff::PrimeField;
     use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
@@ -166,7 +197,7 @@ pub mod tests {
             let g = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng);
 
             let start = Instant::now();
-            multiply_field_elems_refs_with_same_group_elem(4, g, scalars.iter());
+            multiply_field_elems_with_same_group_elem(g, scalars.as_slice());
             d9 += start.elapsed();
 
             let start = Instant::now();
@@ -223,5 +254,39 @@ pub mod tests {
 
         println!("d13={:?}", d13);
         println!("d14={:?}", d14);
+
+        let mut d15 = Duration::default();
+        let mut d16 = Duration::default();
+
+        let g = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng);
+        let count = 10;
+
+        let start = Instant::now();
+        let scalar_size = Fr::size_in_bits();
+        let window_size = FixedBaseMSM::get_mul_window_size(count);
+        let outerc = (scalar_size + window_size - 1) / window_size;
+        let table = FixedBaseMSM::get_window_table(scalar_size, window_size, g);
+        d15 += start.elapsed();
+
+        let g = g.into_affine();
+        for _ in 0..count {
+            let e = Fr::rand(&mut rng);
+
+            let start = Instant::now();
+            let _ = FixedBaseMSM::windowed_mul::<<Bls12_381 as PairingEngine>::G1Projective>(
+                outerc,
+                window_size,
+                &table,
+                &e,
+            );
+            d15 += start.elapsed();
+
+            let start = Instant::now();
+            let _ = g.mul(e.into_repr());
+            d16 += start.elapsed();
+        }
+
+        println!("d15={:?}", d15);
+        println!("d16={:?}", d16);
     }
 }

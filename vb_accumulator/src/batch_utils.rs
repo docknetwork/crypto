@@ -4,7 +4,7 @@
 //! Utilities for batch updates to the accumulators and witnesses.
 
 use crate::setup::SecretKey;
-use crate::utils::multiply_field_elems_refs_with_same_group_elem;
+use crate::utils::multiply_field_elems_with_same_group_elem;
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{batch_inversion, One, PrimeField, Zero};
@@ -473,11 +473,7 @@ where
         let poly = Poly_v_AD::generate(additions, removals, &sk.0);
         let coeffs = poly.get_coefficients();
         Omega(batch_normalize_projective_into_affine::<G::Projective>(
-            multiply_field_elems_refs_with_same_group_elem(
-                4,
-                old_accumulator.into_projective(),
-                coeffs.iter(),
-            ),
+            multiply_field_elems_with_same_group_elem(old_accumulator.into_projective(), coeffs),
         ))
     }
 

@@ -457,13 +457,13 @@ where
         let P_multiple = f_V_alpha_minus_d
             .iter()
             .zip(y_plus_alpha_inv.iter())
-            .map(|(numr, denom)| *numr * *denom);
+            .map(|(numr, denom)| *numr * *denom)
+            .collect::<Vec<_>>();
 
         // The same group element (self.V) has to multiplied by each element in P_multiple so creating a window table
         let wits = multiply_field_elems_with_same_group_elem(
-            4,
             params.P.into_projective(),
-            P_multiple.into_iter(),
+            P_multiple.as_slice(),
         );
         let wits_affine = E::G1Projective::batch_normalization_into_affine(&wits);
         Ok(into_iter!(wits_affine)

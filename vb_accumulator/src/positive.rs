@@ -93,7 +93,7 @@ use crate::batch_utils::Poly_d;
 use crate::error::VBAccumulatorError;
 use crate::persistence::State;
 use crate::setup::{PublicKey, SecretKey, SetupParams};
-use crate::utils::multiply_field_elems_refs_with_same_group_elem;
+use crate::utils::multiply_field_elems_with_same_group_elem;
 use crate::witness::MembershipWitness;
 
 #[cfg(feature = "parallel")]
@@ -348,10 +348,9 @@ pub trait Accumulator<E: PairingEngine> {
         let mut y_sk: Vec<E::Fr> = iter!(members).map(|e| *e + sk.0).collect();
         batch_inversion(&mut y_sk);
         MembershipWitness::projective_points_to_membership_witnesses(
-            multiply_field_elems_refs_with_same_group_elem(
-                4,
+            multiply_field_elems_with_same_group_elem(
                 self.value().into_projective(),
-                y_sk.iter(),
+                y_sk.as_slice(),
             ),
         )
     }

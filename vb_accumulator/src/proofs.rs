@@ -100,6 +100,7 @@ use dock_crypto_utils::serde_utils::*;
 use schnorr_pok::error::SchnorrError;
 use schnorr_pok::SchnorrChallengeContributor;
 
+use crate::utils::WindowTable;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -596,25 +597,26 @@ trait ProofProtocol<E: PairingEngine> {
         SchnorrCommit<E>,
         Blindings<E::Fr>,
     ) {
-        // There are multiple multiplications with X, Y and Z so create tables for them
         // TODO: Since proving key is fixed, these tables can be created just once and stored.
-        let context = WnafContext::new(4);
-        let X_table = context.table(prk.X.into_projective());
-        let Y_table = context.table(prk.Y.into_projective());
-        let Z_table = context.table(prk.Z.into_projective());
+        // There are multiple multiplications with X, Y and Z so create tables for them. 20 multiplications
+        // is the upper bound
+        let scalar_size = E::Fr::size_in_bits();
+        let X_table = WindowTable::new(scalar_size, 20, prk.X.into_projective());
+        let Y_table = WindowTable::new(scalar_size, 20, prk.Y.into_projective());
+        let Z_table = WindowTable::new(scalar_size, 20, prk.Z.into_projective());
 
         // To prove e(witness, element*P_tilde + Q_tilde) == e(accumulated, P_tilde)
         let sigma = E::Fr::rand(rng);
         let rho = E::Fr::rand(rng);
         // Commitment to witness
         // E_C = witness + (sigma + rho) * prk.Z
-        let mut E_C = context.mul_with_table(&Z_table, &(sigma + rho)).unwrap();
+        let mut E_C = Z_table.multiply(&(sigma + rho));
         E_C.add_assign_mixed(witness);
 
         // T_sigma = sigma * prk.X
-        let T_sigma = context.mul_with_table(&X_table, &sigma).unwrap();
+        let T_sigma = X_table.multiply(&sigma);
         // T_rho = rho * prk.Y;
-        let T_rho = context.mul_with_table(&Y_table, &rho).unwrap();
+        let T_rho = Y_table.multiply(&rho);
         let delta_sigma = *element * sigma;
         let delta_rho = *element * rho;
 
@@ -640,21 +642,15 @@ trait ProofProtocol<E: PairingEngine> {
                 // e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) = e((-r_delta_sigma - r_delta_rho) * prk.Z, params.P_tilde)
                 (
                     E::G1Prepared::from(
-                        context
-                            .mul_with_table(&Z_table, &(-r_delta_sigma - r_delta_rho))
-                            .unwrap()
+                        Z_table
+                            .multiply(&(-r_delta_sigma - r_delta_rho))
                             .into_affine(),
                     ),
                     P_tilde_prepared.clone(),
                 ),
                 // e(prk.Z, Q_tilde)^(-r_sigma - r_rho) = e((-r_sigma - r_rho) * prk.Z, Q_tilde)
                 (
-                    E::G1Prepared::from(
-                        context
-                            .mul_with_table(&Z_table, &(-r_sigma - r_rho))
-                            .unwrap()
-                            .into_affine(),
-                    ),
+                    E::G1Prepared::from(Z_table.multiply(&(-r_sigma - r_rho)).into_affine()),
                     E::G2Prepared::from(pk.0),
                 ),
             ]
@@ -677,19 +673,19 @@ trait ProofProtocol<E: PairingEngine> {
             ),
         );
         // R_sigma = r_sigma * prk.X
-        let R_sigma = context.mul_with_table(&X_table, &r_sigma).unwrap();
+        let R_sigma = X_table.multiply(&r_sigma);
         // R_rho = r_rho * prk.Y
-        let R_rho = context.mul_with_table(&Y_table, &r_rho).unwrap();
+        let R_rho = Y_table.multiply(&r_rho);
 
         // R_delta_sigma = r_y * T_sigma - r_delta_sigma * prk.X
         let mut R_delta_sigma = T_sigma.clone();
         R_delta_sigma *= r_y;
-        R_delta_sigma -= context.mul_with_table(&X_table, &r_delta_sigma).unwrap();
+        R_delta_sigma -= X_table.multiply(&r_delta_sigma);
 
         // R_delta_rho = r_y * T_rho - r_delta_rho * prk.Y;
         let mut R_delta_rho = T_rho.clone();
         R_delta_rho *= r_y;
-        R_delta_rho -= context.mul_with_table(&Y_table, &r_delta_rho).unwrap();
+        R_delta_rho -= Y_table.multiply(&r_delta_rho);
         (
             RandomizedWitness {
                 E_C: E_C.into_affine(),
@@ -774,7 +770,7 @@ trait ProofProtocol<E: PairingEngine> {
         params: &SetupParams<E>,
         prk: &ProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
-        // There are multiple multiplications with X, Y and Z so create tables for them
+        // There are multiple multiplications with X, Y and Z which can be done in variable time so use wNAF.
         // TODO: Since proving key is fixed, these tables can be created just once and stored.
         let context = WnafContext::new(4);
         let X_table = context.table(prk.X.into_projective());
@@ -1013,11 +1009,12 @@ where
         params: &SetupParams<E>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
     ) -> Self {
-        // There are multiple multiplications with K so create table
         // TODO: Since proving key is fixed, these tables can be created just once and stored.
-        let context = WnafContext::new(4);
-        let P_table = context.table(params.P.into_projective());
-        let K_table = context.table(prk.K.into_projective());
+        // There are multiple multiplications with P and K so create tables for them. 20 multiplications
+        //         // is the upper bound
+        let scalar_size = E::Fr::size_in_bits();
+        let P_table = WindowTable::new(scalar_size, 20, params.P.into_projective());
+        let K_table = WindowTable::new(scalar_size, 20, prk.K.into_projective());
 
         // To prove non-zero d of witness
         let tau = E::Fr::rand(rng); // blinding in commitment to d
@@ -1025,15 +1022,13 @@ where
 
         // Commitment to d
         // E_d = witness.d * pk.P + tau * prk.K
-        let mut E_d = context.mul_with_table(&P_table, &witness.d).unwrap();
-        E_d += context.mul_with_table(&K_table, &tau).unwrap();
+        let mut E_d = P_table.multiply(&witness.d);
+        E_d += K_table.multiply(&tau);
 
         // Commitment to d^-1
         // E_d_inv = 1/witness.d * pk.P + pi * prk.K;
-        let mut E_d_inv = context
-            .mul_with_table(&P_table, &witness.d.inverse().unwrap())
-            .unwrap();
-        E_d_inv += context.mul_with_table(&K_table, &pi).unwrap();
+        let mut E_d_inv = P_table.multiply(&witness.d.inverse().unwrap());
+        E_d_inv += K_table.multiply(&pi);
 
         // Create blindings for d != 0
         let r_u = E::Fr::rand(rng); // blinding for proving knowledge of d
@@ -1041,13 +1036,13 @@ where
         let r_w = E::Fr::rand(rng);
 
         // R_A = r_u * pk.P + r_v * prk.K;
-        let mut R_A = context.mul_with_table(&P_table, &r_u).unwrap();
-        R_A += context.mul_with_table(&K_table, &r_v).unwrap();
+        let mut R_A = P_table.multiply(&r_u);
+        R_A += K_table.multiply(&r_v);
 
         // R_B = r_u * E_d_inv + r_w * prk.K;
         let mut R_B = E_d_inv.clone();
         R_B *= r_u;
-        R_B += context.mul_with_table(&K_table, &r_w).unwrap();
+        R_B += K_table.multiply(&r_w);
 
         // new R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho) * e(prk.K, params.P_tilde)^-r_v
         // sc.R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho)
@@ -1057,12 +1052,7 @@ where
             &element,
             element_blinding,
             &witness.C,
-            Some(
-                context
-                    .mul_with_table(&K_table, &-r_v)
-                    .unwrap()
-                    .into_affine(),
-            ),
+            Some(K_table.multiply(&-r_v).into_affine()),
             pk,
             params,
             &prk.XYZ,
@@ -1234,6 +1224,7 @@ where
         params: &SetupParams<E>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
+        // There are multiple multiplications with K, P and E_d which can be done in variable time so use wNAF.
         let context = WnafContext::new(4);
         let K_table = context.table(prk.K.into_projective());
         let P_table = context.table(params.P.into_projective());
