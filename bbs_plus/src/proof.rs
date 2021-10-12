@@ -1,4 +1,5 @@
 //! Proof of knowledge of the signature and corresponding messages as per section 4.5 of the paper
+//! https://eprint.iacr.org/2016/663.pdf
 //! # Examples
 //!
 //! Creating proof of knowledge of signature and verifying it:
@@ -67,13 +68,14 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 pub use serialization::*;
 
-/// Stateful protocol to prove knowledge of signature. The protocol randomizes the signature and executes 2 Schnorr
-/// proof of knowledge protocols with the verifier in addition to verification of the randomized signature.
-/// It contains commitment (Schnorr step 1) and witnesses to both Schnorr protocols in `sc_comm_` and `sc_wits_`
-/// respectively. The protocol executes in 2 phases, pre-challenge (`init`) which is used to create the
-/// challenge and post-challenge (`gen_proof`). Thus, several instances of the protocol can be used
-/// together where the pre-challenge phase of all protocols is used to create a combined challenge and then
-/// that challenge is used in post-challenge phase of all protocols.
+/// The BBS+ signature proves validity of a set of messages {m_i}, i in I. This stateful protocol proves knowledge of such
+/// a signature whilst selectively disclosing only a subset of the messages, {m_i} for i in a disclosed set D. The
+/// protocol randomizes the initial BBS+ signature, then condcucts 2 Schnorr PoK protocols to prove exponent knowledge
+/// for the relations in section 4.5 of the paper (refer to top). It contains commitments (Schnorr step 1; refer to schnorr_pok)
+/// and witnesses to both Schnorr protocols in `sc_comm_` and `sc_wits_` respectively. The protocol executes in 2 phases,
+/// pre-challenge (`init`) which is used to create the challenge and post-challenge (`gen_proof`). Thus, several instances of
+/// the protocol can be used together where the pre-challenge phase of all protocols is used to create a combined challenge
+/// and then that challenge is used in post-challenge phase of all protocols.
 #[serde_as]
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct PoKOfSignatureG1Protocol<E: PairingEngine> {
@@ -87,7 +89,7 @@ pub struct PoKOfSignatureG1Protocol<E: PairingEngine> {
     pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "[FieldBytes; 2]")]
     sc_wits_1: [E::Fr; 2],
-    /// For proving relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
+    /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + sum_{j notin D}(h_j*m_j)`
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<FieldBytes>")]
     sc_wits_2: Vec<E::Fr>,
@@ -124,11 +126,11 @@ where
     /// the commit-to-randomness step (Step 1) of both Schnorr protocols. Accepts the indices of the
     /// multi-message which are revealed to the verifier and thus their knowledge is not proven.
     /// Accepts blindings (randomness) to be used for any messages in the multi-message. This is useful
-    /// when some messages need to be proven to be the same as they will generate same response (step 3 in
+    /// when some messages need to be proven to be the same as they will generate the same response (step 3 in
     /// Schnorr protocol). If extra blindings are passed, or passed for revealed messages, they are ignored.
-    /// eg. If the multi-message is `[m_0, m_1, m_2, m_3, m_4, m_5]` and the user is providing blindings for
-    /// messages `m_0` and `m_2` and revealing messages `m_3`, `m_4` and `m_5`, `blindings` is `(0 -> m_0),
-    /// (2 -> m_2)` and `revealed_msg_indices` is `(3 -> m_3), (4 -> m_4), (5 -> m_5)`
+    /// eg. If the multi-message is `[m_0, m_1, m_2, m_3, m_4]` and the user provides blindings for messages
+    /// `m_0` and `m_2` and revealing messages `m_1`, `m_3` and `m_4`, `blindings` is `(0 -> m_0), (2 -> m_2)`
+    /// and `revealed_msg_indices` is `(1 -> m_1), (3 -> m_3), (4 -> m_4)`
     pub fn init<R: RngCore>(
         rng: &mut R,
         signature: &SignatureG1<E>,
@@ -160,7 +162,7 @@ where
         let r2 = E::Fr::rand(rng);
         let r3 = r1.inverse().unwrap();
 
-        // b = (e+x) * A = g1 + h_0*s + h_1*m_1 + ... + h_i*m_i
+        // b = (e+x) * A = g1 + h_0*s + sum(h_i*m_i) for all i in I
         let b = params.b(
             messages
                 .iter()
@@ -185,12 +187,11 @@ where
         // Following is the 1st step of the Schnorr protocol for the relation pi in the paper. pi is a
         // conjunction of 2 relations:
         // 1. `A_bar - d == A'*{-e} + h_0*r2`
-        // 2. `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*-m_j` for all revealed messages `m_i` and for all unrevealed messages `m_j`
-        // For each of the above relation, a Schnorr protocol is executed.
-
-        // For relation `A_bar - d == A'*{-e} + h_0*r2`, knowledge of `-e` and `r2` needs to be proven while
-        // `h_0`, `A'`, `A_bar` and `d` are known to verifier. Thus, `-e` and `r2` are the the witness,
-        // while `h_0`, `A'` and `A_bar - d` are the instance.
+        // 2. `g1 + \sum_{i \in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + \sum_{j \notin D}(h_j*{-m_j})`
+        // for all disclosed messages `m_i` and for all undisclosed messages `m_j`.
+        // For each of the above relations, a Schnorr protocol is executed; the first to prove knowledge
+        // of `(e, r2)`, and the second of `(r3, s', {m_j}_{j \notin D})`. The secret knowledge items are
+        // referred to as witnesses, and the public items as instances.
         let bases_1 = [A_prime_affine, params.h_0.clone()];
         let randomness_1 = vec![E::Fr::rand(rng), E::Fr::rand(rng)];
         let wits_1 = [-signature.e, r2];
@@ -206,9 +207,9 @@ where
         // messages is much less than the number of undisclosed messages; so it is better to avoid negations in
         // undisclosed messages and do them in disclosed messaged. So negate both sides of the relation to get:
         // `d*{-r3} + h_0*s_prime + \sum_{j \notin D}(h_j*m_j)` = `-g1 + \sum_{i \in D}(h_i*{-m_i})`
-        // Moreover `-g1 + \sum_{i \in D}(h_i*{-m_i})` is public and can be efficiently computed as -(g1 + h1*m1 + h2*m2 +.... * h_i*m_i)
+        // Moreover `-g1 + \sum_{i \in D}(h_i*{-m_i})` is public and can be efficiently computed as -(g1 + \sum_{i \in D}(h_i*{m_i}))
         // Knowledge of all unrevealed messages `m_j` need to be proven in addition to knowledge of `-r3` and `s'`. Thus
-        // all `m_j`, `-r3` and `s'` are the witnesses, while all `h_j`, `d`, `h_0` and `-g1 + h1*{-m1} + h2*{-m2}.... + h_i*{-m_i}` is the instance.
+        // all `m_j`, `-r3` and `s'` are the witnesses, while all `h_j`, `d`, `h_0` and `-g1 + \sum_{i \in D}(h_i*{-m_i})` is the instance.
 
         let mut bases_2 = Vec::with_capacity(2 + blindings.len());
         let mut randomness_2 = Vec::with_capacity(2 + blindings.len());
@@ -242,7 +243,7 @@ where
         })
     }
 
-    /// Get the contribution of this protocol towards the challenge.
+    /// Get the contribution of this protocol towards the challenge, i.e. bytecode of items that will be hashed
     pub fn challenge_contribution<W: Write>(
         &self,
         revealed_msgs: &BTreeMap<usize, E::Fr>,
@@ -261,11 +262,11 @@ where
         )
     }
 
-    /// Generate proof. post-challenge phase of the protocol.
+    /// Generate proof. Post-challenge phase of the protocol.
     pub fn gen_proof(self, challenge: &E::Fr) -> Result<PoKOfSignatureG1Proof<E>, BBSPlusError> {
         // Schnorr response for relation `A_bar - d == A'*{-e} + h_0*r2`
         let resp_1 = self.sc_comm_1.response(&self.sc_wits_1, challenge)?;
-        // Schnorr response for relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*-m_j` for all revealed messages `m_i` and for all unrevealed messages `m_j`
+        // Schnorr response for relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + \sum_{j not in D}(h_j*{-m_j})`
         let resp_2 = self.sc_comm_2.response(&self.sc_wits_2, challenge)?;
 
         Ok(PoKOfSignatureG1Proof {
@@ -305,7 +306,8 @@ where
         T1.serialize_unchecked(&mut writer)?;
 
         // For 2nd Schnorr
-        // `bases_revealed` and `exponents` below are used to create g1 * h1^-m1 * h2^-m2.... for all revealed messages m_i
+        // `bases_revealed` and `exponents` below are used to create g1 + \sum_{i in D}(h_i*m_i)
+        // Note: exponents are really scalars here
         let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
         let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
 
@@ -392,7 +394,7 @@ where
                 bases_2.push(params.h[i]);
             }
         }
-        // pr = -g1 + h1*-m1 + h2*-m2.... = -(g1 + h1*m1 * h2*m2....) for all revealed messages m_i
+        // pr = -g1 + \sum_{i in D}(h_i*{-m_i}) = -(g1 + \sum_{i in D}(h_i*{m_i}))
         let pr = -VariableBaseMSM::multi_scalar_mul(&bases_revealed, &exponents);
         let pr = pr.into_affine();
         match self.sc_resp_2.is_valid(&bases_2, &pr, &self.T2, challenge) {
