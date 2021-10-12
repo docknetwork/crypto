@@ -346,7 +346,7 @@ where
                 Statement::PoKBBSSignatureG1(s) => match proof {
                     StatementProof::PoKBBSSignatureG1(p) => {
                         let revealed_msg_ids = s.revealed_messages.keys().map(|k| *k).collect();
-                        for i in 0..s.params.max_message_count() {
+                        for i in 0..s.params.supported_message_count() {
                             let w_ref = (s_idx, i);
                             for j in 0..witness_equalities.len() {
                                 if witness_equalities[j].contains(&w_ref) {

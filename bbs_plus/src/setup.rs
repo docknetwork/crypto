@@ -193,8 +193,8 @@ macro_rules! impl_sig_params {
                     || iter!(self.h).any(|v| v.is_zero()))
             }
 
-            /// Maximum supported number of messages in the multi-message
-            pub fn max_message_count(&self) -> usize {
+            /// Number of messages supported in the multi-message
+            pub fn supported_message_count(&self) -> usize {
                 self.h.len()
             }
 
@@ -217,8 +217,8 @@ macro_rules! impl_sig_params {
                     // because this function can be called with only uncommitted messages; so size of BTreeMap is
                     // not representatitve of the number of messages
                     for (i, _) in messages.iter() {
-                        if *i >= self.max_message_count() {
-                            return Err(BBSPlusError::InvalidMessageIdx);
+                        if *i >= self.supported_message_count() {
+                            return Err(BBSPlusError::InvalidMessageIdx(*i));
                         }
                     }
                     into_iter!(messages)
@@ -232,8 +232,8 @@ macro_rules! impl_sig_params {
                     let mut scalars = Vec::with_capacity(messages.len());
                     for (i, msg) in messages.into_iter() {
                         // No message index should be >= max supported messages
-                        if i >= self.max_message_count() {
-                            return Err(BBSPlusError::InvalidMessageIdx);
+                        if i >= self.supported_message_count() {
+                            return Err(BBSPlusError::InvalidMessageIdx(i));
                         }
                         bases.push(self.h[i].clone());
                         scalars.push(msg.into_repr());

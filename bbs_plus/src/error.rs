@@ -9,12 +9,11 @@ use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub enum BBSPlusError {
     NoMessageToSign,
-    MessageCountIncompatibleWithSigParams,
-    InvalidMessageIdx,
+    MessageCountIncompatibleWithSigParams(usize, usize),
+    InvalidMessageIdx(usize),
     /// Signature's `A` is 0
     ZeroSignature,
     InvalidSignature,
-    InvalidBlindingIdx,
     /// Pairing check failed during verification of proof of knowledge of signature
     PairingCheckFailed,
     /// 1st schnorr proof failed during verification of proof of knowledge of signature

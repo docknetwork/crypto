@@ -96,9 +96,9 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
         }
         // Create messages from revealed messages in statement and unrevealed in witness
-        let mut messages = Vec::with_capacity(self.statement.params.max_message_count());
+        let mut messages = Vec::with_capacity(self.statement.params.supported_message_count());
         let mut revealed_indices = BTreeSet::new();
-        for i in 0..self.statement.params.max_message_count() {
+        for i in 0..self.statement.params.supported_message_count() {
             if witness.unrevealed_messages.contains_key(&i) {
                 messages.push(witness.unrevealed_messages.remove(&i).unwrap());
             } else if self.statement.revealed_messages.contains_key(&i) {

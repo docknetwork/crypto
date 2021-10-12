@@ -1,6 +1,6 @@
 [package]
 name = "proof_system"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2018"
 authors = ["Dock.io"]
 license = "Apache-2.0"
@@ -18,7 +18,7 @@ ark-ec = { version = "^0.3.0", default-features = false }
 ark-std = { version = "^0.3.0", default-features = false }
 digest = "0.9"
 rayon = { version = "1", optional = true }
-bbs_plus = { version = "0.4.1", default-features = false, path = "../bbs_plus" }
+bbs_plus = { version = "0.5.0", default-features = false, path = "../bbs_plus" }
 schnorr_pok = { version = "0.4.1", default-features = false, path = "../schnorr_pok" }
 vb_accumulator = { version = "0.4.1", default-features = false, path = "../vb_accumulator" }
 dock_crypto_utils = { version = "0.2.0", default-features = false, path = "../dock_crypto_utils" }

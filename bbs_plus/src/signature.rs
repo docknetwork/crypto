@@ -154,8 +154,11 @@ macro_rules! impl_signature_alg {
                 if messages.is_empty() {
                     return Err(BBSPlusError::NoMessageToSign);
                 }
-                if messages.len() != params.max_message_count() {
-                    return Err(BBSPlusError::MessageCountIncompatibleWithSigParams);
+                if messages.len() != params.supported_message_count() {
+                    return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
+                        messages.len(),
+                        params.supported_message_count(),
+                    ));
                 }
                 // Create map of msg index (0-based) -> message
                 let msg_map: BTreeMap<usize, &E::Fr> =
@@ -189,8 +192,11 @@ macro_rules! impl_signature_alg {
                 }
                 // `>` as commitment will have 0 or more messages. In practice, commitment should have
                 // at least 1 message
-                if uncommitted_messages.len() > params.max_message_count() {
-                    return Err(BBSPlusError::MessageCountIncompatibleWithSigParams);
+                if uncommitted_messages.len() > params.supported_message_count() {
+                    return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
+                        uncommitted_messages.len(),
+                        params.supported_message_count(),
+                    ));
                 }
 
                 let s = E::Fr::rand(rng);
@@ -236,8 +242,11 @@ macro_rules! impl_signature_alg {
                 if messages.is_empty() {
                     return Err(BBSPlusError::NoMessageToSign);
                 }
-                if messages.len() != params.max_message_count() {
-                    return Err(BBSPlusError::MessageCountIncompatibleWithSigParams);
+                if messages.len() != params.supported_message_count() {
+                    return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
+                        messages.len(),
+                        params.supported_message_count(),
+                    ));
                 }
                 if !self.is_non_zero() {
                     return Err(BBSPlusError::ZeroSignature);

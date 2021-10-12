@@ -1,3 +1,5 @@
+//! Serde serialization for `arkworks-rs` objects they themselves don't implement serde
+
 use ark_ec::AffineCurve;
 use ark_ff::Field;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};

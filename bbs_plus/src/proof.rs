@@ -139,14 +139,17 @@ where
         mut blindings: BTreeMap<usize, E::Fr>,
         revealed_msg_indices: BTreeSet<usize>,
     ) -> Result<Self, BBSPlusError> {
-        if messages.len() != params.max_message_count() {
-            return Err(BBSPlusError::MessageCountIncompatibleWithSigParams);
+        if messages.len() != params.supported_message_count() {
+            return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
+                messages.len(),
+                params.supported_message_count(),
+            ));
         }
 
         // No message index should be >= max messages
         for idx in &revealed_msg_indices {
             if *idx >= messages.len() {
-                return Err(BBSPlusError::InvalidMessageIdx);
+                return Err(BBSPlusError::InvalidMessageIdx(*idx));
             }
         }
 
@@ -377,7 +380,8 @@ where
         }
 
         // Verify the 2nd Schnorr proof
-        let mut bases_2 = Vec::with_capacity(2 + params.max_message_count() - revealed_msgs.len());
+        let mut bases_2 =
+            Vec::with_capacity(2 + params.supported_message_count() - revealed_msgs.len());
         bases_2.push(self.d);
         bases_2.push(params.h_0);
 
@@ -385,7 +389,7 @@ where
         let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
         bases_revealed.push(params.g1);
         exponents.push(E::Fr::one().into_repr());
-        for i in 0..params.max_message_count() {
+        for i in 0..params.supported_message_count() {
             if revealed_msgs.contains_key(&i) {
                 let message = revealed_msgs.get(&i).unwrap();
                 bases_revealed.push(params.h[i]);
