@@ -1,7 +1,10 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
-//! Zero knowledge proof protocols for membership and non-membership witnesses from section 7 of the paper
+//! Zero knowledge proof protocols for membership and non-membership witnesses from section 7 of
+//! the paper. The paper only describes the non-membership proof but the membership proof is similar
+//! with the relationships involving `d` omitted. See the documentation of relevant objects for more detail.
+//!
 //! # Examples
 //!
 //! ```
@@ -107,8 +110,9 @@ use serde_with::serde_as;
 /// The public parameters (in addition to public key, accumulator setup params) used during the proof
 /// of membership and non-membership are called `ProvingKey`. These are mutually agreed upon by the
 /// prover and verifier and can be different between different provers and verifiers but using the
-/// same accumulator parameters and keys.
-/// Common elements of the membership and non-membership proving key
+/// same accumulator parameters and keys. The parameters are named as `X`, `Y` `Z` and `K` in the paper
+///
+/// Common elements of the membership and non-membership proving key, i.e., `X`, `Y` and `Z`
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -122,7 +126,8 @@ pub struct ProvingKey<G: AffineCurve> {
     pub Z: G,
 }
 
-/// Used between prover and verifier only to prove knowledge of member and corresponding witness
+/// Used between prover and verifier only to prove knowledge of member and corresponding witness.
+/// `X`, `Y` and `Z` from the paper
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -133,6 +138,7 @@ pub struct MembershipProvingKey<G: AffineCurve>(
 );
 
 /// Used between prover and verifier only to prove knowledge of non-member and corresponding witness
+/// `X`, `Y`, `Z` and `K` from the paper
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -572,10 +578,47 @@ impl<F: PrimeField + SquareRootField> SchnorrResponse<F> {
     }
 }
 
-// TODO: Window size should not be hardcoded. It can be inferred from `ProvingKey` elements of proving key.
-
-/// Protocol to prove knowledge of (non)member and corresponding witness in zero knowledge. It randomizes
-/// the witness and does Schnorr proofs of knowledge of these randomized witness and the (non)member.
+/// Protocol to prove knowledge of (non)member and corresponding witness in zero knowledge. It commits
+/// to the (non)member and the witness, does Schnorr proofs of knowledge of these committed values and
+/// satisfies the witness verification (pairing) equation with the committed values.
+/// The Schnorr protocol variant used here is different from the one used in the paper as in the
+/// paper, the prover commits to randomness (blindings), computes challenge, then responses and sends the
+/// commitments to (non)member and witness and the responses to the verifier and the
+/// verifier independently computes the commitments to randomness using the responses and hashes them
+/// to compare with the challenge for equality.
+/// Whereas in the implementation, the prover sends
+/// the commitments to both the randomness (blindings) and (non)member and witness, computes the
+/// challenge and then the responses and sends all the commitments and the responses to the verifier.
+/// The verifier then computes a challenge independently, computes its own commitments to randomness
+/// and compares them for equality with the prover's given commitments. Below are the 2 variants of Schnorr:
+///     Schnorr protocol for relation: Given `G` and `Y`, prove knowledge of `x` in `x * G = Y`
+///
+/// Variant used in the paper:
+///     1. Prover creates `r` and then `T = r * G`.
+///     2. Prover computes challenge as `c = Hash(G||Y||T)`.
+///     3. Prover creates response `s = r + c*x` and sends `c` and `s` to the Verifier as proof.
+///     4. Verifier creates `T'` as `T' = s * G - c * Y` and computes `c'` as `c' = Hash(G||Y||T')`
+///     5. Proof if valid if `c == c'`
+///
+/// Variant used in the implementation:
+///     1. Prover creates `r` and then `T = r * G`.
+///     2. Prover computes challenge as `c = Hash(G||Y||T)`.
+///     3. Prover creates response `s = r + c*x` and sends `T` and `s` to the Verifier as proof.
+///     4. Verifier computes `c'` as `c'` as `c' = Hash(G||Y||T')`.
+///     5. Verifier checks if `s * G - c * Y` equals `T`. If they are equal then proof is valid
+///
+/// The 1st variant makes us for shorter proof when knowledge of multiple witnesses is to be proved.
+/// But the 2nd variant was used to integrate with other sub-protocols. Also the 2nd variant allows
+/// for better errors as we know exactly which response was invalid.
+///
+/// The paper describes the no-membership protocol only but the membership protocol can be obtained
+/// by omitting `d` and its corresponding relations. Following (from the paper) is the pairing check
+/// relation to be satisfied for non-membership proofs
+///   `e(E_c, P_tilde)^y * e(Z, P_tilde)^{-delta_sigma - delta_rho} * e(Z, Q_tilde)^{-sigma - rho} * e(K, P_tilde)^-tau = e(V, P_tilde) / (e(E_c, Q_tilde) * e(E_d, P_tilde))`
+///  with `E_c`, `E_d`, etc defined in the paper. For membership proof, he pairing check relation to
+///  be satisfied is
+///   `e(E_c, P_tilde)^y * e(Z, P_tilde)^{-delta_sigma - delta_rho} * e(Z, Q_tilde)^{-sigma - rho} = e(V, P_tilde) / (e(E_c, Q_tilde)`
+///   Note that there is no `E_d` or `E_{d^-1}` and thus relations proving knowledge of them are omitted
 trait ProofProtocol<E: PairingEngine> {
     /// Randomize the witness and compute commitments for step 1 of the Schnorr protocol.
     /// `element` is the accumulator (non)member about which the proof is being created.
@@ -628,7 +671,9 @@ trait ProofProtocol<E: PairingEngine> {
         let r_rho = E::Fr::rand(rng);
         let r_delta_rho = E::Fr::rand(rng);
 
-        // R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho)
+        // Compute R_E using a multi-pairing
+        // R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho) * pairing_extra
+        // Here `pairing_extra` refers to `K * -r_v` and is used to for creating the pairing `e(K, P_tilde)^{-r_v} as e(K * {-r_v}, P_tilde)`
         let mut E_C_times_r_y = E_C.clone();
         E_C_times_r_y *= r_y;
         let P_tilde_prepared = E::G2Prepared::from(params.P_tilde);
@@ -781,6 +826,9 @@ trait ProofProtocol<E: PairingEngine> {
         let T_rho_table = context.table(randomized_witness.T_rho.into_projective());
         let E_C_table = context.table(randomized_witness.E_C.into_projective());
 
+        // The verifier recomputes various `R_`s values given the responses from the proof and the challenge
+        // and compares them with the `R_`s from the proof for equality
+
         // R_sigma = schnorr_response.s_sigma * prk.X - challenge * randomized_witness.T_sigma
         let mut R_sigma = context
             .mul_with_table(&X_table, &schnorr_response.s_sigma)
@@ -824,6 +872,8 @@ trait ProofProtocol<E: PairingEngine> {
         let P_tilde_prepared = E::G2Prepared::from(params.P_tilde);
         let Q_tilde_prepared = E::G2Prepared::from(pk.0);
 
+        // R_E = e(E_C, params.P_tilde)^s_y * e(prk.Z, params.P_tilde)^(-s_delta_sigma - s_delta_rho) * e(prk.Z, Q_tilde)^(-s_sigma - s_rho) * e(V, params.P_tilde)^-challenge * e(E_C, Q_tilde)^challenge * pairing_extra
+        // Here `pairing_extra` refers to `E_d * -challenge` and `K * -s_v` and is used to for creating the pairings `e(E_d, P_tilde)^challenge and `e(K, P_tilde)^{-s_v} as e(K * {-r_v}, P_tilde)`
         let R_E = E::product_of_pairings(
             [
                 // e(E_C, params.P_tilde)^s_y = e(s_y * E_C, params.P_tilde)
@@ -836,7 +886,7 @@ trait ProofProtocol<E: PairingEngine> {
                     ),
                     P_tilde_prepared.clone(),
                 ),
-                // e(Z, params.P_tilde)^(s_delta_sigma - s_delta_rho) = e((s_delta_sigma - s_delta_rho) * Z, params.P_tilde)
+                // e(Z, params.P_tilde)^(-s_delta_sigma - s_delta_rho) = e((s_delta_sigma - s_delta_rho) * Z, params.P_tilde)
                 (
                     E::G1Prepared::from(
                         context
@@ -849,7 +899,7 @@ trait ProofProtocol<E: PairingEngine> {
                     ),
                     P_tilde_prepared.clone(),
                 ),
-                // e(Z, Q_tilde)^(s_sigma - s_rho) = e((s_sigma - s_rho) * Z, Q_tilde)
+                // e(Z, Q_tilde)^(-s_sigma - s_rho) = e((s_sigma - s_rho) * Z, Q_tilde)
                 (
                     E::G1Prepared::from(
                         context
@@ -1011,7 +1061,7 @@ where
     ) -> Self {
         // TODO: Since proving key is fixed, these tables can be created just once and stored.
         // There are multiple multiplications with P and K so create tables for them. 20 multiplications
-        //         // is the upper bound
+        // is the upper bound
         let scalar_size = E::Fr::size_in_bits();
         let P_table = WindowTable::new(scalar_size, 20, params.P.into_projective());
         let K_table = WindowTable::new(scalar_size, 20, prk.K.into_projective());
