@@ -1,7 +1,5 @@
-use ark_std::string::String;
-
 use ark_serialize::SerializationError;
-use ark_std::fmt::Debug;
+use ark_std::{collections::BTreeSet, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::error::BBSPlusError;
 use schnorr_pok::error::SchnorrError;
 use vb_accumulator::error::VBAccumulatorError;
@@ -23,6 +21,12 @@ pub enum ProofSystemError {
     BBSPlusError(BBSPlusError),
     VBAccumError(VBAccumulatorError),
     InvalidProofSpec,
+    /// Some of the witness equalities given for proof creation are invalid
+    InvalidWitnessEqualities(Vec<(usize, usize)>),
+    /// The proof did not satisfy all the witness equalities
+    UnsatisfiedWitnessEqualities(Vec<BTreeSet<(usize, usize)>>),
+    /// `StatementProof`s were missing for some `Statement`s
+    UnsatisfiedStatements(usize, usize),
 }
 
 impl From<SchnorrError> for ProofSystemError {

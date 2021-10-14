@@ -279,6 +279,12 @@ where
             }
         }
 
+        if !blindings.is_empty() {
+            return Err(ProofSystemError::InvalidWitnessEqualities(
+                blindings.keys().cloned().collect::<Vec<_>>(),
+            ));
+        }
+
         // Get nonce's and context's challenge contribution
         let mut challenge_bytes = vec![];
         match nonce.as_ref() {
@@ -310,6 +316,13 @@ where
     ) -> Result<(), ProofSystemError> {
         if !proof_spec.is_valid() {
             return Err(ProofSystemError::InvalidProofSpec);
+        }
+
+        if proof_spec.statements.len() > self.0.len() {
+            return Err(ProofSystemError::UnsatisfiedStatements(
+                proof_spec.statements.len(),
+                self.0.len(),
+            ));
         }
 
         // All the distinct equalities in `ProofSpec`
@@ -468,6 +481,19 @@ where
                     }
                 },
             }
+        }
+
+        if responses_for_equalities.iter().any(|r| r.is_none()) {
+            return Err(ProofSystemError::UnsatisfiedWitnessEqualities(
+                responses_for_equalities
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, r)| match r {
+                        None => Some(witness_equalities[i].clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+            ));
         }
 
         // Verifier independently generates challenge
@@ -685,7 +711,7 @@ mod tests {
             .map(|(i, m)| (i, m.clone()))
             .collect::<BTreeMap<_, _>>();
 
-        // Since proving knowledge of 2 BBS+ signatures, add 2 statements, both of the same type though.
+        // Since proving knowledge of 3 BBS+ signatures, add 3 statements, all of the same type though.
         let mut statements = Statements::new();
         statements.add(PoKSignatureBBSG1Stmt::new_as_statement(
             params_1.clone(),
@@ -708,22 +734,22 @@ mod tests {
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 5), (1, 9), (2, 9)] // 0th statement's 5th witness is equal to 1st statement's 9th witness and 2nd statement's 9th witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 4), (1, 8), (2, 8)] // 0th statement's 4th witness is equal to 1st statement's 8th witness and 2nd statement's 8th witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 3), (1, 7), (2, 7)] // 0th statement's 3rd witness is equal to 1st statement's 7th witness and 2nd statement's 7th witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-            vec![(3, 5), (3, 7)] // 0th statement's 1th witness is equal to 2nd statement's 9th witness
+            vec![(2, 5), (2, 7)] // 0th statement's 1th witness is equal to 2nd statement's 9th witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
 
         test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
@@ -841,7 +867,7 @@ mod tests {
                 (1, 0), // Since accumulator (non)membership has only one (for applications) which is the (non)member, that witness is at index 0.
             ]
             .into_iter()
-            .collect::<BTreeSet<(usize, usize)>>(),
+            .collect::<BTreeSet<WitnessRef>>(),
         )));
 
         test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
@@ -876,7 +902,7 @@ mod tests {
         meta_statements_incorrect.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 0), (1, 0)]
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         let proof_spec_incorrect = ProofSpec {
             statements: statements.clone(),
@@ -909,7 +935,7 @@ mod tests {
                 (1, 0),
             ]
             .into_iter()
-            .collect::<BTreeSet<(usize, usize)>>(),
+            .collect::<BTreeSet<WitnessRef>>(),
         )));
         let proof_spec = ProofSpec {
             statements,
@@ -985,7 +1011,7 @@ mod tests {
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, accum_member_2_idx), (1, 0)]
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
 
         test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
@@ -1059,7 +1085,7 @@ mod tests {
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, accum_non_member_idx), (1, 0)]
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
 
         test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
@@ -1125,17 +1151,17 @@ mod tests {
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, accum_member_1_idx), (1, 0)]
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, accum_member_2_idx), (2, 0)]
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, accum_non_member_idx), (3, 0)]
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
 
         test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
@@ -1226,12 +1252,12 @@ mod tests {
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 3), (1, 1)] // 0th statement's 3rd witness is equal to 1st statement's 1st witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 0), (1, 4)] // 0th statement's 0th witness is equal to 1st statement's 4th witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
 
         let mut witnesses = Witnesses::new();
@@ -1295,12 +1321,12 @@ mod tests {
         meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 3), (1, 0)] // this equality doesn't hold
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 0), (1, 4)] // 0th statement's 0th witness is equal to 1st statement's 4th witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
 
         let proof_spec_invalid = ProofSpec {
@@ -1361,12 +1387,12 @@ mod tests {
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 0), (1, 1)] // 0th statement's 0th witness is equal to 1st statement's 1st witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 5), (1, 4)] // 0th statement's 5th witness is equal to 1st statement's 4th witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
 
         let context = Some(b"test".to_vec());
@@ -1405,12 +1431,12 @@ mod tests {
         meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 3), (1, 0)] // this equality doesn't hold
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
         meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, 5), (1, 4)] // 0th statement's 0th witness is equal to 1st statement's 4th witness
                 .into_iter()
-                .collect::<BTreeSet<(usize, usize)>>(),
+                .collect::<BTreeSet<WitnessRef>>(),
         )));
 
         let proof_spec_invalid = ProofSpec {
@@ -1518,5 +1544,214 @@ mod tests {
         let sig = blinded_sig.unblind(&blinding);
         sig.verify(&msgs, &sig_keypair.public_key, &sig_params)
             .unwrap();
+    }
+
+    #[test]
+    fn proof_spec_modification() {
+        // Prover modifies the proof spec like removing meta-statements or statements but proof verification should detect that
+
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        // 1st BBS+ sig
+        let msg_count_1 = 6;
+        let (msgs_1, params_1, keypair_1, sig_1) = sig_setup(&mut rng, msg_count_1);
+
+        // 2nd BBS+ sig
+        let msg_count_2 = 10;
+        let (mut msgs_2, params_2, keypair_2, _) = sig_setup(&mut rng, msg_count_2);
+
+        msgs_2[9] = msgs_1[5].clone();
+
+        let sig_2 =
+            SignatureG1::<Bls12_381>::new(&mut rng, &msgs_2, &keypair_2.secret_key, &params_2)
+                .unwrap();
+        sig_2
+            .verify(&msgs_2, &keypair_2.public_key, &params_2)
+            .unwrap();
+
+        let mut statements = Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+        statements.add(PoKSignatureBBSG1Stmt::new_as_statement(
+            params_1.clone(),
+            keypair_1.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        statements.add(PoKSignatureBBSG1Stmt::new_as_statement(
+            params_2.clone(),
+            keypair_2.public_key.clone(),
+            BTreeMap::new(),
+        ));
+
+        let invalid_eq_wit =
+            EqualWitnesses(vec![(0, 1)].into_iter().collect::<BTreeSet<WitnessRef>>());
+        assert!(!invalid_eq_wit.is_valid());
+
+        let mut meta_statements = MetaStatements::new();
+        meta_statements.add(MetaStatement::WitnessEquality(invalid_eq_wit));
+
+        let invalid_proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+            statements.clone(),
+            meta_statements,
+            None,
+        );
+        assert!(!invalid_proof_spec.is_valid());
+
+        let mut witnesses = Witnesses::new();
+        witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig_1.clone(),
+            msgs_1
+                .clone()
+                .into_iter()
+                .enumerate()
+                .collect::<BTreeMap<usize, Fr>>(),
+        ));
+        witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig_2.clone(),
+            msgs_2
+                .into_iter()
+                .enumerate()
+                .collect::<BTreeMap<usize, Fr>>(),
+        ));
+
+        assert!(ProofG1::new(
+            &mut rng,
+            invalid_proof_spec.clone(),
+            witnesses.clone(),
+            None
+        )
+        .is_err());
+
+        let mut meta_statements = MetaStatements::new();
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, 5), (2, 4)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+        let invalid_proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+            statements.clone(),
+            meta_statements,
+            None,
+        );
+        assert!(ProofG1::new(
+            &mut rng,
+            invalid_proof_spec.clone(),
+            witnesses.clone(),
+            None
+        )
+        .is_err());
+
+        let mut meta_statements = MetaStatements::new();
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, 8), (1, 4)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+        let invalid_proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+            statements.clone(),
+            meta_statements,
+            None,
+        );
+        assert!(ProofG1::new(
+            &mut rng,
+            invalid_proof_spec.clone(),
+            witnesses.clone(),
+            None
+        )
+        .is_err());
+
+        // Verifier creates proof spec with meta statements, prover modifies it to remove meta-statement
+        let valid_eq_wit = EqualWitnesses(
+            vec![(0, 5), (1, 9)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        );
+
+        let mut meta_statements = MetaStatements::new();
+        meta_statements.add(MetaStatement::WitnessEquality(valid_eq_wit));
+
+        // Verifier's created proof spec
+        let orig_proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+            statements.clone(),
+            meta_statements,
+            None,
+        );
+
+        // Prover's modified proof spec
+        let modified_proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+            statements.clone(),
+            MetaStatements::new(),
+            None,
+        );
+
+        // Proof created using modified proof spec wont be a valid
+        let invalid_proof = ProofG1::new(
+            &mut rng,
+            modified_proof_spec.clone(),
+            witnesses.clone(),
+            None,
+        )
+        .unwrap();
+
+        // Above proof is valid if verified using the modified proof spec but not with the original proof spec
+        invalid_proof
+            .clone()
+            .verify(modified_proof_spec.clone(), None)
+            .unwrap();
+        assert!(invalid_proof.verify(orig_proof_spec.clone(), None).is_err());
+
+        // Proof created using original proof spec will be valid
+        let valid_proof =
+            ProofG1::new(&mut rng, orig_proof_spec.clone(), witnesses.clone(), None).unwrap();
+        valid_proof.verify(orig_proof_spec.clone(), None).unwrap();
+
+        // Verifier creates proof spec with 2 statements, prover modifies it to remove a statement
+        let orig_proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+            statements.clone(),
+            MetaStatements::new(),
+            None,
+        );
+
+        // Prover's modified proof spec
+        let mut only_1_statement =
+            Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+        only_1_statement.add(PoKSignatureBBSG1Stmt::new_as_statement(
+            params_1.clone(),
+            keypair_1.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        let modified_proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+            only_1_statement.clone(),
+            MetaStatements::new(),
+            None,
+        );
+
+        let mut only_1_witness = Witnesses::new();
+        only_1_witness.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig_1.clone(),
+            msgs_1
+                .into_iter()
+                .enumerate()
+                .collect::<BTreeMap<usize, Fr>>(),
+        ));
+
+        // Proof created using modified proof spec wont be a valid
+        let invalid_proof = ProofG1::new(
+            &mut rng,
+            modified_proof_spec.clone(),
+            only_1_witness.clone(),
+            None,
+        )
+        .unwrap();
+
+        // Above proof is valid if verified using the modified proof spec but not with the original proof spec
+        invalid_proof
+            .clone()
+            .verify(modified_proof_spec.clone(), None)
+            .unwrap();
+        assert!(invalid_proof.verify(orig_proof_spec.clone(), None).is_err());
+
+        // Proof created using original proof spec will be valid
+        let valid_proof =
+            ProofG1::new(&mut rng, orig_proof_spec.clone(), witnesses.clone(), None).unwrap();
+        valid_proof.verify(orig_proof_spec.clone(), None).unwrap();
     }
 }

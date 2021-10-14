@@ -467,7 +467,7 @@ mod tests {
                 let mut meta_statements = MetaStatements::new();
                 for i in $input.into_iter() {
                     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-                        i.into_iter().collect::<BTreeSet<(usize, usize)>>(),
+                        i.into_iter().collect::<BTreeSet<WitnessRef>>(),
                     )));
                 }
                 let disjoints = meta_statements.disjoint_witness_equalities();
