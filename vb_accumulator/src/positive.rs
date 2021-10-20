@@ -21,6 +21,9 @@
 //!                 .add(elem, &keypair.secret_key, &mut state)
 //!                 .unwrap();
 //!
+//! // Get accumulated value (as group element in G1)
+//! let accumulated = accumulator.value();
+//!
 //! // Create membership witness for the element `elem` just added
 //! let m_wit = new_accumulator
 //!                 .get_membership_witness(&elem, &keypair.secret_key, &state)
@@ -28,6 +31,10 @@
 //!
 //! // Verify membership witness
 //! new_accumulator.verify_membership(&elem, &m_wit, &keypair.public_key, &params);
+//!
+//! // Or create a new new accumulator for verification and verify
+//! let verification_accumulator = PositiveAccumulator::from_accumulated(new_accumulator.value().clone());
+//! verification_accumulator.verify_membership(&elem, &m_wit, &keypair.public_key, &params);
 //!
 //! // Remove elem from accumulator
 //! new_accumulator
@@ -43,7 +50,7 @@
 //! // above. This can be done faster than doing `get_membership_witness` for each member in `additions`.
 //! // Create membership witnesses for multiple elements at once
 //! let witnesses = new_accumulator
-//!             .get_membership_witness_for_batch(&additions, &keypair.secret_key, &state)
+//!             .get_membership_witnesses_for_batch(&additions, &keypair.secret_key, &state)
 //!             .unwrap();
 //!
 //! // Remove multiple elements. `&removals` is a slice of elements to be removed
@@ -358,7 +365,7 @@ pub trait Accumulator<E: PairingEngine> {
     /// Get membership witnesses for multiple elements present in accumulator. Returns witnesses in the
     /// order of passed elements. It is more efficient than computing multiple witnesses independently as
     /// it uses windowed multiplication and batch invert. Will throw error even if one element is not present
-    fn get_membership_witness_for_batch(
+    fn get_membership_witnesses_for_batch(
         &self,
         members: &[E::Fr],
         sk: &SecretKey<E::Fr>,
@@ -372,15 +379,15 @@ pub trait Accumulator<E: PairingEngine> {
         Ok(self.compute_membership_witness_for_batch(members, sk))
     }
 
-    /// Check if element present in accumulator. Described in section 2 of the paper
-    fn verify_membership(
-        &self,
+    /// Check if element present in accumulator given the accumulated value. Described in section 2 of the paper
+    fn verify_membership_given_accumulated(
+        V: &E::G1Affine,
         member: &E::Fr,
         witness: &MembershipWitness<E::G1Affine>,
         pk: &PublicKey<E::G2Affine>,
         params: &SetupParams<E>,
     ) -> bool {
-        // e(witness, element*P_tilde + Q_tilde) == e(self.V, P_tilde) => e(witness, element*P_tilde + Q_tilde) * e(self.V, P_tilde)^-1 == 1
+        // e(witness, element*P_tilde + Q_tilde) == e(V, P_tilde) => e(witness, element*P_tilde + Q_tilde) * e(V, P_tilde)^-1 == 1
 
         // element * P_tilde
         let mut P_tilde_times_y_plus_Q_tilde = params.P_tilde.into_projective();
@@ -389,19 +396,34 @@ pub trait Accumulator<E: PairingEngine> {
         // element * P_tilde + Q_tilde
         P_tilde_times_y_plus_Q_tilde.add_assign_mixed(&pk.0);
 
-        // e(witness, element*P_tilde + Q_tilde) * e(self.V, -P_tilde) == 1
+        // e(witness, element*P_tilde + Q_tilde) * e(V, -P_tilde) == 1
         E::product_of_pairings(&[
             (
                 E::G1Prepared::from(witness.0),
                 E::G2Prepared::from(P_tilde_times_y_plus_Q_tilde.into_affine()),
             ),
             (
-                E::G1Prepared::from(*self.value()),
+                E::G1Prepared::from(*V),
                 E::G2Prepared::from(-params.P_tilde),
             ),
         ])
         .is_one()
     }
+
+    /// Check if element present in accumulator. Described in section 2 of the paper
+    fn verify_membership(
+        &self,
+        member: &E::Fr,
+        witness: &MembershipWitness<E::G1Affine>,
+        pk: &PublicKey<E::G2Affine>,
+        params: &SetupParams<E>,
+    ) -> bool {
+        Self::verify_membership_given_accumulated(self.value(), member, witness, pk, params)
+    }
+
+    /// Create an `Accumulator` using the accumulated value. This is used for membership verification
+    /// purposes only
+    fn from_accumulated(accumulated: E::G1Affine) -> Self;
 }
 
 impl<E> Accumulator<E> for PositiveAccumulator<E>
@@ -410,6 +432,12 @@ where
 {
     fn value(&self) -> &E::G1Affine {
         &self.0
+    }
+
+    /// Create a `PositiveAccumulator` using the accumulated value. This is used for membership verification
+    /// purposes only
+    fn from_accumulated(accumulated: E::G1Affine) -> Self {
+        Self(accumulated)
     }
 }
 
@@ -602,8 +630,15 @@ pub mod tests {
                 m_wit
             );
 
+            let verification_accumulator =
+                PositiveAccumulator::from_accumulated(accumulator.value().clone());
             let start = Instant::now();
-            assert!(accumulator.verify_membership(&elem, &m_wit, &keypair.public_key, &params));
+            assert!(verification_accumulator.verify_membership(
+                &elem,
+                &m_wit,
+                &keypair.public_key,
+                &params
+            ));
             total_mem_check_time += start.elapsed();
             elems.push(elem);
         }
@@ -736,11 +771,13 @@ pub mod tests {
         assert_eq!(state_2.db, state_3.db);
         assert_eq!(computed_new, *accumulator_3.value());
 
+        let verification_accumulator =
+            PositiveAccumulator::from_accumulated(accumulator_3.value().clone());
         let witnesses = accumulator_3
-            .get_membership_witness_for_batch(&new_additions, &keypair.secret_key, &state_3)
+            .get_membership_witnesses_for_batch(&new_additions, &keypair.secret_key, &state_3)
             .unwrap();
         for i in 0..new_additions.len() {
-            assert!(accumulator_3.verify_membership(
+            assert!(verification_accumulator.verify_membership(
                 &new_additions[i],
                 &witnesses[i],
                 &keypair.public_key,
@@ -771,11 +808,13 @@ pub mod tests {
         assert_eq!(*accumulator_1.value(), *accumulator_4.value());
         assert_eq!(state_1.db, state_4.db);
 
+        let verification_accumulator =
+            PositiveAccumulator::from_accumulated(accumulator_4.value().clone());
         let witnesses = accumulator_4
-            .get_membership_witness_for_batch(&new_additions, &keypair.secret_key, &state_4)
+            .get_membership_witnesses_for_batch(&new_additions, &keypair.secret_key, &state_4)
             .unwrap();
         for i in 0..new_additions.len() {
-            assert!(accumulator_4.verify_membership(
+            assert!(verification_accumulator.verify_membership(
                 &new_additions[i],
                 &witnesses[i],
                 &keypair.public_key,

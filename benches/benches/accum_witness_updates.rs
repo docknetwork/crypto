@@ -222,7 +222,7 @@ fn non_membership_update_batch_using_secret_key(c: &mut Criterion) {
                         let non_members = (0..member_count).map(|_| Fr::rand(&mut rng))
                             .collect::<Vec<Fr>>();
                         let mut old_wits = accumulator
-                            .get_non_membership_witness_for_batch(
+                            .get_non_membership_witnesses_for_batch(
                                 &non_members,
                                 &keypair.secret_key,
                                 &mut state,
@@ -293,7 +293,7 @@ fn non_membership_update_batch_using_secret_key(c: &mut Criterion) {
                             let non_members = (0..member_count).map(|_| Fr::rand(&mut rng))
                                 .collect::<Vec<Fr>>();
                             let mut old_wits = accumulator
-                                .get_non_membership_witness_for_batch(
+                                .get_non_membership_witnesses_for_batch(
                                     &non_members,
                                     &keypair.secret_key,
                                     &mut state,
@@ -352,7 +352,7 @@ fn non_membership_update_batch_using_secret_key(c: &mut Criterion) {
                             let non_members = (0..member_count).map(|_| Fr::rand(&mut rng))
                                 .collect::<Vec<Fr>>();
                             let mut old_wits = accumulator
-                                .get_non_membership_witness_for_batch(
+                                .get_non_membership_witnesses_for_batch(
                                     &non_members,
                                     &keypair.secret_key,
                                     &mut state,
@@ -419,7 +419,7 @@ fn membership_update_batch_using_secret_key(c: &mut Criterion) {
                             .add_batch(members.clone(), &pos_keypair.secret_key, &mut pos_state)
                             .unwrap();
                         let mut old_wits = pos_accumulator_1
-                            .get_membership_witness_for_batch(
+                            .get_membership_witnesses_for_batch(
                                 &members,
                                 &pos_keypair.secret_key,
                                 &mut pos_state,
@@ -479,7 +479,7 @@ fn membership_update_batch_using_secret_key(c: &mut Criterion) {
                             .add_batch(members.clone(), &pos_keypair.secret_key, &mut pos_state)
                             .unwrap();
                         let mut old_wits = pos_accumulator_1
-                            .get_membership_witness_for_batch(
+                            .get_membership_witnesses_for_batch(
                                 &members,
                                 &pos_keypair.secret_key,
                                 &mut pos_state,
@@ -555,7 +555,7 @@ fn membership_update_batch_using_secret_key(c: &mut Criterion) {
                             .unwrap();
 
                         let mut old_wits = pos_accumulator_1
-                            .get_membership_witness_for_batch(
+                            .get_membership_witnesses_for_batch(
                                 &members,
                                 &pos_keypair.secret_key,
                                 &mut pos_state,

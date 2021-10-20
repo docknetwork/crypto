@@ -24,6 +24,9 @@
 //!             &keypair.secret_key,
 //!             &mut initial_elements);
 //!
+//! // Get accumulated value (as group element in G1)
+//! let accumulated = accumulator.value();
+//!
 //! // Addition, removal, creating and verifying membership witness updates has same API as `PositiveAccumulator`
 //!
 //! // Create non-membership witness
@@ -39,12 +42,16 @@
 //!                 &params
 //!             );
 //!
+//! // Or create a new new accumulator for verification and verify
+//! let verification_accumulator = UniversalAccumulator::from_accumulated(accumulator.value().clone());
+//! verification_accumulator.verify_non_membership(&elem, &nm_wit, &keypair.public_key, &params);
+//!
 //! // Similar to positive accumulator, additions, removals or both can be done in a batch using `add_batch`,
 //! // `remove_batch`, etc.
 //!
-//! // Similar to positive accumulator, non-membership witnesses can be calculated in a batch as
+//! // Similar to membership witnesses for batch in positive accumulator, non-membership witnesses can be calculated in a batch as
 //! let mem_witnesses = accumulator
-//!             .get_membership_witness_for_batch(&non_members, &keypair.secret_key, &state)
+//!             .get_non_membership_witnesses_for_batch(&non_members, &keypair.secret_key, &state)
 //!             .unwrap();
 //!
 //! // Above methods to update accumulator and generate witness require access to `State`. In cases when its
@@ -109,6 +116,16 @@ where
 {
     fn value(&self) -> &E::G1Affine {
         &self.V
+    }
+
+    /// Create an `UniversalAccumulator` using the accumulated value. This is used for (non)membership verification
+    /// purposes only
+    fn from_accumulated(accumulated: E::G1Affine) -> Self {
+        Self {
+            f_V: E::Fr::zero(),
+            V: accumulated,
+            max_size: 0,
+        }
     }
 }
 
@@ -475,7 +492,7 @@ where
     /// Get non-membership witnesses for multiple elements absent in accumulator. Returns witnesses in the
     /// order of passed elements. It is more efficient than computing multiple witnesses independently as
     /// it uses windowed multiplication and batch invert. Will throw error even if one element is not present
-    pub fn get_non_membership_witness_for_batch<'a>(
+    pub fn get_non_membership_witnesses_for_batch<'a>(
         &self,
         non_members: &[E::Fr],
         sk: &SecretKey<E::Fr>,
@@ -521,8 +538,9 @@ where
     }
 
     /// Check if element is absent in accumulator. Described in section 2 of the paper
-    pub fn verify_non_membership(
-        &self,
+    /// This takes `self` a argument but the secret `f_V` isn't used. Thus it can be passed as 0.
+    pub fn verify_non_membership_given_accumulated(
+        V: &E::G1Affine,
         non_member: &E::Fr,
         witness: &NonMembershipWitness<E::G1Affine>,
         pk: &PublicKey<E::G2Affine>,
@@ -531,9 +549,9 @@ where
         if witness.d.is_zero() {
             return false;
         }
-        // witness.d != 0 and e(witness.C, element*P_tilde + Q_tilde) * e(P, P_tilde)^witness.d == e(self.V, P_tilde)
-        // => e(witness.C, element*P_tilde + Q_tilde) * e(P, P_tilde)^witness.d * e(self.V, P_tilde)^-1 == 1
-        // => e(witness.C, element*P_tilde + Q_tilde) * e(witness.d*P, P_tilde) * e(-self.V, P_tilde) == 1
+        // witness.d != 0 and e(witness.C, element*P_tilde + Q_tilde) * e(P, P_tilde)^witness.d == e(V, P_tilde)
+        // => e(witness.C, element*P_tilde + Q_tilde) * e(P, P_tilde)^witness.d * e(V, P_tilde)^-1 == 1
+        // => e(witness.C, element*P_tilde + Q_tilde) * e(witness.d*P, P_tilde) * e(-V, P_tilde) == 1
 
         // element * P_tilde
         let mut P_tilde_times_y_plus_Q_tilde = params.P_tilde.into_projective();
@@ -544,10 +562,10 @@ where
         // witness.d * P
         let mut P_times_d_minus_V = params.P.into_projective();
         P_times_d_minus_V *= witness.d;
-        // witness.d * P - self.V
-        P_times_d_minus_V.add_assign_mixed(&-*self.value());
+        // witness.d * P - V
+        P_times_d_minus_V.add_assign_mixed(&-*V);
 
-        // e(witness.C, element*P_tilde + Q_tilde) * e(witness.d*P - self.V, P_tilde) == 1
+        // e(witness.C, element*P_tilde + Q_tilde) * e(witness.d*P - V, P_tilde) == 1
         E::product_of_pairings(&[
             (
                 E::G1Prepared::from(witness.C),
@@ -561,12 +579,20 @@ where
         .is_one()
     }
 
-    pub fn from_value(field_elem: E::Fr, group_elem: E::G1Affine, max_size: u64) -> Self {
-        Self {
-            f_V: field_elem,
-            V: group_elem,
-            max_size,
-        }
+    /// Check if element is absent in accumulator. Described in section 2 of the paper
+    /// This takes `self` a argument but the secret `f_V` isn't used. Thus it can be passed as 0.
+    pub fn verify_non_membership(
+        &self,
+        non_member: &E::Fr,
+        witness: &NonMembershipWitness<E::G1Affine>,
+        pk: &PublicKey<E::G2Affine>,
+        params: &SetupParams<E>,
+    ) -> bool {
+        Self::verify_non_membership_given_accumulated(self.value(), non_member, witness, pk, params)
+    }
+
+    pub fn from_value(f_V: E::Fr, V: E::G1Affine, max_size: u64) -> Self {
+        Self { f_V, V, max_size }
     }
 }
 
@@ -675,11 +701,13 @@ pub mod tests {
                 .get_membership_witness(&elem, &keypair.secret_key, &state)
                 .is_err());
 
+            let verification_accum =
+                UniversalAccumulator::from_accumulated(accumulator.value().clone());
             let mut start = Instant::now();
             let nm_wit = accumulator
                 .get_non_membership_witness(&elem, &keypair.secret_key, &state, &params)
                 .unwrap();
-            assert!(accumulator.verify_non_membership(
+            assert!(verification_accum.verify_non_membership(
                 &elem,
                 &nm_wit,
                 &keypair.public_key,
@@ -725,8 +753,15 @@ pub mod tests {
                 m_wit
             );
 
+            let verification_accum =
+                UniversalAccumulator::from_accumulated(accumulator.value().clone());
             start = Instant::now();
-            assert!(accumulator.verify_membership(&elem, &m_wit, &keypair.public_key, &params));
+            assert!(verification_accum.verify_membership(
+                &elem,
+                &m_wit,
+                &keypair.public_key,
+                &params
+            ));
             total_mem_check_time += start.elapsed();
             elems.push(elem);
         }
@@ -748,7 +783,9 @@ pub mod tests {
             let nm_wit = accumulator
                 .get_non_membership_witness(&elem, &keypair.secret_key, &state, &params)
                 .unwrap();
-            assert!(accumulator.verify_non_membership(
+            let verification_accum =
+                UniversalAccumulator::from_accumulated(accumulator.value().clone());
+            assert!(verification_accum.verify_non_membership(
                 &elem,
                 &nm_wit,
                 &keypair.public_key,
@@ -896,10 +933,12 @@ pub mod tests {
         assert_eq!(computed_new, (accumulator_3.f_V, accumulator_3.V));
 
         let mem_witnesses = accumulator_3
-            .get_membership_witness_for_batch(&new_additions, &keypair.secret_key, &state_3)
+            .get_membership_witnesses_for_batch(&new_additions, &keypair.secret_key, &state_3)
             .unwrap();
+        let verification_accum =
+            UniversalAccumulator::from_accumulated(accumulator_3.value().clone());
         for i in 0..new_additions.len() {
-            assert!(accumulator_3.verify_membership(
+            assert!(verification_accum.verify_membership(
                 &new_additions[i],
                 &mem_witnesses[i],
                 &keypair.public_key,
@@ -913,11 +952,16 @@ pub mod tests {
 
         let start = Instant::now();
         let npn_mem_witnesses = accumulator_3
-            .get_non_membership_witness_for_batch(&removals, &keypair.secret_key, &state_3, &params)
+            .get_non_membership_witnesses_for_batch(
+                &removals,
+                &keypair.secret_key,
+                &state_3,
+                &params,
+            )
             .unwrap();
         println!("Non-membership witnesses in accumulator of size {} using secret key for batch of size {} takes: {:?}", state_3.db.len(), removals.len(), start.elapsed());
         for i in 0..removals.len() {
-            assert!(accumulator_3.verify_non_membership(
+            assert!(verification_accum.verify_non_membership(
                 &removals[i],
                 &npn_mem_witnesses[i],
                 &keypair.public_key,

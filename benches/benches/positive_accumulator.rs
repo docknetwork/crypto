@@ -155,7 +155,7 @@ fn batch(c: &mut Criterion) {
                     for i in 0..iters as usize {
                         black_box({
                             accumulator
-                                .get_membership_witness_for_batch(
+                                .get_membership_witnesses_for_batch(
                                     &elems_batches[i],
                                     &keypair.secret_key,
                                     &mut state,

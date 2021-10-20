@@ -52,7 +52,7 @@
 //!             .add_batch(additions_1, &keypair.secret_key, &mut state)
 //!             .unwrap();
 //! let witnesses_1 = accumulator_1
-//!             .get_membership_witness_for_batch(&additions_1, &keypair.secret_key, &state)
+//!             .get_membership_witnesses_for_batch(&additions_1, &keypair.secret_key, &state)
 //!             .unwrap();
 //!
 //! let accumulator_2 = accumulator_1
@@ -789,6 +789,7 @@ mod tests {
 
     use crate::persistence::State;
     use crate::positive::{tests::setup_positive_accum, Accumulator, PositiveAccumulator};
+    use crate::prelude::UniversalAccumulator;
     use crate::setup::{Keypair, SetupParams};
     use crate::test_serialization;
     use crate::universal::tests::setup_universal_accum;
@@ -823,7 +824,14 @@ mod tests {
             let wit = new_accumulator
                 .get_membership_witness(&elem, &keypair.secret_key, &state)
                 .unwrap();
-            assert!(new_accumulator.verify_membership(&elem, &wit, &keypair.public_key, &params));
+            let verification_accumulator =
+                PositiveAccumulator::from_accumulated(new_accumulator.value().clone());
+            assert!(verification_accumulator.verify_membership(
+                &elem,
+                &wit,
+                &keypair.public_key,
+                &params
+            ));
             elems.push(elem);
             witnesses.push(wit);
 
@@ -831,8 +839,10 @@ mod tests {
             if i > 0 {
                 let mut j = i;
                 while j > 0 {
+                    let verification_accumulator =
+                        PositiveAccumulator::from_accumulated(new_accumulator.value().clone());
                     // Verification fails with old witness
-                    assert!(!new_accumulator.verify_membership(
+                    assert!(!verification_accumulator.verify_membership(
                         &elems[j - 1],
                         &witnesses[j - 1],
                         &keypair.public_key,
@@ -850,7 +860,7 @@ mod tests {
                     update_post_add_counter += 1;
 
                     // Verification succeeds with new witness
-                    assert!(new_accumulator.verify_membership(
+                    assert!(verification_accumulator.verify_membership(
                         &elems[j - 1],
                         &new_wit,
                         &keypair.public_key,
@@ -869,10 +879,12 @@ mod tests {
             let new_accumulator = accumulator
                 .remove(&elems[i], &keypair.secret_key, &mut state)
                 .unwrap();
+            let verification_accumulator =
+                PositiveAccumulator::from_accumulated(new_accumulator.value().clone());
             let mut j = i;
             while j > 0 {
                 // Update witness of each element before i, going backwards
-                assert!(!new_accumulator.verify_membership(
+                assert!(!verification_accumulator.verify_membership(
                     &elems[j - 1],
                     &witnesses[j - 1],
                     &keypair.public_key,
@@ -886,7 +898,7 @@ mod tests {
                 update_post_remove_duration += start.elapsed();
                 update_post_remove_counter += 1;
 
-                assert!(new_accumulator.verify_membership(
+                assert!(verification_accumulator.verify_membership(
                     &elems[j - 1],
                     &new_wit,
                     &keypair.public_key,
@@ -924,13 +936,20 @@ mod tests {
         let mut non_members = vec![];
         let mut non_membership_witnesses = vec![];
 
+        let verification_accumulator =
+            UniversalAccumulator::from_accumulated(accumulator.value().clone());
         let n = 100;
         for _ in 0..n {
             let elem = Fr::rand(&mut rng);
             let wit = accumulator
                 .get_non_membership_witness(&elem, &keypair.secret_key, &state, &params)
                 .unwrap();
-            assert!(accumulator.verify_non_membership(&elem, &wit, &keypair.public_key, &params));
+            assert!(verification_accumulator.verify_non_membership(
+                &elem,
+                &wit,
+                &keypair.public_key,
+                &params
+            ));
             non_members.push(elem);
             non_membership_witnesses.push(wit);
         }
@@ -955,8 +974,10 @@ mod tests {
                 .unwrap();
             added_elems.push(elem);
 
+            let verification_accumulator =
+                UniversalAccumulator::from_accumulated(new_accumulator.value().clone());
             for j in 0..n {
-                assert!(!new_accumulator.verify_non_membership(
+                assert!(!verification_accumulator.verify_non_membership(
                     &non_members[j],
                     &non_membership_witnesses[j],
                     &keypair.public_key,
@@ -972,7 +993,7 @@ mod tests {
                 update_post_add_duration += start.elapsed();
                 update_post_add_counter += 1;
 
-                assert!(new_accumulator.verify_non_membership(
+                assert!(verification_accumulator.verify_non_membership(
                     &non_members[j],
                     &new_wit,
                     &keypair.public_key,
@@ -993,8 +1014,10 @@ mod tests {
                     &mut state,
                 )
                 .unwrap();
+            let verification_accumulator =
+                UniversalAccumulator::from_accumulated(accumulator.value().clone());
             for j in 0..n {
-                assert!(!accumulator.verify_non_membership(
+                assert!(!verification_accumulator.verify_non_membership(
                     &non_members[j],
                     &non_membership_witnesses[j],
                     &keypair.public_key,
@@ -1008,7 +1031,7 @@ mod tests {
                 update_post_remove_duration += start.elapsed();
                 update_post_remove_counter += 1;
 
-                assert!(accumulator.verify_non_membership(
+                assert!(verification_accumulator.verify_non_membership(
                     &non_members[j],
                     &new_wit,
                     &keypair.public_key,
@@ -1049,10 +1072,12 @@ mod tests {
             .add_batch(additions_1.clone(), &keypair.secret_key, &mut state)
             .unwrap();
         let witnesses_1 = accumulator
-            .get_membership_witness_for_batch(&additions_1, &keypair.secret_key, &state)
+            .get_membership_witnesses_for_batch(&additions_1, &keypair.secret_key, &state)
             .unwrap();
+        let verification_accumulator =
+            PositiveAccumulator::from_accumulated(accumulator.value().clone());
         for i in 0..witnesses_1.len() {
-            assert!(accumulator.verify_membership(
+            assert!(verification_accumulator.verify_membership(
                 &additions_1[i],
                 &witnesses_1[i],
                 &keypair.public_key,
@@ -1063,8 +1088,10 @@ mod tests {
         let accumulator_2 = accumulator
             .add_batch(additions_2.clone(), &keypair.secret_key, &mut state)
             .unwrap();
+        let verification_accumulator =
+            PositiveAccumulator::from_accumulated(accumulator_2.value().clone());
         for i in 0..witnesses_1.len() {
-            assert!(!accumulator_2.verify_membership(
+            assert!(!verification_accumulator.verify_membership(
                 &additions_1[i],
                 &witnesses_1[i],
                 &keypair.public_key,
@@ -1082,7 +1109,7 @@ mod tests {
         .unwrap();
         assert_eq!(new_wits.len(), witnesses_1.len());
         for i in 0..new_wits.len() {
-            assert!(accumulator_2.verify_membership(
+            assert!(verification_accumulator.verify_membership(
                 &additions_1[i],
                 &new_wits[i],
                 &keypair.public_key,
@@ -1092,10 +1119,10 @@ mod tests {
 
         // Compute membership witness for elements in `additions_2`, remove elements in `removals` and update witnesses for `additions_2`
         let witnesses_3 = accumulator_2
-            .get_membership_witness_for_batch(&additions_2, &keypair.secret_key, &state)
+            .get_membership_witnesses_for_batch(&additions_2, &keypair.secret_key, &state)
             .unwrap();
         for i in 0..witnesses_3.len() {
-            assert!(accumulator_2.verify_membership(
+            assert!(verification_accumulator.verify_membership(
                 &additions_2[i],
                 &witnesses_3[i],
                 &keypair.public_key,
@@ -1106,8 +1133,10 @@ mod tests {
         let accumulator_3 = accumulator_2
             .remove_batch(&removals, &keypair.secret_key, &mut state)
             .unwrap();
+        let verification_accumulator =
+            PositiveAccumulator::from_accumulated(accumulator_3.value().clone());
         for i in 0..witnesses_3.len() {
-            assert!(!accumulator_3.verify_membership(
+            assert!(!verification_accumulator.verify_membership(
                 &additions_2[i],
                 &witnesses_3[i],
                 &keypair.public_key,
@@ -1125,7 +1154,7 @@ mod tests {
         .unwrap();
         assert_eq!(new_wits.len(), witnesses_3.len());
         for i in 0..new_wits.len() {
-            assert!(accumulator_3.verify_membership(
+            assert!(verification_accumulator.verify_membership(
                 &additions_2[i],
                 &new_wits[i],
                 &keypair.public_key,
@@ -1141,10 +1170,10 @@ mod tests {
         }
 
         let witnesses_4 = accumulator_3
-            .get_membership_witness_for_batch(&remaining, &keypair.secret_key, &state)
+            .get_membership_witnesses_for_batch(&remaining, &keypair.secret_key, &state)
             .unwrap();
         for i in 0..witnesses_4.len() {
-            assert!(accumulator_3.verify_membership(
+            assert!(verification_accumulator.verify_membership(
                 &remaining[i],
                 &witnesses_4[i],
                 &keypair.public_key,
@@ -1169,8 +1198,10 @@ mod tests {
             let accumulator_new = current_accm
                 .batch_updates(additions.clone(), removals, &keypair.secret_key, state)
                 .unwrap();
+            let verification_accumulator =
+                PositiveAccumulator::from_accumulated(accumulator_new.value().clone());
             for i in 0..old_witnesses.len() {
-                assert!(!accumulator_new.verify_membership(
+                assert!(!verification_accumulator.verify_membership(
                     &elements[i],
                     &old_witnesses[i],
                     &keypair.public_key,
@@ -1189,7 +1220,7 @@ mod tests {
             .unwrap();
             assert_eq!(new_witnesses.len(), old_witnesses.len());
             for i in 0..new_witnesses.len() {
-                assert!(accumulator_new.verify_membership(
+                assert!(verification_accumulator.verify_membership(
                     &elements[i],
                     &new_witnesses[i],
                     &keypair.public_key,
@@ -1209,6 +1240,8 @@ mod tests {
             &params,
             &mut state,
         );
+        let verification_accumulator_4 =
+            PositiveAccumulator::from_accumulated(accumulator_4.value().clone());
 
         let (accumulator_4_new, witnesses_6) = check_batch_witness_update_using_secret_key(
             &accumulator_3_cloned,
@@ -1220,6 +1253,8 @@ mod tests {
             &params,
             &mut state_cloned,
         );
+        let verification_accumulator_4_new =
+            PositiveAccumulator::from_accumulated(accumulator_4_new.value().clone());
 
         let (accumulator_5_new, _) = check_batch_witness_update_using_secret_key(
             &accumulator_4_new,
@@ -1231,6 +1266,8 @@ mod tests {
             &params,
             &mut state_cloned,
         );
+        let verification_accumulator_5_new =
+            PositiveAccumulator::from_accumulated(accumulator_5_new.value().clone());
 
         // Public updates to witnesses - each one in `remaining` updates his witness using publicly published info from manager
         let omega_both = Omega::new(
@@ -1279,7 +1316,7 @@ mod tests {
                 accumulator_3.value(),
                 &keypair.secret_key,
             );
-            assert!(accumulator_4.verify_membership(
+            assert!(verification_accumulator_4.verify_membership(
                 &remaining[i],
                 &new_wit,
                 &keypair.public_key,
@@ -1301,7 +1338,7 @@ mod tests {
                 accumulator_3_cloned.value(),
                 &keypair.secret_key,
             );
-            assert!(accumulator_4_new.verify_membership(
+            assert!(verification_accumulator_4_new.verify_membership(
                 &remaining[i],
                 &new_wit,
                 &keypair.public_key,
@@ -1323,7 +1360,7 @@ mod tests {
                 accumulator_4_new.value(),
                 &keypair.secret_key,
             );
-            assert!(accumulator_5_new.verify_membership(
+            assert!(verification_accumulator_5_new.verify_membership(
                 &remaining[i],
                 &new_wit,
                 &keypair.public_key,
@@ -1348,7 +1385,7 @@ mod tests {
         }
 
         let witnesses = accumulator
-            .get_membership_witness_for_batch(&elems, &keypair.secret_key, &state)
+            .get_membership_witnesses_for_batch(&elems, &keypair.secret_key, &state)
             .unwrap();
         for i in 0..10 {
             assert!(accumulator.verify_membership(
@@ -1755,10 +1792,10 @@ mod tests {
                 .unwrap();
             let end = start.elapsed();
             membership_add_duration += end;
-            /*println!(
+            println!(
                 "Membership witness update for {} additions takes {:?}",
                 batch_size, end
-            );*/
+            );
 
             assert!(accumulator.verify_membership(&member, &m_wit, &keypair.public_key, &params));
 
@@ -1773,10 +1810,10 @@ mod tests {
                 .unwrap();
             let end = start.elapsed();
             non_membership_add_duration += end;
-            /*println!(
+            println!(
                 "Non-membership witness update for {} additions takes {:?}",
                 batch_size, end
-            );*/
+            );
 
             assert!(accumulator.verify_non_membership(
                 &non_member,
@@ -1811,10 +1848,10 @@ mod tests {
                 .unwrap();
             let end = start.elapsed();
             membership_remove_duration += end;
-            /*println!(
+            println!(
                 "Membership witness update for {} removals takes {:?}",
                 batch_size, end
-            );*/
+            );
 
             assert!(accumulator.verify_membership(&member, &m_wit, &keypair.public_key, &params));
 
@@ -1829,10 +1866,10 @@ mod tests {
                 .unwrap();
             let end = start.elapsed();
             non_membership_remove_duration += end;
-            /*println!(
+            println!(
                 "Non-membership witness update for {} removals takes {:?}",
                 batch_size, end
-            );*/
+            );
 
             assert!(accumulator.verify_non_membership(
                 &non_member,
