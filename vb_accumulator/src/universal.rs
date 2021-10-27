@@ -233,7 +233,7 @@ where
             return Err(VBAccumulatorError::ProhibitedElement);
         }
 
-        // TODO: Check if its more efficient to always have a window table of setup parameter `P` and
+        // TODO: Check if it's more efficient to always have a window table of setup parameter `P` and
         // multiply `P` by `f_V` rather than multiplying `y_plus_alpha` by `V`. Use `windowed_mul` from FixedBase
         let (y_plus_alpha, V) = self._add(element, sk, state)?;
         let f_V = y_plus_alpha * self.f_V;
@@ -368,7 +368,7 @@ where
 
     /// Compute `d` where `d = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)` where
     /// each `member_i` is a member of the accumulator (except the elements added during initialization).
-    /// In case the accumulator a large number of members such that its not possible to pass all of
+    /// In case the accumulator is of a large number of members such that it's not possible to pass all of
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
     pub fn compute_d_given_members(non_member: &E::Fr, members: &[E::Fr]) -> E::Fr {
@@ -379,8 +379,9 @@ where
         d
     }
 
-    /// Compute non membership witness given `d` where `d = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)` where
-    /// each `member_i` is a member of the accumulator (except the elements added during initialization)
+    /// Compute non membership witness given `d` where 
+    /// `d = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)`
+    /// where each `member_i` is a member of the accumulator (except the elements added during initialization)
     /// Described in section 2 of the paper
     pub fn compute_non_membership_witness_given_d(
         &self,
@@ -401,7 +402,7 @@ where
         })
     }
 
-    /// Get non-membership witness for an element absent in accumulator. Described in section 2 of the paper
+    /// Get non-membership witness for an element absent from accumulator. Described in section 2 of the paper
     pub fn get_non_membership_witness<'a>(
         &self,
         non_member: &E::Fr,
@@ -432,7 +433,7 @@ where
     /// Compute a vector `d` for a batch where each `non_member_i` in batch has `d` as `d_i` and
     /// `d_i = (member_0 - non_member_i)*(member_1 - non_member_i)*...(member_n - non_member_i)` where each `member_i`
     /// is a member of the accumulator (except the elements added during initialization).
-    /// In case the accumulator a large number of members such that its not possible to pass all of
+    /// In case the accumulator is of a large number of members such that it's not possible to pass all of
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
     pub fn compute_d_for_batch_given_members(
@@ -453,9 +454,7 @@ where
         ds
     }
 
-    /// Compute non membership witnesses for a batch given `d`s for all of them where each `element_i` in
-    /// batch has `d` as `d_i` and `d_i = (member_0 - non_member_i)*(member_1 - non_member_i)*...(member_n - non_member_i)` where
-    /// each `member_i` is a member of the accumulator (except the elements added during initialization)
+    /// Compute non-membership witnesses for a batch {`y_i`} given their `d`s, where `d = f_V(-y_i)` for each `y_i`
     pub fn compute_non_membership_witness_for_batch_given_d(
         &self,
         d: Vec<E::Fr>,
@@ -477,7 +476,7 @@ where
             .map(|(numr, denom)| *numr * *denom)
             .collect::<Vec<_>>();
 
-        // The same group element (self.V) has to multiplied by each element in P_multiple so creating a window table
+        // The same group element (self.V) has to be multiplied by each element in P_multiple, so we create a window table
         let wits = multiply_field_elems_with_same_group_elem(
             params.P.into_projective(),
             P_multiple.as_slice(),
@@ -517,7 +516,7 @@ where
 
         // `d_for_witnesses` stores `d` corresponding to each of `elements`
         let mut d_for_witnesses = vec![E::Fr::one(); non_members.len()];
-        // Since iterating state is expensive, compute iterate over it once
+        // Since iterating state is expensive, compute iteration over it once
         for member in state.elements() {
             for (i, t) in into_iter!(non_members)
                 .map(|e| *member - *e)
@@ -538,7 +537,7 @@ where
     }
 
     /// Check if element is absent in accumulator. Described in section 2 of the paper
-    /// This takes `self` a argument but the secret `f_V` isn't used. Thus it can be passed as 0.
+    /// This takes `self` as an argument, but the secret `f_V` isn't used; thus it can be passed as 0.
     pub fn verify_non_membership_given_accumulated(
         V: &E::G1Affine,
         non_member: &E::Fr,
@@ -580,7 +579,7 @@ where
     }
 
     /// Check if element is absent in accumulator. Described in section 2 of the paper
-    /// This takes `self` a argument but the secret `f_V` isn't used. Thus it can be passed as 0.
+    /// This takes `self` as an argument, but the secret `f_V` isn't used; thus it can be passed as 0.
     pub fn verify_non_membership(
         &self,
         non_member: &E::Fr,

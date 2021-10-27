@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 //! Positive accumulator that support single as well as batched additions, removals and generating
-//! membership witness for single or a multiple elements at once. Described in section 2 of the paper.
+//! membership witness for single or multiple elements at once. Described in section 2 of the paper.
 //! Creating accumulator, adding/removing from it, creating and verifying membership witness:
 //!
 //! ```
@@ -46,7 +46,7 @@
 //!             .add_batch(additions, &keypair.secret_key, &mut state_2)
 //!             .unwrap();
 //!
-//! // Now the accumulator manger needs to create membership witnesses for the batch `additions` he added
+//! // Now the accumulator manager needs to create membership witnesses for the batch `additions` he added
 //! // above. This can be done faster than doing `get_membership_witness` for each member in `additions`.
 //! // Create membership witnesses for multiple elements at once
 //! let witnesses = new_accumulator
@@ -126,7 +126,7 @@ pub struct PositiveAccumulator<E: PairingEngine>(
 /// wrapper or when the persistent database cannot be made to satisfy one or functions of the trait `State`.
 /// Eg. function `_add` is used when adding a new element to the accumulator, it checks if the new element
 /// is not already part of the `State` and if not, computes the new accumulator and adds the element
-/// to the `State` but function `_compute_new_post_add` only computes the new accumulator, it does not
+/// to the `State`; but the function `_compute_new_post_add` only computes the new accumulator, it does not
 /// modify (check or add) the `State` and hence does not need the reference to it. However, note that it
 /// is important to do the required checks and updates in `State`, eg. just by using `_compute_new_post_add`,
 /// a membership witness can be created for an element not present in the accumulator that will satisfy the
@@ -136,7 +136,8 @@ pub trait Accumulator<E: PairingEngine> {
     /// The accumulated value of all the members. It is considered a digest of state of the accumulator
     fn value(&self) -> &E::G1Affine;
 
-    /// Checks to do before adding the element to the accumulator like element being already present
+    /// Checks that should be done before adding the element to the accumulator, such as the element
+    /// already being present
     fn check_before_add(
         &self,
         element: &E::Fr,
@@ -148,8 +149,8 @@ pub trait Accumulator<E: PairingEngine> {
         Ok(())
     }
 
-    /// Checks to do before removing the element from the accumulator like element being already
-    /// absent
+    /// Checks that should be done before removing the element from the accumulator, such as the element
+    /// already being absent
     fn check_before_remove(
         &self,
         element: &E::Fr,
