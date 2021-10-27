@@ -1,2 +1,0 @@
-cargo:rustc-env=TYPENUM_BUILD_CONSTS=/Users/errol_hava/Documents/Code/VScode/Dock/crypto/vb_accumulator/target/rls/debug/build/typenum-c250349be16c1d70/out/consts.rs
-cargo:rustc-env=TYPENUM_BUILD_OP=/Users/errol_hava/Documents/Code/VScode/Dock/crypto/vb_accumulator/target/rls/debug/build/typenum-c250349be16c1d70/out/op.rs

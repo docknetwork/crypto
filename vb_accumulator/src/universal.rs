@@ -379,7 +379,7 @@ where
         d
     }
 
-    /// Compute non membership witness given `d` where 
+    /// Compute non membership witness given `d` where
     /// `d = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)`
     /// where each `member_i` is a member of the accumulator (except the elements added during initialization)
     /// Described in section 2 of the paper
