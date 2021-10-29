@@ -14,7 +14,7 @@ const ZERO_AS_OCTET: [u8; 1] = [0u8];
 /// using any other source of randomness.
 /// `ikm` is the seed, `salt` is for domain separation. The above spec mentions `key_info` but is
 /// omitted here as only one element is created.
-/// Note that it can be variable time but its less likely
+/// Note that it can be variable time but it's less likely
 pub fn field_elem_from_seed<F, D>(ikm: &[u8], salt: &[u8]) -> F
 where
     F: PrimeField,

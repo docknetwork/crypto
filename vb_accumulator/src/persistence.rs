@@ -14,7 +14,7 @@ pub trait InitialElementsStore<T> {
 }
 
 /// Database interface implemented for the accumulators to store elements present in the accumulator. As elements
-/// are added or removed from the accumulator, this db is updated.
+/// are added or removed from the accumulator, this database is updated.
 pub trait State<T> {
     /// Add element
     fn add(&mut self, element: T);

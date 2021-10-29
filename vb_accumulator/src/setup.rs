@@ -110,7 +110,7 @@ where
 
     /// Generate params by hashing a known string. The hash function is vulnerable to timing
     /// attack but since all this is public knowledge, it is fine.
-    /// This is useful if people need to be convinced that the discrete of group elements wrt each other is not known.
+    /// This is useful if people need to be convinced that the discrete log of group elements wrt each other is not known.
     pub fn new<D: Digest>(label: &[u8]) -> Self {
         let P = projective_group_elem_from_try_and_incr::<E::G1Affine, D>(
             &to_bytes![label, " : P".as_bytes()].unwrap(),

@@ -22,7 +22,7 @@
 //!                 .get_membership_witness(&elem, &keypair.secret_key, &state)
 //!                 .unwrap();
 //!
-//! // `state` should be a persistent db implementing the trait `State`
+//! // `state` should be a persistent database implementing the trait `State`
 //! // `new_elem` is being added to the accumulator
 //! let new_accumulator = accumulator
 //!                 .add(new_elem, &keypair.secret_key, &mut state)
@@ -164,7 +164,7 @@ pub trait Witness<G: AffineCurve> {
     }
 
     /// Compute an update to several witnesses after adding a batch of elements in the accumulator.
-    /// Expects the accumulator value before the addition and the knowledge of secret key. Intended to be
+    /// Expects the accumulator value before the addition and knowledge of the secret key. Intended to be
     /// used by the manager. Described in section 3 of the paper
     fn compute_update_using_secret_key_after_batch_additions<'a>(
         additions: &[G::ScalarField],
@@ -216,7 +216,7 @@ pub trait Witness<G: AffineCurve> {
     }
 
     /// Compute an update to several witnesses after removing a batch of elements from the accumulator.
-    /// Expects the accumulator value after the removal and the knowledge of secret key. Intended to be
+    /// Expects the accumulator value after the removal and knowledge of the secret key. Intended to be
     /// used by the manager. Described in section 3 of the paper
     fn compute_update_using_secret_key_after_batch_removals<'a>(
         removals: &[G::ScalarField],
@@ -270,7 +270,7 @@ pub trait Witness<G: AffineCurve> {
     }
 
     /// Compute an update to several witnesses after adding and removing batches of elements from the accumulator.
-    /// Expects the accumulator value before the update and the knowledge of secret key. Intended to be
+    /// Expects the accumulator value before the update and knowledge of the secret key. Intended to be
     /// used by the manager. Described in section 3 of the paper
     fn compute_update_using_secret_key_after_batch_updates<'a>(
         additions: &[G::ScalarField],
@@ -504,7 +504,7 @@ where
     }
 
     /// Compute an update to several witnesses after adding a batch of elements in the accumulator.
-    /// Expects the accumulator value before the addition and the knowledge of secret key. Intended to be
+    /// Expects the accumulator value before the addition and knowledge of the secret key. Intended to be
     /// used by the manager
     pub fn update_using_secret_key_after_batch_additions<'a>(
         additions: &[G::ScalarField],
@@ -525,7 +525,7 @@ where
     }
 
     /// Compute an update to several witnesses after removing a batch of elements from the accumulator.
-    /// Expects the accumulator value after the removal and the knowledge of secret key. Intended to be
+    /// Expects the accumulator value after the removal and knowledge of the secret key. Intended to be
     /// used by the manager
     pub fn update_using_secret_key_after_batch_removals<'a>(
         removals: &[G::ScalarField],
@@ -546,7 +546,7 @@ where
     }
 
     /// Compute an update to several witnesses after adding and removing batches of elements from the accumulator.
-    /// Expects the accumulator value before the update and the knowledge of secret key. Intended to be
+    /// Expects the accumulator value before the update and knowledge of the secret key. Intended to be
     /// used by the manager
     pub fn update_using_secret_key_after_batch_updates<'a>(
         additions: &[G::ScalarField],
@@ -651,7 +651,7 @@ where
     }
 
     /// Compute an update to several witnesses after adding a batch of elements in the accumulator.
-    /// Expects the accumulator value before the addition and the knowledge of secret key. Intended to be
+    /// Expects the accumulator value before the addition and knowledge of the secret key. Intended to be
     /// used by the manager
     pub fn update_using_secret_key_after_batch_additions<'a>(
         additions: &[G::ScalarField],
@@ -676,7 +676,7 @@ where
     }
 
     /// Compute an update to several witnesses after removing a batch of elements from the accumulator.
-    /// Expects the accumulator value after the removal and the knowledge of secret key. Intended to be
+    /// Expects the accumulator value after the removal and knowledge of the secret key. Intended to be
     /// used by the manager
     pub fn update_using_secret_key_after_batch_removals<'a>(
         removals: &[G::ScalarField],
@@ -701,7 +701,7 @@ where
     }
 
     /// Compute an update to several witnesses after adding and removing batches of elements from the accumulator.
-    /// Expects the accumulator value before the update and the knowledge of secret key. Intended to be
+    /// Expects the accumulator value before the update and knowledge of the secret key. Intended to be
     /// used by the manager
     pub fn update_using_secret_key_after_batch_updates<'a>(
         additions: &[G::ScalarField],
