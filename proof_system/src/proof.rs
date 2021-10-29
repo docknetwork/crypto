@@ -64,7 +64,6 @@ impl<G: AffineCurve> PedersenCommitmentProof<G> {
 
 /// Describes the relations that need to proven. This is known to the prover and verifier and must
 /// be agreed upon before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s.
-// Note: Consider optional support of `context` in `ProofSpec`
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
@@ -138,6 +137,7 @@ where
     pub fn is_valid(&self) -> bool {
         for mt in &self.meta_statements.0 {
             match mt {
+                // All witness equalities should be valid
                 MetaStatement::WitnessEquality(w) => {
                     if !w.is_valid() {
                         return false;
@@ -169,6 +169,8 @@ where
         if !proof_spec.is_valid() {
             return Err(ProofSystemError::InvalidProofSpec);
         }
+
+        // There should be a witness for each statement
         if proof_spec.statements.len() != witnesses.len() {
             return Err(ProofSystemError::UnequalWitnessAndStatementCount(
                 proof_spec.statements.len(),
@@ -177,7 +179,8 @@ where
         }
 
         // Keep blinding for each witness reference that is part of an equality. This means that for
-        // any 2 witnesses that are equal, same blinding will be stored.
+        // any 2 witnesses that are equal, same blinding will be stored. This will be drained during
+        // proof creation and should be empty by the end.
         let mut blindings = BTreeMap::<WitnessRef, F>::new();
 
         // Prepare blindings for any witnesses that need to be proven equal.
@@ -279,6 +282,8 @@ where
             }
         }
 
+        // If all blindings are not consumed, it means that there was some witness equality which was
+        // incorrect like either statement index was wrong or witness index for certain statement was wrong.
         if !blindings.is_empty() {
             return Err(ProofSystemError::InvalidWitnessEqualities(
                 blindings.keys().cloned().collect::<Vec<_>>(),
@@ -318,6 +323,8 @@ where
             return Err(ProofSystemError::InvalidProofSpec);
         }
 
+        // Number of statement proofs is less than number of statements which means some statements
+        // are not satisfied.
         if proof_spec.statements.len() > self.0.len() {
             return Err(ProofSystemError::UnsatisfiedStatements(
                 proof_spec.statements.len(),
@@ -335,7 +342,8 @@ where
             }
         }
 
-        // This will hold the response for each witness equality
+        // This will hold the response for each witness equality. If there is no response for some witness
+        // equality, it will contain `None` corresponding to that.
         let mut responses_for_equalities: Vec<Option<&E::Fr>> =
             vec![None; witness_equalities.len()];
 
@@ -359,6 +367,7 @@ where
                 Statement::PoKBBSSignatureG1(s) => match proof {
                     StatementProof::PoKBBSSignatureG1(p) => {
                         let revealed_msg_ids = s.revealed_messages.keys().map(|k| *k).collect();
+                        // Check witness equalities for this statement.
                         for i in 0..s.params.supported_message_count() {
                             let w_ref = (s_idx, i);
                             for j in 0..witness_equalities.len() {
@@ -391,6 +400,8 @@ where
                 Statement::AccumulatorMembership(s) => match proof {
                     StatementProof::AccumulatorMembership(p) => {
                         for i in 0..witness_equalities.len() {
+                            // Check witness equalities for this statement. As there is only 1 witness
+                            // of interest, i.e. the accumulator member, its index is always 0
                             if witness_equalities[i].contains(&(s_idx, 0)) {
                                 let resp = p.get_schnorr_response_for_element();
                                 Self::check_response_for_equality(
@@ -420,6 +431,8 @@ where
                 },
                 Statement::AccumulatorNonMembership(s) => match proof {
                     StatementProof::AccumulatorNonMembership(p) => {
+                        // Check witness equalities for this statement. As there is only 1 witness
+                        // of interest, i.e. the accumulator non-member, its index is always 0
                         for i in 0..witness_equalities.len() {
                             if witness_equalities[i].contains(&(s_idx, 0)) {
                                 let resp = p.get_schnorr_response_for_element();
@@ -451,6 +464,7 @@ where
                 Statement::PedersenCommitment(s) => match proof {
                     StatementProof::PedersenCommitment(p) => {
                         for i in 0..s.bases.len() {
+                            // Check witness equalities for this statement.
                             for j in 0..witness_equalities.len() {
                                 if witness_equalities[j].contains(&(s_idx, i)) {
                                     let r = p.response.get_response(i)?;
@@ -483,6 +497,8 @@ where
             }
         }
 
+        // If even one of witness equality had no corresponding response, it means that wasn't satisfied
+        // and proof should not verify
         if responses_for_equalities.iter().any(|r| r.is_none()) {
             return Err(ProofSystemError::UnsatisfiedWitnessEqualities(
                 responses_for_equalities

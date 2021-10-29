@@ -366,8 +366,8 @@ where
         Ok(self.get_updated(f_V, V))
     }
 
-    /// Compute `d` where `d = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)` where
-    /// each `member_i` is a member of the accumulator (except the elements added during initialization).
+    /// Compute `d` where `d = f_V(-non_member) = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)`
+    /// where each `member_i` is a member of the accumulator (except the elements added during initialization).
     /// In case the accumulator is of a large number of members such that it's not possible to pass all of
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
@@ -380,7 +380,7 @@ where
     }
 
     /// Compute non membership witness given `d` where
-    /// `d = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)`
+    /// `d = f_V(-non_member) = (member_0 - non_member)*(member_1 - non_member)*...(member_n - non_member)`
     /// where each `member_i` is a member of the accumulator (except the elements added during initialization)
     /// Described in section 2 of the paper
     pub fn compute_non_membership_witness_given_d(
@@ -431,8 +431,8 @@ where
     }
 
     /// Compute a vector `d` for a batch where each `non_member_i` in batch has `d` as `d_i` and
-    /// `d_i = (member_0 - non_member_i)*(member_1 - non_member_i)*...(member_n - non_member_i)` where each `member_i`
-    /// is a member of the accumulator (except the elements added during initialization).
+    /// `d_i = f_V(-non_member_i) = (member_0 - non_member_i)*(member_1 - non_member_i)*...(member_n - non_member_i)`
+    /// where each `member_i` is a member of the accumulator (except the elements added during initialization).
     /// In case the accumulator is of a large number of members such that it's not possible to pass all of
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
@@ -454,7 +454,8 @@ where
         ds
     }
 
-    /// Compute non-membership witnesses for a batch {`y_i`} given their `d`s, where `d = f_V(-y_i)` for each `y_i`
+    /// Compute non-membership witnesses for a batch {`y_i`} given their `d`s, where `d = f_V(-y_i)`
+    /// for each member `y_i`
     pub fn compute_non_membership_witness_for_batch_given_d(
         &self,
         d: Vec<E::Fr>,

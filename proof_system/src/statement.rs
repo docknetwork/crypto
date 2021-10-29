@@ -155,6 +155,7 @@ pub struct PedersenCommitment<G: AffineCurve> {
 pub struct EqualWitnesses(pub BTreeSet<WitnessRef>);
 
 impl EqualWitnesses {
+    /// A witness equality should have at least 2 witness references.
     pub fn is_valid(&self) -> bool {
         self.0.len() > 1
     }
