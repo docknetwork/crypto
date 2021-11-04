@@ -25,7 +25,7 @@ use serde_with::{serde_as, Same};
 /// Reference to a witness described as the tuple (`statement_id`, `witness_id`)
 pub type WitnessRef = (usize, usize);
 
-/// Type of proof and the public (known to both prover and verifier) values for the proof
+/// Type of proof and the public values (known to both prover and verifier) for the proof
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub enum Statement<E: PairingEngine, G: AffineCurve> {
@@ -113,7 +113,7 @@ pub struct PedersenCommitment<G: AffineCurve> {
     /// The bases `g_i` in `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
     #[serde_as(as = "Vec<AffineGroupBytes>")]
     pub bases: Vec<G>,
-    /// The Pedersen commitment `C` in `g_i` in `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
+    /// The Pedersen commitment `C` in `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
     #[serde_as(as = "AffineGroupBytes")]
     pub commitment: G,
 }
@@ -179,8 +179,8 @@ impl MetaStatements {
     }
 
     /// Given multiple `MetaStatement::WitnessEquality` which might have common witness references,
-    /// return a list of `EqualWitnesses` with no common references. The objective is same as
-    /// when given a collection of sets, return a new collection of sets such that all sets in the new
+    /// return a list of `EqualWitnesses` with no common references. The objective is the same as
+    /// when given a collection of sets; return a new collection of sets such that all sets in the new
     /// collection are pairwise distinct.
     pub fn disjoint_witness_equalities(&self) -> Vec<EqualWitnesses> {
         let mut equalities = vec![];

@@ -14,7 +14,7 @@ use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
 
 pub use serialization::*;
 
-/// Secret data known only to the prover and whose knowledge is to proven
+/// Secret data that the prover will prove knowledge of, this data is known only to the prover
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -45,7 +45,7 @@ pub struct PoKBBSSignatureG1<E: PairingEngine> {
     pub unrevealed_messages: BTreeMap<usize, E::Fr>,
 }
 
-/// Secret data corresponding when proving proving accumulator membership
+/// Secret data corresponding when proving accumulator membership
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -57,7 +57,7 @@ pub struct Membership<E: PairingEngine> {
     pub witness: MembershipWitness<E::G1Affine>,
 }
 
-/// Secret data corresponding when proving proving accumulator non-membership
+/// Secret data corresponding when proving accumulator non-membership
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
