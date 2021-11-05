@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(non_snake_case)]
 
-//! Dynamic Positive and Universal accumulators according to the paper: "Dynamic Universal Accumulator with Batch Update over Bilinear Groups" <https://eprint.iacr.org/2020/777>
+//! Dynamic Positive and Universal accumulators according to the paper: [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
 //! Provides a dynamic positive accumulator [`PositiveAccumulator`], that supports membership proofs
 //! Provides a dynamic universal accumulator [`UniversalAccumulator`], that supports membership and non-membership proofs.
 //! Both accumulators implement that trait [`Accumulator`] that contains the common functionality.

@@ -166,8 +166,9 @@ impl MetaStatements {
         Self(Vec::new())
     }
 
-    pub fn add(&mut self, item: MetaStatement) {
-        self.0.push(item)
+    pub fn add(&mut self, item: MetaStatement) -> usize {
+        self.0.push(item);
+        self.0.len() - 1
     }
 
     pub fn is_empty(&self) -> bool {
@@ -222,8 +223,9 @@ where
         Self(Vec::new())
     }
 
-    pub fn add(&mut self, item: Statement<E, G>) {
-        self.0.push(item)
+    pub fn add(&mut self, item: Statement<E, G>) -> usize {
+        self.0.push(item);
+        self.0.len() - 1
     }
 
     pub fn is_empty(&self) -> bool {

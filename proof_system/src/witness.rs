@@ -77,8 +77,9 @@ where
         Self(Vec::new())
     }
 
-    pub fn add(&mut self, item: Witness<E>) {
-        self.0.push(item)
+    pub fn add(&mut self, item: Witness<E>) -> usize {
+        self.0.push(item);
+        self.0.len() - 1
     }
 
     pub fn is_empty(&self) -> bool {
