@@ -126,7 +126,7 @@ where
     }
 
     /// Evaluation of polynomial without creating the polynomial as the variable is already known.
-    /// Returns (updates[0]-x)*(updates[1]-x)*(updates[2]-x)*...(updates[n]-x)*
+    /// Returns (updates[0]-x)*(updates[1]-x)*(updates[2]-x)*...(updates[n]-x)
     pub fn eval_direct(updates: &[F], x: &F) -> F {
         updates.iter().fold(F::one(), |a, y| (*y - *x) * a)
         // TODO: Figure out the why the following line is about 5 times slower than the sequential one above

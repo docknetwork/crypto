@@ -363,17 +363,22 @@ pub trait Witness<G: AffineCurve> {
     }
 
     /// Compute an update to the witness after adding and removing several batches of elements from the accumulator.
-    /// Expects the update-info (`Omega`) published by the manager for each batch. Described in section 4.2 of the paper
+    /// Expects the update-info (`Omega`) published by the manager for each batch. Described in section 4.2 of the paper.
     fn compute_update_using_public_info_after_multiple_batch_updates<'a>(
         updates_and_omegas: Vec<(&[G::ScalarField], &[G::ScalarField], &Omega<G>)>,
         element: &G::ScalarField,
         old_witness: &G,
     ) -> Result<(G::ScalarField, G), VBAccumulatorError> {
-        // d_{A_{i->j}} - product of all evaluations of polynomial d_A
-        let mut d_A_ij = G::ScalarField::one();
-        // d_{D_{i->j}} - product of all evaluations of polynomial d_D
-        let mut d_D_ij = G::ScalarField::one();
-
+        if updates_and_omegas.len() < 2 {
+            return Self::compute_update_using_public_info_after_batch_updates(
+                updates_and_omegas[0].0,
+                updates_and_omegas[0].1,
+                updates_and_omegas[0].2,
+                element,
+                old_witness,
+            );
+        }
+        // Separate additions, removals and omegas in their own vectors
         let mut additions = Vec::with_capacity(updates_and_omegas.len());
         let mut removals = Vec::with_capacity(updates_and_omegas.len());
         let mut omegas = Vec::with_capacity(updates_and_omegas.len());
@@ -382,6 +387,11 @@ pub trait Witness<G: AffineCurve> {
             removals.push(r);
             omegas.push(omega);
         }
+
+        // d_{A_{i->j}} - product of all evaluations of polynomial d_A
+        let mut d_A_ij = G::ScalarField::one();
+        // d_{D_{i->j}} - product of all evaluations of polynomial d_D
+        let mut d_D_ij = G::ScalarField::one();
 
         // omega_{i->j} - Sum of all omega scaled by factors
         // Maximum size of any omega vector, used to create the resulting vector from addition of all omegas
@@ -427,14 +437,15 @@ pub trait Witness<G: AffineCurve> {
         let mut final_omega = Vec::<G::Projective>::with_capacity(max_omega_size);
         for i in 0..max_omega_size {
             // Add ith coefficient of each `omega_t` after multiplying the coefficient by the factor in t_th position.
-            // `multi_scalar_mul` ensures that only required number of elements are picked from `omega_t_factors`
             let mut bases = Vec::new();
-            for omega in omegas.iter() {
+            let mut scalars = Vec::new();
+            for (t, omega) in omegas.iter().enumerate() {
                 if omega.len() > i {
                     bases.push(*omega.coefficient(i));
+                    scalars.push(omega_t_factors[t].clone());
                 }
             }
-            final_omega.push(VariableBaseMSM::multi_scalar_mul(&bases, &omega_t_factors));
+            final_omega.push(VariableBaseMSM::multi_scalar_mul(&bases, &scalars));
         }
 
         // <powers_of_y, omega>
@@ -1526,6 +1537,197 @@ mod tests {
                 &params
             ));
         }
+    }
+
+    /// Create accumulator and check whether multiple batch updates can be applied to a witness
+    fn multiple_batches_check(
+        member: &Fr,
+        initial_additions: Vec<Fr>,
+        additions: Vec<Vec<Fr>>,
+        removals: Vec<Vec<Fr>>,
+    ) {
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        let (params, keypair, mut accumulator, mut state) = setup_positive_accum(&mut rng);
+
+        accumulator = accumulator
+            .add_batch(initial_additions, &keypair.secret_key, &mut state)
+            .unwrap();
+
+        let mut omegas = vec![];
+
+        // Witness that will be updated with multiple batches
+        let wit = accumulator
+            .get_membership_witness(&member, &keypair.secret_key, &mut state)
+            .unwrap();
+
+        // This witness is updated with only 1 batch in each iteration of the loop below
+        let mut wit_temp = wit.clone();
+
+        for i in 0..additions.len() {
+            let omega = Omega::new(
+                &additions[i],
+                &removals[i],
+                accumulator.value(),
+                &keypair.secret_key,
+            );
+            accumulator = accumulator
+                .batch_updates(
+                    additions[i].clone(),
+                    &removals[i],
+                    &keypair.secret_key,
+                    &mut state,
+                )
+                .unwrap();
+
+            wit_temp = wit_temp
+                .update_using_public_info_after_batch_updates(
+                    &additions[i],
+                    &removals[i],
+                    &omega,
+                    &member,
+                )
+                .unwrap();
+            assert!(accumulator.verify_membership(
+                &member,
+                &wit_temp,
+                &keypair.public_key,
+                &params
+            ));
+            omegas.push(omega);
+        }
+
+        let mut updates_and_omegas = vec![];
+        for i in 0..additions.len() {
+            updates_and_omegas.push((additions[i].as_slice(), removals[i].as_slice(), &omegas[i]));
+        }
+
+        let new_wit = wit
+            .update_using_public_info_after_multiple_batch_updates(updates_and_omegas, &member)
+            .unwrap();
+
+        assert!(accumulator.verify_membership(&member, &new_wit, &keypair.public_key, &params));
+    }
+
+    #[test]
+    fn update_witnesses_after_multiple_batch_updates_positive_accumulator_1() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let e0 = Fr::rand(&mut rng);
+        let e1 = Fr::rand(&mut rng);
+        let e2 = Fr::rand(&mut rng);
+        let e3 = Fr::rand(&mut rng);
+        let e4 = Fr::rand(&mut rng);
+        let e5 = Fr::rand(&mut rng);
+        let e6 = Fr::rand(&mut rng);
+        let e7 = Fr::rand(&mut rng);
+        let e8 = Fr::rand(&mut rng);
+        let e9 = Fr::rand(&mut rng);
+
+        let initial_additions = vec![e0, e1, e2];
+        let additions = vec![vec![e3, e4], vec![e5, e6], vec![e7, e8, e9]];
+        let removals = vec![vec![e0, e1], vec![e3], vec![e4]];
+        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+
+        let additions = vec![vec![e3, e4], vec![e5, e6], vec![e7, e8, e9]];
+        let removals = vec![vec![e0, e1], vec![e3], vec![]];
+        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+
+        let additions = vec![vec![e3, e4], vec![e5, e6], vec![e7, e8, e9]];
+        let removals = vec![vec![e0, e1], vec![], vec![]];
+        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+
+        let additions = vec![vec![e3, e4], vec![e5, e6], vec![e7, e8, e9]];
+        let removals = vec![vec![e0, e1], vec![], vec![e3, e4, e5]];
+        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+
+        let additions = vec![vec![e3, e4], vec![e5, e6], vec![e7, e8]];
+        let removals = vec![vec![e0, e1], vec![e3], vec![e4]];
+        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+
+        let additions = vec![vec![e3, e4], vec![e5, e6, e7]];
+        let removals = vec![vec![e0, e1], vec![e3]];
+        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+
+        let additions = vec![vec![e3, e4], vec![e5, e6, e7]];
+        let removals = vec![vec![e0, e1], vec![]];
+        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+
+        let additions = vec![vec![e3, e4, e5, e6, e7, e8, e9], vec![], vec![]];
+        let removals = vec![vec![e0], vec![], vec![e1, e3, e4, e5]];
+        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+
+        let additions = vec![vec![e3, e4, e5, e6, e7, e8, e9], vec![], vec![], vec![]];
+        let removals = vec![vec![e0], vec![], vec![e1, e3, e4, e5], vec![e6, e7, e8, e9]];
+        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+    }
+
+    #[test]
+    fn update_witnesses_after_multiple_batch_updates_positive_accumulator_2() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let (params, keypair, mut accumulator, mut state) = setup_positive_accum(&mut rng);
+        let e0 = Fr::rand(&mut rng);
+
+        let elements: Vec<Fr> = (0..12).into_iter().map(|_| Fr::rand(&mut rng)).collect();
+
+        accumulator = accumulator
+            .add_batch(
+                vec![e0.clone(), elements[0].clone(), elements[1].clone()],
+                &keypair.secret_key,
+                &mut state,
+            )
+            .unwrap();
+
+        let wit = accumulator
+            .get_membership_witness(&e0, &keypair.secret_key, &mut state)
+            .unwrap();
+
+        let mut wit_temp = wit.clone();
+
+        let mut omegas = vec![];
+        let mut additions = vec![];
+        let mut removals = vec![];
+        for i in (2..10).step_by(2) {
+            additions.push(vec![elements[i].clone(), elements[i + 1].clone()]);
+            removals.push(vec![elements[i - 2].clone(), elements[i - 1].clone()]);
+            let omega = Omega::new(
+                additions.last().unwrap(),
+                removals.last().unwrap(),
+                accumulator.value(),
+                &keypair.secret_key,
+            );
+            omegas.push(omega);
+            accumulator = accumulator
+                .batch_updates(
+                    additions.last().unwrap().clone(),
+                    removals.last().unwrap(),
+                    &keypair.secret_key,
+                    &mut state,
+                )
+                .unwrap();
+            wit_temp = wit_temp
+                .update_using_public_info_after_batch_updates(
+                    additions.last().unwrap(),
+                    removals.last().unwrap(),
+                    omegas.last().unwrap(),
+                    &e0,
+                )
+                .unwrap();
+            assert!(accumulator.verify_membership(&e0, &wit_temp, &keypair.public_key, &params));
+        }
+
+        let new_wit = wit
+            .update_using_public_info_after_multiple_batch_updates(
+                vec![
+                    (&additions[0], &removals[0], &omegas[0]),
+                    (&additions[1], &removals[1], &omegas[1]),
+                    (&additions[2], &removals[2], &omegas[2]),
+                    (&additions[3], &removals[3], &omegas[3]),
+                ],
+                &e0,
+            )
+            .unwrap();
+
+        assert!(accumulator.verify_membership(&e0, &new_wit, &keypair.public_key, &params));
     }
 
     #[test]
