@@ -133,8 +133,8 @@ impl<E> UniversalAccumulator<E>
 where
     E: PairingEngine,
 {
-    /// Create a new universal accumulator. Given the max size, it generates the same no. of initial elements
-    /// and adds them to the accumulator and these initial elements can never be removed or added back to the
+    /// Create a new universal accumulator. Given the max size, it generates (max_size+1) initial elements
+    /// and adds them to the accumulator; these initial elements can never be removed or added back to the
     /// accumulator
     pub fn initialize<R: RngCore>(
         rng: &mut R,
@@ -147,7 +147,8 @@ where
         for _ in 0..max_size + 1 {
             // Each of the random values should be preserved by the manager and should not be removed (check before removing)
             // from the accumulator
-            // TODO: Make it same as the paper
+            // TODO: incorporate the Sage code and add more initialising elements to account for the possibility of
+            // known subgroup generating initial elements (if the public values are used)
             let elem = E::Fr::rand(rng);
             f_V = f_V * (elem + sk.0);
             initial_elements_store.add(elem);
