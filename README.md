@@ -21,7 +21,7 @@ By default, it uses standard library and [rayon](https://github.com/rayon-rs/ray
 
 To build with standard library but without parallelization, use `cargo build --no-default-features --features=std`
 
-For [no_std] support, build as `cargo build --no-default-features`
+For `no_std` support, build as `cargo build --no-default-features`
 
 For WASM, build as `cargo build --no-default-features --target wasm32-unknown-unknown`
 
@@ -38,3 +38,7 @@ For running tests faster, run `cargo test --release`
 [Criterion](https://github.com/bheisler/criterion.rs) benchmarks [here](./benches)
 
 Some tests also print time consumed by the operations, run `cargo test --release -- --nocapure [test name]`
+
+## WASM wrapper
+
+A WASM wrapper has been created over this repo [here](https://github.com/docknetwork/crypto-wasm). The wrapper is then used to create [this Typescript library](https://github.com/docknetwork/crypto-wasm-ts) which is more ergonomic than using the wrapper as the wrapper contains free floating functions.

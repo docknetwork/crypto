@@ -1770,4 +1770,195 @@ mod tests {
             ProofG1::new(&mut rng, orig_proof_spec.clone(), witnesses.clone(), None).unwrap();
         valid_proof.verify(orig_proof_spec.clone(), None).unwrap();
     }
+
+    #[test]
+    fn verifier_local_linkability() {
+        // a verifier wants to attach a unique identifier to a prover without either learning anything unintended (by prover) from the prover's signature nor can that unique identifier be used by other verifiers to identify the prover,
+        // eg. a seller (as a verifier) should be able to identify repeat customers (prover) by using a unique identifier but he should not be able to share that unique identifier with other sellers using their own identifier for that prover.
+        // This is done by making the prover go through a one-time registration process with the verifier by creating a Pedersen commitment to some value in the signature(s) which the verifier persists, lets call it registration commitment.
+        // At each subsequent proof, the prover resends the commitment with the proof that commitment contains message from the prover's signature (prover had persisted commitment and randomness) and the verifier checks that the commitment is
+        // same as the one during registration. The registration commitment serves as an identifier.
+
+        // Following shows a prover interacting with 2 different verifiers and creating and using 2 different registration commitments, 1 at each verifier
+
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        // Prover got the signature
+        let msg_count = 5;
+        let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
+
+        // Verifier 1 wants a commitment to prover message at index 1. Eg, index 1 might be the SSN of a citizen
+        // Prover creates commitment for verifier 1 using group generators `gens_1`
+        let gens_1 = vec![
+            G1Projective::rand(&mut rng).into_affine(),
+            G1Projective::rand(&mut rng).into_affine(),
+        ];
+        let blinding_1 = Fr::rand(&mut rng);
+
+        // This is the registration commitment of the prover for verifier 1
+        let commitment_1 = VariableBaseMSM::multi_scalar_mul(
+            &gens_1,
+            &[msgs[1].into_repr(), blinding_1.into_repr()],
+        )
+        .into_affine();
+
+        // The prover must persist `blinding_1` and `commitment_1` as long as he ever wants to interact with verifier 1.
+
+        // Verifier 2 also wants a commitment to prover message at index 1
+        // Prover creates commitment for verifier 2 using group generators `gens_2`
+        let gens_2 = vec![
+            G1Projective::rand(&mut rng).into_affine(),
+            G1Projective::rand(&mut rng).into_affine(),
+        ];
+        let blinding_2 = Fr::rand(&mut rng);
+
+        // This is the registration commitment of the prover for verifier 2
+        let commitment_2 = VariableBaseMSM::multi_scalar_mul(
+            &gens_2,
+            &[msgs[1].into_repr(), blinding_2.into_repr()],
+        )
+        .into_affine();
+
+        // The prover must persist `blinding_2` and `commitment_2` as long as he ever wants to interact with verifier 2.
+
+        // The commitments are different for both verifiers for the same message
+        assert_ne!(commitment_1, commitment_2);
+
+        // Prover proves to verifier 1
+        let mut statements_1 = Statements::new();
+        statements_1.add(Statement::PoKBBSSignatureG1(PoKSignatureBBSG1Stmt {
+            params: sig_params.clone(),
+            public_key: sig_keypair.public_key.clone(),
+            revealed_messages: BTreeMap::new(),
+        }));
+        statements_1.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+            bases: gens_1.clone(),
+            commitment: commitment_1.clone(),
+        }));
+
+        let mut meta_statements_1 = MetaStatements::new();
+        meta_statements_1.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, 1), (1, 0)] // 0th statement's 0th witness is equal to 1st statement's 0th witness
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+
+        let context = Some(b"For verifier 1".to_vec());
+        let proof_spec_1 = ProofSpec {
+            statements: statements_1.clone(),
+            meta_statements: meta_statements_1.clone(),
+            context: context.clone(),
+        };
+
+        let mut witnesses_1 = Witnesses::new();
+        witnesses_1.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig.clone(),
+            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        ));
+        witnesses_1.add(Witness::PedersenCommitment(vec![
+            msgs[1].clone(),
+            blinding_1.clone(),
+        ]));
+
+        let proof_1 =
+            ProofG1::new(&mut rng, proof_spec_1.clone(), witnesses_1.clone(), None).unwrap();
+
+        proof_1.verify(proof_spec_1, None).unwrap();
+
+        // Prover proves to verifier 2
+        let mut statements_2 = Statements::new();
+        statements_2.add(Statement::PoKBBSSignatureG1(PoKSignatureBBSG1Stmt {
+            params: sig_params.clone(),
+            public_key: sig_keypair.public_key.clone(),
+            revealed_messages: BTreeMap::new(),
+        }));
+        statements_2.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+            bases: gens_2.clone(),
+            commitment: commitment_2.clone(),
+        }));
+
+        let mut meta_statements_2 = MetaStatements::new();
+        meta_statements_2.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, 1), (1, 0)] // 0th statement's 0th witness is equal to 1st statement's 0th witness
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+
+        let context = Some(b"For verifier 2".to_vec());
+        let proof_spec_2 = ProofSpec {
+            statements: statements_2.clone(),
+            meta_statements: meta_statements_2.clone(),
+            context: context.clone(),
+        };
+
+        let mut witnesses_2 = Witnesses::new();
+        witnesses_2.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig.clone(),
+            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        ));
+        witnesses_2.add(Witness::PedersenCommitment(vec![
+            msgs[1].clone(),
+            blinding_2.clone(),
+        ]));
+
+        let proof_2 =
+            ProofG1::new(&mut rng, proof_spec_2.clone(), witnesses_2.clone(), None).unwrap();
+
+        proof_2.verify(proof_spec_2, None).unwrap();
+
+        // Prover again proves to verifier 1, this time something different like revealing a message but still uses his registration
+        // commitment corresponding to verifier 1.
+        let mut revealed_indices = BTreeSet::new();
+        revealed_indices.insert(3);
+
+        let mut revealed_msgs = BTreeMap::new();
+        let mut unrevealed_msgs = BTreeMap::new();
+        for i in 0..msg_count {
+            if revealed_indices.contains(&i) {
+                revealed_msgs.insert(i, msgs[i]);
+            } else {
+                unrevealed_msgs.insert(i, msgs[i]);
+            }
+        }
+
+        let mut statements_3 = Statements::new();
+        statements_3.add(Statement::PoKBBSSignatureG1(PoKSignatureBBSG1Stmt {
+            params: sig_params.clone(),
+            public_key: sig_keypair.public_key.clone(),
+            revealed_messages: revealed_msgs,
+        }));
+        statements_3.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+            bases: gens_1.clone(),
+            commitment: commitment_1.clone(),
+        }));
+
+        let mut meta_statements_3 = MetaStatements::new();
+        meta_statements_3.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, 1), (1, 0)] // 0th statement's 0th witness is equal to 1st statement's 0th witness
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+
+        let context = Some(b"For verifier 1, revealing messages this time".to_vec());
+        let proof_spec_3 = ProofSpec {
+            statements: statements_3.clone(),
+            meta_statements: meta_statements_3.clone(),
+            context: context.clone(),
+        };
+
+        let mut witnesses_3 = Witnesses::new();
+        witnesses_3.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig.clone(),
+            unrevealed_msgs,
+        ));
+        witnesses_3.add(Witness::PedersenCommitment(vec![
+            msgs[1].clone(),
+            blinding_1.clone(),
+        ]));
+
+        let proof_3 =
+            ProofG1::new(&mut rng, proof_spec_3.clone(), witnesses_3.clone(), None).unwrap();
+
+        proof_3.verify(proof_spec_3, None).unwrap();
+    }
 }

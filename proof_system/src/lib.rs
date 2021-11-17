@@ -13,12 +13,23 @@
 //! [`Statement`], [`Witness`] and [`StatementProof`] are enums whose variants will be entities from different
 //! protocols. Each of these protocols are variants of the enum [`SubProtocol`].
 //! Currently supports proof of knowledge of BBS+ signature, accumulator membership, accumulator
-//! non-membership, and Pedersen commitment pre-image. The tests show how to create a proof that combines
+//! non-membership, and Pedersen commitment opening. The tests show how to create a proof that combines
 //! several proofs of knowledge.
 //! BBS+ signature and prove equality between the messages and also proof that combines proof of knowledge of
-//! BBS+ signature, accumulator membership,accumulator non-membership, and Pedersend commitment pre-image.
-//! See tests for examples.
+//! BBS+ signature, accumulator membership, accumulator non-membership, and Pedersen commitment opening.
+//! See following tests for examples:
 //!
+//! - test `pok_of_3_bbs_plus_sig_and_message_equality` proves knowledge of 3 BBS+ signatures and also that certain
+//!   messages are equal among them without revealing them.
+//! - test `pok_of_bbs_plus_sig_and_accumulator` proves knowledge of a BBS+ signature and also that certain messages
+//!   are present and absent in the 2 accumulators respectively.
+//! - test `pok_of_knowledge_in_pedersen_commitment_and_BBS_plus_sig` proves knowledge of a BBS+ signature and opening
+//!   of a Pedersen commitment.
+//! - test `requesting_partially_blind_BBS_plus_sig` shows how to request a blind BBS+ signature by proving opening of
+//!   a Pedersen commitment.
+//! - test `verifier_local_linkability` shows how a verifier can link separate proofs from a prover (with prover's
+//!   permission) and assign a unique identifier to the prover without learning any message from the BBS+ signature.
+//!   Also this identifier cannot be linked across different verifiers (intentional by the prover).  
 //!
 //! *Note*: This design is largely inspired from my work at Hyperledger Ursa.
 //!
