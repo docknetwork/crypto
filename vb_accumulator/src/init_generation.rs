@@ -9,14 +9,15 @@
 /// a^{(p-1)/(p_i^e_i)} != 1 for all i. 
 /// Let's explore why we do this:
 /// If we find a random element `a`, and we see that `a^{(p-1)/(p_i^e_i)} == 1`, it does not mean that
-/// the order od `a` is `(p-1)/(p_i^e_i)`. It means that the order divides `(p-1)/(p_i^e_i)`.
+/// the order of `a` is `(p-1)/(p_i^e_i)`. It means that the order divides `(p-1)/(p_i^e_i)`.
 /// To be sure that we get elements with the correct order, we can find a primitive element `b`; i.e.
 /// an element `b` whose order is p-1. Then `b^{(p-1)/(p_i^e_i)}` is guaranteed to have order
 /// `p_i^e_i`.
 /// In order to find a primitive element, we can do something straightforward. Any element `a` will
 /// have an order that divides p-1. Thus, if we find some element `b` whose order is not any of the
-/// factors of p-1, then its order must be p-1; thus it must be a primitive element.
-/// This is a straightforward and relatively efficient method to find all the elements we want.
+/// factors of p-1, then its order must be p-1; thus it must be a primitive element. More specifically,
+/// we do need need to check all factors, but `(p-1)/(p_i^e_i)` for all `i`.
+/// This is a straightforward and efficient method to find all the elements we want.
 /// 
 /// The security these n initializing value provide is only related to the inability of the attacker to obtain
 /// elements in the CRS from the public batch update data. These value can, in fact, even be public.
