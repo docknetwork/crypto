@@ -1,12 +1,22 @@
-/// The below comments are courtesy of the paper's author, Giuseppe Vitto
+/// The paper's author, Giuseppe Vitto, explained what is going on in section 5 of the paper, and I have
+/// added more detail to his explanation to make it more accessible.
 /// 
 /// We have that Z_p^* = Z_{p_1^e_1} x ... x Z_{p_n^e_n}
 /// We need to find random generators of each Z_{p_i^e_i} (there exists phi(p_i^e_i) = p_i^e_i - p_i^{e_i-1} 
 /// distinct such generators).
+/// We could generate random elements and check their orders manually, but this naive method is less optimal.
 /// A standard method is to generate a random `a` in Z_p and check if a^{p-1} = 1 mod(p) and 
 /// a^{(p-1)/(p_i^e_i)} != 1 for all i. 
-/// This ensures that `a` is a primitive root. All the deired generators will then be the values
-/// a^{(p-1)/(p_i^e_i)}
+/// Let's explore why we do this:
+/// If we find a random element `a`, and we see that `a^{(p-1)/(p_i^e_i)} == 1`, it does not mean that
+/// the order od `a` is `(p-1)/(p_i^e_i)`. It means that the order divides `(p-1)/(p_i^e_i)`.
+/// To be sure that we get elements with the correct order, we can find a primitive element `b`; i.e.
+/// an element `b` whose order is p-1. Then `b^{(p-1)/(p_i^e_i)}` is guaranteed to have order
+/// `p_i^e_i`.
+/// In order to find a primitive element, we can do something straightforward. Any element `a` will
+/// have an order that divides p-1. Thus, if we find some element `b` whose order is not any of the
+/// factors of p-1, then its order must be p-1; thus it must be a primitive element.
+/// This is a straightforward and relatively efficient method to find all the elements we want.
 /// 
 /// The security these n initializing value provide is only related to the inability of the attacker to obtain
 /// elements in the CRS from the public batch update data. These value can, in fact, even be public.
@@ -15,8 +25,8 @@
 /// bound #init.elements.remain.secret > #known.nmw.elements remains valid: this prevents interpolation of the 
 /// full polynomial f from colluding non-membership witnesses.
 /// 
-/// TODO: If we generate n generators, then we need to find an additional n random initialising elements to
-/// maintain security
+/// TODO: If we generate n generators publicly, then we need to find an additional n random initialising elements to
+/// maintain security; for safety reasons, it may make more sense to always add these extra elements just in case.
 /// 
 /// ______________________________________________________________________________________________________
 ///
@@ -30,19 +40,32 @@
 /// factors = factor(multiplicative_subgroup_size)
 /// print(factors)
 /// checks = []
+/// # We add all factors of p-1 to checks (except 1 and p-1). Using this we can determine if something is a 
+/// # primitive element
 /// for i in range(len(factors)):
+///     # Each thing added is a factor
 /// 	checks.append(multiplicative_subgroup_size/(factors[i][0]^factors[i][1]))
 ///
+/// # This is just a counter that will tell us when to stop
 /// w = 1
 /// while w == 1:
 /// 	item = scalar_field.random_element()
+///     # This is another counter that will remain 1 if the random element generated is primitive
 /// 	checking = 1
+///     # This check is to ensure that our element is a member of the group, though it isn't really necessary
+///     # in this code
 /// 	if item^(multiplicative_subgroup_size) == 1:
+///         # If we enter this if condition, it means that our random element has an order that is smaller than
+///         # p-1, and thus is not primitive. So we set checking to 0 so that we don't finnish searching
 /// 		for j in range(len(checks)):
 /// 			if item^checks[j] == 1:
 /// 				checking = 0
+///         # If we get to this point and checking is still 1, it means that the random element
+///         # is a primitive element, and we can use it to generate the elements we are actually looking for
 /// 		if checking == 1:
 /// 			for k in range(len(factors)):
+///                 # This is where we generate the generators of the subgroups, i.e. the things we were actually
+///                 # looking for
 /// 				generator = item^checks[k]
 /// 				print(generator)
 /// 				w = 0
