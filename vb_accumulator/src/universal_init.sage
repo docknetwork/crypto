@@ -162,7 +162,7 @@ def get_a_primitive(scalar_field_size, factors=None):
     scalar_field = GF(scalar_field_size)
     multiplicative_subgroup_size = scalar_field_size-1
 
-    if factors is not None:
+    if factors is None:
         factors = factor(multiplicative_subgroup_size)
     
     print("factors", factors)
@@ -204,18 +204,18 @@ def get_gens_l(scalar_field_size):
 
 def generate_for_bls12_381():
     scalar_field_size = 52435875175126190479447740508185965837690552500527637822603658699938581184513
-    return get_gens(scalar_field_size)
+    return get_gens_l(scalar_field_size)
 
 def generate_for_bn_254():
     scalar_field_size = 21888242871839275222246405745257275088548364400416034343698204186575808495617
-    return get_gens(scalar_field_size)
+    return get_gens_l(scalar_field_size)
 
 def generate_for_bls12_377():
     scalar_field_size = 8444461749428370424248824938781546531375899335154063827935233455917409239041
-    return get_gens(scalar_field_size)
+    return get_gens_l(scalar_field_size)
 
-# Test get_gens_l1
-def test():
+# Test get_gens_l
+def test_small_fields():
     for q in [13, 31, 41, 61, 761]:
         [primitive, xs] = get_gens_l(q)
         # Order of primitive element should be q-1
@@ -225,4 +225,20 @@ def test():
         assert len(factors) == len(xs)
         # Order of each x is as expected
         for i in range(len(factors)):
-            assert get_order(q, xs[i]) == factors[i][0]^factors[i][1]
+            f = factors[i][0]^factors[i][1]
+            assert (xs[i] ^ f) % q == 1
+            assert get_order(q, xs[i]) == f
+
+def test_for_curves():
+    for (q, [_, xs]) in [
+        (52435875175126190479447740508185965837690552500527637822603658699938581184513, generate_for_bls12_381()),
+        (21888242871839275222246405745257275088548364400416034343698204186575808495617, generate_for_bn_254()),
+        (8444461749428370424248824938781546531375899335154063827935233455917409239041, generate_for_bls12_377()),
+    ]:
+        factors = factor(q - 1)
+        # Should return the expected number of elements
+        assert len(factors) == len(xs)
+        # Order of each x is as expected
+        for i in range(len(factors)):
+            f = factors[i][0]^factors[i][1]
+            assert (xs[i] ^ f) % q == 1

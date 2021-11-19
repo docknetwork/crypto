@@ -125,7 +125,7 @@ pub fn setup_universal_accum(
     let keypair = Keypair::<Bls12_381>::generate_using_rng(rng, &params);
 
     let mut initial_elements = InMemoryInitialElements::new();
-    let accumulator = UniversalAccumulator::initialize(
+    let accumulator = UniversalAccumulator::initialize_with_all_random(
         rng,
         &params,
         max,

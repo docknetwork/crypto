@@ -133,10 +133,41 @@ impl<E> UniversalAccumulator<E>
 where
     E: PairingEngine,
 {
-    /// Create a new universal accumulator. Given the max size, it generates (max_size+1) initial elements
-    /// and adds them to the accumulator; these initial elements can never be removed or added back to the
-    /// accumulator
+    /// Create a new universal accumulator. Given the max size, it generates `max_size-n+1` initial elements
+    /// as mentioned in the paper. `n` elements are passed ar argument `xs`. These are generated
+    /// once for each curve as they depend on the order of the scalar field and then reused.
+    /// Constants for some of the curves are defined in `universal_init_constants.rs` are are computed
+    /// using sage code in `universal_init.sage`
     pub fn initialize<R: RngCore>(
+        rng: &mut R,
+        setup_params: &SetupParams<E>,
+        max_size: u64,
+        sk: &SecretKey<E::Fr>,
+        xs: Vec<E::Fr>,
+        initial_elements_store: &mut dyn InitialElementsStore<E::Fr>,
+    ) -> Self {
+        let mut f_V = E::Fr::one();
+        let xs_len = xs.len() as u64;
+        for x in xs {
+            f_V = f_V * (x + sk.0);
+            initial_elements_store.add(x);
+        }
+        for _ in 0..(max_size - xs_len + 1) {
+            let elem = E::Fr::rand(rng);
+            f_V = f_V * (elem + sk.0);
+            initial_elements_store.add(elem);
+        }
+
+        let V = setup_params.P.mul(f_V.into_repr()).into_affine();
+
+        Self { V, f_V, max_size }
+    }
+
+    /// Create a new universal accumulator. Given the max size, it generates `max_size+1` initial elements
+    /// *randomly* and adds them to the accumulator; these initial elements can never be removed or
+    /// added back to the accumulator. Generating all elements *randomly* deviates from the paper and
+    /// is present for legacy purposes. This will likely be removed.
+    pub fn initialize_with_all_random<R: RngCore>(
         rng: &mut R,
         setup_params: &SetupParams<E>,
         max_size: u64,
@@ -147,8 +178,6 @@ where
         for _ in 0..max_size + 1 {
             // Each of the random values should be preserved by the manager and should not be removed (check before removing)
             // from the accumulator
-            // TODO: incorporate the Sage code and add more initialising elements to account for the possibility of
-            // known subgroup generating initial elements (if the public values are used)
             let elem = E::Fr::rand(rng);
             f_V = f_V * (elem + sk.0);
             initial_elements_store.add(elem);
@@ -605,6 +634,7 @@ pub mod tests {
     use crate::test_serialization;
 
     use ark_bls12_381::Bls12_381;
+    use ark_ff::field_new;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use std::time::{Duration, Instant};
 
@@ -625,7 +655,7 @@ pub mod tests {
         let keypair = Keypair::<Bls12_381>::generate_using_rng(rng, &params);
 
         let mut initial_elements = InMemoryInitialElements::new();
-        let accumulator = UniversalAccumulator::initialize(
+        let accumulator = UniversalAccumulator::initialize_with_all_random(
             rng,
             &params,
             max,
@@ -667,6 +697,22 @@ pub mod tests {
             &keypair.secret_key,
         );
         assert_eq!(accumulator.f_V, f_V_1 * f_V_2 * f_V_3 * f_V_4);
+
+        let initial: Vec<Fr> = initial_elements_for_bls12_381!(Fr);
+        assert_eq!(initial.len(), 12);
+        let mut initial_elements_1 = InMemoryInitialElements::new();
+        let accumulator_1 = UniversalAccumulator::initialize(
+            &mut rng,
+            &params,
+            max,
+            &keypair.secret_key,
+            initial.clone(),
+            &mut initial_elements_1,
+        );
+        for i in initial {
+            assert!(initial_elements_1.db.contains(&i));
+            assert!(!accumulator_1.is_element_acceptable(&i, &initial_elements_1));
+        }
     }
 
     #[test]
