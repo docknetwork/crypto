@@ -31,6 +31,7 @@ pub mod positive;
 pub mod proofs;
 pub mod setup;
 pub mod universal;
+pub mod universal_init_constants;
 pub mod witness;
 
 pub mod prelude {
