@@ -153,9 +153,10 @@ where
             initial_elements_store.add(x);
         }
 
-        // At least `max_size + 1` initial elements need to be secret. Its assumed that elements in `xs`
-        // are public constants and thus `max_size + 1` more random elements are generated. Thus there
-        // are `max_size + xs.len() + 1` initial elements in total. However, if `xs` could be assumed
+        // We need more secret elements than known elements (in case all witness holders collude). As there can
+        // be at most `max_size` witnesses, there must be at least `max_size + 1` initial elements secret.
+        // It's assumed that elements in `xs` are public constants and thus `max_size + 1` more random elements are generated.
+        // Thus there are `max_size + xs.len() + 1` initial elements in total. However, if `xs` could be assumed
         // secret, then only `max_size - xs.len() + 1` random elements need to be generated.
         // Accepting an argument indicating whether `xs` is public could be another way to solve it
         // but as `xs.len <<< max_size` in practice, didn't feel right to make the function accept
@@ -716,6 +717,10 @@ pub mod tests {
             &keypair.secret_key,
             initial.clone(),
             &mut initial_elements_1,
+        );
+        assert_eq!(
+            initial_elements_1.db.len(),
+            max as usize + initial.len() + 1
         );
         for i in initial {
             assert!(initial_elements_1.db.contains(&i));
