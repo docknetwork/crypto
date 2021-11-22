@@ -134,10 +134,11 @@ where
     E: PairingEngine,
 {
     /// Create a new universal accumulator. Given the max size, it generates `max_size-n+1` initial elements
-    /// as mentioned in the paper. `n` elements are passed ar argument `xs`. These are generated
+    /// as mentioned in the paper. `n` elements are passed as argument `xs`. These are generated
     /// once for each curve as they depend on the order of the scalar field and then reused.
-    /// Constants for some of the curves are defined in `universal_init_constants.rs` are are computed
-    /// using sage code in `universal_init.sage`
+    /// Constants for some of the curves are defined in `universal_init_constants.rs` and are computed
+    /// using sage code in `universal_init.sage`. Those should be passed as argument `xs`. The rest of
+    /// the `max_size - xs_len + 1` are generated randomly.
     pub fn initialize<R: RngCore>(
         rng: &mut R,
         setup_params: &SetupParams<E>,
