@@ -138,7 +138,7 @@ where
     /// once for each curve as they depend on the order of the scalar field and then reused.
     /// Constants for some of the curves are defined in `universal_init_constants.rs` and are computed
     /// using sage code in `universal_init.sage`. Those should be passed as argument `xs`. The rest of
-    /// the `max_size - xs_len + 1` are generated randomly.
+    /// the `max_size + 1` are generated randomly.
     pub fn initialize<R: RngCore>(
         rng: &mut R,
         setup_params: &SetupParams<E>,
@@ -148,12 +148,19 @@ where
         initial_elements_store: &mut dyn InitialElementsStore<E::Fr>,
     ) -> Self {
         let mut f_V = E::Fr::one();
-        let xs_len = xs.len() as u64;
         for x in xs {
             f_V = f_V * (x + sk.0);
             initial_elements_store.add(x);
         }
-        for _ in 0..(max_size - xs_len + 1) {
+
+        // At least `max_size + 1` initial elements need to be secret. Its assumed that elements in `xs`
+        // are public constants and thus `max_size + 1` more random elements are generated. Thus there
+        // are `max_size + xs.len() + 1` initial elements in total. However, if `xs` could be assumed
+        // secret, then only `max_size - xs.len() + 1` random elements need to be generated.
+        // Accepting an argument indicating whether `xs` is public could be another way to solve it
+        // but as `xs.len <<< max_size` in practice, didn't feel right to make the function accept
+        // one more argument and make caller decide one more thing.
+        for _ in 0..(max_size + 1) {
             let elem = E::Fr::rand(rng);
             f_V = f_V * (elem + sk.0);
             initial_elements_store.add(elem);
