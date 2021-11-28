@@ -159,16 +159,17 @@ where
         if VariableBaseMSM::multi_scalar_mul(&bases, scalars.as_slice()).into_affine() == *t {
             Ok(())
         } else {
-            return Err(SchnorrError::InvalidResponse);
+            Err(SchnorrError::InvalidResponse)
         }
     }
 
     /// Get response for the specified discrete log
     pub fn get_response(&self, idx: usize) -> Result<&G::ScalarField, SchnorrError> {
         if idx >= self.0.len() {
-            return Err(SchnorrError::IndexOutOfBounds(idx, self.0.len()));
+            Err(SchnorrError::IndexOutOfBounds(idx, self.0.len()))
+        } else {
+            Ok(&self.0[idx])
         }
-        Ok(&self.0[idx])
     }
 
     pub fn len(&self) -> usize {

@@ -292,11 +292,10 @@ where
 
         // Get nonce's and context's challenge contribution
         let mut challenge_bytes = vec![];
-        match nonce.as_ref() {
-            Some(n) => challenge_bytes.extend_from_slice(n),
-            _ => (),
+        if let Some(n) = nonce.as_ref() {
+            challenge_bytes.extend_from_slice(n)
         }
-        challenge_bytes.append(&mut proof_spec.context.unwrap_or_else(|| vec![]));
+        challenge_bytes.append(&mut proof_spec.context.unwrap_or_else(Vec::new));
         // Get each sub-protocol's challenge contribution
         for p in sub_protocols.iter() {
             p.challenge_contribution(&mut challenge_bytes)?;
@@ -349,11 +348,10 @@ where
 
         // Get nonce's and context's challenge contribution
         let mut challenge_bytes = vec![];
-        match nonce.as_ref() {
-            Some(n) => challenge_bytes.extend_from_slice(n),
-            _ => (),
+        if let Some(n) = nonce.as_ref() {
+            challenge_bytes.extend_from_slice(n)
         }
-        challenge_bytes.append(&mut proof_spec.context.unwrap_or_else(|| vec![]));
+        challenge_bytes.append(&mut proof_spec.context.unwrap_or_else(Vec::new));
 
         // Get challenge contribution for each statement and check if response is equal for all witnesses.
         for (s_idx, (statement, proof)) in proof_spec

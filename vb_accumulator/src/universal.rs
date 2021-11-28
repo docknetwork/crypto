@@ -149,7 +149,7 @@ where
     ) -> Self {
         let mut f_V = E::Fr::one();
         for x in xs {
-            f_V = f_V * (x + sk.0);
+            f_V *= x + sk.0;
             initial_elements_store.add(x);
         }
 
@@ -163,7 +163,7 @@ where
         // one more argument and make caller decide one more thing.
         for _ in 0..(max_size + 1) {
             let elem = E::Fr::rand(rng);
-            f_V = f_V * (elem + sk.0);
+            f_V *= elem + sk.0;
             initial_elements_store.add(elem);
         }
 
@@ -188,7 +188,7 @@ where
             // Each of the random values should be preserved by the manager and should not be removed (check before removing)
             // from the accumulator
             let elem = E::Fr::rand(rng);
-            f_V = f_V * (elem + sk.0);
+            f_V *= elem + sk.0;
             initial_elements_store.add(elem);
         }
 
@@ -215,7 +215,7 @@ where
             // Each of the random values should be preserved by the manager and should not be removed (check before removing)
             // from the accumulator
             // TODO: Make it same as the paper
-            f_V = f_V * (*elem + sk.0);
+            f_V *= *elem + sk.0;
         }
         f_V
     }
@@ -330,7 +330,7 @@ where
         initial_elements_store: &dyn InitialElementsStore<E::Fr>,
         state: &mut dyn State<E::Fr>,
     ) -> Result<Self, VBAccumulatorError> {
-        if !self.is_element_acceptable(&element, initial_elements_store) {
+        if !self.is_element_acceptable(element, initial_elements_store) {
             return Err(VBAccumulatorError::ProhibitedElement);
         }
 
@@ -361,7 +361,7 @@ where
         state: &mut dyn State<E::Fr>,
     ) -> Result<Self, VBAccumulatorError> {
         for element in elements.iter() {
-            if !self.is_element_acceptable(&element, initial_elements_store) {
+            if !self.is_element_acceptable(element, initial_elements_store) {
                 return Err(VBAccumulatorError::ProhibitedElement);
             }
         }
@@ -395,7 +395,7 @@ where
             return Err(VBAccumulatorError::BatchExceedsAccumulatorCapacity);
         }
         for element in additions.iter().chain(removals) {
-            if !self.is_element_acceptable(&element, initial_elements_store) {
+            if !self.is_element_acceptable(element, initial_elements_store) {
                 return Err(VBAccumulatorError::ProhibitedElement);
             }
         }

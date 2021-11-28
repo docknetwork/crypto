@@ -1,10 +1,16 @@
 [workspace]
 
 members = [
-    "dock_crypto_utils",
+    "utils",
     "schnorr_pok",
     "bbs_plus",
     "vb_accumulator",
     "proof_system",
     "benches"
 ]
+
+[profile.release]
+lto = true
+
+[profile.bench]
+lto = true

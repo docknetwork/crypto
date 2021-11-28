@@ -56,7 +56,7 @@ impl<G: ProjectiveCurve> WindowTable<G> {
 }
 
 /// The same group element is multiplied by each in `elements` using a window table
-pub fn multiply_field_elems_with_same_group_elem<'a, G: ProjectiveCurve>(
+pub fn multiply_field_elems_with_same_group_elem<G: ProjectiveCurve>(
     group_elem: G,
     elements: &[G::ScalarField],
 ) -> Vec<G> {

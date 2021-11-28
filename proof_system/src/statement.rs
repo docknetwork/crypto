@@ -193,10 +193,10 @@ impl MetaStatements {
                 }
             }
         }
-        while equalities.len() > 0 {
+        while !equalities.is_empty() {
             // Traverse `equalities` in reverse as that doesn't change index on removal
             let mut current = equalities.pop().unwrap().0.clone();
-            if equalities.len() > 0 {
+            if !equalities.is_empty() {
                 let mut i = equalities.len() - 1;
                 loop {
                     if !current.is_disjoint(&equalities[i].0) {

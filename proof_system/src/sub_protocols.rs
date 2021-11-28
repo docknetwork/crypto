@@ -398,7 +398,7 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
             ));
         }
         let commitment = self.commitment.take().unwrap();
-        let responses = commitment.response(self.witnesses.as_ref().unwrap(), &challenge)?;
+        let responses = commitment.response(self.witnesses.as_ref().unwrap(), challenge)?;
         Ok(StatementProof::PedersenCommitment(
             PedersenCommitmentProof::new(commitment.t, responses),
         ))

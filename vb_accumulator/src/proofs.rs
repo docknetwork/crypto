@@ -674,7 +674,7 @@ trait ProofProtocol<E: PairingEngine> {
         // Compute R_E using a multi-pairing
         // R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho) * pairing_extra
         // Here `pairing_extra` refers to `K * -r_v` and is used to for creating the pairing `e(K, P_tilde)^{-r_v} as e(K * {-r_v}, P_tilde)`
-        let mut E_C_times_r_y = E_C.clone();
+        let mut E_C_times_r_y = E_C;
         E_C_times_r_y *= r_y;
         let P_tilde_prepared = E::G2Prepared::from(params.P_tilde);
         let R_E = E::product_of_pairings(
@@ -723,12 +723,12 @@ trait ProofProtocol<E: PairingEngine> {
         let R_rho = Y_table.multiply(&r_rho);
 
         // R_delta_sigma = r_y * T_sigma - r_delta_sigma * prk.X
-        let mut R_delta_sigma = T_sigma.clone();
+        let mut R_delta_sigma = T_sigma;
         R_delta_sigma *= r_y;
         R_delta_sigma -= X_table.multiply(&r_delta_sigma);
 
         // R_delta_rho = r_y * T_rho - r_delta_rho * prk.Y;
-        let mut R_delta_rho = T_rho.clone();
+        let mut R_delta_rho = T_rho;
         R_delta_rho *= r_y;
         R_delta_rho -= Y_table.multiply(&r_delta_rho);
         (
@@ -988,7 +988,7 @@ where
     ) -> Self {
         let (rw, sc, bl) = Self::randomize_witness_and_compute_commitments(
             rng,
-            &element,
+            element,
             element_blinding,
             &witness.0,
             None,
@@ -997,7 +997,7 @@ where
             &prk.0,
         );
         Self {
-            element: element.clone(),
+            element: *element,
             randomized_witness: MembershipRandomizedWitness(rw),
             schnorr_commit: MembershipSchnorrCommit(sc),
             schnorr_blindings: MembershipBlindings(bl),
@@ -1090,7 +1090,7 @@ where
         R_A += K_table.multiply(&r_v);
 
         // R_B = r_u * E_d_inv + r_w * prk.K;
-        let mut R_B = E_d_inv.clone();
+        let mut R_B = E_d_inv;
         R_B *= r_u;
         R_B += K_table.multiply(&r_w);
 
@@ -1109,8 +1109,8 @@ where
         );
 
         Self {
-            element: element.clone(),
-            d: witness.d.clone(),
+            element: *element,
+            d: witness.d,
             randomized_witness: NonMembershipRandomizedWitness {
                 C: rw,
                 E_d: E_d.into_affine(),

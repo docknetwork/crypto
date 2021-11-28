@@ -166,7 +166,7 @@ pub trait Witness<G: AffineCurve> {
     /// Compute an update to several witnesses after adding a batch of elements in the accumulator.
     /// Expects the accumulator value before the addition and knowledge of the secret key. Intended to be
     /// used by the manager. Described in section 3 of the paper
-    fn compute_update_using_secret_key_after_batch_additions<'a>(
+    fn compute_update_using_secret_key_after_batch_additions(
         additions: &[G::ScalarField],
         elements: &[G::ScalarField],
         old_witnesses: &[G],
@@ -218,7 +218,7 @@ pub trait Witness<G: AffineCurve> {
     /// Compute an update to several witnesses after removing a batch of elements from the accumulator.
     /// Expects the accumulator value after the removal and knowledge of the secret key. Intended to be
     /// used by the manager. Described in section 3 of the paper
-    fn compute_update_using_secret_key_after_batch_removals<'a>(
+    fn compute_update_using_secret_key_after_batch_removals(
         removals: &[G::ScalarField],
         elements: &[G::ScalarField],
         old_witnesses: &[G],
@@ -272,7 +272,7 @@ pub trait Witness<G: AffineCurve> {
     /// Compute an update to several witnesses after adding and removing batches of elements from the accumulator.
     /// Expects the accumulator value before the update and knowledge of the secret key. Intended to be
     /// used by the manager. Described in section 3 of the paper
-    fn compute_update_using_secret_key_after_batch_updates<'a>(
+    fn compute_update_using_secret_key_after_batch_updates(
         additions: &[G::ScalarField],
         removals: &[G::ScalarField],
         elements: &[G::ScalarField],
@@ -336,7 +336,7 @@ pub trait Witness<G: AffineCurve> {
 
     /// Compute an update to the witness after adding and removing batches of elements from the accumulator.
     /// Expects the update-info (`Omega`) published by the manager. Described in section 4.1 of the paper
-    fn compute_update_using_public_info_after_batch_updates<'a>(
+    fn compute_update_using_public_info_after_batch_updates(
         additions: &[G::ScalarField],
         removals: &[G::ScalarField],
         omega: &Omega<G>,
@@ -348,7 +348,7 @@ pub trait Witness<G: AffineCurve> {
         // 1/d_D(x)
         let d_D_inv = Poly_d::eval_direct(removals, element)
             .inverse()
-            .ok_or_else(|| VBAccumulatorError::CannotBeZero)?;
+            .ok_or(VBAccumulatorError::CannotBeZero)?;
         // d_A(x)/d_D(x)
         let d_A_times_d_D_inv = d_A * d_D_inv;
 
@@ -364,7 +364,7 @@ pub trait Witness<G: AffineCurve> {
 
     /// Compute an update to the witness after adding and removing several batches of elements from the accumulator.
     /// Expects the update-info (`Omega`) published by the manager for each batch. Described in section 4.2 of the paper.
-    fn compute_update_using_public_info_after_multiple_batch_updates<'a>(
+    fn compute_update_using_public_info_after_multiple_batch_updates(
         updates_and_omegas: Vec<(&[G::ScalarField], &[G::ScalarField], &Omega<G>)>,
         element: &G::ScalarField,
         old_witness: &G,
@@ -425,13 +425,11 @@ pub trait Witness<G: AffineCurve> {
                 max_omega_size = omegas[t].len();
             }
 
-            d_A_ij *= Poly_d::eval_direct(&additions[t], element);
-            d_D_ij *= Poly_d::eval_direct(&removals[t], element);
+            d_A_ij *= Poly_d::eval_direct(additions[t], element);
+            d_D_ij *= Poly_d::eval_direct(removals[t], element);
         }
 
-        let d_D_ij_inv = d_D_ij
-            .inverse()
-            .ok_or_else(|| VBAccumulatorError::CannotBeZero)?;
+        let d_D_ij_inv = d_D_ij.inverse().ok_or(VBAccumulatorError::CannotBeZero)?;
 
         // Add all omega_t vectors
         let mut final_omega = Vec::<G::Projective>::with_capacity(max_omega_size);
@@ -442,7 +440,7 @@ pub trait Witness<G: AffineCurve> {
             for (t, omega) in omegas.iter().enumerate() {
                 if omega.len() > i {
                     bases.push(*omega.coefficient(i));
-                    scalars.push(omega_t_factors[t].clone());
+                    scalars.push(omega_t_factors[t]);
                 }
             }
             final_omega.push(VariableBaseMSM::multi_scalar_mul(&bases, &scalars));
@@ -517,14 +515,14 @@ where
     /// Compute an update to several witnesses after adding a batch of elements in the accumulator.
     /// Expects the accumulator value before the addition and knowledge of the secret key. Intended to be
     /// used by the manager
-    pub fn update_using_secret_key_after_batch_additions<'a>(
+    pub fn update_using_secret_key_after_batch_additions(
         additions: &[G::ScalarField],
         members: &[G::ScalarField],
         old_witnesses: &[MembershipWitness<G>],
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0).collect();
         let (_, wits) = Self::compute_update_using_secret_key_after_batch_additions(
             additions,
             members,
@@ -538,14 +536,14 @@ where
     /// Compute an update to several witnesses after removing a batch of elements from the accumulator.
     /// Expects the accumulator value after the removal and knowledge of the secret key. Intended to be
     /// used by the manager
-    pub fn update_using_secret_key_after_batch_removals<'a>(
+    pub fn update_using_secret_key_after_batch_removals(
         removals: &[G::ScalarField],
         members: &[G::ScalarField],
         old_witnesses: &[MembershipWitness<G>],
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<MembershipWitness<G>>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0).collect();
         let (_, wits) = Self::compute_update_using_secret_key_after_batch_removals(
             removals,
             members,
@@ -559,7 +557,7 @@ where
     /// Compute an update to several witnesses after adding and removing batches of elements from the accumulator.
     /// Expects the accumulator value before the update and knowledge of the secret key. Intended to be
     /// used by the manager
-    pub fn update_using_secret_key_after_batch_updates<'a>(
+    pub fn update_using_secret_key_after_batch_updates(
         additions: &[G::ScalarField],
         removals: &[G::ScalarField],
         members: &[G::ScalarField],
@@ -567,7 +565,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<MembershipWitness<G>>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0).collect();
         let (_, wits) = Self::compute_update_using_secret_key_after_batch_updates(
             additions,
             removals,
@@ -581,7 +579,7 @@ where
 
     /// Compute an update to the witness after adding and removing batches of elements from the accumulator.
     /// Expects the update-info (`Omega`) published by the manager.
-    pub fn update_using_public_info_after_batch_updates<'a>(
+    pub fn update_using_public_info_after_batch_updates(
         &self,
         additions: &[G::ScalarField],
         removals: &[G::ScalarField],
@@ -596,7 +594,7 @@ where
 
     /// Compute an update to the witness after adding and removing several batches of elements from the accumulator.
     /// Expects the update-info (`Omega`) published by the manager for each batch.
-    pub fn update_using_public_info_after_multiple_batch_updates<'a>(
+    pub fn update_using_public_info_after_multiple_batch_updates(
         &self,
         updates_and_omegas: Vec<(&[G::ScalarField], &[G::ScalarField], &Omega<G>)>,
         member: &G::ScalarField,
@@ -617,7 +615,7 @@ where
     }
 
     pub fn affine_points_to_membership_witnesses(wits: Vec<G>) -> Vec<MembershipWitness<G>> {
-        into_iter!(wits).map(|w| MembershipWitness(w)).collect()
+        into_iter!(wits).map(MembershipWitness).collect()
     }
 }
 
@@ -664,14 +662,14 @@ where
     /// Compute an update to several witnesses after adding a batch of elements in the accumulator.
     /// Expects the accumulator value before the addition and knowledge of the secret key. Intended to be
     /// used by the manager
-    pub fn update_using_secret_key_after_batch_additions<'a>(
+    pub fn update_using_secret_key_after_batch_additions(
         additions: &[G::ScalarField],
         non_members: &[G::ScalarField],
         old_witnesses: &[NonMembershipWitness<G>],
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C).collect();
         let (d_factor, wits) = Self::compute_update_using_secret_key_after_batch_additions(
             additions,
             non_members,
@@ -689,14 +687,14 @@ where
     /// Compute an update to several witnesses after removing a batch of elements from the accumulator.
     /// Expects the accumulator value after the removal and knowledge of the secret key. Intended to be
     /// used by the manager
-    pub fn update_using_secret_key_after_batch_removals<'a>(
+    pub fn update_using_secret_key_after_batch_removals(
         removals: &[G::ScalarField],
         non_members: &[G::ScalarField],
         old_witnesses: &[NonMembershipWitness<G>],
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C).collect();
         let (d_factor, wits) = Self::compute_update_using_secret_key_after_batch_removals(
             removals,
             non_members,
@@ -714,7 +712,7 @@ where
     /// Compute an update to several witnesses after adding and removing batches of elements from the accumulator.
     /// Expects the accumulator value before the update and knowledge of the secret key. Intended to be
     /// used by the manager
-    pub fn update_using_secret_key_after_batch_updates<'a>(
+    pub fn update_using_secret_key_after_batch_updates(
         additions: &[G::ScalarField],
         removals: &[G::ScalarField],
         non_members: &[G::ScalarField],
@@ -722,7 +720,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C.clone()).collect();
+        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C).collect();
         let (d_factor, wits) = Self::compute_update_using_secret_key_after_batch_updates(
             additions,
             removals,
@@ -740,7 +738,7 @@ where
 
     /// Compute an update to the witness after adding and removing batches of elements from the accumulator.
     /// Expects the update-info (`Omega`) published by the manager.
-    pub fn update_using_public_info_after_batch_updates<'a>(
+    pub fn update_using_public_info_after_batch_updates(
         &self,
         additions: &[G::ScalarField],
         removals: &[G::ScalarField],
@@ -758,7 +756,7 @@ where
 
     /// Compute an update to the witness after adding and removing several batches of elements from the accumulator.
     /// Expects the update-info (`Omega`) published by the manager for each batch.
-    pub fn update_using_public_info_after_multiple_batch_updates<'a>(
+    pub fn update_using_public_info_after_multiple_batch_updates(
         &self,
         updates_and_omegas: Vec<(&[G::ScalarField], &[G::ScalarField], &Omega<G>)>,
         non_member: &G::ScalarField,

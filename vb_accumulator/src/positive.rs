@@ -195,7 +195,7 @@ pub trait Accumulator<E: PairingEngine> {
         sk: &SecretKey<E::Fr>,
     ) -> (E::Fr, E::G1Affine) {
         // d_A(-alpha)
-        let d_alpha = Poly_d::<E::Fr>::eval_direct(&elements, &-sk.0);
+        let d_alpha = Poly_d::<E::Fr>::eval_direct(elements, &-sk.0);
         // d_A(-alpha) * self.V
         let newV = self.value().mul(d_alpha.into_repr()).into_affine();
         (d_alpha, newV)
@@ -210,7 +210,7 @@ pub trait Accumulator<E: PairingEngine> {
         state: &mut dyn State<E::Fr>,
     ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
         for element in elements.iter() {
-            self.check_before_add(&element, state)?;
+            self.check_before_add(element, state)?;
         }
         let t = self._compute_new_post_add_batch(&elements, sk);
         for element in elements {
@@ -239,7 +239,7 @@ pub trait Accumulator<E: PairingEngine> {
         sk: &SecretKey<E::Fr>,
         state: &mut dyn State<E::Fr>,
     ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
-        self.check_before_remove(&element, state)?;
+        self.check_before_remove(element, state)?;
         let t = self._compute_new_post_remove(element, sk);
         state.remove(&element);
         Ok(t)
@@ -252,7 +252,7 @@ pub trait Accumulator<E: PairingEngine> {
         sk: &SecretKey<E::Fr>,
     ) -> (E::Fr, E::G1Affine) {
         // 1/d_D(-alpha) * self.V
-        let d_alpha = Poly_d::<E::Fr>::eval_direct(&elements, &-sk.0);
+        let d_alpha = Poly_d::<E::Fr>::eval_direct(elements, &-sk.0);
         let d_alpha_inv = d_alpha.inverse().unwrap(); // Unwrap is fine as 1 or more elements has to equal secret key for it to panic
         let newV = self.value().mul(d_alpha_inv.into_repr()).into_affine();
         (d_alpha_inv, newV)
@@ -267,7 +267,7 @@ pub trait Accumulator<E: PairingEngine> {
         state: &mut dyn State<E::Fr>,
     ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
         for element in elements {
-            self.check_before_remove(&element, state)?;
+            self.check_before_remove(element, state)?;
         }
         let t = self._compute_new_post_remove_batch(elements, sk);
         for element in elements {
@@ -284,8 +284,8 @@ pub trait Accumulator<E: PairingEngine> {
         sk: &SecretKey<E::Fr>,
     ) -> (E::Fr, E::G1Affine) {
         // d_A(-alpha)/d_D(-alpha) * self.V
-        let d_alpha_add = Poly_d::<E::Fr>::eval_direct(&additions, &-sk.0);
-        let d_alpha = if removals.len() > 0 {
+        let d_alpha_add = Poly_d::<E::Fr>::eval_direct(additions, &-sk.0);
+        let d_alpha = if !removals.is_empty() {
             let d_alpha_rem = Poly_d::<E::Fr>::eval_direct(removals, &-sk.0);
             let d_alpha_rem_inv = d_alpha_rem.inverse().unwrap(); // Unwrap is fine as 1 or more elements has to equal secret key for it to panic
             d_alpha_add * d_alpha_rem_inv
@@ -306,10 +306,10 @@ pub trait Accumulator<E: PairingEngine> {
         state: &mut dyn State<E::Fr>,
     ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
         for element in additions.iter() {
-            self.check_before_add(&element, state)?;
+            self.check_before_add(element, state)?;
         }
         for element in removals {
-            self.check_before_remove(&element, state)?;
+            self.check_before_remove(element, state)?;
         }
         let t = self._compute_new_post_batch_updates(&additions, removals, sk);
         for element in additions {

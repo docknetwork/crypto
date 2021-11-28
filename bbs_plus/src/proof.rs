@@ -178,7 +178,7 @@ where
         let A_prime = signature.A.mul(r1.into_repr());
         let A_prime_affine = A_prime.into_affine();
         // A_bar = r1 * b - e * A'
-        let mut b_r1 = b.clone();
+        let mut b_r1 = b;
         b_r1 *= r1;
         let A_bar = b_r1 - (A_prime_affine.mul(signature.e.into_repr()));
         // d = r1 * b - r2 * h_0
@@ -195,7 +195,7 @@ where
         // For each of the above relations, a Schnorr protocol is executed; the first to prove knowledge
         // of `(e, r2)`, and the second of `(r3, s', {m_j}_{j \notin D})`. The secret knowledge items are
         // referred to as witnesses, and the public items as instances.
-        let bases_1 = [A_prime_affine, params.h_0.clone()];
+        let bases_1 = [A_prime_affine, params.h_0];
         let randomness_1 = vec![E::Fr::rand(rng), E::Fr::rand(rng)];
         let wits_1 = [-signature.e, r2];
 
@@ -227,9 +227,9 @@ where
         // Capture all unrevealed messages `m_j` and corresponding `h_j`
         for i in 0..messages.len() {
             if !revealed_msg_indices.contains(&i) {
-                bases_2.push(params.h[i].clone());
+                bases_2.push(params.h[i]);
                 randomness_2.push(blindings.remove(&i).unwrap());
-                wits_2.push(messages[i].clone());
+                wits_2.push(messages[i]);
             }
         }
 

@@ -139,7 +139,7 @@ where
         D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     {
         let secret_key = SecretKey::<E::Fr>::generate_using_seed::<D>(seed);
-        let public_key = Self::public_key_from_secret_key(&secret_key, &setup_params);
+        let public_key = Self::public_key_from_secret_key(&secret_key, setup_params);
         Self {
             secret_key,
             public_key,
@@ -149,7 +149,7 @@ where
     /// Create a secret key and corresponding public key using given pseudo random number generator
     pub fn generate_using_rng<R: RngCore>(rng: &mut R, setup_params: &SetupParams<E>) -> Self {
         let secret_key = SecretKey(E::Fr::rand(rng));
-        let public_key = Self::public_key_from_secret_key(&secret_key, &setup_params);
+        let public_key = Self::public_key_from_secret_key(&secret_key, setup_params);
         Self {
             secret_key,
             public_key,

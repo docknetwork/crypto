@@ -168,7 +168,7 @@ where
             .map(|(f, p)| &p * f);
 
         #[cfg(feature = "parallel")]
-        let sum = product.reduce(|| DensePolynomial::zero(), |a, b| a + b);
+        let sum = product.reduce(DensePolynomial::zero, |a, b| a + b);
 
         #[cfg(not(feature = "parallel"))]
         let sum = product.fold(DensePolynomial::zero(), |a, b| a + b);
@@ -240,7 +240,7 @@ where
     /// products of field elements
     pub fn eval_direct_without_memoize(additions: &[F], alpha: &F, x: &F) -> F {
         let n = additions.len();
-        let sum = (0..n)
+        (0..n)
             .map(|s| {
                 let factor = Self::compute_factor(s, additions, alpha);
                 let poly = if s < n - 1 {
@@ -254,8 +254,7 @@ where
                 };
                 poly * factor
             })
-            .fold(F::zero(), |a, b| a + b);
-        sum
+            .fold(F::zero(), |a, b| a + b)
     }
 
     fn compute_factor(s: usize, additions: &[F], alpha: &F) -> F {
@@ -304,7 +303,7 @@ where
             .map(|(f, p)| &p * f);
 
         #[cfg(feature = "parallel")]
-        let sum = product.reduce(|| DensePolynomial::zero(), |a, b| a + b);
+        let sum = product.reduce(DensePolynomial::zero, |a, b| a + b);
 
         #[cfg(not(feature = "parallel"))]
         let sum = product.fold(DensePolynomial::zero(), |a, b| a + b);
@@ -379,7 +378,7 @@ where
     /// products of field elements
     pub fn eval_direct_without_memoize(removals: &[F], alpha: &F, x: &F) -> F {
         let n = removals.len();
-        let sum = (0..n)
+        (0..n)
             .map(|s| {
                 let factor = Self::compute_factor(s, removals, alpha);
                 let poly = if s > 0 {
@@ -393,8 +392,7 @@ where
                 };
                 poly * factor
             })
-            .fold(F::zero(), |a, b| a + b);
-        sum
+            .fold(F::zero(), |a, b| a + b)
     }
 
     fn compute_factor(s: usize, removals: &[F], alpha: &F) -> F {
@@ -416,7 +414,7 @@ where
             return Self(DensePolynomial::zero());
         }
         let mut p = Poly_v_A::generate(additions, alpha).0;
-        if removals.len() > 0 {
+        if !removals.is_empty() {
             p = &p
                 - &(&Poly_v_D::generate(removals, alpha).0 * Self::compute_factor(additions, alpha))
         }
@@ -431,10 +429,8 @@ where
     /// Evaluation of polynomial without creating the polynomial as the variables are already known.
     pub fn eval_direct(additions: &[F], removals: &[F], alpha: &F, x: &F) -> F {
         let mut e = Poly_v_A::eval_direct(additions, alpha, x);
-        if removals.len() > 0 {
-            e = e
-                - (Poly_v_D::eval_direct(removals, alpha, x)
-                    * Self::compute_factor(additions, alpha))
+        if !removals.is_empty() {
+            e -= Poly_v_D::eval_direct(removals, alpha, x) * Self::compute_factor(additions, alpha)
         }
         e
     }
