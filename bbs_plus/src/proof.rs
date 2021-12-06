@@ -68,9 +68,10 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 pub use serialization::*;
 
+/// Proof of knowledge of BBS+ signature in group G1
 /// The BBS+ signature proves validity of a set of messages {m_i}, i in I. This stateful protocol proves knowledge of such
 /// a signature whilst selectively disclosing only a subset of the messages, {m_i} for i in a disclosed set D. The
-/// protocol randomizes the initial BBS+ signature, then condcucts 2 Schnorr PoK protocols to prove exponent knowledge
+/// protocol randomizes the initial BBS+ signature, then conducts 2 Schnorr PoK protocols to prove exponent knowledge
 /// for the relations in section 4.5 of the paper (refer to top). It contains commitments (Schnorr step 1; refer to schnorr_pok)
 /// and witnesses to both Schnorr protocols in `sc_comm_` and `sc_wits_` respectively. The protocol executes in 2 phases,
 /// pre-challenge (`init`) which is used to create the challenge and post-challenge (`gen_proof`). Thus, several instances of
@@ -95,7 +96,7 @@ pub struct PoKOfSignatureG1Protocol<E: PairingEngine> {
     sc_wits_2: Vec<E::Fr>,
 }
 
-/// Proof of knowledge of the signature. It contains the randomized signature, commitment (Schnorr step 1)
+/// Proof of knowledge of the signature in G1. It contains the randomized signature, commitment (Schnorr step 1)
 /// and response (Schnorr step 3) to both Schnorr protocols in `T_` and `sc_resp_`
 #[serde_as]
 #[derive(

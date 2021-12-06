@@ -215,7 +215,7 @@ macro_rules! impl_sig_params {
                 ) = {
                     // Need to manually check that no message index exceeds the maximum number of messages allowed
                     // because this function can be called with only uncommitted messages; so size of BTreeMap is
-                    // not representatitve of the number of messages
+                    // not representative of the number of messages
                     for (i, _) in messages.iter() {
                         if *i >= self.supported_message_count() {
                             return Err(BBSPlusError::InvalidMessageIdx(*i));
