@@ -1,0 +1,36 @@
+[package]
+name = "saver"
+version = "0.1.0"
+edition = "2021"
+authors = ["Dock.io"]
+license = "Apache-2.0"
+description = "SAVER SNARK-friendly, Additively-homomorphic, and Verifiable Encryption and decryption with Rerandomization"
+repository = "https://github.com/docknetwork/crypto"
+
+[dependencies]
+ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
+ark-ff = { version = "^0.3.0", default-features = false }
+ark-ec = { version = "^0.3.0", default-features = false }
+ark-std = { version = "^0.3.0", default-features = false }
+ark-r1cs-std = { version = "^0.3.0", default-features = false }
+ark-relations = { version = "^0.3.0", default-features = false }
+ark-groth16 = { version = "^0.3.0", default-features = false }
+digest = "0.9"
+rayon = { version = "1", optional = true }
+dock_crypto_utils = { version = "0.3.0", default-features = false, path = "../utils" }
+
+[dependencies.legogro16]
+git = "https://github.com/lovesh/legogro16"
+branch = "debugging"
+#path = "/home/lovesh/dev/legogro16"
+
+[dev-dependencies]
+blake2 = { version = "0.9", default-features = false }
+ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
+serde_json = "1.0"
+
+[features]
+default = [ "std", "parallel" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "ark-groth16/std", "legogro16/std"]
+print-trace = [ "ark-std/print-trace" ]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "ark-groth16/parallel", "legogro16/parallel", "rayon" ]
