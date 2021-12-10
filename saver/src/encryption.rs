@@ -114,7 +114,41 @@ pub fn ver_enc<E: PairingEngine>(
     E::product_of_pairings(&product).is_one()
 }
 
-// TODO: Add functions to rerandomize and verify decryption
+pub fn ver_dec<E: PairingEngine>(
+    messages: &[u8],
+    ciphertext: &[E::G1Affine],
+    nu: &E::G1Affine,
+    dk: &DecryptionKey<E>,
+    g_i: &[E::G1Affine],
+    gens: &Generators<E>,
+) -> bool {
+    let nu_prepared = E::G1Prepared::from(*nu);
+    if !E::product_of_pairings(&[
+        (nu_prepared.clone(), (-gens.H).into()),
+        (ciphertext[0].into(), dk.V_0.into()),
+    ])
+    .is_one()
+    {
+        return false;
+    }
+    for i in 0..messages.len() {
+        let g_i_m_i = g_i[i].mul(E::Fr::from(messages[i] as u64)).into_affine();
+        let v_2_i = E::G2Prepared::from(dk.V_2[i]);
+        let neg_c_i = -ciphertext[i + 1];
+        if !E::product_of_pairings(&[
+            (g_i_m_i.into(), v_2_i.clone()),
+            (nu_prepared.clone(), dk.V_1[i].into()),
+            (neg_c_i.into(), v_2_i.clone()),
+        ])
+        .is_one()
+        {
+            return false;
+        }
+    }
+    true
+}
+
+// TODO: Add function to rerandomize
 
 /*fn find_discrete_log<E: PairingEngine>(g_i_v_i: &E::Fqk, max_bits: u8) -> u8 {
     let max = 1 << max_bits;
@@ -177,5 +211,7 @@ mod tests {
         println!("Time taken to decrypt {:?}", start.elapsed());
 
         assert_eq!(m_, m);
+
+        assert!(ver_dec(&m_, &ct, &nu, &dk, &g_i, &gens));
     }
 }

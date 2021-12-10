@@ -21,7 +21,7 @@ use legogro16::{
     prover_new::{create_proof_new, create_random_proof_new},
     verify_link_proof, PreparedVerifyingKey, ProvingKeyNew, VerifyingKey,
 };
-use std::ops::AddAssign;
+use std::ops::{AddAssign, Sub};
 
 use crate::setup::{EncryptionKey, Generators};
 
@@ -124,6 +124,40 @@ pub fn verify_proof<E: PairingEngine>(
     }
     d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
     d.add_assign_mixed(&proof.v_eta_gamma_inv);
+
+    let qap = E::miller_loop(
+        [
+            (proof.proof.a.into(), proof.proof.b.into()),
+            (proof.proof.c.into(), pvk.delta_g2_neg_pc.clone()),
+            (d.into_affine().into(), pvk.gamma_g2_neg_pc.clone()),
+        ]
+        .iter(),
+    );
+
+    let test = E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?;
+
+    Ok(test == pvk.alpha_g1_beta_g2)
+}
+
+pub fn verify_proof_1<E: PairingEngine>(
+    pvk: &PreparedVerifyingKey<E>,
+    proof: &Proof<E>,
+    ciphertext: &[E::G1Affine],
+) -> R1CSResult<bool> {
+    // TODO: Return error indicating what failed rather than a boolean
+    let link_verified = verify_link_proof(&pvk.vk, &proof.proof);
+    if !link_verified {
+        return Ok(false);
+    }
+
+    let mut d = ciphertext[0].into_projective();
+    for c in ciphertext[1..ciphertext.len() - 1].iter() {
+        d.add_assign(c.into_projective())
+    }
+    d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
+
+    // XXX: One way to recover `proof.v_eta_gamma_inv` is for the ciphertext to output `r*X_1 + r*X_2 + ... + r*X_n`
+    // which can then be subtracted from `proof.d`. But would that affect security of the encryption?
 
     let qap = E::miller_loop(
         [
