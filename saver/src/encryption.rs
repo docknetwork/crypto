@@ -2,7 +2,7 @@ use crate::setup::{DecryptionKey, EncryptionKey, Generators, SecretKey};
 use crate::utils::batch_normalize_projective_into_affine;
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{BigInteger, Field, One, PrimeField};
+use ark_ff::{BigInteger, Field, One, PrimeField, Zero};
 use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
 use std::ops::{Add, AddAssign};
 
@@ -32,10 +32,11 @@ pub fn encrypt<R: RngCore, E: PairingEngine>(
     ek: &EncryptionKey<E>,
     g_i: &[E::G1Affine],
 ) -> (Vec<E::G1Affine>, E::Fr) {
-    let decomposed = decompose(&m, 4);
+    let decomposed = decompose(&m, 8);
     encrypt_decomposed_message(rng, decomposed, ek, g_i)
 }
 
+/// Ciphertext vectors contains commitment `phi` as the last element
 pub fn encrypt_decomposed_message<R: RngCore, E: PairingEngine>(
     rng: &mut R,
     m: Vec<u8>,
@@ -58,6 +59,35 @@ pub fn encrypt_decomposed_message<R: RngCore, E: PairingEngine>(
     phi.add_assign(VariableBaseMSM::multi_scalar_mul(&ek.Y, &m));
     ct.push(phi);
     (batch_normalize_projective_into_affine(ct), r)
+}
+
+/// Same as encrypt_decomposed_message but outputs sum `r*X_1 + r*X_2 + .. + r*X_n` as well
+// XXX: Is this secure?
+pub fn encrypt_decomposed_message_1<R: RngCore, E: PairingEngine>(
+    rng: &mut R,
+    m: Vec<u8>,
+    ek: &EncryptionKey<E>,
+    g_i: &[E::G1Affine],
+) -> (Vec<E::G1Affine>, E::G1Affine, E::Fr) {
+    assert_eq!(m.len(), ek.X.len());
+    let r = E::Fr::rand(rng);
+    let r_repr = r.into_repr();
+    let mut ct = vec![];
+    ct.push(ek.X_0.mul(r_repr));
+    let mut x_r_sum = E::G1Projective::zero();
+    let m = m
+        .into_iter()
+        .map(|m_i| <E::Fr as PrimeField>::BigInt::from(m_i as u64))
+        .collect::<Vec<_>>();
+    for i in 0..ek.X.len() {
+        let x_i_r = ek.X[i].mul(r_repr);
+        x_r_sum.add_assign(&x_i_r);
+        ct.push(x_i_r.add(g_i[i].mul(m[i])));
+    }
+    let mut phi = ek.P_1.mul(r);
+    phi.add_assign(VariableBaseMSM::multi_scalar_mul(&ek.Y, &m));
+    ct.push(phi);
+    (batch_normalize_projective_into_affine(ct), x_r_sum.into_affine(), r)
 }
 
 pub fn decrypt<E: PairingEngine>(

@@ -16,11 +16,7 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
-use legogro16::{
-    generator_new::generate_parameters_new,
-    prover_new::{create_proof_new, create_random_proof_new},
-    verify_link_proof, PreparedVerifyingKey, ProvingKeyNew, VerifyingKey,
-};
+use legogro16::{generator_new::generate_parameters_new, prover_new::{create_proof_new, create_random_proof_new}, verify_link_proof, PreparedVerifyingKey, ProvingKeyNew, VerifyingKey, Proof};
 use std::ops::{AddAssign, Sub};
 
 use crate::setup::{EncryptionKey, Generators};
@@ -33,11 +29,11 @@ pub struct ProvingKey<E: PairingEngine> {
     pub gamma_g1: E::G1Affine,
 }
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+/*#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<E: PairingEngine> {
     pub proof: legogro16::Proof<E>,
     pub v_eta_gamma_inv: E::G1Affine,
-}
+}*/
 
 pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1Affine] {
     &vk.gamma_abc_g1[1..]
@@ -100,15 +96,15 @@ where
     c.add_assign(encryption_key.P_2.mul(r.into_repr()));
     proof.c = c.into_affine();
 
-    // TODO: Find a way to not have v_eta_gamma_inv in proof as it makes the hiding of the commitment (`D`) computational
+    /*// TODO: Find a way to not have v_eta_gamma_inv in proof as it makes the hiding of the commitment (`D`) computational
     let new_proof = Proof {
         proof,
         v_eta_gamma_inv: pk.pk.vk.eta_gamma_inv_g1.mul(v).into_affine(),
-    };
-    Ok(new_proof)
+    };*/
+    Ok(proof)
 }
 
-pub fn verify_proof<E: PairingEngine>(
+/*pub fn verify_proof<E: PairingEngine>(
     pvk: &PreparedVerifyingKey<E>,
     proof: &Proof<E>,
     ciphertext: &[E::G1Affine],
@@ -137,32 +133,47 @@ pub fn verify_proof<E: PairingEngine>(
     let test = E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?;
 
     Ok(test == pvk.alpha_g1_beta_g2)
-}
+}*/
 
 pub fn verify_proof_1<E: PairingEngine>(
     pvk: &PreparedVerifyingKey<E>,
     proof: &Proof<E>,
     ciphertext: &[E::G1Affine],
+    x_r_sum: &E::G1Affine,  // r*X_1 + r*X_2 + .. + r*X_n
 ) -> R1CSResult<bool> {
     // TODO: Return error indicating what failed rather than a boolean
-    let link_verified = verify_link_proof(&pvk.vk, &proof.proof);
+    let link_verified = verify_link_proof(&pvk.vk, &proof);
     if !link_verified {
         return Ok(false);
     }
 
-    let mut d = ciphertext[0].into_projective();
-    for c in ciphertext[1..ciphertext.len() - 1].iter() {
-        d.add_assign(c.into_projective())
+    // Get v * (eta/gamma)*G
+    // proof.d = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G
+    // ct_sum = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n]
+    let mut ct_sum = ciphertext[1].into_projective();
+    for c in ciphertext[2..ciphertext.len() - 1].iter() {
+        ct_sum.add_assign_mixed(c)
     }
-    d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
+    // ct_sum_plus_g_0 = ct_sum + G[0]
+    let ct_sum_plus_g_0 = ct_sum.add_mixed(&pvk.vk.gamma_abc_g1[0]);
+    // ct_sum_plus_g_0_minus_x_r_sum = ct_sum + G[0] - x_r_sum
+    // = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + G[0] - (r*X_1 + r*X_2 + .. + r*X_n)
+    // = G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n]
+    let ct_sum_plus_g_0_minus_x_r_sum = ct_sum_plus_g_0.sub(x_r_sum.into_projective());
 
-    // XXX: One way to recover `proof.v_eta_gamma_inv` is for the ciphertext to output `r*X_1 + r*X_2 + ... + r*X_n`
-    // which can then be subtracted from `proof.d`. But would that affect security of the encryption?
+    // proof.d - ct_sum_plus_g_0_minus_x_r_sum
+    // = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G - (G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n])
+    // = v * (eta/gamma)*G
+    let v_eta_gamma_inv = proof.d.into_projective().sub(&ct_sum_plus_g_0_minus_x_r_sum);
+
+    let mut d = ct_sum_plus_g_0;
+    d.add_assign_mixed(&ciphertext[0]);
+    d.add_assign(&v_eta_gamma_inv);
 
     let qap = E::miller_loop(
         [
-            (proof.proof.a.into(), proof.proof.b.into()),
-            (proof.proof.c.into(), pvk.delta_g2_neg_pc.clone()),
+            (proof.a.into(), proof.b.into()),
+            (proof.c.into(), pvk.delta_g2_neg_pc.clone()),
             (d.into_affine().into(), pvk.gamma_g2_neg_pc.clone()),
         ]
         .iter(),
@@ -222,7 +233,7 @@ mod tests {
     use super::*;
     use std::time::Instant;
 
-    use crate::encryption::{decrypt, encrypt_decomposed_message, ver_enc};
+    use crate::encryption::{decrypt, encrypt_decomposed_message, encrypt_decomposed_message_1, ver_enc};
     use crate::setup::keygen;
     use ark_bls12_381::Bls12_381;
     use ark_ec::group::Group;
@@ -264,7 +275,8 @@ mod tests {
             &params.gamma_g1,
         );
 
-        let (ct, r) = encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i);
+        // Using the version of encrypt that outputs the sum X_i^r as well
+        let (ct, x_r_sum, r) = encrypt_decomposed_message_1(&mut rng, msgs.clone(), &ek, &g_i);
         assert_eq!(ct.len(), msgs.len() + 2);
 
         let (m_, nu) = decrypt(&ct, &sk, &dk, &g_i, 8);
@@ -291,19 +303,20 @@ mod tests {
         let start = Instant::now();
         let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
         assert!(ver_enc(&ct, &ek, &gens));
-        assert!(verify_proof(&pvk, &proof, &ct).unwrap());
+        // assert!(verify_proof(&pvk, &proof, &ct).unwrap());
+        assert!(verify_proof_1(&pvk, &proof, &ct, &x_r_sum).unwrap());
         println!(
             "Time taken to verify LegoGroth16 proof {:?}",
             start.elapsed()
         );
 
         assert!(
-            verify_link_commitment(&pvk.vk, &proof.proof, &[], &msgs_as_field_elems, &link_v)
+            verify_link_commitment(&pvk.vk, &proof, &[], &msgs_as_field_elems, &link_v)
                 .unwrap()
         );
         assert!(verify_commitment_new(
             &pvk.vk,
-            &proof.proof,
+            &proof,
             &[],
             &msgs_as_field_elems,
             &v,
