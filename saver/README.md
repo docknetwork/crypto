@@ -33,5 +33,11 @@ m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H
 
 Since `b`, `n` and `G` are public, it can be ensured that `G_i`s are correctly created.
 
+This is implemented [here](src/commitment.rs)
+
+#### Use with BBS+ signature
+
+See test [here](src/tests.rs)
+
 
 ### Still some TODOs pending

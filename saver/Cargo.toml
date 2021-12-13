@@ -17,7 +17,9 @@ ark-relations = { version = "^0.3.0", default-features = false }
 ark-groth16 = { version = "^0.3.0", default-features = false }
 digest = "0.9"
 rayon = { version = "1", optional = true }
-dock_crypto_utils = { version = "0.3.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { default-features = false, path = "../utils" }
+proof_system = { default-features = false, path = "../proof_system" }
+bbs_plus = { default-features = false, path = "../bbs_plus" }
 
 [dependencies.legogro16]
 git = "https://github.com/lovesh/legogro16"

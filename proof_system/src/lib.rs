@@ -52,7 +52,7 @@ pub mod sub_protocols;
 pub mod witness;
 #[cfg(test)]
 #[macro_use]
-mod test_utils;
+pub mod test_utils;
 
 pub mod prelude {
     pub use crate::error::ProofSystemError;

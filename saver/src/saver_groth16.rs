@@ -163,7 +163,7 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encryption::{decrypt, encrypt_decomposed_message, ver_enc};
+    use crate::encryption::{decrypt_to_chunks, encrypt_decomposed_message, ver_enc};
     use crate::setup::keygen;
     use ark_bls12_381::Bls12_381;
     use ark_ec::group::Group;
@@ -203,7 +203,7 @@ mod tests {
         let (ct, r) = encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i);
         assert_eq!(ct.len(), msgs.len() + 2);
 
-        let (m_, nu) = decrypt(&ct, &sk, &dk, &g_i, 8);
+        let (m_, nu) = decrypt_to_chunks(&ct, &sk, &dk, &g_i, 8);
 
         assert_eq!(m_, msgs);
 

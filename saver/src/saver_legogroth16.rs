@@ -16,7 +16,11 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
-use legogro16::{generator_new::generate_parameters_new, prover_new::{create_proof_new, create_random_proof_new}, verify_link_proof, PreparedVerifyingKey, ProvingKeyNew, VerifyingKey, Proof};
+use legogro16::{
+    generator_new::generate_parameters_new,
+    prover_new::{create_proof_new, create_random_proof_new},
+    verify_link_proof, PreparedVerifyingKey, Proof, ProvingKeyNew, VerifyingKey,
+};
 use std::ops::{AddAssign, Sub};
 
 use crate::setup::{EncryptionKey, Generators};
@@ -139,7 +143,7 @@ pub fn verify_proof_1<E: PairingEngine>(
     pvk: &PreparedVerifyingKey<E>,
     proof: &Proof<E>,
     ciphertext: &[E::G1Affine],
-    x_r_sum: &E::G1Affine,  // r*X_1 + r*X_2 + .. + r*X_n
+    x_r_sum: &E::G1Affine, // r*X_1 + r*X_2 + .. + r*X_n
 ) -> R1CSResult<bool> {
     // TODO: Return error indicating what failed rather than a boolean
     let link_verified = verify_link_proof(&pvk.vk, &proof);
@@ -164,7 +168,10 @@ pub fn verify_proof_1<E: PairingEngine>(
     // proof.d - ct_sum_plus_g_0_minus_x_r_sum
     // = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G - (G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n])
     // = v * (eta/gamma)*G
-    let v_eta_gamma_inv = proof.d.into_projective().sub(&ct_sum_plus_g_0_minus_x_r_sum);
+    let v_eta_gamma_inv = proof
+        .d
+        .into_projective()
+        .sub(&ct_sum_plus_g_0_minus_x_r_sum);
 
     let mut d = ct_sum_plus_g_0;
     d.add_assign_mixed(&ciphertext[0]);
@@ -233,7 +240,9 @@ mod tests {
     use super::*;
     use std::time::Instant;
 
-    use crate::encryption::{decrypt, encrypt_decomposed_message, encrypt_decomposed_message_1, ver_enc};
+    use crate::encryption::{
+        decrypt_to_chunks, encrypt_decomposed_message, encrypt_decomposed_message_1, ver_enc,
+    };
     use crate::setup::keygen;
     use ark_bls12_381::Bls12_381;
     use ark_ec::group::Group;
@@ -279,7 +288,7 @@ mod tests {
         let (ct, x_r_sum, r) = encrypt_decomposed_message_1(&mut rng, msgs.clone(), &ek, &g_i);
         assert_eq!(ct.len(), msgs.len() + 2);
 
-        let (m_, nu) = decrypt(&ct, &sk, &dk, &g_i, 8);
+        let (m_, nu) = decrypt_to_chunks(&ct, &sk, &dk, &g_i, 8);
 
         assert_eq!(m_, msgs);
 
@@ -311,17 +320,10 @@ mod tests {
         );
 
         assert!(
-            verify_link_commitment(&pvk.vk, &proof, &[], &msgs_as_field_elems, &link_v)
-                .unwrap()
+            verify_link_commitment(&pvk.vk, &proof, &[], &msgs_as_field_elems, &link_v).unwrap()
         );
-        assert!(verify_commitment_new(
-            &pvk.vk,
-            &proof,
-            &[],
-            &msgs_as_field_elems,
-            &v,
-            &link_v
-        )
-        .unwrap());
+        assert!(
+            verify_commitment_new(&pvk.vk, &proof, &[], &msgs_as_field_elems, &v, &link_v).unwrap()
+        );
     }
 }

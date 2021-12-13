@@ -63,12 +63,13 @@ impl<E: PairingEngine> Generators<E> {
 
 pub fn keygen<R: RngCore, E: PairingEngine>(
     rng: &mut R,
-    n: usize,
+    n: u8,
     gens: &Generators<E>,
     g_i: &[E::G1Affine],
     delta_g: &E::G1Affine,
     gamma_g: &E::G1Affine,
 ) -> (SecretKey<E::Fr>, EncryptionKey<E>, DecryptionKey<E>) {
+    let n = n as usize;
     assert_eq!(g_i.len(), n);
 
     let rho = E::Fr::rand(rng);
