@@ -12,6 +12,7 @@ use ark_poly::polynomial::{univariate::DensePolynomial, UVPolynomial};
 use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
+    cfg_into_iter, cfg_iter,
     fmt::Debug,
     io::{Read, Write},
     iter::{IntoIterator, Iterator},
@@ -130,7 +131,7 @@ where
     pub fn eval_direct(updates: &[F], x: &F) -> F {
         updates.iter().fold(F::one(), |a, y| (*y - *x) * a)
         // TODO: Figure out the why the following line is about 5 times slower than the sequential one above
-        // iter!(updates).map(|y| *y - *x).product()
+        // cfg_iter!(updates).map(|y| *y - *x).product()
     }
 }
 
@@ -163,8 +164,8 @@ where
             );
         }
 
-        let product = into_iter!(factors)
-            .zip(into_iter!(polys))
+        let product = cfg_into_iter!(factors)
+            .zip(cfg_into_iter!(polys))
             .map(|(f, p)| &p * f);
 
         #[cfg(feature = "parallel")]
@@ -188,7 +189,7 @@ where
             .map(|s| {
                 let factor = Self::compute_factor(s, additions, alpha);
                 let poly = if s < n - 1 {
-                    let roots: Vec<F> = iter!(additions).skip(s + 1).map(|a| *a).collect();
+                    let roots: Vec<F> = cfg_iter!(additions).skip(s + 1).map(|a| *a).collect();
                     poly_from_given_updates(&roots)
                 } else {
                     DensePolynomial::from_coefficients_vec(vec![F::one()])
@@ -229,8 +230,8 @@ where
             .fold(F::zero(), |a, b| a + b)
 
         // TODO: Following is slower by factor of 2 from above but why?
-        /*into_iter!(factors)
-        .zip(into_iter!(polys))
+        /*cfg_into_iter!(factors)
+        .zip(cfg_into_iter!(polys))
         .map(|(f, p)| p * f)
         .reduce(F::zero(), |a, b| a + b)*/
     }
@@ -298,8 +299,8 @@ where
             );
         }
 
-        let product = into_iter!(factors)
-            .zip(into_iter!(polys))
+        let product = cfg_into_iter!(factors)
+            .zip(cfg_into_iter!(polys))
             .map(|(f, p)| &p * f);
 
         #[cfg(feature = "parallel")]
@@ -323,7 +324,7 @@ where
             .map(|s| {
                 let factor = Self::compute_factor(s, removals, alpha);
                 let poly = if s > 0 {
-                    let roots: Vec<F> = iter!(removals).take(s).map(|a| *a).collect();
+                    let roots: Vec<F> = cfg_iter!(removals).take(s).map(|a| *a).collect();
                     poly_from_given_updates(&roots)
                 } else {
                     DensePolynomial::from_coefficients_vec(vec![F::one()])
@@ -367,8 +368,8 @@ where
             .fold(F::zero(), |a, b| a + b)
 
         // TODO: Following is slower by factor of ~1.5 from above but why?
-        /*into_iter!(factors)
-        .zip(into_iter!(polys))
+        /*cfg_into_iter!(factors)
+        .zip(cfg_into_iter!(polys))
         .map(|(f, p)| p * f)
         .reduce(|| F::zero(), |a, b| a + b)*/
     }
@@ -487,7 +488,7 @@ where
         for i in 2..self.len() {
             powers_of_y.push(powers_of_y[i - 1] * element);
         }
-        let powers_of_y = into_iter!(powers_of_y)
+        let powers_of_y = cfg_into_iter!(powers_of_y)
             .map(|y| y.into_repr())
             .collect::<Vec<_>>();
 
@@ -498,7 +499,7 @@ where
     /// Scale the omega vector by the given `scalar`
     pub fn scaled(&self, scalar: &G::ScalarField) -> Vec<G::Projective> {
         let scalar_bigint = scalar.into_repr();
-        iter!(self.0).map(|o| o.mul(scalar_bigint)).collect()
+        cfg_iter!(self.0).map(|o| o.mul(scalar_bigint)).collect()
     }
 
     pub fn len(&self) -> usize {

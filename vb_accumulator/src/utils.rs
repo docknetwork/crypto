@@ -65,30 +65,6 @@ pub fn multiply_field_elems_with_same_group_elem<G: ProjectiveCurve>(
     table.multiply_many(elements)
 }
 
-/// Return `par_iter` or `iter` depending on whether feature `parallel` is enabled
-#[macro_export]
-macro_rules! iter {
-    ($val:expr) => {{
-        #[cfg(feature = "parallel")]
-        let it = $val.par_iter();
-        #[cfg(not(feature = "parallel"))]
-        let it = $val.iter();
-        it
-    }};
-}
-
-/// Return `into_par_iter` or `into_iter` depending on whether feature `parallel` is enabled
-#[macro_export]
-macro_rules! into_iter {
-    ($val:expr) => {{
-        #[cfg(feature = "parallel")]
-        let it = $val.into_par_iter();
-        #[cfg(not(feature = "parallel"))]
-        let it = $val.into_iter();
-        it
-    }};
-}
-
 // TODO: Following is the correct way to generate params but does not work
 /*#[macro_export]
 macro_rules! initial_elements {

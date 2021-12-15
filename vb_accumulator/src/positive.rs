@@ -86,6 +86,7 @@ use ark_ff::fields::Field;
 use ark_ff::{batch_inversion, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
+    cfg_iter,
     fmt::Debug,
     io::{Read, Write},
     vec::Vec,
@@ -353,7 +354,7 @@ pub trait Accumulator<E: PairingEngine> {
         sk: &SecretKey<E::Fr>,
     ) -> Vec<MembershipWitness<E::G1Affine>> {
         // For each element in `elements`, compute 1/(element + sk)
-        let mut y_sk: Vec<E::Fr> = iter!(members).map(|e| *e + sk.0).collect();
+        let mut y_sk: Vec<E::Fr> = cfg_iter!(members).map(|e| *e + sk.0).collect();
         batch_inversion(&mut y_sk);
         MembershipWitness::projective_points_to_membership_witnesses(
             multiply_field_elems_with_same_group_elem(
@@ -555,6 +556,7 @@ where
 pub mod tests {
     use std::time::{Duration, Instant};
 
+    use crate::batch_utils::Omega;
     use ark_bls12_381::Bls12_381;
     use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
 
@@ -822,5 +824,174 @@ pub mod tests {
                 &params
             ));
         }
+    }
+
+    #[test]
+    fn pre_filled_accumulator() {
+        // Incase updating an accumulator is expensive like making a blockchain txn, a cheaper strategy
+        // is to add the members to the accumulator beforehand but not giving out the witnesses yet.
+        // Eg. accumulator manager wants to add a million members over an year, rather than publishing
+        // the new accumulator after each addition, the manager can initialize the accumulator with a million
+        // member ids (member ids are either predictable like monotonically increasing numbers or the manager
+        // can internally keep a of map random ids like UUIDs to a number). Now when the manager actually
+        // wants to allow a member to prove membership, he can create a witness for that member but the
+        // accumulator value remains same. It should be noted though that changing the accumulator
+        // value causes change in all existing witnesses and thus its better to make a good estimate
+        // of the number of members during prefill stage
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        let (params, keypair, mut accumulator, mut state) = setup_positive_accum(&mut rng);
+
+        // Manager estimates that he will have `total_members` members over the course of time
+        let total_members = 100;
+
+        // Prefill the accumulator
+        let members: Vec<Fr> = (0..total_members)
+            .into_iter()
+            .map(|_| Fr::rand(&mut rng))
+            .collect();
+        accumulator = accumulator
+            .add_batch(members.clone(), &keypair.secret_key, &mut state)
+            .unwrap();
+
+        // Accumulator for verification only
+        let verification_accumulator =
+            PositiveAccumulator::from_accumulated(accumulator.value().clone());
+
+        // Manager decides to give a user his witness
+        let member_1 = &members[12];
+        let witness_1 = accumulator
+            .get_membership_witness(member_1, &keypair.secret_key, &mut state)
+            .unwrap();
+        assert!(verification_accumulator.verify_membership(
+            member_1,
+            &witness_1,
+            &keypair.public_key,
+            &params
+        ));
+
+        // Manager decides to give another user his witness
+        let member_2 = &members[55];
+        let witness_2 = accumulator
+            .get_membership_witness(member_2, &keypair.secret_key, &mut state)
+            .unwrap();
+        assert!(verification_accumulator.verify_membership(
+            member_2,
+            &witness_2,
+            &keypair.public_key,
+            &params
+        ));
+
+        // Previous user's witness still works
+        assert!(verification_accumulator.verify_membership(
+            member_1,
+            &witness_1,
+            &keypair.public_key,
+            &params
+        ));
+
+        // Manager decides to give another user his witness
+        let member_3 = &members[30];
+        let witness_3 = accumulator
+            .get_membership_witness(member_3, &keypair.secret_key, &mut state)
+            .unwrap();
+        assert!(verification_accumulator.verify_membership(
+            member_3,
+            &witness_3,
+            &keypair.public_key,
+            &params
+        ));
+
+        // Previous users' witness still works
+        assert!(verification_accumulator.verify_membership(
+            member_1,
+            &witness_1,
+            &keypair.public_key,
+            &params
+        ));
+        assert!(verification_accumulator.verify_membership(
+            member_2,
+            &witness_2,
+            &keypair.public_key,
+            &params
+        ));
+
+        // Manager decides to remove a member, the new accumulated value will be published along with witness update info
+        let omega = Omega::new(
+            &[],
+            &[member_2.clone()],
+            accumulator.value(),
+            &keypair.secret_key,
+        );
+        accumulator = accumulator
+            .remove(member_2, &keypair.secret_key, &mut state)
+            .unwrap();
+
+        let verification_accumulator =
+            PositiveAccumulator::from_accumulated(accumulator.value().clone());
+
+        // Manager decides to give another user his witness
+        let member_4 = &members[70];
+        let witness_4 = accumulator
+            .get_membership_witness(member_4, &keypair.secret_key, &mut state)
+            .unwrap();
+        assert!(verification_accumulator.verify_membership(
+            member_4,
+            &witness_4,
+            &keypair.public_key,
+            &params
+        ));
+
+        // Older witnesses need to be updated
+
+        // Update using knowledge of new accumulator and removed member only
+        let witness_1_updated = witness_1
+            .update_after_removal(member_1, &member_2, accumulator.value())
+            .unwrap();
+        assert!(verification_accumulator.verify_membership(
+            member_1,
+            &witness_1_updated,
+            &keypair.public_key,
+            &params
+        ));
+        let witness_3_updated = witness_3
+            .update_after_removal(member_3, &member_2, accumulator.value())
+            .unwrap();
+        assert!(verification_accumulator.verify_membership(
+            member_3,
+            &witness_3_updated,
+            &keypair.public_key,
+            &params
+        ));
+
+        // Update using knowledge of witness info
+        let witness_1_updated = witness_1
+            .update_using_public_info_after_batch_updates(
+                &[],
+                &[member_2.clone()],
+                &omega,
+                member_1,
+            )
+            .unwrap();
+        assert!(verification_accumulator.verify_membership(
+            member_1,
+            &witness_1_updated,
+            &keypair.public_key,
+            &params
+        ));
+        let witness_3_updated = witness_3
+            .update_using_public_info_after_batch_updates(
+                &[],
+                &[member_2.clone()],
+                &omega,
+                member_3,
+            )
+            .unwrap();
+        assert!(verification_accumulator.verify_membership(
+            member_3,
+            &witness_3_updated,
+            &keypair.public_key,
+            &params
+        ));
     }
 }

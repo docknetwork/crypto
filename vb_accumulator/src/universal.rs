@@ -72,6 +72,7 @@ use ark_ff::fields::Field;
 use ark_ff::{batch_inversion, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
+    cfg_into_iter, cfg_iter,
     fmt::Debug,
     io::{Read, Write},
     iter::Iterator,
@@ -481,7 +482,7 @@ where
     ) -> Vec<E::Fr> {
         let mut ds = vec![E::Fr::one(); non_members.len()];
         for member in members {
-            for (i, t) in into_iter!(non_members)
+            for (i, t) in cfg_into_iter!(non_members)
                 .map(|e| *member - *e)
                 .collect::<Vec<_>>()
                 .into_iter()
@@ -502,12 +503,12 @@ where
         sk: &SecretKey<E::Fr>,
         params: &SetupParams<E>,
     ) -> Result<Vec<NonMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
-        if iter!(d).any(|&x| x.is_zero()) {
+        if cfg_iter!(d).any(|&x| x.is_zero()) {
             return Err(VBAccumulatorError::CannotBeZero);
         }
-        let f_V_alpha_minus_d: Vec<E::Fr> = iter!(d).map(|d| self.f_V - *d).collect();
+        let f_V_alpha_minus_d: Vec<E::Fr> = cfg_iter!(d).map(|d| self.f_V - *d).collect();
 
-        let mut y_plus_alpha_inv: Vec<E::Fr> = iter!(non_members).map(|y| *y + sk.0).collect();
+        let mut y_plus_alpha_inv: Vec<E::Fr> = cfg_iter!(non_members).map(|y| *y + sk.0).collect();
         batch_inversion(&mut y_plus_alpha_inv);
 
         let P_multiple = f_V_alpha_minus_d
@@ -522,8 +523,8 @@ where
             P_multiple.as_slice(),
         );
         let wits_affine = E::G1Projective::batch_normalization_into_affine(&wits);
-        Ok(into_iter!(wits_affine)
-            .zip(into_iter!(d))
+        Ok(cfg_into_iter!(wits_affine)
+            .zip(cfg_into_iter!(d))
             .map(|(C, d)| NonMembershipWitness { C, d })
             .collect())
     }
@@ -558,7 +559,7 @@ where
         let mut d_for_witnesses = vec![E::Fr::one(); non_members.len()];
         // Since iterating state is expensive, compute iteration over it once
         for member in state.elements() {
-            for (i, t) in into_iter!(non_members)
+            for (i, t) in cfg_into_iter!(non_members)
                 .map(|e| *member - *e)
                 .collect::<Vec<_>>()
                 .into_iter()

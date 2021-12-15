@@ -35,6 +35,7 @@ use ark_ff::{to_bytes, PrimeField, SquareRootField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::collections::BTreeMap;
 use ark_std::{
+    cfg_into_iter, cfg_iter,
     fmt::Debug,
     io::{Read, Write},
     rand::RngCore,
@@ -62,28 +63,6 @@ use serde_with::serde_as;
 pub struct SecretKey<F: PrimeField + SquareRootField>(#[serde_as(as = "FieldBytes")] pub F);
 
 // TODO: Add "prepared" version of public key
-
-/// Return `par_iter` or `iter` depending on whether feature `parallel` is enabled
-macro_rules! iter {
-    ($val:expr) => {{
-        #[cfg(feature = "parallel")]
-        let it = $val.par_iter();
-        #[cfg(not(feature = "parallel"))]
-        let it = $val.iter();
-        it
-    }};
-}
-
-/// Return `into_par_iter` or `into_iter` depending on whether feature `parallel` is enabled
-macro_rules! into_iter {
-    ($val:expr) => {{
-        #[cfg(feature = "parallel")]
-        let it = $val.into_par_iter();
-        #[cfg(not(feature = "parallel"))]
-        let it = $val.into_iter();
-        it
-    }};
-}
 
 impl<F: PrimeField + SquareRootField> SecretKey<F> {
     pub fn generate_using_seed<D>(seed: &[u8]) -> Self
@@ -139,7 +118,7 @@ macro_rules! impl_sig_params {
                     &to_bytes![label, " : g1".as_bytes()].unwrap(),
                 );
                 // h_0 and h[i] for i in 1 to n
-                let mut h = into_iter!((0..=n))
+                let mut h = cfg_into_iter!((0..=n))
                     .map(|i| {
                         projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
                             &to_bytes![label, " : h_".as_bytes(), i as u64].unwrap(),
@@ -150,7 +129,7 @@ macro_rules! impl_sig_params {
                 sig_group_elems.append(&mut h);
                 // Convert all to affine
                 E::$group_projective::batch_normalization(sig_group_elems.as_mut_slice());
-                let mut sig_group_elems = into_iter!(sig_group_elems)
+                let mut sig_group_elems = cfg_into_iter!(sig_group_elems)
                     .map(|v| v.into())
                     .collect::<Vec<E::$group_affine>>();
                 let g1 = sig_group_elems.remove(0);
@@ -190,7 +169,7 @@ macro_rules! impl_sig_params {
                 !(self.g1.is_zero()
                     || self.g2.is_zero()
                     || self.h_0.is_zero()
-                    || iter!(self.h).any(|v| v.is_zero()))
+                    || cfg_iter!(self.h).any(|v| v.is_zero()))
             }
 
             /// Number of messages supported in the multi-message
@@ -221,7 +200,7 @@ macro_rules! impl_sig_params {
                             return Err(BBSPlusError::InvalidMessageIdx(*i));
                         }
                     }
-                    into_iter!(messages)
+                    cfg_into_iter!(messages)
                         .map(|(i, msg)| (self.h[i].clone(), msg.into_repr()))
                         .unzip()
                 };

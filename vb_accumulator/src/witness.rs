@@ -103,6 +103,7 @@ use ark_ff::fields::Field;
 use ark_ff::{batch_inversion, One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
+    cfg_into_iter, cfg_iter,
     fmt::Debug,
     io::{Read, Write},
     vec::Vec,
@@ -178,7 +179,7 @@ pub trait Witness<G: AffineCurve> {
         }
         // `d_A` = Evaluation of polynomial `d_A(y)` for each y in `elements`
         // `v_A` = Evaluation of polynomial `v_A(y)` for each y in `elements`
-        let (d_A, v_A): (Vec<_>, Vec<_>) = iter!(elements)
+        let (d_A, v_A): (Vec<_>, Vec<_>) = cfg_iter!(elements)
             .map(|element| {
                 (
                     Poly_d::eval_direct(additions, element),
@@ -230,7 +231,7 @@ pub trait Witness<G: AffineCurve> {
         }
         // `d_D` = Evaluation of polynomial `d_D(y)` for each y in `elements`
         // `v_D` = Evaluation of polynomial `v_D(y)` for each y in `elements`
-        let (mut d_D, v_D): (Vec<_>, Vec<_>) = iter!(elements)
+        let (mut d_D, v_D): (Vec<_>, Vec<_>) = cfg_iter!(elements)
             .map(|element| {
                 (
                     Poly_d::eval_direct(removals, element),
@@ -286,7 +287,7 @@ pub trait Witness<G: AffineCurve> {
         // `d_A` = Evaluation of polynomial `d_A(y)` for each y in `elements`
         // `d_D` = Evaluation of polynomial `d_D(y)` for each y in `elements`
         // `v_AD` = Evaluation of polynomial `v_{A,D}(y)` for each y in `elements`
-        let (d_A, mut d_D): (Vec<_>, Vec<_>) = iter!(elements)
+        let (d_A, mut d_D): (Vec<_>, Vec<_>) = cfg_iter!(elements)
             .map(|element| {
                 (
                     Poly_d::eval_direct(additions, element),
@@ -294,7 +295,7 @@ pub trait Witness<G: AffineCurve> {
                 )
             })
             .unzip();
-        let v_AD = iter!(elements)
+        let v_AD = cfg_iter!(elements)
             .map(|element| Poly_v_AD::eval_direct(additions, removals, &sk.0, element))
             .collect::<Vec<_>>();
 
@@ -522,7 +523,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0).collect();
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.0).collect();
         let (_, wits) = Self::compute_update_using_secret_key_after_batch_additions(
             additions,
             members,
@@ -543,7 +544,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<MembershipWitness<G>>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0).collect();
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.0).collect();
         let (_, wits) = Self::compute_update_using_secret_key_after_batch_removals(
             removals,
             members,
@@ -565,7 +566,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<MembershipWitness<G>>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.0).collect();
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.0).collect();
         let (_, wits) = Self::compute_update_using_secret_key_after_batch_updates(
             additions,
             removals,
@@ -615,7 +616,7 @@ where
     }
 
     pub fn affine_points_to_membership_witnesses(wits: Vec<G>) -> Vec<MembershipWitness<G>> {
-        into_iter!(wits).map(MembershipWitness).collect()
+        cfg_into_iter!(wits).map(MembershipWitness).collect()
     }
 }
 
@@ -669,7 +670,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C).collect();
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.C).collect();
         let (d_factor, wits) = Self::compute_update_using_secret_key_after_batch_additions(
             additions,
             non_members,
@@ -694,7 +695,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C).collect();
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.C).collect();
         let (d_factor, wits) = Self::compute_update_using_secret_key_after_batch_removals(
             removals,
             non_members,
@@ -720,7 +721,7 @@ where
         old_accumulator: &G,
         sk: &SecretKey<G::ScalarField>,
     ) -> Result<Vec<Self>, VBAccumulatorError> {
-        let old: Vec<G> = iter!(old_witnesses).map(|w| w.C).collect();
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.C).collect();
         let (d_factor, wits) = Self::compute_update_using_secret_key_after_batch_updates(
             additions,
             removals,
@@ -777,8 +778,8 @@ where
         new_wits: Vec<G>,
         old_wits: &[Self],
     ) -> Vec<Self> {
-        into_iter!(d_factor)
-            .zip(into_iter!(new_wits))
+        cfg_into_iter!(d_factor)
+            .zip(cfg_into_iter!(new_wits))
             .enumerate()
             .map(|(i, (d, C))| Self {
                 d: old_wits[i].d * d,
