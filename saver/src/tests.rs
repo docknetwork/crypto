@@ -1,5 +1,5 @@
 use crate::commitment::{commitment_to_chunks, create_gs};
-use crate::encryption::{decrypt, encrypt, ver_enc};
+use crate::encryption::{decrypt, encrypt, verify_ciphertext_commitment};
 use crate::saver_groth16::{create_proof, generate_crs, verify_proof, BitsizeCheckCircuit};
 use crate::setup::{keygen, Generators};
 use crate::utils::decompose;
@@ -202,7 +202,7 @@ fn bbs_plus_verifiably_encrypt_user_id() {
     println!("Time taken to create Groth16 proof {:?}", start.elapsed());
 
     let start = Instant::now();
-    assert!(ver_enc(&ct, &ek, &gens));
+    assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
     let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
     assert!(verify_proof(&pvk, &proof, &ct).unwrap());
     println!("Time taken to verify Groth16 proof {:?}", start.elapsed());

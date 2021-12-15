@@ -1,10 +1,34 @@
+//! Getting a commitment to the full message from commitment to the b-ary decomposition.
+//!
+//! Commitment created during encryption
+//! `
+//! phi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
+//! `
+//!
+//! An inefficient (insecure as well?) way to get a commitment `m*G + r'*H` from `phi` is to create a commitment `J` as:
+//!
+//! ` J = m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H `
+//!
+//! where `G_i = {b^{n-i}}*G` so `G_1 = {b^{n-1}}*G`, and so on.
+//!
+//!
+//! Now prove the equality of openings of the commitments `phi` and `J`. Note that `J` is same as `m*G + r'*H` because
+//! `
+//! m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H
+//!   = m_1*{b^{n-1}}*G + m_2*{b^{n-2}}*G + ... + m_n*G + r'*H
+//!   = ( m_1*{b^{n-1}} + m_2*{b^{n-2}} + ... + m_n ) * G + r'*H
+//!   = m*G + r'*H
+//! `
+//!
+//! Since `b`, `n` and `G` are public, it can be ensured that `G_i`s are correctly created.
+
 use crate::utils::decompose;
 use ark_ec::msm::{FixedBaseMSM, VariableBaseMSM};
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{Field, PrimeField};
-use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{vec, vec::Vec};
 
-/// Given a group element `g`, create `chunks_count` group elements `g_1, g_2, ..., g_n` where each `g_i = {radix^{chunks_count-1}} * g`.
+/// Given a group element `g`, create `chunks_count` multiples of `g` as `g_1, g_2, ..., g_n` where each `g_i = {radix^{chunks_count-1}} * g`.
 pub fn create_gs<G: AffineCurve>(g: &G, chunks_count: u8, radix: u16) -> Vec<G> {
     // TODO: This can be done more efficiently using just doublings if radix is always a power of 2
     // which is quite likely true in practice.
@@ -34,7 +58,7 @@ pub fn commitment_to_chunks<G: AffineCurve>(
 ) -> G {
     let mut decomposed = decompose(message, chunk_bit_size)
         .into_iter()
-        .map(|m| G::ScalarField::from(m as u64).into_repr())
+        .map(|m| <G::ScalarField as PrimeField>::BigInt::from(m as u64))
         .collect::<Vec<_>>();
     let mut gs = create_gs(g, chunks_count, 1 << chunk_bit_size);
     assert_eq!(gs.len(), decomposed.len());
@@ -53,6 +77,7 @@ mod tests {
     use ark_std::collections::BTreeSet;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
+    use ark_std::UniformRand;
     use blake2::Blake2b;
     use std::ops::Add;
     use std::time::{Duration, Instant};
@@ -72,7 +97,7 @@ mod tests {
 
         let chunk_bit_size = 8u8;
         let n = 32;
-        let (gens, g_i, sk, ek, dk) = enc_setup(n, &mut rng);
+        let (_, g_i, _, ek, _) = enc_setup(n, &mut rng);
 
         let G = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
         let H = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();

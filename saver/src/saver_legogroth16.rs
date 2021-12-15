@@ -1,5 +1,7 @@
+//! Using SAVER with LegoGroth16
+
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{Field, PrimeField, Zero};
+use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::AllocationMode;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::{AllocVar, Boolean, EqGadget};
@@ -8,27 +10,24 @@ use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystemRef, Result as R1CSResult, SynthesisError,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_std::ops::{AddAssign, Sub};
 use ark_std::{
-    format,
     io::{Read, Write},
     rand::{Rng, RngCore},
-    vec,
     vec::Vec,
     UniformRand,
 };
-use legogro16::{
-    generator_new::generate_parameters_new,
-    prover_new::{create_proof_new, create_random_proof_new},
-    verify_link_proof, PreparedVerifyingKey, Proof, ProvingKeyNew, VerifyingKey,
+use legogroth16::{
+    create_random_proof, generate_parameters, verify_link_proof, PreparedVerifyingKey, Proof,
+    VerifyingKey,
 };
-use std::ops::{AddAssign, Sub};
 
 use crate::setup::{EncryptionKey, Generators};
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProvingKey<E: PairingEngine> {
     /// LegoGroth16's proving key
-    pub pk: ProvingKeyNew<E>,
+    pub pk: legogroth16::ProvingKey<E>,
     /// The element `-gamma * G` in `E::G1`.
     pub gamma_g1: E::G1Affine,
 }
@@ -39,6 +38,7 @@ pub struct Proof<E: PairingEngine> {
     pub v_eta_gamma_inv: E::G1Affine,
 }*/
 
+/// These parameters are needed for setting up keys for encryption/decryption
 pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1Affine] {
     &vk.gamma_abc_g1[1..]
 }
@@ -46,7 +46,7 @@ pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1A
 pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr>>(
     circuit: C,
     gens: &Generators<E>,
-    pedersen_bases: &[E::G1Affine],
+    pedersen_bases: Vec<E::G1Affine>,
     bit_blocks_count: u8,
     rng: &mut R,
 ) -> R1CSResult<ProvingKey<E>> {
@@ -59,7 +59,7 @@ pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
     let g1_generator = gens.G.into_projective();
     let neg_gamma_g1 = g1_generator.mul((-gamma).into_repr());
 
-    let pk = generate_parameters_new::<E, C, R>(
+    let pk = generate_parameters::<E, C, R>(
         circuit,
         alpha,
         beta,
@@ -79,6 +79,7 @@ pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
     })
 }
 
+/// `r` is the randomness used during the encryption
 pub fn create_proof<E, C, R>(
     circuit: C,
     v: E::Fr,
@@ -93,14 +94,14 @@ where
     C: ConstraintSynthesizer<E::Fr>,
     R: Rng,
 {
-    let mut proof = create_random_proof_new(circuit, v, link_v, &pk.pk, rng)?;
+    let mut proof = create_random_proof(circuit, v, link_v, &pk.pk, rng)?;
 
     // proof.c = proof.c + r * P_2
     let mut c = proof.c.into_projective();
     c.add_assign(encryption_key.P_2.mul(r.into_repr()));
     proof.c = c.into_affine();
 
-    /*// TODO: Find a way to not have v_eta_gamma_inv in proof as it makes the hiding of the commitment (`D`) computational
+    /*
     let new_proof = Proof {
         proof,
         v_eta_gamma_inv: pk.pk.vk.eta_gamma_inv_g1.mul(v).into_affine(),
@@ -241,15 +242,14 @@ mod tests {
     use std::time::Instant;
 
     use crate::encryption::{
-        decrypt_to_chunks, encrypt_decomposed_message, encrypt_decomposed_message_1, ver_enc,
+        decrypt_to_chunks, encrypt_decomposed_message_alt, verify_ciphertext_commitment,
     };
     use crate::setup::keygen;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::group::Group;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::{Rng, SeedableRng};
-    use legogro16::prepare_verifying_key;
-    use legogro16::verifier_new::{verify_commitment_new, verify_link_commitment};
+    use legogroth16::prepare_verifying_key;
+    use legogroth16::prover::{verify_commitment, verify_link_commitment};
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
 
@@ -272,7 +272,8 @@ mod tests {
             values: None,
         };
         let params =
-            generate_crs::<Bls12_381, _, _>(circuit, &gens, &pedersen_bases, n, &mut rng).unwrap();
+            generate_crs::<Bls12_381, _, _>(circuit, &gens, pedersen_bases.clone(), n, &mut rng)
+                .unwrap();
 
         let g_i = &params.pk.vk.gamma_abc_g1[1..];
         let (sk, ek, dk) = keygen(
@@ -285,7 +286,7 @@ mod tests {
         );
 
         // Using the version of encrypt that outputs the sum X_i^r as well
-        let (ct, x_r_sum, r) = encrypt_decomposed_message_1(&mut rng, msgs.clone(), &ek, &g_i);
+        let (ct, x_r_sum, r) = encrypt_decomposed_message_alt(&mut rng, msgs.clone(), &ek, &g_i);
         assert_eq!(ct.len(), msgs.len() + 2);
 
         let (m_, nu) = decrypt_to_chunks(&ct, &sk, &dk, &g_i, 8);
@@ -311,7 +312,7 @@ mod tests {
 
         let start = Instant::now();
         let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
-        assert!(ver_enc(&ct, &ek, &gens));
+        assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
         // assert!(verify_proof(&pvk, &proof, &ct).unwrap());
         assert!(verify_proof_1(&pvk, &proof, &ct, &x_r_sum).unwrap());
         println!(
@@ -319,11 +320,16 @@ mod tests {
             start.elapsed()
         );
 
+        assert!(verify_link_commitment(
+            &pvk.vk.link_bases,
+            &proof,
+            &[],
+            &msgs_as_field_elems,
+            &link_v
+        )
+        .unwrap());
         assert!(
-            verify_link_commitment(&pvk.vk, &proof, &[], &msgs_as_field_elems, &link_v).unwrap()
-        );
-        assert!(
-            verify_commitment_new(&pvk.vk, &proof, &[], &msgs_as_field_elems, &v, &link_v).unwrap()
+            verify_commitment(&pvk.vk, &proof, &[], &msgs_as_field_elems, &v, &link_v).unwrap()
         );
     }
 }

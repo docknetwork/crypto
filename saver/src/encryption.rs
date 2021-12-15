@@ -1,12 +1,18 @@
+//! Encryption, decryption, verifying commitment and verifying decryption
+
 use crate::setup::{DecryptionKey, EncryptionKey, Generators, SecretKey};
 use crate::utils;
 use crate::utils::batch_normalize_projective_into_affine;
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{BigInteger, Field, One, PrimeField, Zero};
+use ark_ff::{Field, One, PrimeField, Zero};
+use ark_std::ops::{Add, AddAssign};
 use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
-use std::ops::{Add, AddAssign};
 
+/// Encrypt a message `m` in exponent-Elgamal after breaking it into chunks of `chunk_bit_size` bits.
+/// Returns the ciphertext, commitment and randomness created for encryption. This is "Enc" from algorithm
+/// 2 in the paper
+/// Ciphertext vector contains commitment `phi` as the last element
 pub fn encrypt<R: RngCore, E: PairingEngine>(
     rng: &mut R,
     m: &E::Fr,
@@ -18,7 +24,7 @@ pub fn encrypt<R: RngCore, E: PairingEngine>(
     encrypt_decomposed_message(rng, decomposed, ek, g_i)
 }
 
-/// Ciphertext vectors contains commitment `phi` as the last element
+/// Encrypt once the message has been broken into chunks
 pub fn encrypt_decomposed_message<R: RngCore, E: PairingEngine>(
     rng: &mut R,
     m: Vec<u8>,
@@ -45,7 +51,7 @@ pub fn encrypt_decomposed_message<R: RngCore, E: PairingEngine>(
 
 /// Same as encrypt_decomposed_message but outputs sum `r*X_1 + r*X_2 + .. + r*X_n` as well
 // XXX: Is this secure?
-pub fn encrypt_decomposed_message_1<R: RngCore, E: PairingEngine>(
+pub fn encrypt_decomposed_message_alt<R: RngCore, E: PairingEngine>(
     rng: &mut R,
     m: Vec<u8>,
     ek: &EncryptionKey<E>,
@@ -76,6 +82,7 @@ pub fn encrypt_decomposed_message_1<R: RngCore, E: PairingEngine>(
     )
 }
 
+/// Decrypt the ciphertext and return each chunk and "commitment" to the randomness
 pub fn decrypt_to_chunks<E: PairingEngine>(
     ciphertext: &[E::G1Affine],
     sk: &SecretKey<E::Fr>,
@@ -117,6 +124,8 @@ pub fn decrypt_to_chunks<E: PairingEngine>(
     (pt, (-c_0_rho).into_affine())
 }
 
+/// Decrypt the given ciphertext and return the message and a "commitment" to randomness to help in
+/// verifying the decryption without knowledge of secret key. This is "Dec" from algorithm 2 in the paper
 pub fn decrypt<E: PairingEngine>(
     ciphertext: &[E::G1Affine],
     sk: &SecretKey<E::Fr>,
@@ -124,11 +133,13 @@ pub fn decrypt<E: PairingEngine>(
     g_i: &[E::G1Affine],
     chunk_bit_size: u8,
 ) -> (E::Fr, E::G1Affine) {
-    let (chunks, r) = decrypt_to_chunks(ciphertext, sk, dk, g_i, chunk_bit_size);
-    (utils::compose(&chunks, chunk_bit_size), r)
+    let (chunks, nu) = decrypt_to_chunks(ciphertext, sk, dk, g_i, chunk_bit_size);
+    (utils::compose(&chunks, chunk_bit_size), nu)
 }
 
-pub fn ver_enc<E: PairingEngine>(
+/// Verify that commitment created during encryption opens to the message chunk
+/// Check `e(c_0, Z_0) * e(c_1, Z_1) * ... * e(c_n, Z_n)` mentioned in "Verify_Enc" in algorithm 2
+pub fn verify_ciphertext_commitment<E: PairingEngine>(
     ciphertext: &[E::G1Affine],
     ek: &EncryptionKey<E>,
     gens: &Generators<E>,
@@ -141,7 +152,8 @@ pub fn ver_enc<E: PairingEngine>(
     E::product_of_pairings(&product).is_one()
 }
 
-pub fn ver_dec<E: PairingEngine>(
+/// Verify that ciphertext can be correctly decrypted to the given message chunks. This is "Verify_Dec" from algorithm 2 in the paper.
+pub fn verify_decryption<E: PairingEngine>(
     messages: &[u8],
     ciphertext: &[E::G1Affine],
     nu: &E::G1Affine,
@@ -255,7 +267,7 @@ pub(crate) mod tests {
 
         let start = Instant::now();
         assert_eq!(ct.len(), m.len() + 2);
-        assert!(ver_enc(&ct, &ek, &gens));
+        assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
         println!("Time taken to verify commitment {:?}", start.elapsed());
 
         let start = Instant::now();
@@ -265,7 +277,7 @@ pub(crate) mod tests {
         assert_eq!(m_, m);
 
         let start = Instant::now();
-        assert!(ver_dec(&m_, &ct, &nu, &dk, &g_i, &gens));
+        assert!(verify_decryption(&m_, &ct, &nu, &dk, &g_i, &gens));
         println!("Time taken to verify decryption {:?}", start.elapsed());
     }
 
@@ -290,7 +302,7 @@ pub(crate) mod tests {
             total_enc += start.elapsed();
 
             let start = Instant::now();
-            assert!(ver_enc(&ct, &ek, &gens));
+            assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
             total_ver_com += start.elapsed();
 
             let start = Instant::now();
@@ -304,7 +316,7 @@ pub(crate) mod tests {
             assert_eq!(nu, nu_);
 
             let start = Instant::now();
-            assert!(ver_dec(&chunks, &ct, &nu, &dk, &g_i, &gens));
+            assert!(verify_decryption(&chunks, &ct, &nu, &dk, &g_i, &gens));
             total_ver_dec += start.elapsed();
         }
 

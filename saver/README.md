@@ -4,6 +4,11 @@ Prototype implementation of [SAVER](https://eprint.iacr.org/2019/1270). Implemen
 - using [Groth16](src/saver_groth16.rs) 
 - as well as [LegoGroth16](src/saver_legogroth16.rs).
 
+The basic idea of the verifiable encryption construction is to split the message to be encrypted (a field element) into small chunks
+of say `b` bits and encrypt each chunk in an exponent variant of Elgamal encryption. For decryption, discrete log problem in the
+extension field (`F_{q^k}`) is solved with brute force where the discrete log is of at most `b` bits so `2^b - 1` iterations.  
+The SNARK (Groth16) is used for prove that each chunk of at most `b` bits, thus a range proof.  
+
 The encryption outputs a commitment in addition to the ciphertext. For an encryption of message `m`, the commitment `phi` is of the following form:
 
 ```
@@ -40,4 +45,4 @@ This is implemented [here](src/commitment.rs)
 See test [here](src/tests.rs)
 
 
-### Still some TODOs pending
+**WARNING:** This is an academic proof-of-concept prototype, and in particular has not received careful code review. This implementation is NOT ready for production use.

@@ -1,13 +1,13 @@
-use ark_ec::bn::G1Affine;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{to_bytes, One, PrimeField, SquareRootField};
+use ark_std::ops::AddAssign;
 use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
-use std::ops::AddAssign;
 
 use crate::utils::batch_normalize_projective_into_affine;
 use dock_crypto_utils::hashing_utils::affine_group_elem_from_try_and_incr;
 
+/// Create "G" and "H" from the paper.
 pub struct Generators<E: PairingEngine> {
     pub G: E::G1Affine,
     pub H: E::G2Affine,
@@ -16,9 +16,9 @@ pub struct Generators<E: PairingEngine> {
 /// Used to decrypt
 pub struct SecretKey<F: PrimeField + SquareRootField>(pub F);
 
-// TODO: Consider including `n` in encryption and decryption keys to avoid accidental errors
+// TODO: Consider including number of message chunks `n` in encryption and decryption keys to avoid accidental errors
 
-/// Used to encrypt, rerandomize and verify the encryption
+/// Used to encrypt, rerandomize and verify the encryption. Called "PK" in the paper.
 pub struct EncryptionKey<E: PairingEngine> {
     /// G * delta
     pub X_0: E::G1Affine,
@@ -34,6 +34,7 @@ pub struct EncryptionKey<E: PairingEngine> {
     pub P_2: E::G1Affine,
 }
 
+/// Used to decrypt and verify decryption. Called "VK" in the paper.
 pub struct DecryptionKey<E: PairingEngine> {
     // H * rho
     pub V_0: E::G2Affine,
@@ -61,6 +62,8 @@ impl<E: PairingEngine> Generators<E> {
     }
 }
 
+/// Generate keys for encryption and decryption. The parameters `g_i`, `delta_g` and `gamma_g` are
+/// shared with the SNARK CRS.
 pub fn keygen<R: RngCore, E: PairingEngine>(
     rng: &mut R,
     n: u8,
@@ -128,7 +131,7 @@ pub(crate) mod tests {
     fn setup_works() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        let n = 4;
+        let n = 4usize;
         let gens = Generators::<Bls12_381>::new_using_rng(&mut rng);
         let g_i = (0..n)
             .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
@@ -137,7 +140,7 @@ pub(crate) mod tests {
         let gamma = Fr::rand(&mut rng);
         let g_delta = gens.G.mul(delta.into_repr()).into_affine();
         let g_gamma = gens.G.mul(gamma.into_repr()).into_affine();
-        let (sk, ek, dk) = keygen(&mut rng, 4, &gens, &g_i, &g_delta, &g_gamma);
+        let (_, ek, dk) = keygen(&mut rng, n as u8, &gens, &g_i, &g_delta, &g_gamma);
         assert_eq!(ek.X.len(), n);
         assert_eq!(ek.Y.len(), n);
         assert_eq!(ek.Z.len(), n + 1);

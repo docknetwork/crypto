@@ -21,10 +21,10 @@ dock_crypto_utils = { default-features = false, path = "../utils" }
 proof_system = { default-features = false, path = "../proof_system" }
 bbs_plus = { default-features = false, path = "../bbs_plus" }
 
-[dependencies.legogro16]
-git = "https://github.com/lovesh/legogro16"
-branch = "debugging"
-#path = "/home/lovesh/dev/legogro16"
+[dependencies.legogroth16]
+#git = "https://github.com/lovesh/legogro16"
+#branch = "modified"
+path = "/home/lovesh/dev/legogro16"
 
 [dev-dependencies]
 blake2 = { version = "0.9", default-features = false }
@@ -33,6 +33,6 @@ serde_json = "1.0"
 
 [features]
 default = [ "std", "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "ark-groth16/std", "legogro16/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "ark-groth16/std", "legogroth16/std"]
 print-trace = [ "ark-std/print-trace" ]
-parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "ark-groth16/parallel", "legogro16/parallel", "rayon" ]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "ark-groth16/parallel", "legogroth16/parallel", "rayon" ]

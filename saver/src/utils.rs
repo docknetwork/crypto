@@ -1,5 +1,6 @@
 use ark_ec::ProjectiveCurve;
 use ark_ff::{BigInteger, PrimeField};
+use ark_std::{vec, vec::Vec};
 
 /// Given an element `F`, break it into chunks with each chunk is of bits `chunk_bit_size`. This is
 /// essential an n-ary representation where n is chunk_bit_size.

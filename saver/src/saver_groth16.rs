@@ -1,5 +1,7 @@
+//! Using SAVER with Groth16
+
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{Field, PrimeField, Zero};
+use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::AllocationMode;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::{AllocVar, Boolean, EqGadget};
@@ -9,10 +11,8 @@ use ark_relations::r1cs::{
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    format,
     io::{Read, Write},
     rand::{Rng, RngCore},
-    vec,
     vec::Vec,
     UniformRand,
 };
@@ -20,7 +20,7 @@ use ark_std::{
 use ark_groth16::{
     create_random_proof, generate_parameters, PreparedVerifyingKey, Proof, VerifyingKey,
 };
-use std::ops::AddAssign;
+use ark_std::ops::AddAssign;
 
 use crate::setup::{EncryptionKey, Generators};
 
@@ -32,6 +32,7 @@ pub struct ProvingKey<E: PairingEngine> {
     pub gamma_g1: E::G1Affine,
 }
 
+/// These parameters are needed for setting up keys for encryption/decryption
 pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1Affine] {
     &vk.gamma_abc_g1[1..]
 }
@@ -66,6 +67,7 @@ pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
     })
 }
 
+/// `r` is the randomness used during the encryption
 pub fn create_proof<E, C, R>(
     circuit: C,
     r: E::Fr,
@@ -163,7 +165,9 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encryption::{decrypt_to_chunks, encrypt_decomposed_message, ver_enc};
+    use crate::encryption::{
+        decrypt_to_chunks, encrypt_decomposed_message, verify_ciphertext_commitment,
+    };
     use crate::setup::keygen;
     use ark_bls12_381::Bls12_381;
     use ark_ec::group::Group;
@@ -177,7 +181,6 @@ mod tests {
     #[test]
     fn encrypt_and_snark_verification() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let n = 4;
         let gens = Generators::<Bls12_381>::new_using_rng(&mut rng);
 
         let msgs = vec![2, 47, 239, 155];
@@ -218,7 +221,7 @@ mod tests {
         println!("Time taken to create Groth16 proof {:?}", start.elapsed());
 
         let start = Instant::now();
-        assert!(ver_enc(&ct, &ek, &gens));
+        assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
         let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
         assert!(verify_proof(&pvk, &proof, &ct).unwrap());
         println!("Time taken to verify Groth16 proof {:?}", start.elapsed());
