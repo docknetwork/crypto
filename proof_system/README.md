@@ -29,7 +29,7 @@ See following tests for examples:
   a Pedersen commitment.
 - test `verifier_local_linkability` shows how a verifier can link separate proofs from a prover (with prover's
   permission) and assign a unique identifier to the prover without learning any message from the BBS+ signature.
-  Also this identifier cannot be linked across different verifiers (intentional by the prover).
+  Also, this identifier cannot be linked across different verifiers (intentional by the prover).
 
 *Note*: This design is largely inspired from my work at Hyperledger Ursa.
 

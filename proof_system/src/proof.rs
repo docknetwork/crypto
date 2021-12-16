@@ -1771,7 +1771,7 @@ mod tests {
 
     #[test]
     fn verifier_local_linkability() {
-        // a verifier wants to attach a unique identifier to a prover without either learning anything unintended (by prover) from the prover's signature nor can that unique identifier be used by other verifiers to identify the prover,
+        // A verifier wants to attach a unique identifier to a prover without either learning anything unintended (by prover) from the prover's signature nor can that unique identifier be used by other verifiers to identify the prover,
         // eg. a seller (as a verifier) should be able to identify repeat customers (prover) by using a unique identifier but he should not be able to share that unique identifier with other sellers using their own identifier for that prover.
         // This is done by making the prover go through a one-time registration process with the verifier by creating a Pedersen commitment to some value in the signature(s) which the verifier persists, lets call it registration commitment.
         // At each subsequent proof, the prover resends the commitment with the proof that commitment contains message from the prover's signature (prover had persisted commitment and randomness) and the verifier checks that the commitment is
@@ -1785,7 +1785,7 @@ mod tests {
         let msg_count = 5;
         let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
 
-        // Verifier 1 wants a commitment to prover message at index 1. Eg, index 1 might be the SSN of a citizen
+        // Verifier 1 wants a commitment to prover message at index 1. Eg, index 1 is the SSN of a citizen
         // Prover creates commitment for verifier 1 using group generators `gens_1`
         let gens_1 = vec![
             G1Projective::rand(&mut rng).into_affine(),
@@ -1794,7 +1794,7 @@ mod tests {
         let blinding_1 = Fr::rand(&mut rng);
 
         // This is the registration commitment of the prover for verifier 1
-        let commitment_1 = VariableBaseMSM::multi_scalar_mul(
+        let reg_commit_1 = VariableBaseMSM::multi_scalar_mul(
             &gens_1,
             &[msgs[1].into_repr(), blinding_1.into_repr()],
         )
@@ -1811,7 +1811,7 @@ mod tests {
         let blinding_2 = Fr::rand(&mut rng);
 
         // This is the registration commitment of the prover for verifier 2
-        let commitment_2 = VariableBaseMSM::multi_scalar_mul(
+        let reg_commit_2 = VariableBaseMSM::multi_scalar_mul(
             &gens_2,
             &[msgs[1].into_repr(), blinding_2.into_repr()],
         )
@@ -1820,7 +1820,7 @@ mod tests {
         // The prover must persist `blinding_2` and `commitment_2` as long as he ever wants to interact with verifier 2.
 
         // The commitments are different for both verifiers for the same message
-        assert_ne!(commitment_1, commitment_2);
+        assert_ne!(reg_commit_1, reg_commit_2);
 
         // Prover proves to verifier 1
         let mut statements_1 = Statements::new();
@@ -1831,7 +1831,7 @@ mod tests {
         }));
         statements_1.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
             bases: gens_1.clone(),
-            commitment: commitment_1.clone(),
+            commitment: reg_commit_1.clone(),
         }));
 
         let mut meta_statements_1 = MetaStatements::new();
@@ -1872,7 +1872,7 @@ mod tests {
         }));
         statements_2.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
             bases: gens_2.clone(),
-            commitment: commitment_2.clone(),
+            commitment: reg_commit_2.clone(),
         }));
 
         let mut meta_statements_2 = MetaStatements::new();
@@ -1927,7 +1927,7 @@ mod tests {
         }));
         statements_3.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
             bases: gens_1.clone(),
-            commitment: commitment_1.clone(),
+            commitment: reg_commit_1.clone(),
         }));
 
         let mut meta_statements_3 = MetaStatements::new();
