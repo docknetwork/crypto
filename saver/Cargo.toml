@@ -22,9 +22,9 @@ proof_system = { default-features = false, path = "../proof_system" }
 bbs_plus = { default-features = false, path = "../bbs_plus" }
 
 [dependencies.legogroth16]
-#git = "https://github.com/lovesh/legogro16"
-#branch = "modified"
-path = "/home/lovesh/dev/legogro16"
+git = "https://github.com/lovesh/legogro16"
+branch = "modified"
+#path = "/home/lovesh/dev/legogro16"
 
 [dev-dependencies]
 blake2 = { version = "0.9", default-features = false }
