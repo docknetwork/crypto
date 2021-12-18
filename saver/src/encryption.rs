@@ -12,7 +12,7 @@ use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
 /// Encrypt a message `m` in exponent-Elgamal after breaking it into chunks of `chunk_bit_size` bits.
 /// Returns the ciphertext, commitment and randomness created for encryption. This is "Enc" from algorithm
 /// 2 in the paper
-/// Ciphertext vector contains commitment `phi` as the last element
+/// Ciphertext vector contains commitment `psi` as the last element
 pub fn encrypt<R: RngCore, E: PairingEngine>(
     rng: &mut R,
     m: &E::Fr,
@@ -43,9 +43,9 @@ pub fn encrypt_decomposed_message<R: RngCore, E: PairingEngine>(
     for i in 0..ek.X.len() {
         ct.push(ek.X[i].mul(r_repr).add(g_i[i].mul(m[i])));
     }
-    let mut phi = ek.P_1.mul(r);
-    phi.add_assign(VariableBaseMSM::multi_scalar_mul(&ek.Y, &m));
-    ct.push(phi);
+    let mut psi = ek.P_1.mul(r);
+    psi.add_assign(VariableBaseMSM::multi_scalar_mul(&ek.Y, &m));
+    ct.push(psi);
     (batch_normalize_projective_into_affine(ct), r)
 }
 
@@ -72,9 +72,9 @@ pub fn encrypt_decomposed_message_alt<R: RngCore, E: PairingEngine>(
         x_r_sum.add_assign(&x_i_r);
         ct.push(x_i_r.add(g_i[i].mul(m[i])));
     }
-    let mut phi = ek.P_1.mul(r);
-    phi.add_assign(VariableBaseMSM::multi_scalar_mul(&ek.Y, &m));
-    ct.push(phi);
+    let mut psi = ek.P_1.mul(r);
+    psi.add_assign(VariableBaseMSM::multi_scalar_mul(&ek.Y, &m));
+    ct.push(psi);
     (
         batch_normalize_projective_into_affine(ct),
         x_r_sum.into_affine(),

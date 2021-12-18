@@ -2,17 +2,17 @@
 //!
 //! Commitment created during encryption
 //! `
-//! phi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
+//! psi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
 //! `
 //!
-//! An inefficient (insecure as well?) way to get a commitment `m*G + r'*H` from `phi` is to create a commitment `J` as:
+//! An inefficient (insecure as well?) way to get a commitment `m*G + r'*H` from `psi` is to create a commitment `J` as:
 //!
 //! ` J = m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H `
 //!
 //! where `G_i = {b^{n-i}}*G` so `G_1 = {b^{n-1}}*G`, and so on.
 //!
 //!
-//! Now prove the equality of openings of the commitments `phi` and `J`. Note that `J` is same as `m*G + r'*H` because
+//! Now prove the equality of openings of the commitments `psi` and `J`. Note that `J` is same as `m*G + r'*H` because
 //! `
 //! m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H
 //!   = m_1*{b^{n-1}}*G + m_2*{b^{n-2}}*G + ... + m_n*G + r'*H

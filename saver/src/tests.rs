@@ -203,6 +203,12 @@ fn bbs_plus_verifiably_encrypt_user_id() {
 
     let start = Instant::now();
     assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
+    println!(
+        "Time taken to verify ciphertext commitment {:?}",
+        start.elapsed()
+    );
+
+    let start = Instant::now();
     let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
     assert!(verify_proof(&pvk, &proof, &ct).unwrap());
     println!("Time taken to verify Groth16 proof {:?}", start.elapsed());
@@ -469,15 +475,22 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     let start = Instant::now();
     let proof_1 = create_proof(circuit_1, r_1, &params, &ek, &mut rng).unwrap();
     let proof_2 = create_proof(circuit_2, r_2, &params, &ek, &mut rng).unwrap();
-    println!("Time taken to create Groth16 proof {:?}", start.elapsed());
+    println!("Time taken to create 2 Groth16 proof {:?}", start.elapsed());
+
+    let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
 
     let start = Instant::now();
     assert!(verify_ciphertext_commitment(&ct_1, &ek, &gens));
     assert!(verify_ciphertext_commitment(&ct_2, &ek, &gens));
-    let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
+    println!(
+        "Time taken to verify ciphertext commitment {:?}",
+        start.elapsed()
+    );
+
+    let start = Instant::now();
     assert!(verify_proof(&pvk, &proof_1, &ct_1).unwrap());
     assert!(verify_proof(&pvk, &proof_2, &ct_2).unwrap());
-    println!("Time taken to verify Groth16 proof {:?}", start.elapsed());
+    println!("Time taken to verify 2 Groth16 proof {:?}", start.elapsed());
 
     // Decryptor decrypts
     let (decrypted_message_1, _) = decrypt(&ct_1, &sk, &dk, &g_i, chunk_bit_size);
