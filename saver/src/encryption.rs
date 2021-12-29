@@ -49,6 +49,19 @@ pub fn encrypt_decomposed_message<R: RngCore, E: PairingEngine>(
     (batch_normalize_projective_into_affine(ct), r)
 }
 
+/// Same as encrypt but outputs sum `r*X_1 + r*X_2 + .. + r*X_n` as well
+// XXX: Is this secure?
+pub fn encrypt_alt<R: RngCore, E: PairingEngine>(
+    rng: &mut R,
+    m: &E::Fr,
+    ek: &EncryptionKey<E>,
+    g_i: &[E::G1Affine],
+    chunk_bit_size: u8,
+) -> (Vec<E::G1Affine>, E::G1Affine, E::Fr) {
+    let decomposed = utils::decompose(m, chunk_bit_size);
+    encrypt_decomposed_message_alt(rng, decomposed, ek, g_i)
+}
+
 /// Same as encrypt_decomposed_message but outputs sum `r*X_1 + r*X_2 + .. + r*X_n` as well
 // XXX: Is this secure?
 pub fn encrypt_decomposed_message_alt<R: RngCore, E: PairingEngine>(

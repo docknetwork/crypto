@@ -32,12 +32,6 @@ pub struct ProvingKey<E: PairingEngine> {
     pub gamma_g1: E::G1Affine,
 }
 
-/*#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<E: PairingEngine> {
-    pub proof: legogro16::Proof<E>,
-    pub v_eta_gamma_inv: E::G1Affine,
-}*/
-
 /// These parameters are needed for setting up keys for encryption/decryption
 pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1Affine] {
     &vk.gamma_abc_g1[1..]
@@ -79,117 +73,161 @@ pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
     })
 }
 
-/// `r` is the randomness used during the encryption
-pub fn create_proof<E, C, R>(
-    circuit: C,
-    v: E::Fr,
-    link_v: E::Fr,
-    r: E::Fr,
-    pk: &ProvingKey<E>,
-    encryption_key: &EncryptionKey<E>,
-    rng: &mut R,
-) -> R1CSResult<Proof<E>>
-where
-    E: PairingEngine,
-    C: ConstraintSynthesizer<E::Fr>,
-    R: Rng,
-{
-    let mut proof = create_random_proof(circuit, v, link_v, &pk.pk, rng)?;
+/// This keeps the encryption algorithm same as mentioned in the paper but the proof contains an extra
+/// group element which also changes the hiding property of the commitment from information theoretic to
+/// computational.
+mod protocol_1 {
+    use super::*;
 
-    // proof.c = proof.c + r * P_2
-    let mut c = proof.c.into_projective();
-    c.add_assign(encryption_key.P_2.mul(r.into_repr()));
-    proof.c = c.into_affine();
+    #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+    pub struct Proof<E: PairingEngine> {
+        pub proof: legogroth16::Proof<E>,
+        pub v_eta_gamma_inv: E::G1Affine,
+    }
 
-    /*
-    let new_proof = Proof {
-        proof,
-        v_eta_gamma_inv: pk.pk.vk.eta_gamma_inv_g1.mul(v).into_affine(),
-    };*/
-    Ok(proof)
+    /// `r` is the randomness used during the encryption
+    pub fn create_proof<E, C, R>(
+        circuit: C,
+        v: E::Fr,
+        link_v: E::Fr,
+        r: E::Fr,
+        pk: &ProvingKey<E>,
+        encryption_key: &EncryptionKey<E>,
+        rng: &mut R,
+    ) -> R1CSResult<Proof<E>>
+    where
+        E: PairingEngine,
+        C: ConstraintSynthesizer<E::Fr>,
+        R: Rng,
+    {
+        let mut proof = create_random_proof(circuit, v, link_v, &pk.pk, rng)?;
+
+        // proof.c = proof.c + r * P_2
+        let mut c = proof.c.into_projective();
+        c.add_assign(encryption_key.P_2.mul(r.into_repr()));
+        proof.c = c.into_affine();
+
+        let proof = Proof {
+            proof,
+            v_eta_gamma_inv: pk.pk.vk.eta_gamma_inv_g1.mul(v).into_affine(),
+        };
+        Ok(proof)
+    }
+
+    pub fn verify_proof<E: PairingEngine>(
+        pvk: &PreparedVerifyingKey<E>,
+        proof: &Proof<E>,
+        ciphertext: &[E::G1Affine],
+    ) -> R1CSResult<bool> {
+        // TODO: Return error indicating what failed rather than a boolean
+        let link_verified = verify_link_proof(&pvk.vk, &proof.proof);
+        if !link_verified {
+            return Ok(false);
+        }
+        let mut d = ciphertext[0].into_projective();
+        for c in ciphertext[1..ciphertext.len() - 1].iter() {
+            d.add_assign(c.into_projective())
+        }
+        d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
+        d.add_assign_mixed(&proof.v_eta_gamma_inv);
+
+        let qap = E::miller_loop(
+            [
+                (proof.proof.a.into(), proof.proof.b.into()),
+                (proof.proof.c.into(), pvk.delta_g2_neg_pc.clone()),
+                (d.into_affine().into(), pvk.gamma_g2_neg_pc.clone()),
+            ]
+            .iter(),
+        );
+
+        let test = E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?;
+
+        Ok(test == pvk.alpha_g1_beta_g2)
+    }
 }
 
-/*pub fn verify_proof<E: PairingEngine>(
-    pvk: &PreparedVerifyingKey<E>,
-    proof: &Proof<E>,
-    ciphertext: &[E::G1Affine],
-) -> R1CSResult<bool> {
-    // TODO: Return error indicating what failed rather than a boolean
-    let link_verified = verify_link_proof(&pvk.vk, &proof.proof);
-    if !link_verified {
-        return Ok(false);
-    }
-    let mut d = ciphertext[0].into_projective();
-    for c in ciphertext[1..ciphertext.len() - 1].iter() {
-        d.add_assign(c.into_projective())
-    }
-    d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
-    d.add_assign_mixed(&proof.v_eta_gamma_inv);
+/// This modifies the encryption algorithm from the paper by also outputting `r*X_1 + r*X_2 + .. + r*X_n`
+/// as well, i.e. uses encrypt_alt
+mod protocol_2 {
+    use super::*;
 
-    let qap = E::miller_loop(
-        [
-            (proof.proof.a.into(), proof.proof.b.into()),
-            (proof.proof.c.into(), pvk.delta_g2_neg_pc.clone()),
-            (d.into_affine().into(), pvk.gamma_g2_neg_pc.clone()),
-        ]
-        .iter(),
-    );
+    /// `r` is the randomness used during the encryption
+    pub fn create_proof<E, C, R>(
+        circuit: C,
+        v: E::Fr,
+        link_v: E::Fr,
+        r: E::Fr,
+        pk: &ProvingKey<E>,
+        encryption_key: &EncryptionKey<E>,
+        rng: &mut R,
+    ) -> R1CSResult<Proof<E>>
+    where
+        E: PairingEngine,
+        C: ConstraintSynthesizer<E::Fr>,
+        R: Rng,
+    {
+        let mut proof = create_random_proof(circuit, v, link_v, &pk.pk, rng)?;
 
-    let test = E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?;
+        // proof.c = proof.c + r * P_2
+        let mut c = proof.c.into_projective();
+        c.add_assign(encryption_key.P_2.mul(r.into_repr()));
+        proof.c = c.into_affine();
 
-    Ok(test == pvk.alpha_g1_beta_g2)
-}*/
-
-pub fn verify_proof_1<E: PairingEngine>(
-    pvk: &PreparedVerifyingKey<E>,
-    proof: &Proof<E>,
-    ciphertext: &[E::G1Affine],
-    x_r_sum: &E::G1Affine, // r*X_1 + r*X_2 + .. + r*X_n
-) -> R1CSResult<bool> {
-    // TODO: Return error indicating what failed rather than a boolean
-    let link_verified = verify_link_proof(&pvk.vk, &proof);
-    if !link_verified {
-        return Ok(false);
+        Ok(proof)
     }
 
-    // Get v * (eta/gamma)*G
-    // proof.d = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G
-    // ct_sum = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n]
-    let mut ct_sum = ciphertext[1].into_projective();
-    for c in ciphertext[2..ciphertext.len() - 1].iter() {
-        ct_sum.add_assign_mixed(c)
+    pub fn verify_proof<E: PairingEngine>(
+        pvk: &PreparedVerifyingKey<E>,
+        proof: &Proof<E>,
+        ciphertext: &[E::G1Affine],
+        x_r_sum: &E::G1Affine, // r*X_1 + r*X_2 + .. + r*X_n
+    ) -> R1CSResult<bool> {
+        // TODO: Return error indicating what failed rather than a boolean
+        let link_verified = verify_link_proof(&pvk.vk, &proof);
+        if !link_verified {
+            return Ok(false);
+        }
+
+        // Get v * (eta/gamma)*G
+        // proof.d = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G
+        // ct_sum = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n]
+        let mut ct_sum = ciphertext[1].into_projective();
+        for c in ciphertext[2..ciphertext.len() - 1].iter() {
+            ct_sum.add_assign_mixed(c)
+        }
+        // ct_sum_plus_g_0 = ct_sum + G[0]
+        let ct_sum_plus_g_0 = ct_sum.add_mixed(&pvk.vk.gamma_abc_g1[0]);
+        // ct_sum_plus_g_0_minus_x_r_sum = ct_sum + G[0] - x_r_sum
+        // = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + G[0] - (r*X_1 + r*X_2 + .. + r*X_n)
+        // = G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n]
+        let ct_sum_plus_g_0_minus_x_r_sum = ct_sum_plus_g_0.sub(x_r_sum.into_projective());
+
+        // proof.d - ct_sum_plus_g_0_minus_x_r_sum
+        // = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G - (G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n])
+        // = v * (eta/gamma)*G
+        let v_eta_gamma_inv = proof
+            .d
+            .into_projective()
+            .sub(&ct_sum_plus_g_0_minus_x_r_sum);
+
+        // d = G[0] + r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + r * X_0 + v * (eta/gamma)*G
+        let mut d = ct_sum_plus_g_0;
+        d.add_assign_mixed(&ciphertext[0]);
+        d.add_assign(&v_eta_gamma_inv);
+
+        let qap = E::miller_loop(
+            [
+                (proof.a.into(), proof.b.into()),
+                (proof.c.into(), pvk.delta_g2_neg_pc.clone()),
+                (d.into_affine().into(), pvk.gamma_g2_neg_pc.clone()),
+            ]
+            .iter(),
+        );
+
+        let test = E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?;
+
+        Ok(test == pvk.alpha_g1_beta_g2)
     }
-    // ct_sum_plus_g_0 = ct_sum + G[0]
-    let ct_sum_plus_g_0 = ct_sum.add_mixed(&pvk.vk.gamma_abc_g1[0]);
-    // ct_sum_plus_g_0_minus_x_r_sum = ct_sum + G[0] - x_r_sum
-    // = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + G[0] - (r*X_1 + r*X_2 + .. + r*X_n)
-    // = G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n]
-    let ct_sum_plus_g_0_minus_x_r_sum = ct_sum_plus_g_0.sub(x_r_sum.into_projective());
-
-    // proof.d - ct_sum_plus_g_0_minus_x_r_sum
-    // = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G - (G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n])
-    // = v * (eta/gamma)*G
-    let v_eta_gamma_inv = proof
-        .d
-        .into_projective()
-        .sub(&ct_sum_plus_g_0_minus_x_r_sum);
-
-    let mut d = ct_sum_plus_g_0;
-    d.add_assign_mixed(&ciphertext[0]);
-    d.add_assign(&v_eta_gamma_inv);
-
-    let qap = E::miller_loop(
-        [
-            (proof.a.into(), proof.b.into()),
-            (proof.c.into(), pvk.delta_g2_neg_pc.clone()),
-            (d.into_affine().into(), pvk.gamma_g2_neg_pc.clone()),
-        ]
-        .iter(),
-    );
-
-    let test = E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?;
-
-    Ok(test == pvk.alpha_g1_beta_g2)
 }
 
 #[derive(Clone)]
@@ -304,9 +342,18 @@ mod tests {
         };
 
         let start = Instant::now();
-        let proof = create_proof(circuit, v, link_v, r, &params, &ek, &mut rng).unwrap();
+        let proof_2 = protocol_2::create_proof(
+            circuit.clone(),
+            v.clone(),
+            link_v.clone(),
+            r.clone(),
+            &params,
+            &ek,
+            &mut rng,
+        )
+        .unwrap();
         println!(
-            "Time taken to create LegoGroth16 proof {:?}",
+            "Time taken to create LegoGroth16 proof as per protocol 2 {:?}",
             start.elapsed()
         );
 
@@ -314,22 +361,57 @@ mod tests {
         let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
         assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
         // assert!(verify_proof(&pvk, &proof, &ct).unwrap());
-        assert!(verify_proof_1(&pvk, &proof, &ct, &x_r_sum).unwrap());
+        assert!(protocol_2::verify_proof(&pvk, &proof_2, &ct, &x_r_sum).unwrap());
         println!(
-            "Time taken to verify LegoGroth16 proof {:?}",
+            "Time taken to verify LegoGroth16 proof as per protocol 2 {:?}",
             start.elapsed()
         );
 
         assert!(verify_link_commitment(
             &pvk.vk.link_bases,
-            &proof,
+            &proof_2,
             &[],
             &msgs_as_field_elems,
             &link_v
         )
         .unwrap());
         assert!(
-            verify_commitment(&pvk.vk, &proof, &[], &msgs_as_field_elems, &v, &link_v).unwrap()
+            verify_commitment(&pvk.vk, &proof_2, &[], &msgs_as_field_elems, &v, &link_v).unwrap()
         );
+
+        let start = Instant::now();
+        let proof_1 =
+            protocol_1::create_proof(circuit, v, link_v, r, &params, &ek, &mut rng).unwrap();
+        println!(
+            "Time taken to create LegoGroth16 proof as per protocol 1 {:?}",
+            start.elapsed()
+        );
+
+        let start = Instant::now();
+        let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
+        assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
+        assert!(protocol_1::verify_proof(&pvk, &proof_1, &ct).unwrap());
+        println!(
+            "Time taken to verify LegoGroth16 proof as per protocol 1 {:?}",
+            start.elapsed()
+        );
+
+        assert!(verify_link_commitment(
+            &pvk.vk.link_bases,
+            &proof_1.proof,
+            &[],
+            &msgs_as_field_elems,
+            &link_v
+        )
+        .unwrap());
+        assert!(verify_commitment(
+            &pvk.vk,
+            &proof_1.proof,
+            &[],
+            &msgs_as_field_elems,
+            &v,
+            &link_v
+        )
+        .unwrap());
     }
 }
