@@ -65,7 +65,6 @@ use crate::error::VBAccumulatorError;
 use crate::persistence::{InitialElementsStore, State, UniversalAccumulatorState};
 use crate::positive::Accumulator;
 use crate::setup::{PublicKey, SecretKey, SetupParams};
-use crate::utils::multiply_field_elems_with_same_group_elem;
 use crate::witness::NonMembershipWitness;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::fields::Field;
@@ -81,6 +80,7 @@ use ark_std::{
     vec::Vec,
     One, UniformRand, Zero,
 };
+use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
 use dock_crypto_utils::serde_utils::*;
 

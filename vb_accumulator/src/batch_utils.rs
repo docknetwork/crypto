@@ -4,7 +4,6 @@
 //! Utilities for batch updates to the accumulators and witnesses.
 
 use crate::setup::SecretKey;
-use crate::utils::multiply_field_elems_with_same_group_elem;
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{batch_inversion, One, PrimeField, Zero};
@@ -19,7 +18,10 @@ use ark_std::{
     vec,
     vec::Vec,
 };
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{
+    ec::batch_normalize_projective_into_affine, msm::multiply_field_elems_with_same_group_elem,
+    serde_utils::*,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -78,13 +80,6 @@ fn poly_from_given_updates<F: PrimeField>(updates: &[F]) -> DensePolynomial<F> {
     r
     // Note: Using multiply operator from ark-poly is orders of magnitude slower than naive multiplication
     // x_i.into_iter().reduce(|a, b| &a * &b).unwrap()
-}
-
-pub(crate) fn batch_normalize_projective_into_affine<G: ProjectiveCurve>(
-    mut v: Vec<G>,
-) -> Vec<G::Affine> {
-    G::batch_normalization(&mut v);
-    v.into_iter().map(|v| v.into()).collect()
 }
 
 // Polynomials as described in section 3 of the paper

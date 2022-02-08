@@ -109,20 +109,18 @@ use ark_std::{
     vec::Vec,
 };
 
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{ec::batch_normalize_projective_into_affine, serde_utils::*};
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::batch_utils::Omega;
-use crate::batch_utils::{
-    batch_normalize_projective_into_affine, Poly_d, Poly_v_A, Poly_v_AD, Poly_v_D,
-};
+use crate::batch_utils::{Poly_d, Poly_v_A, Poly_v_AD, Poly_v_D};
 use crate::error::VBAccumulatorError;
 use crate::setup::SecretKey;
 use ark_ec::msm::VariableBaseMSM;
 
-use crate::utils::WindowTable;
+use dock_crypto_utils::msm::WindowTable;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 

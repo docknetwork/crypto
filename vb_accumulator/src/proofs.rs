@@ -103,7 +103,7 @@ use dock_crypto_utils::serde_utils::*;
 use schnorr_pok::error::SchnorrError;
 use schnorr_pok::SchnorrChallengeContributor;
 
-use crate::utils::WindowTable;
+use dock_crypto_utils::msm::WindowTable;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 

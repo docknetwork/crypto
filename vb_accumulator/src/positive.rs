@@ -101,8 +101,8 @@ use crate::batch_utils::Poly_d;
 use crate::error::VBAccumulatorError;
 use crate::persistence::State;
 use crate::setup::{PublicKey, SecretKey, SetupParams};
-use crate::utils::multiply_field_elems_with_same_group_elem;
 use crate::witness::MembershipWitness;
+use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

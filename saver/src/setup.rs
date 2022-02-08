@@ -4,8 +4,9 @@ use ark_std::ops::AddAssign;
 use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 
-use crate::utils::batch_normalize_projective_into_affine;
-use dock_crypto_utils::hashing_utils::affine_group_elem_from_try_and_incr;
+use dock_crypto_utils::{
+    ec::batch_normalize_projective_into_affine, hashing_utils::affine_group_elem_from_try_and_incr,
+};
 
 /// Create "G" and "H" from the paper.
 pub struct Generators<E: PairingEngine> {

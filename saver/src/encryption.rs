@@ -2,12 +2,12 @@
 
 use crate::setup::{DecryptionKey, EncryptionKey, Generators, SecretKey};
 use crate::utils;
-use crate::utils::batch_normalize_projective_into_affine;
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, One, PrimeField, Zero};
 use ark_std::ops::{Add, AddAssign};
 use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
+use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 
 /// Encrypt a message `m` in exponent-Elgamal after breaking it into chunks of `chunk_bit_size` bits.
 /// Returns the ciphertext, commitment and randomness created for encryption. This is "Enc" from algorithm
