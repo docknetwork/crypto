@@ -48,11 +48,13 @@ where
         f: &F,
         blindings: Option<Vec<G::ScalarField>>,
     ) -> Result<Self, CompSigmaError> {
-        if g.len() < max_size {return Err(CompSigmaError::VectorTooShort)};
-        // assert!(g.len() >= max_size);
+        if g.len() < max_size {
+            return Err(CompSigmaError::VectorTooShort);
+        };
         let r = if let Some(blindings) = blindings {
-            if blindings.len() != max_size {return Err(CompSigmaError::VectorLenMismatch)}
-            // assert_eq!(blindings.len(), max_size);
+            if blindings.len() != max_size {
+                return Err(CompSigmaError::VectorLenMismatch);
+            }
             blindings
         } else {
             (0..max_size).map(|_| G::ScalarField::rand(rng)).collect()
@@ -108,10 +110,12 @@ where
         t: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        if g.len() < max_size {return Err(CompSigmaError::VectorTooShort)}
-        // assert!(g.len() >= max_size);
-        if commitments.len() != evals.len() {return Err(CompSigmaError::VectorLenMismatch)}
-        // assert_eq!(commitments.len(), evals.len());
+        if g.len() < max_size {
+            return Err(CompSigmaError::VectorTooShort);
+        }
+        if commitments.len() != evals.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
         let count_commitments = commitments.len();
         let mut challenge_powers = vec![challenge.clone(); count_commitments];
         for i in 1..count_commitments {
