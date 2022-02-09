@@ -1,4 +1,5 @@
 //! Amortized sigma protocol with homomorphism as described in section 3.4 of the paper "Compressing Proofs of k-Out-Of-n".
+//! (https://eprint.iacr.org/2020/753)
 //! This is for the relation R_{AMOREXP} where a single homomorphism is applied over many witness vectors and
 //! there is a separate commitment to each witness vector.
 
@@ -21,9 +22,13 @@ use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineCurve> {
+    /// max_size of the vectors
     pub max_size: usize,
+    /// Random vector from Z_q^n
     pub r: Vec<G::ScalarField>,
+    /// A = g^r
     pub A: G,
+    /// t = f(r)
     pub t: G,
 }
 
@@ -42,10 +47,12 @@ where
         max_size: usize,
         f: &F,
         blindings: Option<Vec<G::ScalarField>>,
-    ) -> Self {
-        assert!(g.len() >= max_size);
+    ) -> Result<Self, CompSigmaError> {
+        if g.len() < max_size {return Err(CompSigmaError::VectorTooShort)};
+        // assert!(g.len() >= max_size);
         let r = if let Some(blindings) = blindings {
-            assert_eq!(blindings.len(), max_size);
+            if blindings.len() != max_size {return Err(CompSigmaError::VectorLenMismatch)}
+            // assert_eq!(blindings.len(), max_size);
             blindings
         } else {
             (0..max_size).map(|_| G::ScalarField::rand(rng)).collect()
@@ -53,12 +60,12 @@ where
         let t = f.eval(&r);
         let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
         let A = VariableBaseMSM::multi_scalar_mul(g, &scalars);
-        Self {
+        Ok(Self {
             max_size,
             r,
             A: A.into_affine(),
             t,
-        }
+        })
     }
 
     pub fn response(
@@ -101,8 +108,10 @@ where
         t: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        assert!(g.len() >= max_size);
-        assert_eq!(commitments.len(), evals.len());
+        if g.len() < max_size {return Err(CompSigmaError::VectorTooShort)}
+        // assert!(g.len() >= max_size);
+        if commitments.len() != evals.len() {return Err(CompSigmaError::VectorLenMismatch)}
+        // assert_eq!(commitments.len(), evals.len());
         let count_commitments = commitments.len();
         let mut challenge_powers = vec![challenge.clone(); count_commitments];
         for i in 1..count_commitments {
@@ -200,7 +209,7 @@ mod tests {
         .into_affine();
         let eval3 = homomorphism.eval(&x3);
 
-        let rand_comm = RandomCommitment::new(&mut rng, &g, max_size, &homomorphism, None);
+        let rand_comm = RandomCommitment::new(&mut rng, &g, max_size, &homomorphism, None).unwrap();
         let challenge = Fr::rand(&mut rng);
         let response = rand_comm.response(vec![&x1, &x2, &x3], &challenge);
         response

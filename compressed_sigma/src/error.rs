@@ -5,6 +5,8 @@ use ark_std::fmt::Debug;
 pub enum CompSigmaError {
     InvalidResponse,
     Serialization(SerializationError),
+    VectorTooShort,
+    VectorLenMismatch,
 }
 
 impl From<SerializationError> for CompSigmaError {
