@@ -19,6 +19,7 @@ use crate::transforms::Homomorphism;
 
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
+use crate::utils::get_n_powers;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -51,10 +52,9 @@ pub fn create_rho_powers<D: Digest, G: AffineCurve>(
     }
 
     let rho = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-    let mut rho_powers = vec![G::ScalarField::one(); ys.len()];
-    for i in 1..ys.len() {
-        rho_powers[i] = rho_powers[i - 1] * rho;
-    }
+    // rho_powers = [1, rho, rho^2, rho^3, ..., rho^{ys.len()-1}]
+    let mut rho_powers = get_n_powers(rho, ys.len() - 1);
+    rho_powers.insert(0, G::ScalarField::one());
     rho_powers
 }
 

@@ -19,6 +19,7 @@ use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
+use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -272,10 +273,10 @@ where
         let mut Q = P.mul(c_0_repr).add_mixed(A_hat);
         let mut Y = y.mul(c_0_repr).add_mixed(t);
 
-        let mut challenge_squares = vec![];
+        // Create challenges for each round and store in `challenges`
         let mut challenges = vec![];
-        let g_len = g.len();
-        let mut g_multiples = vec![G::ScalarField::one(); g_len];
+        // Holds squares of challenge of each round
+        let mut challenge_squares = vec![];
         let mut bytes = vec![];
         for i in 0..self.A.len() {
             let A = &self.A[i];
@@ -298,54 +299,51 @@ where
             challenges.push(c);
         }
 
-        for i in 0..challenges.len() {
-            let p = 1 << (i + 1);
-            let s = g_len / p;
-            for j in (0..p).step_by(2) {
-                for k in 0..s {
-                    g_multiples[j * s + k] *= challenges[i];
-                }
-            }
-        }
+        // Calculate the final g' and Q' for checking the relations Q' == g' * z' and f'(z') == a + c * y + c^2 * b
 
-        for i in 0..g_multiples.len() {
-            if (i % 2) == 0 {
-                g_multiples[i] *= self.z_prime_0;
-            } else {
-                g_multiples[i] *= self.z_prime_1;
-            }
-        }
+        let g_len = g.len();
+        // Multiples of original g vector to create the final product g' * z'
+        let g_multiples = get_g_multiples_for_verifying_compression(
+            g_len,
+            &challenges,
+            &self.z_prime_0,
+            &self.z_prime_1,
+        );
+
+        // In each round, new Q_{i+1} = A_{i+1} + c_{i+1} * Q_i + c_{i+1}^2 * B_{i+1} where A_{i+1}, B_{i+1} and c_{i+1} are
+        // A, B and the challenge for that round, thus in the final Q, contribution of original Q is {c_1*c_2*c_3*..*c_n} * Q.
+        // Also, expanding Q_i in Q_{i+1} = A_{i+1} + c_{i+1} * Q_i + c_{i+1}^2 * B_{i+1}
+        // = A_{i+1} + c_{i+1} * (A_{i} + c_{i} * Q_{i-1} + c_{i}^2 * B_{i}) + c_{i+1}^2 * B_{i+1}
+        // = A_{i+1} + c_{i+1} * A_{i} + c_{i+1} * c_i * Q_{i-1} + c_{i+1} * c_{i}^2 * B_{i} + c_{i+1}^2 * B_{i+1}
+        // From above, contribution of A vector in final Q will be A_1 * (c_2*c_3*..*c_n) + A_2 * (c_3*c_4..*c_n) + ... + A_n.
+        // Similarly, contribution of B vector in final Q will be B_1 * (c_1^2*c_2*c_3*..*c_n) + B_2 * (c_2^2*c_3*c_4..*c_n) + ... + B_n * c_n^2
+        // Same logic is followed for constructing Y as well.
 
         // Convert challenge vector from [c_1, c_2, c_3, ..., c_{n-2}, c_{n-1}, c_n] to [c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_3*..*c_{n-2}*c_{n-1}*c_n, ..., c_{n-2}*c_{n-1}*c_n, c_{n-1}*c_n, c_n]
-        for i in (1..challenges.len()).rev() {
-            let c = challenges[i - 1] * challenges[i];
-            challenges[i - 1] = c;
-        }
+        let mut challenge_products = elements_to_element_products(challenges);
 
-        // Set Q to Q*(c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n)
-        let all_challenges_product = challenges.remove(0);
-        Q.mul_assign(all_challenges_product);
-        Y.mul_assign(all_challenges_product);
+        // c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n
+        let all_challenges_product = challenge_products.remove(0);
 
-        challenges.push(G::ScalarField::one());
-
-        let B_multiples = challenges
+        // `B_multiples` is of form [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2]
+        let B_multiples = challenge_products
             .iter()
             .zip(challenge_squares.iter())
             .map(|(c, c_sqr)| (*c * c_sqr).into_repr())
             .collect::<Vec<_>>();
 
-        let challenges_repr = cfg_iter!(challenges)
+        let challenges_repr = cfg_iter!(challenge_products)
             .map(|c| c.into_repr())
             .collect::<Vec<_>>();
+
+        // Q' = A * [c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_3*..*c_{n-2}*c_{n-1}*c_n, ..., c_{n-2}*c_{n-1}*c_n, c_{n-1}*c_n, c_n, 1] + B * [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Q * c_1^2*c_2*c_3*..*c_n
+        // Set Q to Q*(c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n)
+        Q.mul_assign(all_challenges_product);
         let Q_prime = VariableBaseMSM::multi_scalar_mul(&self.A, &challenges_repr)
             + VariableBaseMSM::multi_scalar_mul(&self.B, &B_multiples)
             + Q;
 
-        let Y_prime = VariableBaseMSM::multi_scalar_mul(&self.a, &challenges_repr)
-            + VariableBaseMSM::multi_scalar_mul(&self.b, &B_multiples)
-            + Y;
-
+        // Check if g' * z' == Q'
         let g_multiples_repr = cfg_iter!(g_multiples)
             .map(|g| g.into_repr())
             .collect::<Vec<_>>();
@@ -353,8 +351,16 @@ where
             return Err(CompSigmaError::InvalidResponse);
         }
 
-        let f_prime_z_prime = f.eval(&[self.z_prime_0, self.z_prime_1]).into_projective();
+        // Check if f'(z') == a + c * Y + c^2 * b'
 
+        // Y' = a + c * Y + c^2 * b'
+        // Y' = a * [c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_3*..*c_{n-2}*c_{n-1}*c_n, ..., c_{n-2}*c_{n-1}*c_n, c_{n-1}*c_n, c_n, 1] + b * [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Y
+        // Set Y to Y*(c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n)
+        Y.mul_assign(all_challenges_product);
+        let Y_prime = VariableBaseMSM::multi_scalar_mul(&self.a, &challenges_repr)
+            + VariableBaseMSM::multi_scalar_mul(&self.b, &B_multiples)
+            + Y;
+        let f_prime_z_prime = f.eval(&[self.z_prime_0, self.z_prime_1]).into_projective();
         if Y_prime != f_prime_z_prime {
             return Err(CompSigmaError::InvalidResponse);
         }
@@ -387,66 +393,74 @@ mod tests {
 
     #[test]
     fn compression() {
-        let mut rng = StdRng::seed_from_u64(0u64);
-        let size = 16;
-        let homomorphism = TestHom {
-            constants: (0..size)
+        fn check_compression(size: usize) {
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let homomorphism = TestHom {
+                constants: (0..size)
+                    .map(|_| {
+                        <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine()
+                    })
+                    .collect::<Vec<_>>(),
+            };
+
+            let x = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
+            let g = (0..size)
                 .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
+                .collect::<Vec<_>>();
 
-        let x = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
-        let g = (0..size)
-            .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-            .collect::<Vec<_>>();
-
-        let P = VariableBaseMSM::multi_scalar_mul(
-            &g,
-            &x.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-        )
-        .into_affine();
-        let y = homomorphism.eval(&x);
-
-        let rand_comm = RandomCommitment::new(&mut rng, &g, &homomorphism, None);
-
-        let c_0 = Fr::rand(&mut rng);
-
-        let response = rand_comm.response::<Blake2b, _>(&g, &P, &homomorphism, &x, &c_0);
-
-        let start = Instant::now();
-        response
-            .is_valid_recursive::<Blake2b, _>(
+            let P = VariableBaseMSM::multi_scalar_mul(
                 &g,
-                &P,
-                &y,
-                &homomorphism,
-                &rand_comm.A_hat,
-                &rand_comm.t,
-                &c_0,
+                &x.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
             )
-            .unwrap();
-        println!(
-            "Recursive verification for compressed homomorphism form of size {} takes: {:?}",
-            size,
-            start.elapsed()
-        );
+            .into_affine();
+            let y = homomorphism.eval(&x);
 
-        let start = Instant::now();
-        response
-            .is_valid::<Blake2b, _>(
-                &g,
-                &P,
-                &y,
-                &homomorphism,
-                &rand_comm.A_hat,
-                &rand_comm.t,
-                &c_0,
-            )
-            .unwrap();
-        println!(
-            "Verification for compressed homomorphism form of size {} takes: {:?}",
-            size,
-            start.elapsed()
-        );
+            let rand_comm = RandomCommitment::new(&mut rng, &g, &homomorphism, None);
+
+            let c_0 = Fr::rand(&mut rng);
+
+            let response = rand_comm.response::<Blake2b, _>(&g, &P, &homomorphism, &x, &c_0);
+
+            let start = Instant::now();
+            response
+                .is_valid_recursive::<Blake2b, _>(
+                    &g,
+                    &P,
+                    &y,
+                    &homomorphism,
+                    &rand_comm.A_hat,
+                    &rand_comm.t,
+                    &c_0,
+                )
+                .unwrap();
+            println!(
+                "Recursive verification for compressed homomorphism form of size {} takes: {:?}",
+                size,
+                start.elapsed()
+            );
+
+            let start = Instant::now();
+            response
+                .is_valid::<Blake2b, _>(
+                    &g,
+                    &P,
+                    &y,
+                    &homomorphism,
+                    &rand_comm.A_hat,
+                    &rand_comm.t,
+                    &c_0,
+                )
+                .unwrap();
+            println!(
+                "Verification for compressed homomorphism form of size {} takes: {:?}",
+                size,
+                start.elapsed()
+            );
+        }
+        check_compression(4);
+        check_compression(8);
+        check_compression(16);
+        check_compression(32);
+        check_compression(64);
     }
 }

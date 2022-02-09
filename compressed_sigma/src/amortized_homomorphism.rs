@@ -17,12 +17,13 @@ use ark_std::{
 use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 
+use crate::utils::{amortized_response, get_n_powers};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineCurve> {
-    /// max_size of the vectors
+    /// Maximum size of the witness vectors
     pub max_size: usize,
     /// Random vector from Z_q^n
     pub r: Vec<G::ScalarField>,
@@ -34,7 +35,7 @@ pub struct RandomCommitment<G: AffineCurve> {
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Response<G: AffineCurve> {
-    pub z: Vec<G::ScalarField>,
+    pub z_tilde: Vec<G::ScalarField>,
 }
 
 impl<G> RandomCommitment<G>
@@ -77,21 +78,11 @@ where
     ) -> Response<G> {
         let count_commitments = witnesses.len();
         // `challenge_powers` is of form [c, c^2, c^3, ..., c^{n-1}]
-        let mut challenge_powers = vec![challenge.clone(); count_commitments];
-        for i in 1..count_commitments {
-            challenge_powers[i] = challenge_powers[i - 1] * *challenge;
-        }
-        let mut zs = vec![];
-        for i in 0..self.max_size {
-            let mut z = self.r[i];
-            for j in 0..count_commitments {
-                if witnesses.len() > j && witnesses[j].len() > i {
-                    z += challenge_powers[j] * witnesses[j][i];
-                }
-            }
-            zs.push(z);
-        }
-        Response { z: zs }
+        let challenge_powers = get_n_powers(challenge.clone(), count_commitments);
+
+        // z_tilde_i = r_i + \sum_{j in count_commitments}(witnesses_j_i * challenge^j)
+        let z_tilde = amortized_response(self.max_size, &challenge_powers, &self.r, witnesses);
+        Response { z_tilde }
     }
 }
 
@@ -103,8 +94,8 @@ where
         &self,
         g: &[G],
         max_size: usize,
-        commitments: &[G],
-        evals: &[G],
+        P: &[G],
+        y: &[G],
         f: &F,
         A: &G,
         t: &G,
@@ -113,31 +104,40 @@ where
         if g.len() < max_size {
             return Err(CompSigmaError::VectorTooShort);
         }
-        if commitments.len() != evals.len() {
+        if P.len() != y.len() {
             return Err(CompSigmaError::VectorLenMismatch);
         }
-        let count_commitments = commitments.len();
-        let mut challenge_powers = vec![challenge.clone(); count_commitments];
-        for i in 1..count_commitments {
-            challenge_powers[i] = challenge_powers[i - 1] * *challenge;
+        if self.z_tilde.len() != max_size {
+            return Err(CompSigmaError::VectorLenMismatch);
         }
+
+        let count_commitments = P.len();
+        // `challenge_powers` is of form [c, c^2, c^3, ..., c^{n-1}]
+        let challenge_powers = get_n_powers(challenge.clone(), count_commitments);
         let challenge_powers_repr = cfg_iter!(challenge_powers)
             .map(|c| c.into_repr())
             .collect::<Vec<_>>();
-        let mut P_tilde = A.into_projective();
-        P_tilde += VariableBaseMSM::multi_scalar_mul(commitments, &challenge_powers_repr);
 
-        // g*z == P_tilde
+        // P_tilde = A + \sum_{i}(P_i * c^i)
+        let mut P_tilde = A.into_projective();
+        P_tilde += VariableBaseMSM::multi_scalar_mul(P, &challenge_powers_repr);
+
+        // Check g*z_tilde == P_tilde
         let g_z = VariableBaseMSM::multi_scalar_mul(
             g,
-            &self.z.iter().map(|z| z.into_repr()).collect::<Vec<_>>(),
+            &self
+                .z_tilde
+                .iter()
+                .map(|z| z.into_repr())
+                .collect::<Vec<_>>(),
         );
         if g_z != P_tilde {
             return Err(CompSigmaError::InvalidResponse);
         }
 
-        let c_y = VariableBaseMSM::multi_scalar_mul(evals, &challenge_powers_repr);
-        if c_y.add_mixed(t).into_affine() != f.eval(&self.z) {
+        // Check \sum_{i}(y_i * c^i) + t == f(z_tilde)
+        let c_y = VariableBaseMSM::multi_scalar_mul(y, &challenge_powers_repr);
+        if c_y.add_mixed(t).into_affine() != f.eval(&self.z_tilde) {
             return Err(CompSigmaError::InvalidResponse);
         }
         Ok(())
@@ -214,8 +214,10 @@ mod tests {
         let eval3 = homomorphism.eval(&x3);
 
         let rand_comm = RandomCommitment::new(&mut rng, &g, max_size, &homomorphism, None).unwrap();
+        assert_eq!(rand_comm.r.len(), max_size);
         let challenge = Fr::rand(&mut rng);
         let response = rand_comm.response(vec![&x1, &x2, &x3], &challenge);
+        assert_eq!(response.z_tilde.len(), max_size);
         response
             .is_valid(
                 &g,

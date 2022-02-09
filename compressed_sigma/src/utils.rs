@@ -1,8 +1,10 @@
 use ark_ec::AffineCurve;
-use ark_std::vec::Vec;
+use ark_ff::PrimeField;
+use ark_std::{vec, vec::Vec};
 
 use crate::transforms::Homomorphism;
 
+/// Pad given homomorphisms such that all have the same size after padding
 pub fn pad_homomorphisms_to_have_same_size<
     G: AffineCurve,
     F: Homomorphism<G::ScalarField, Output = G>,
@@ -16,6 +18,132 @@ pub fn pad_homomorphisms_to_have_same_size<
         }
     }
     fs.iter().map(|f| f.pad(max_size)).collect()
+}
+
+/// Return the response of an amortized sigma protocol
+pub fn amortized_response<F: PrimeField>(
+    max_size: usize,
+    c_powers: &[F],
+    r: &[F],
+    x: Vec<&[F]>,
+) -> Vec<F> {
+    let s = x.len();
+    let mut z = vec![];
+    for i in 0..max_size {
+        // z_i = r_i + \sum_{j in 1..s}({x_j}_i * {c_powers}_j)
+        let mut z_i = r[i];
+        for j in 0..s {
+            if s > j && x[j].len() > i {
+                z_i += c_powers[j] * x[j][i];
+            }
+        }
+        z.push(z_i);
+    }
+    z
+}
+
+/// Given `elem` and number `n`, return `n` powers of `elem` as `[elem, elem^2, elem^3, ..., elem^{n-1}]`
+pub fn get_n_powers<F: PrimeField>(elem: F, n: usize) -> Vec<F> {
+    let mut powers = vec![elem; n];
+    for i in 1..n {
+        powers[i] = powers[i - 1] * elem;
+    }
+    powers
+}
+
+/// In each round i, current g is split in 2 halves, g_l and g_r and new g is created as c_i*g_l + g_r
+/// where g_l and g_r are left and right halves respectively and c_i is the challenge for that round.
+/// This is done until g is of size 2. This means that all elements of the original g that are
+/// on the left side in that round would be multiplied by the challenge of that round
+pub fn get_g_multiples_for_verifying_compression<F: PrimeField>(
+    g_len: usize,
+    challenges: &[F],
+    z_prime_0: &F,
+    z_prime_1: &F,
+) -> Vec<F> {
+    let mut g_multiples = vec![F::one(); g_len];
+
+    // For each round, divide g into an even number of equal sized partitions and each even
+    // numbered (left) partition's elements are multiplied by challenge of that round
+    for i in 0..challenges.len() {
+        let partition = 1 << (i + 1);
+        let partition_size = g_len / partition;
+        for j in (0..partition).step_by(2) {
+            for l in 0..partition_size {
+                g_multiples[j * partition_size + l] *= challenges[i];
+            }
+        }
+    }
+
+    // The even numbered (left of each partition of the last round) elements of original are multiplied
+    // by z'_0 and odd numbered (right of each partition of the last round) elements are multiplied by z'_1
+    for i in 0..g_multiples.len() {
+        if (i % 2) == 0 {
+            g_multiples[i] *= z_prime_0;
+        } else {
+            g_multiples[i] *= z_prime_1;
+        }
+    }
+    g_multiples
+}
+
+/// Convert field element vector from [c_1, c_2, c_3, ..., c_{n-2}, c_{n-1}, c_n] to [c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_3*..*c_{n-2}*c_{n-1}*c_n, ..., c_{n-2}*c_{n-1}*c_n, c_{n-1}*c_n, c_n, 1]
+pub fn elements_to_element_products<F: PrimeField>(mut elements: Vec<F>) -> Vec<F> {
+    for i in (1..elements.len()).rev() {
+        let c = elements[i - 1] * elements[i];
+        elements[i - 1] = c;
+    }
+    elements.push(F::one());
+    elements
+}
+
+macro_rules! impl_simple_linear_form {
+    ($name: ident, $type: ty) => {
+        impl LinearForm<$type> for $name {
+            fn eval(&self, x: &[$type]) -> $type {
+                self.constants
+                    .iter()
+                    .zip(x.iter())
+                    .fold(Fr::zero(), |accum, (c, i)| accum + *c * i)
+            }
+
+            fn scale(&self, scalar: &$type) -> Self {
+                Self {
+                    constants: self
+                        .constants
+                        .iter()
+                        .map(|c| *c * scalar)
+                        .collect::<Vec<_>>(),
+                }
+            }
+
+            fn add(&self, other: &Self) -> Self {
+                Self {
+                    constants: self
+                        .constants
+                        .iter()
+                        .zip(other.constants.iter())
+                        .map(|(a, b)| *a + b)
+                        .collect::<Vec<_>>(),
+                }
+            }
+
+            fn split_in_half(&self) -> (Self, Self) {
+                (
+                    Self {
+                        constants: self.constants[..self.constants.len() / 2].to_vec(),
+                    },
+                    Self {
+                        constants: self.constants[self.constants.len() / 2..].to_vec(),
+                    },
+                )
+            }
+
+            fn size(&self) -> usize {
+                self.constants.len()
+            }
+        }
+    };
 }
 
 macro_rules! impl_simple_homomorphism {
