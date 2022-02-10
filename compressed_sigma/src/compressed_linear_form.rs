@@ -77,11 +77,9 @@ where
         g: &[G],
         h: &G,
         k: &G,
-        P: &G,
         linear_form: &L,
         x: &[G::ScalarField],
         gamma: &G::ScalarField,
-        y: &G::ScalarField,
         c_0: &G::ScalarField,
         c_1: &G::ScalarField,
     ) -> Response<G> {
@@ -101,16 +99,10 @@ where
             .collect::<Vec<_>>();
         z_hat.push(phi);
 
-        // g_hat = (g_0, g_1, ... g_n, h)
-        let mut g_hat = g.to_vec();
-        g_hat.push(*h);
+        let (g_hat, L_tilde) =
+            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
 
-        let L_tilde = linear_form.scale(c_1);
-
-        // Q = P*c_0 + k * (c_1*(c_0*y + t)) + A_hat
-        let Q = (P.mul(c_0.into_repr()) + k.mul(*c_1 * (*c_0 * y + self.t))).add_mixed(&self.A_hat);
-
-        Self::compressed_response::<D, L>(z_hat, Q, g_hat, k, L_tilde)
+        Self::compressed_response::<D, L>(z_hat, g_hat, k, L_tilde)
     }
 
     /// Run the compressed (non-zero) proof of knowledge of the response vector as described in the
@@ -118,7 +110,6 @@ where
     /// and knowledge of z_hat needs to be proven but the proof is not zero-knowledge
     pub fn compressed_response<D: Digest, L: LinearForm<G::ScalarField>>(
         mut z_hat: Vec<G::ScalarField>,
-        mut Q: G::Projective,
         mut g_hat: Vec<G>,
         k: &G,
         mut L_tilde: L,
@@ -165,8 +156,6 @@ where
                 .zip(g_hat_r.iter())
                 .map(|(l, r)| l.mul(c_repr).add_mixed(r).into_affine())
                 .collect::<Vec<_>>();
-            // Set `Q` as Q' in the paper
-            Q = A + Q.mul(c_repr) + B.mul(c.square().into_repr());
             // Set `L_tilde` to L' in the paper
             L_tilde = L_tilde_l.scale(&c).add(&L_tilde_r);
             // Set `z_hat` as z' in the paper
@@ -212,48 +201,10 @@ where
         assert_eq!(g.len() + 1, 1 << (self.A.len() + 1));
         assert!(linear_form.size().is_power_of_two());
 
-        let mut g_hat = g.to_vec();
-        g_hat.push(*h);
-        let mut L_tilde = linear_form.scale(c_1);
-        // Q = P*c_0 + k * (c_1*(c_0*y + t)) + A_hat
-        let mut Q = (P.mul(c_0.into_repr()) + k.mul(*c_1 * (*c_0 * y + t))).add_mixed(&A_hat);
-
-        let mut bytes = vec![];
-        for (A, B) in self.A.iter().zip(self.B.iter()) {
-            A.serialize(&mut bytes).unwrap();
-            B.serialize(&mut bytes).unwrap();
-            let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-            let c_repr = c.into_repr();
-
-            let m = g_hat.len();
-            let g_hat_r = g_hat.split_off(m / 2);
-
-            g_hat = g_hat
-                .iter()
-                .zip(g_hat_r.iter())
-                .map(|(l, r)| l.mul(c_repr).add_mixed(r).into_affine())
-                .collect::<Vec<_>>();
-            Q = A.into_projective() + Q.mul(c_repr) + B.mul(c.square().into_repr());
-            let (L_tilde_l, L_tilde_r) = L_tilde.split_in_half();
-            L_tilde = L_tilde_l.scale(&c).add(&L_tilde_r);
-        }
-
-        if (g_hat.len() != 2) || (L_tilde.size() != 2) {
-            return Err(CompSigmaError::InvalidResponse);
-        }
-
-        // Check if g_hat * [z'_0, z'_0] + k * L_tilde([z'_0, z'_0]) == Q
-        g_hat.push(*k);
-
-        let mut scalars = vec![self.z_prime_0.into_repr(), self.z_prime_1.into_repr()];
-        let l_z = L_tilde.eval(&[self.z_prime_0, self.z_prime_1]);
-        scalars.push(l_z.into_repr());
-
-        if VariableBaseMSM::multi_scalar_mul(&g_hat, &scalars) == Q {
-            Ok(())
-        } else {
-            Err(CompSigmaError::InvalidResponse)
-        }
+        let (g_hat, L_tilde) =
+            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
+        let Q = calculate_Q(k, P, y, A_hat, t, c_0, c_1);
+        self.recursively_validate_compressed::<D, L>(Q, g_hat, L_tilde, k)
     }
 
     /// Validate the proof of knowledge in the non-recursive manner. This will delay scalar multiplications
@@ -279,12 +230,64 @@ where
         assert_eq!(g.len() + 1, 1 << (self.A.len() + 1));
         assert!(linear_form.size().is_power_of_two());
 
-        let mut g_hat = g.to_vec();
-        g_hat.push(*h);
-        let mut L_tilde = linear_form.scale(c_1);
-        // Q = P*c_0 + k * (c_1*(c_0*y + t)) + A_hat
-        let mut Q = (P.mul(c_0.into_repr()) + k.mul(*c_1 * (*c_0 * y + t))).add_mixed(&A_hat);
+        let (g_hat, L_tilde) =
+            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
+        let Q = calculate_Q(k, P, y, A_hat, t, c_0, c_1);
+        self.validate_compressed::<D, L>(Q, g_hat, L_tilde, k)
+    }
 
+    pub fn recursively_validate_compressed<D: Digest, L: LinearForm<G::ScalarField>>(
+        &self,
+        mut Q: G::Projective,
+        mut g_hat: Vec<G>,
+        mut L_tilde: L,
+        k: &G,
+    ) -> Result<(), CompSigmaError> {
+        let mut bytes = vec![];
+        for (A, B) in self.A.iter().zip(self.B.iter()) {
+            A.serialize(&mut bytes).unwrap();
+            B.serialize(&mut bytes).unwrap();
+            let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
+            let c_repr = c.into_repr();
+
+            let m = g_hat.len();
+            let g_hat_r = g_hat.split_off(m / 2);
+
+            g_hat = g_hat
+                .iter()
+                .zip(g_hat_r.iter())
+                .map(|(l, r)| l.mul(c_repr).add_mixed(r).into_affine())
+                .collect::<Vec<_>>();
+            Q = A.into_projective() + Q.mul(c_repr) + B.mul(c.square().into_repr());
+            let (L_tilde_l, L_tilde_r) = L_tilde.split_in_half();
+            L_tilde = L_tilde_l.scale(&c).add(&L_tilde_r);
+        }
+
+        if (g_hat.len() != 2) || (L_tilde.size() != 2) {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
+
+        // Check if g_hat * [z'_0, z'_0] + k * L_tilde([z'_0, z'_0]) == Q
+        g_hat.push(*k);
+
+        let mut scalars = vec![self.z_prime_0.into_repr(), self.z_prime_1.into_repr()];
+        let l_z = L_tilde.eval(&[self.z_prime_0, self.z_prime_1]);
+        scalars.push(l_z.into_repr());
+
+        if VariableBaseMSM::multi_scalar_mul(&g_hat, &scalars) == Q {
+            Ok(())
+        } else {
+            Err(CompSigmaError::InvalidResponse)
+        }
+    }
+
+    pub fn validate_compressed<D: Digest, L: LinearForm<G::ScalarField>>(
+        &self,
+        mut Q: G::Projective,
+        mut g_hat: Vec<G>,
+        mut L_tilde: L,
+        k: &G,
+    ) -> Result<(), CompSigmaError> {
         // Create challenges for each round and store in `challenges`
         let mut challenges = vec![];
         // Holds squares of challenge of each round
@@ -365,6 +368,38 @@ where
     }
 }
 
+pub fn prepare_generators_and_linear_form_for_compression<
+    G: AffineCurve,
+    L: LinearForm<G::ScalarField>,
+>(
+    g: &[G],
+    h: &G,
+    linear_form: &L,
+    c_1: &G::ScalarField,
+) -> (Vec<G>, L) {
+    // g_hat = (g_0, g_1, ... g_n, h)
+    let mut g_hat = g.to_vec();
+    g_hat.push(*h);
+
+    // L_tilde = c_1 * linear_form
+    let L_tilde = linear_form.scale(c_1);
+
+    (g_hat, L_tilde)
+}
+
+/// Q = P*c_0 + k * (c_1*(c_0*y + t)) + A_hat
+fn calculate_Q<G: AffineCurve>(
+    k: &G,
+    P: &G,
+    y: &G::ScalarField,
+    A: &G,
+    t: &G::ScalarField,
+    c_0: &G::ScalarField,
+    c_1: &G::ScalarField,
+) -> G::Projective {
+    (P.mul(c_0.into_repr()) + k.mul(*c_1 * (*c_0 * y + t))).add_mixed(A)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -415,18 +450,8 @@ mod tests {
             let c_0 = Fr::rand(&mut rng);
             let c_1 = Fr::rand(&mut rng);
 
-            let response = rand_comm.response::<Blake2b, _>(
-                &g,
-                &h,
-                &k,
-                &P,
-                &linear_form,
-                &x,
-                &gamma,
-                &y,
-                &c_0,
-                &c_1,
-            );
+            let response =
+                rand_comm.response::<Blake2b, _>(&g, &h, &k, &linear_form, &x, &gamma, &c_0, &c_1);
 
             let start = Instant::now();
             response

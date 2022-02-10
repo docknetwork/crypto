@@ -1,8 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(non_snake_case)]
 
-use ark_ff::Field;
-
 #[macro_use]
 pub mod utils;
 pub mod amortized_homomorphism;

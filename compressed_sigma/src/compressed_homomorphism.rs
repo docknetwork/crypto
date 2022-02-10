@@ -75,32 +75,29 @@ where
     pub fn response<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
         &self,
         g: &[G],
-        P: &G,
         f: &F,
         x: &[G::ScalarField],
-        c_0: &G::ScalarField,
+        challenge: &G::ScalarField,
     ) -> Response<G> {
         assert!(g.len().is_power_of_two());
         assert_eq!(g.len(), x.len());
         assert!(f.size().is_power_of_two());
         assert_eq!(f.size(), x.len());
 
+        // z = [c_0 * r_0 + x_0, c_0 * r_1 + x_1, ..., c_0 * r_n + x_n]
         let z = x
             .iter()
             .zip(self.r.iter())
-            .map(|(x_, r)| *x_ * c_0 + r)
+            .map(|(x_, r)| *x_ * challenge + r)
             .collect::<Vec<_>>();
 
-        Self::compressed_response::<D, F>(z, &self.A_hat, P, g.to_vec(), f, c_0)
+        Self::compressed_response::<D, F>(z, g.to_vec(), f.clone())
     }
 
     pub fn compressed_response<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
         mut z: Vec<G::ScalarField>,
-        A_hat: &G,
-        P: &G,
         mut g: Vec<G>,
-        f: &F,
-        c_0: &G::ScalarField,
+        mut f: F,
     ) -> Response<G> {
         let mut bytes = vec![];
 
@@ -108,9 +105,6 @@ where
         let mut Bs = vec![];
         let mut as_ = vec![];
         let mut bs = vec![];
-
-        let mut Q = P.mul(c_0.into_repr()).add_mixed(&A_hat);
-        let mut f = f.clone();
 
         while z.len() > 2 {
             let m = g.len();
@@ -145,7 +139,6 @@ where
                 .zip(g_r.iter())
                 .map(|(l, r)| l.mul(c_repr).add_mixed(r).into_affine())
                 .collect::<Vec<_>>();
-            Q = A + Q.mul(c_repr) + B.mul(c.square().into_repr());
             // Set `f` to f' in the paper
             f = f_l.scale(&c).add(&f_r);
             z = z
@@ -182,7 +175,7 @@ where
         f: &F,
         A_hat: &G,
         t: &G,
-        c_0: &G::ScalarField,
+        challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
         assert!(g.len().is_power_of_two());
         assert_eq!(self.A.len(), self.B.len());
@@ -191,12 +184,43 @@ where
         assert_eq!(g.len(), 1 << (self.A.len() + 1));
         assert!(f.size().is_power_of_two());
 
-        let mut g = g.to_vec();
-        let mut f = f.clone();
-        let c_0_repr = c_0.into_repr();
-        let mut Q = P.mul(c_0_repr).add_mixed(A_hat);
-        let mut Y = y.mul(c_0_repr).add_mixed(t);
+        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
+        self.recursively_validate_compressed::<D, F>(Q, Y, g.to_vec(), f.clone())
+    }
 
+    /// This will delay scalar multiplications till the end similar to whats described in the Bulletproofs
+    /// paper, thus is faster than the naive version above
+    pub fn is_valid<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+        &self,
+        g: &[G],
+        P: &G,
+        y: &G,
+        f: &F,
+        A_hat: &G,
+        t: &G,
+        challenge: &G::ScalarField,
+    ) -> Result<(), CompSigmaError> {
+        assert!(g.len().is_power_of_two());
+        assert_eq!(self.A.len(), self.B.len());
+        assert_eq!(self.a.len(), self.b.len());
+        assert_eq!(self.A.len(), self.a.len());
+        assert_eq!(g.len(), 1 << (self.A.len() + 1));
+        assert!(f.size().is_power_of_two());
+
+        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
+        self.validate_compressed::<D, F>(Q, Y, g.to_vec(), f.clone())
+    }
+
+    pub fn recursively_validate_compressed<
+        D: Digest,
+        F: Homomorphism<G::ScalarField, Output = G> + Clone,
+    >(
+        &self,
+        mut Q: G::Projective,
+        mut Y: G::Projective,
+        mut g: Vec<G>,
+        mut f: F,
+    ) -> Result<(), CompSigmaError> {
         let mut bytes = vec![];
         for i in 0..self.A.len() {
             let A = &self.A[i];
@@ -229,7 +253,7 @@ where
         }
 
         if (g.len() != 2) || (f.size() != 2) {
-            return Err(CompSigmaError::InvalidResponse);
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
         }
 
         if VariableBaseMSM::multi_scalar_mul(
@@ -248,31 +272,13 @@ where
         Ok(())
     }
 
-    /// This will delay scalar multiplications till the end similar to whats described in the Bulletproofs
-    /// paper, thus is faster than the naive version above
-    pub fn is_valid<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+    pub fn validate_compressed<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
         &self,
-        g: &[G],
-        P: &G,
-        y: &G,
-        f: &F,
-        A_hat: &G,
-        t: &G,
-        c_0: &G::ScalarField,
+        mut Q: G::Projective,
+        mut Y: G::Projective,
+        g: Vec<G>,
+        mut f: F,
     ) -> Result<(), CompSigmaError> {
-        assert!(g.len().is_power_of_two());
-        assert_eq!(self.A.len(), self.B.len());
-        assert_eq!(self.a.len(), self.b.len());
-        assert_eq!(self.A.len(), self.a.len());
-        assert_eq!(g.len(), 1 << (self.A.len() + 1));
-        assert!(f.size().is_power_of_two());
-
-        let g = g.to_vec();
-        let mut f = f.clone();
-        let c_0_repr = c_0.into_repr();
-        let mut Q = P.mul(c_0_repr).add_mixed(A_hat);
-        let mut Y = y.mul(c_0_repr).add_mixed(t);
-
         // Create challenges for each round and store in `challenges`
         let mut challenges = vec![];
         // Holds squares of challenge of each round
@@ -368,6 +374,22 @@ where
     }
 }
 
+/// Q = A + P * challenge
+/// Y = t + Y * challenge
+pub fn calculate_Q_and_Y<G: AffineCurve>(
+    P: &G,
+    Y: &G,
+    A: &G,
+    t: &G,
+    challenge: &G::ScalarField,
+) -> (G::Projective, G::Projective) {
+    let challenge_repr = challenge.into_repr();
+    (
+        P.mul(challenge_repr).add_mixed(A),
+        Y.mul(challenge_repr).add_mixed(t),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,7 +441,7 @@ mod tests {
 
             let c_0 = Fr::rand(&mut rng);
 
-            let response = rand_comm.response::<Blake2b, _>(&g, &P, &homomorphism, &x, &c_0);
+            let response = rand_comm.response::<Blake2b, _>(&g, &homomorphism, &x, &c_0);
 
             let start = Instant::now();
             response

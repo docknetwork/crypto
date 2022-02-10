@@ -13,7 +13,9 @@ use ark_std::{
     ops::Add,
     rand::RngCore,
 };
+use digest::Digest;
 
+use crate::compressed_homomorphism;
 use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 
@@ -142,6 +144,53 @@ where
         }
         Ok(())
     }
+
+    pub fn compress<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+        self,
+        g: &[G],
+        f: &F,
+    ) -> compressed_homomorphism::Response<G> {
+        compressed_homomorphism::RandomCommitment::compressed_response::<D, F>(
+            self.z_tilde,
+            g.to_vec(),
+            f.clone(),
+        )
+    }
+
+    pub fn is_valid_compressed<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+        g: &[G],
+        f: &F,
+        Ps: &[G],
+        ys: &[G],
+        A: &G,
+        t: &G,
+        challenge: &G::ScalarField,
+        compressed_resp: &compressed_homomorphism::Response<G>,
+    ) -> Result<(), CompSigmaError> {
+        let (Q, Y) = calculate_Q_and_Y::<G>(Ps, ys, A, t, challenge);
+        compressed_resp.validate_compressed::<D, F>(Q, Y, g.to_vec(), f.clone())
+    }
+}
+
+/// Q = A + \sum_{i}(P_i * c^i)
+/// Y = t + \sum_{i}(Y_i * c^i)
+pub fn calculate_Q_and_Y<G: AffineCurve>(
+    Ps: &[G],
+    Ys: &[G],
+    A: &G,
+    t: &G,
+    challenge: &G::ScalarField,
+) -> (G::Projective, G::Projective) {
+    assert_eq!(Ps.len(), Ys.len());
+    let count_commitments = Ps.len();
+    let challenge_powers = get_n_powers(challenge.clone(), count_commitments);
+    let challenge_powers_repr = cfg_iter!(challenge_powers)
+        .map(|c| c.into_repr())
+        .collect::<Vec<_>>();
+
+    let Q = VariableBaseMSM::multi_scalar_mul(Ps, &challenge_powers_repr).add_mixed(A);
+    let Y = VariableBaseMSM::multi_scalar_mul(Ys, &challenge_powers_repr).add_mixed(t);
+    (Q, Y)
 }
 
 #[cfg(test)]
@@ -170,8 +219,82 @@ mod tests {
 
     #[test]
     fn amortization() {
+        fn check(max_size: usize) {
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let homomorphism = TestHom {
+                constants: (0..max_size)
+                    .map(|_| {
+                        <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine()
+                    })
+                    .collect::<Vec<_>>(),
+            };
+
+            let x1 = (0..max_size - 2)
+                .map(|_| Fr::rand(&mut rng))
+                .collect::<Vec<_>>();
+            let x2 = (0..max_size - 1)
+                .map(|_| Fr::rand(&mut rng))
+                .collect::<Vec<_>>();
+            let x3 = (0..max_size)
+                .map(|_| Fr::rand(&mut rng))
+                .collect::<Vec<_>>();
+
+            let g = (0..max_size)
+                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .collect::<Vec<_>>();
+
+            let comm1 = VariableBaseMSM::multi_scalar_mul(
+                &g,
+                &x1.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
+            )
+            .into_affine();
+            let eval1 = homomorphism.eval(&x1);
+
+            let comm2 = VariableBaseMSM::multi_scalar_mul(
+                &g,
+                &x2.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
+            )
+            .into_affine();
+            let eval2 = homomorphism.eval(&x2);
+
+            let comm3 = VariableBaseMSM::multi_scalar_mul(
+                &g,
+                &x3.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
+            )
+            .into_affine();
+            let eval3 = homomorphism.eval(&x3);
+
+            let rand_comm =
+                RandomCommitment::new(&mut rng, &g, max_size, &homomorphism, None).unwrap();
+            assert_eq!(rand_comm.r.len(), max_size);
+            let challenge = Fr::rand(&mut rng);
+            let response = rand_comm.response(vec![&x1, &x2, &x3], &challenge);
+            assert_eq!(response.z_tilde.len(), max_size);
+            response
+                .is_valid(
+                    &g,
+                    max_size,
+                    &[comm1, comm2, comm3],
+                    &[eval1, eval2, eval3],
+                    &homomorphism,
+                    &rand_comm.A,
+                    &rand_comm.t,
+                    &challenge,
+                )
+                .unwrap();
+        }
+
+        check(3);
+        check(7);
+        check(15);
+        check(31);
+    }
+
+    #[test]
+    fn amortization_and_compression() {
+        let max_size = 8;
+
         let mut rng = StdRng::seed_from_u64(0u64);
-        let max_size = 7;
         let homomorphism = TestHom {
             constants: (0..max_size)
                 .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
@@ -213,6 +336,9 @@ mod tests {
         .into_affine();
         let eval3 = homomorphism.eval(&x3);
 
+        let comms = [comm1, comm2, comm3];
+        let evals = [eval1, eval2, eval3];
+
         let rand_comm = RandomCommitment::new(&mut rng, &g, max_size, &homomorphism, None).unwrap();
         assert_eq!(rand_comm.r.len(), max_size);
         let challenge = Fr::rand(&mut rng);
@@ -222,13 +348,26 @@ mod tests {
             .is_valid(
                 &g,
                 max_size,
-                &[comm1, comm2, comm3],
-                &[eval1, eval2, eval3],
+                &comms,
+                &evals,
                 &homomorphism,
                 &rand_comm.A,
                 &rand_comm.t,
                 &challenge,
             )
             .unwrap();
+
+        let comp_resp = response.compress::<Blake2b, _>(&g, &homomorphism);
+        Response::is_valid_compressed::<Blake2b, _>(
+            &g,
+            &homomorphism,
+            &comms,
+            &evals,
+            &rand_comm.A,
+            &rand_comm.t,
+            &challenge,
+            &comp_resp,
+        )
+        .unwrap();
     }
 }

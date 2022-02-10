@@ -3,7 +3,7 @@
 
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
-use ark_ff::{Field, One, PrimeField, Zero};
+use ark_ff::PrimeField;
 use ark_poly::{
     polynomial::{univariate::DensePolynomial, UVPolynomial},
     Polynomial,
@@ -11,8 +11,6 @@ use ark_poly::{
 use ark_std::{
     cfg_into_iter, cfg_iter,
     collections::{BTreeMap, BTreeSet},
-    io::{Read, Write},
-    ops::Mul,
     rand::RngCore,
     vec,
     vec::Vec,
