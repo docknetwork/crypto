@@ -42,7 +42,7 @@ pub fn amortized_response<F: PrimeField>(
     z
 }
 
-/// Given `elem` and number `n`, return `n` powers of `elem` as `[elem, elem^2, elem^3, ..., elem^{n-1}]`
+/// Given `elem` and number `n`, return `n` powers of `elem` as `[elem, elem^2, elem^3, ..., elem^n]`
 pub fn get_n_powers<F: PrimeField>(elem: F, n: usize) -> Vec<F> {
     let mut powers = vec![elem; n];
     for i in 1..n {
@@ -87,7 +87,7 @@ pub fn get_g_multiples_for_verifying_compression<F: PrimeField>(
     g_multiples
 }
 
-/// Convert field element vector from [c_1, c_2, c_3, ..., c_{n-2}, c_{n-1}, c_n] to [c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_3*..*c_{n-2}*c_{n-1}*c_n, ..., c_{n-2}*c_{n-1}*c_n, c_{n-1}*c_n, c_n, 1]
+/// Convert field element vector from [c_1, c_2, c_3, ..., c_n] to [c_1*c_2*...*c_n, c_2*c_3*...*c_n, c_3*...*c_n, ..., c_{n-1}*c_n, c_n, 1]
 pub fn elements_to_element_products<F: PrimeField>(mut elements: Vec<F>) -> Vec<F> {
     for i in (1..elements.len()).rev() {
         let c = elements[i - 1] * elements[i];

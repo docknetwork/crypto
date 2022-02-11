@@ -573,9 +573,10 @@ mod tests {
             new_y.push(gamma);
 
             let rand_comm =
-                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None);
+                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
+                    .unwrap();
             let challenge = Fr::rand(&mut rng);
-            let response = rand_comm.response(&new_y, &challenge);
+            let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
                 .is_valid::<Blake2b, _>(
                     &new_gs,
@@ -671,9 +672,10 @@ mod tests {
             new_y.push(gamma);
 
             let rand_comm =
-                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None);
+                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
+                    .unwrap();
             let challenge = Fr::rand(&mut rng);
-            let response = rand_comm.response(&new_y, &challenge);
+            let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
                 .is_valid::<Blake2b, _>(
                     &new_gs,
@@ -775,9 +777,10 @@ mod tests {
             new_y.push(gamma);
 
             let rand_comm =
-                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None);
+                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
+                    .unwrap();
             let challenge = Fr::rand(&mut rng);
-            let response = rand_comm.response(&new_y, &challenge);
+            let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
                 .is_valid::<Blake2b, _>(
                     &new_gs,

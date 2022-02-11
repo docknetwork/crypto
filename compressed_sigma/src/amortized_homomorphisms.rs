@@ -26,13 +26,17 @@ use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineCurve> {
+    /// Random vector from Z_q^n
     pub r: Vec<G::ScalarField>,
+    /// A = \vec{g}^{\vec{r}}
     pub A: G,
+    /// t = f(\vec{r})
     pub t: G,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Response<G: AffineCurve> {
+    /// \vec{z} = r + \sum_{i=1}^s c^i*\vec{x_i}
     pub z: Vec<G::ScalarField>,
 }
 
@@ -57,6 +61,7 @@ pub fn create_rho_powers<D: Digest, G: AffineCurve>(
     rho_powers
 }
 
+/// Outputs the point y_1 + rho*y_2 + ... + rho^{s-1}*y_s
 pub fn combine_y<G: AffineCurve>(ys: &[G], rho_powers: &[G::ScalarField]) -> G::Projective {
     let r = cfg_iter!(rho_powers)
         .map(|r| r.into_repr())
@@ -64,6 +69,7 @@ pub fn combine_y<G: AffineCurve>(ys: &[G], rho_powers: &[G::ScalarField]) -> G::
     VariableBaseMSM::multi_scalar_mul(ys, &r)
 }
 
+/// Outputs the homomorphism f(x) = f_1(x) + rho*f_2(x) + ... + rho^{s-1}*f_s(x)
 pub fn combine_f<G: AffineCurve, F: Homomorphism<G::ScalarField, Output = G>>(
     fs: &[F],
     rho_powers: &[G::ScalarField],
@@ -86,14 +92,18 @@ where
         ys: &[G],
         fs: &[F],
         blindings: Option<Vec<G::ScalarField>>,
-    ) -> Self {
-        assert_eq!(ys.len(), fs.len());
+    ) -> Result<Self, CompSigmaError> {
+        if ys.len() != fs.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
 
         let rho_powers = create_rho_powers::<D, _>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
 
         let r = if let Some(blindings) = blindings {
-            assert_eq!(blindings.len(), g.len());
+            if blindings.len() != g.len() {
+                return Err(CompSigmaError::VectorLenMismatch);
+            }
             blindings
         } else {
             (0..g.len()).map(|_| G::ScalarField::rand(rng)).collect()
@@ -102,23 +112,29 @@ where
         let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
 
         let A = VariableBaseMSM::multi_scalar_mul(g, &scalars);
-        Self {
+        Ok(Self {
             r,
             A: A.into_affine(),
             t,
-        }
+        })
     }
 
-    pub fn response(&self, x: &[G::ScalarField], challenge: &G::ScalarField) -> Response<G> {
-        assert_eq!(self.r.len(), x.len());
-        Response {
+    pub fn response(
+        &self,
+        x: &[G::ScalarField],
+        challenge: &G::ScalarField,
+    ) -> Result<Response<G>, CompSigmaError> {
+        if self.r.len() != x.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
+        Ok(Response {
             z: self
                 .r
                 .iter()
                 .zip(x.iter())
                 .map(|(r, x)| *r + *x * challenge)
                 .collect(),
-        }
+        })
     }
 }
 
@@ -136,7 +152,9 @@ where
         t: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        assert_eq!(ys.len(), fs.len());
+        if ys.len() != fs.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
 
         let z_repr = cfg_iter!(self.z).map(|z| z.into_repr()).collect::<Vec<_>>();
         let challenge_repr = challenge.into_repr();
@@ -263,9 +281,10 @@ mod tests {
 
         let fs = pad_homomorphisms_to_have_same_size(&homs);
         let ys = fs.iter().map(|f| f.eval(&x)).collect::<Vec<_>>();
-        let rand_comm = RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None);
+        let rand_comm =
+            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let challenge = Fr::rand(&mut rng);
-        let response = rand_comm.response(&x, &challenge);
+        let response = rand_comm.response(&x, &challenge).unwrap();
         response
             .is_valid::<Blake2b, _>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
             .unwrap();
@@ -315,9 +334,10 @@ mod tests {
 
         let fs = pad_homomorphisms_to_have_same_size(&homs);
         let ys = fs.iter().map(|f| f.eval(&x)).collect::<Vec<_>>();
-        let rand_comm = RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None);
+        let rand_comm =
+            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let challenge = Fr::rand(&mut rng);
-        let response = rand_comm.response(&x, &challenge);
+        let response = rand_comm.response(&x, &challenge).unwrap();
         response
             .is_valid::<Blake2b, _>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
             .unwrap();

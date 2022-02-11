@@ -1,5 +1,4 @@
 //! Amortized sigma protocol with homomorphism as described in section 3.4 of the paper "Compressing Proofs of k-Out-Of-n".
-//! (https://eprint.iacr.org/2020/753)
 //! This is for the relation R_{AMOREXP} where a single homomorphism is applied over many witness vectors and
 //! there is a separate commitment to each witness vector.
 
@@ -29,14 +28,15 @@ pub struct RandomCommitment<G: AffineCurve> {
     pub max_size: usize,
     /// Random vector from Z_q^n
     pub r: Vec<G::ScalarField>,
-    /// A = g^r
+    /// A = \vec{g}^{\vec{r}}
     pub A: G,
-    /// t = f(r)
+    /// t = f(\vec{r})
     pub t: G,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Response<G: AffineCurve> {
+    /// z_tilde = r + \sum_{i=1}^s c^i*\vec{x_i}
     pub z_tilde: Vec<G::ScalarField>,
 }
 

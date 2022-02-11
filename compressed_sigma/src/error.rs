@@ -8,6 +8,7 @@ pub enum CompSigmaError {
     VectorLenMismatch,
     UncompressedNotPowerOf2,
     Serialization(SerializationError),
+    WrongRecursionLevel,
 }
 
 impl From<SerializationError> for CompSigmaError {

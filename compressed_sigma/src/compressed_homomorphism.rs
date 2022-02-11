@@ -53,10 +53,14 @@ where
         g: &[G],
         homomorphism: &F,
         blindings: Option<Vec<G::ScalarField>>,
-    ) -> Self {
-        assert!(g.len().is_power_of_two());
+    ) -> Result<Self, CompSigmaError> {
+        if !g.len().is_power_of_two() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
         let r = if let Some(blindings) = blindings {
-            assert_eq!(blindings.len(), g.len());
+            if blindings.len() != g.len() {
+                return Err(CompSigmaError::VectorLenMismatch);
+            }
             blindings
         } else {
             (0..g.len()).map(|_| G::ScalarField::rand(rng)).collect()
@@ -65,11 +69,11 @@ where
         let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
 
         let A_hat = VariableBaseMSM::multi_scalar_mul(g, &scalars);
-        Self {
+        Ok(Self {
             r,
             A_hat: A_hat.into_affine(),
             t,
-        }
+        })
     }
 
     pub fn response<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
@@ -78,11 +82,19 @@ where
         f: &F,
         x: &[G::ScalarField],
         challenge: &G::ScalarField,
-    ) -> Response<G> {
-        assert!(g.len().is_power_of_two());
-        assert_eq!(g.len(), x.len());
-        assert!(f.size().is_power_of_two());
-        assert_eq!(f.size(), x.len());
+    ) -> Result<Response<G>, CompSigmaError> {
+        if !g.len().is_power_of_two() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
+        if g.len() != x.len() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
+        if !f.size().is_power_of_two() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
+        if f.size() != x.len() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
 
         // z = [c_0 * r_0 + x_0, c_0 * r_1 + x_1, ..., c_0 * r_n + x_n]
         let z = x
@@ -91,7 +103,7 @@ where
             .map(|(x_, r)| *x_ * challenge + r)
             .collect::<Vec<_>>();
 
-        Self::compressed_response::<D, F>(z, g.to_vec(), f.clone())
+        Ok(Self::compressed_response::<D, F>(z, g.to_vec(), f.clone()))
     }
 
     pub fn compressed_response<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
@@ -177,12 +189,24 @@ where
         t: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        assert!(g.len().is_power_of_two());
-        assert_eq!(self.A.len(), self.B.len());
-        assert_eq!(self.a.len(), self.b.len());
-        assert_eq!(self.A.len(), self.a.len());
-        assert_eq!(g.len(), 1 << (self.A.len() + 1));
-        assert!(f.size().is_power_of_two());
+        if !g.len().is_power_of_two() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
+        if self.A.len() != self.B.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
+        if self.a.len() != self.b.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
+        if self.A.len() != self.a.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
+        if g.len() != 1 << (self.A.len() + 1) {
+            return Err(CompSigmaError::WrongRecursionLevel);
+        }
+        if !f.size().is_power_of_two() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
 
         let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
         self.recursively_validate_compressed::<D, F>(Q, Y, g.to_vec(), f.clone())
@@ -306,8 +330,8 @@ where
         }
 
         // Calculate the final g' and Q' for checking the relations Q' == g' * z' and f'(z') == a + c * y + c^2 * b
-
         let g_len = g.len();
+
         // Multiples of original g vector to create the final product g' * z'
         let g_multiples = get_g_multiples_for_verifying_compression(
             g_len,
@@ -322,13 +346,13 @@ where
         // = A_{i+1} + c_{i+1} * (A_{i} + c_{i} * Q_{i-1} + c_{i}^2 * B_{i}) + c_{i+1}^2 * B_{i+1}
         // = A_{i+1} + c_{i+1} * A_{i} + c_{i+1} * c_i * Q_{i-1} + c_{i+1} * c_{i}^2 * B_{i} + c_{i+1}^2 * B_{i+1}
         // From above, contribution of A vector in final Q will be A_1 * (c_2*c_3*..*c_n) + A_2 * (c_3*c_4..*c_n) + ... + A_n.
-        // Similarly, contribution of B vector in final Q will be B_1 * (c_1^2*c_2*c_3*..*c_n) + B_2 * (c_2^2*c_3*c_4..*c_n) + ... + B_n * c_n^2
-        // Same logic is followed for constructing Y as well.
+        // Similarly, contribution of B vector in final Q will be B_1 * (c_1^2*c_2*c_3*...*c_n) + B_2 * (c_2^2*c_3*...*c_n) + ... + B_n * c_n^2
+        // Similar logic is followed for constructing Y as well.
 
-        // Convert challenge vector from [c_1, c_2, c_3, ..., c_{n-2}, c_{n-1}, c_n] to [c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_3*..*c_{n-2}*c_{n-1}*c_n, ..., c_{n-2}*c_{n-1}*c_n, c_{n-1}*c_n, c_n]
+        // Convert challenge vector from [c_1, c_2, c_3, ..., c_n] to [c_1*c_2*c_3*..*c_n, c_2*c_3*..*c_n, ..., c_{n-1}*c_n, c_n]
         let mut challenge_products = elements_to_element_products(challenges);
 
-        // c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n
+        // c_1*c_2*c_3*...*c_n
         let all_challenges_product = challenge_products.remove(0);
 
         // `B_multiples` is of form [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2]
@@ -342,8 +366,8 @@ where
             .map(|c| c.into_repr())
             .collect::<Vec<_>>();
 
-        // Q' = A * [c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_3*..*c_{n-2}*c_{n-1}*c_n, ..., c_{n-2}*c_{n-1}*c_n, c_{n-1}*c_n, c_n, 1] + B * [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Q * c_1^2*c_2*c_3*..*c_n
-        // Set Q to Q*(c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n)
+        // Q' = A * [c_2*c_3*...*c_n, c_3*...*c_n, ..., c_{n-1}*c_n, c_n, 1] + B * [c_1^2*c_2*c_3*...*c_n, c_2^2*c_3...*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Q * c_1^2*c_2*c_3*...*c_n
+        // Set Q to Q*(c_1*c_2*c_3*...*c_n)
         Q.mul_assign(all_challenges_product);
         let Q_prime = VariableBaseMSM::multi_scalar_mul(&self.A, &challenges_repr)
             + VariableBaseMSM::multi_scalar_mul(&self.B, &B_multiples)
@@ -360,8 +384,8 @@ where
         // Check if f'(z') == a + c * Y + c^2 * b'
 
         // Y' = a + c * Y + c^2 * b'
-        // Y' = a * [c_2*c_3*..*c_{n-2}*c_{n-1}*c_n, c_3*..*c_{n-2}*c_{n-1}*c_n, ..., c_{n-2}*c_{n-1}*c_n, c_{n-1}*c_n, c_n, 1] + b * [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Y
-        // Set Y to Y*(c_1*c_2*c_3*..*c_{n-2}*c_{n-1}*c_n)
+        // Y' = a * [c_2*c_3*...*c_n, c_3*...*c_n, ..., c_{n-1}*c_n, c_n, 1] + b * [c_1^2*c_2*...*c_n, c_2^2*c_3*...*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Y
+        // Set Y to Y*(c_1*c_2*...*c_n)
         Y.mul_assign(all_challenges_product);
         let Y_prime = VariableBaseMSM::multi_scalar_mul(&self.a, &challenges_repr)
             + VariableBaseMSM::multi_scalar_mul(&self.b, &B_multiples)
@@ -437,11 +461,13 @@ mod tests {
             .into_affine();
             let y = homomorphism.eval(&x);
 
-            let rand_comm = RandomCommitment::new(&mut rng, &g, &homomorphism, None);
+            let rand_comm = RandomCommitment::new(&mut rng, &g, &homomorphism, None).unwrap();
 
             let c_0 = Fr::rand(&mut rng);
 
-            let response = rand_comm.response::<Blake2b, _>(&g, &homomorphism, &x, &c_0);
+            let response = rand_comm
+                .response::<Blake2b, _>(&g, &homomorphism, &x, &c_0)
+                .unwrap();
 
             let start = Instant::now();
             response
