@@ -194,7 +194,8 @@ where
     G: AffineCurve,
 {
     /// Validate the proof of knowledge in the recursive manner where the size of the various
-    /// vectors is reduced to half in each iteration. This execution is similar to the prover's
+    /// vectors is reduced to half in each iteration. This execution is similar to the prover's.
+    /// A naive and thus slower implementation than `is_valid`
     pub fn is_valid_recursive<D: Digest, L: LinearForm<G::ScalarField>>(
         &self,
         g: &[G],
@@ -425,7 +426,6 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::PairingEngine;
-    use ark_ff::One;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,

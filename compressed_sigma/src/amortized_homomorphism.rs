@@ -145,6 +145,7 @@ where
         Ok(())
     }
 
+    /// Compress a response to reduce its size to lg(n)
     pub fn compress<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
         self,
         g: &[G],
@@ -157,6 +158,7 @@ where
         )
     }
 
+    /// Check if a compressed response is valid.
     pub fn is_valid_compressed<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
         g: &[G],
         f: &F,
@@ -198,7 +200,6 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::PairingEngine;
-    use ark_ff::One;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -344,6 +345,8 @@ mod tests {
         let challenge = Fr::rand(&mut rng);
         let response = rand_comm.response(vec![&x1, &x2, &x3], &challenge);
         assert_eq!(response.z_tilde.len(), max_size);
+
+        let start = Instant::now();
         response
             .is_valid(
                 &g,
@@ -356,8 +359,23 @@ mod tests {
                 &challenge,
             )
             .unwrap();
+        println!(
+            "Verification of uncompressed response of {} commitments, with max size {} takes: {:?}",
+            comms.len(),
+            max_size,
+            start.elapsed()
+        );
 
+        let start = Instant::now();
         let comp_resp = response.compress::<Blake2b, _>(&g, &homomorphism);
+        println!(
+            "Compressing response of {} commitments, with max size {} takes: {:?}",
+            comms.len(),
+            max_size,
+            start.elapsed()
+        );
+
+        let start = Instant::now();
         Response::is_valid_compressed::<Blake2b, _>(
             &g,
             &homomorphism,
@@ -369,5 +387,11 @@ mod tests {
             &comp_resp,
         )
         .unwrap();
+        println!(
+            "Verification of compressed response of {} commitments, with max size {} takes: {:?}",
+            comms.len(),
+            max_size,
+            start.elapsed()
+        );
     }
 }

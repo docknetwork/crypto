@@ -179,6 +179,7 @@ impl<G> Response<G>
 where
     G: AffineCurve,
 {
+    /// Check if response is valid. A naive and thus slower implementation than `is_valid`
     pub fn is_valid_recursive<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
         &self,
         g: &[G],
@@ -304,7 +305,7 @@ where
         mut Q: G::Projective,
         mut Y: G::Projective,
         g: Vec<G>,
-        mut f: F,
+        f: F,
     ) -> Result<(), CompSigmaError> {
         // Create challenges for each round and store in `challenges`
         let mut challenges = vec![];
@@ -323,11 +324,6 @@ where
             b.serialize(&mut bytes).unwrap();
             let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
 
-            // TODO: When `f` is an elliptic curve group, the following can use MSM and can be taken out
-            // of this loop
-            let (f_l, f_r) = f.split_in_half();
-            f = f_l.scale(&c).add(&f_r).unwrap();
-
             challenge_squares.push(c.square());
             challenges.push(c);
         }
@@ -336,6 +332,7 @@ where
         let g_len = g.len();
 
         // Multiples of original g vector to create the final product g' * z'
+        // The same multiples are also used for the homomorphism
         let g_multiples = get_g_multiples_for_verifying_compression(
             g_len,
             &challenges,
@@ -394,7 +391,7 @@ where
             + VariableBaseMSM::multi_scalar_mul(&self.b, &B_multiples)
             + Y;
         let f_prime_z_prime = f
-            .eval(&[self.z_prime_0, self.z_prime_1])
+            .eval(&g_multiples)
             .unwrap()
             .into_projective();
         if Y_prime != f_prime_z_prime {
@@ -425,7 +422,6 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::PairingEngine;
-    use ark_ff::One;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -469,10 +465,10 @@ mod tests {
 
             let rand_comm = RandomCommitment::new(&mut rng, &g, &homomorphism, None).unwrap();
 
-            let c_0 = Fr::rand(&mut rng);
+            let challenge = Fr::rand(&mut rng);
 
             let response = rand_comm
-                .response::<Blake2b, _>(&g, &homomorphism, &x, &c_0)
+                .response::<Blake2b, _>(&g, &homomorphism, &x, &challenge)
                 .unwrap();
 
             let start = Instant::now();
@@ -484,7 +480,7 @@ mod tests {
                     &homomorphism,
                     &rand_comm.A_hat,
                     &rand_comm.t,
-                    &c_0,
+                    &challenge,
                 )
                 .unwrap();
             println!(
@@ -502,7 +498,7 @@ mod tests {
                     &homomorphism,
                     &rand_comm.A_hat,
                     &rand_comm.t,
-                    &c_0,
+                    &challenge,
                 )
                 .unwrap();
             println!(

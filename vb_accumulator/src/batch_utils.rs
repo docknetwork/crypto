@@ -5,7 +5,7 @@
 
 use crate::setup::SecretKey;
 use ark_ec::msm::VariableBaseMSM;
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::AffineCurve;
 use ark_ff::{batch_inversion, One, PrimeField, Zero};
 use ark_poly::polynomial::{univariate::DensePolynomial, UVPolynomial};
 use ark_poly::Polynomial;
@@ -19,7 +19,9 @@ use ark_std::{
     vec::Vec,
 };
 use dock_crypto_utils::{
-    ec::batch_normalize_projective_into_affine, msm::multiply_field_elems_with_same_group_elem,
+    ec::batch_normalize_projective_into_affine,
+    msm::multiply_field_elems_with_same_group_elem,
+    poly::{inner_product_poly, multiply_many_polys, multiply_poly},
     serde_utils::*,
 };
 
@@ -28,22 +30,6 @@ use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-/// Naive multiplication (n^2) of 2 polynomials defined over prime fields
-fn multiply_poly<F: PrimeField>(
-    left: &DensePolynomial<F>,
-    right: &DensePolynomial<F>,
-) -> DensePolynomial<F> {
-    let mut product = (0..(left.degree() + right.degree() + 1))
-        .map(|_| F::zero())
-        .collect::<Vec<_>>();
-    for i in 0..=left.degree() {
-        for j in 0..=right.degree() {
-            product[i + j] += left.coeffs[i] * right.coeffs[j];
-        }
-    }
-    DensePolynomial::from_coefficients_vec(product)
-}
 
 /// Create a polynomial with given points in `updates` as:
 /// (updates[0]-x) * (updates[1]-x) * (updates[2] - x)...(updates[last] - x)
@@ -57,25 +43,17 @@ fn poly_from_given_updates<F: PrimeField>(updates: &[F]) -> DensePolynomial<F> {
     #[cfg(not(feature = "parallel"))]
     let x_i = updates
         .iter()
-        .map(|i| DensePolynomial::from_coefficients_slice(&[*i, minus_one]));
+        .map(|i| DensePolynomial::from_coefficients_slice(&[*i, minus_one]))
+        .collect::<Vec<_>>();
 
     #[cfg(feature = "parallel")]
     let x_i = updates
         .par_iter()
-        .map(|i| DensePolynomial::from_coefficients_slice(&[*i, minus_one]));
+        .map(|i| DensePolynomial::from_coefficients_slice(&[*i, minus_one]))
+        .collect();
 
     // Product (updates[0]-x) * (updates[1]-x) * (updates[2] - x)...(updates[last] - x)
-    #[cfg(not(feature = "parallel"))]
-    let r = x_i
-        .into_iter()
-        .reduce(|a, b| multiply_poly(&a, &b))
-        .unwrap();
-
-    #[cfg(feature = "parallel")]
-    let r = x_i.into_par_iter().reduce(
-        || DensePolynomial::from_coefficients_vec(vec![F::one()]),
-        |a, b| multiply_poly(&a, &b),
-    );
+    let r = multiply_many_polys(x_i);
 
     r
     // Note: Using multiply operator from ark-poly is orders of magnitude slower than naive multiplication
@@ -159,16 +137,7 @@ where
             );
         }
 
-        let product = cfg_into_iter!(factors)
-            .zip(cfg_into_iter!(polys))
-            .map(|(f, p)| &p * f);
-
-        #[cfg(feature = "parallel")]
-        let sum = product.reduce(DensePolynomial::zero, |a, b| a + b);
-
-        #[cfg(not(feature = "parallel"))]
-        let sum = product.fold(DensePolynomial::zero(), |a, b| a + b);
-
+        let sum = inner_product_poly(polys, factors);
         Self(sum)
     }
 
@@ -294,16 +263,7 @@ where
             );
         }
 
-        let product = cfg_into_iter!(factors)
-            .zip(cfg_into_iter!(polys))
-            .map(|(f, p)| &p * f);
-
-        #[cfg(feature = "parallel")]
-        let sum = product.reduce(DensePolynomial::zero, |a, b| a + b);
-
-        #[cfg(not(feature = "parallel"))]
-        let sum = product.fold(DensePolynomial::zero(), |a, b| a + b);
-
+        let sum = inner_product_poly(polys, factors);
         Self(sum)
     }
 

@@ -40,6 +40,8 @@ pub struct Response<G: AffineCurve> {
     pub z: Vec<G::ScalarField>,
 }
 
+/// Create a random challenge `rho` and returns its `n` powers as `[1, rho, rho^2, ..., rho^{n-1}]`
+/// `rho` is created by hashing the publicly known values, in this case `P`, vectors `g` and `ys`,
 pub fn create_rho_powers<D: Digest, G: AffineCurve>(
     g: &[G],
     P: &G,
@@ -61,15 +63,17 @@ pub fn create_rho_powers<D: Digest, G: AffineCurve>(
     rho_powers
 }
 
+/// Inner product of vectors `ys` and `rho_powers`
 /// Outputs the point y_1 + rho*y_2 + ... + rho^{s-1}*y_s
 pub fn combine_y<G: AffineCurve>(ys: &[G], rho_powers: &[G::ScalarField]) -> G::Projective {
-    let r = cfg_iter!(rho_powers)
+    let r = cfg_iter!(rho_powers[..ys.len()])
         .map(|r| r.into_repr())
         .collect::<Vec<_>>();
     VariableBaseMSM::multi_scalar_mul(ys, &r)
 }
 
-/// Outputs the homomorphism f(x) = f_1(x) + rho*f_2(x) + ... + rho^{s-1}*f_s(x)
+/// Inner product of vectors `fs` and `rho_powers`.
+/// Outputs the homomorphism f(x) `fs[0] * rho_powers[0] + fs[1] * rho_powers[1] + ... + fs[n] * rho_powers[n]`
 pub fn combine_f<G: AffineCurve, F: Homomorphism<G::ScalarField, Output = G>>(
     fs: &[F],
     rho_powers: &[G::ScalarField],
@@ -208,7 +212,7 @@ where
             t,
             challenge,
         );
-        compressed_resp.recursively_validate_compressed::<D, F>(Q, Y, g.to_vec(), f_rho)
+        compressed_resp.validate_compressed::<D, F>(Q, Y, g.to_vec(), f_rho)
     }
 }
 
@@ -218,7 +222,6 @@ mod tests {
     use crate::utils::pad_homomorphisms_to_have_same_size;
     use ark_bls12_381::Bls12_381;
     use ark_ec::PairingEngine;
-    use ark_ff::One;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -231,41 +234,31 @@ mod tests {
     type G1 = <Bls12_381 as PairingEngine>::G1Affine;
 
     #[derive(Clone)]
-    struct TestHom<G: AffineCurve> {
-        pub constants: Vec<G>,
+    struct TestHom<G1> {
+        pub constants: Vec<G1>,
+    }
+
+    impl TestHom<G1> {
+        fn new<R: RngCore>(rng: &mut R, size: usize) -> Self {
+            Self {
+                constants: (0..size)
+                    .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(rng).into_affine())
+                    .collect::<Vec<_>>(),
+            }
+        }
     }
 
     impl_simple_homomorphism!(TestHom, Fr, G1);
 
     #[test]
     fn amortization() {
-        let mut rng = StdRng::seed_from_u64(0u64);
         let size = 8;
-        let hom1 = TestHom {
-            constants: (0..size - 1)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
-        let hom2 = TestHom {
-            constants: (0..size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
-        let hom3 = TestHom {
-            constants: (0..size - 2)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
-        let hom4 = TestHom {
-            constants: (0..size + 5)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
-        let hom5 = TestHom {
-            constants: (0..size + 1)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let hom1 = TestHom::new(&mut rng, size - 1);
+        let hom2 = TestHom::new(&mut rng, size);
+        let hom3 = TestHom::new(&mut rng, size - 2);
+        let hom4 = TestHom::new(&mut rng, size + 5);
+        let hom5 = TestHom::new(&mut rng, size + 1);
         let homs = [hom1, hom2, hom3, hom4, hom5];
 
         let x = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
@@ -294,31 +287,11 @@ mod tests {
     fn amortization_and_compression() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let size = 8;
-        let hom1 = TestHom {
-            constants: (0..size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
-        let hom2 = TestHom {
-            constants: (0..size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
-        let hom3 = TestHom {
-            constants: (0..size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
-        let hom4 = TestHom {
-            constants: (0..size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
-        let hom5 = TestHom {
-            constants: (0..size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-                .collect::<Vec<_>>(),
-        };
+        let hom1 = TestHom::new(&mut rng, size);
+        let hom2 = TestHom::new(&mut rng, size);
+        let hom3 = TestHom::new(&mut rng, size);
+        let hom4 = TestHom::new(&mut rng, size);
+        let hom5 = TestHom::new(&mut rng, size);
         let homs = [hom1, hom2, hom3, hom4, hom5];
 
         let x = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
@@ -338,11 +311,28 @@ mod tests {
             RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let challenge = Fr::rand(&mut rng);
         let response = rand_comm.response(&x, &challenge).unwrap();
+
+        let start = Instant::now();
         response
             .is_valid::<Blake2b, _>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
             .unwrap();
+        println!(
+            "Verification of uncompressed response of {} homomorphisms, each of size {} takes: {:?}",
+            fs.len(),
+            size,
+            start.elapsed()
+        );
 
+        let start = Instant::now();
         let comp_resp = response.compress::<Blake2b, _>(&g, &comm, &ys, &fs);
+        println!(
+            "Compressing response of {} homomorphisms, each of size {} takes: {:?}",
+            homs.len(),
+            size,
+            start.elapsed()
+        );
+
+        let start = Instant::now();
         Response::is_valid_compressed::<Blake2b, _>(
             &g,
             &fs,
@@ -354,5 +344,64 @@ mod tests {
             &comp_resp,
         )
         .unwrap();
+        println!(
+            "Verification of compressed response of {} homomorphisms, each of size {} takes: {:?}",
+            fs.len(),
+            size,
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn amortization_and_compression_with_amortization_done_beforehand() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let size = 8;
+        let hom1 = TestHom::new(&mut rng, size);
+        let hom2 = TestHom::new(&mut rng, size);
+        let hom3 = TestHom::new(&mut rng, size);
+        let hom4 = TestHom::new(&mut rng, size);
+        let hom5 = TestHom::new(&mut rng, size);
+        let homs = [hom1, hom2, hom3, hom4, hom5];
+
+        let x = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
+        let g = (0..size)
+            .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+            .collect::<Vec<_>>();
+
+        let comm = VariableBaseMSM::multi_scalar_mul(
+            &g,
+            &x.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
+        )
+        .into_affine();
+
+        let fs = pad_homomorphisms_to_have_same_size(&homs);
+        let ys = fs.iter().map(|f| f.eval(&x).unwrap()).collect::<Vec<_>>();
+
+        // Amortize before the protocol is started
+        let start = Instant::now();
+        let rho_powers = create_rho_powers::<Blake2b, _>(&g, &comm, &ys);
+        let f_rho = combine_f(&fs, &rho_powers);
+        let y_rho = combine_y(&ys, &rho_powers).into_affine();
+        println!(
+            "Time to amortize {} homomorphisms, each of size {} takes: {:?}",
+            fs.len(),
+            size,
+            start.elapsed()
+        );
+
+        let rand_comm = compressed_homomorphism::RandomCommitment::new(&mut rng, &g, &f_rho, None).unwrap();
+        let challenge = Fr::rand(&mut rng);
+        let response = rand_comm.response::<Blake2b, _>(&g, &f_rho, &x, &challenge).unwrap();
+        response
+            .is_valid::<Blake2b, _>(
+                &g,
+                &comm,
+                &y_rho,
+                &f_rho,
+                &rand_comm.A_hat,
+                &rand_comm.t,
+                &challenge,
+            )
+            .unwrap();
     }
 }

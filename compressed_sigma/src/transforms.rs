@@ -13,6 +13,8 @@ pub trait LinearForm<F: Field>: Sized {
     fn split_in_half(&self) -> (Self, Self);
 
     fn size(&self) -> usize;
+
+    fn pad(&self, new_size: usize) -> Self;
 }
 
 /// For a group homomorphism, i.e. for a function `f` and vectors `x` and `y`, `f(x+y) = f(x)*f(y)`

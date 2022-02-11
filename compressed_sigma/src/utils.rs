@@ -1,9 +1,11 @@
-use ark_ec::AffineCurve;
+use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::PrimeField;
 use ark_std::{vec, vec::Vec};
+use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
+use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
 use crate::error::CompSigmaError;
-use crate::transforms::Homomorphism;
+use crate::transforms::{Homomorphism, LinearForm};
 
 /// Pad given homomorphisms such that all have the same size after padding
 pub fn pad_homomorphisms_to_have_same_size<
@@ -12,6 +14,17 @@ pub fn pad_homomorphisms_to_have_same_size<
 >(
     fs: &[F],
 ) -> Vec<F> {
+    let mut max_size = 0;
+    for f in fs {
+        if f.size() > max_size {
+            max_size = f.size();
+        }
+    }
+    fs.iter().map(|f| f.pad(max_size)).collect()
+}
+
+/// Pad given linear forms such that all have the same size after padding
+pub fn pad_linear_forms_to_have_same_size<F: PrimeField, L: LinearForm<F>>(fs: &[L]) -> Vec<L> {
     let mut max_size = 0;
     for f in fs {
         if f.size() > max_size {
@@ -50,6 +63,23 @@ pub fn get_n_powers<F: PrimeField>(elem: F, n: usize) -> Vec<F> {
         powers[i] = powers[i - 1] * elem;
     }
     powers
+}
+
+/// Returns vector [g * i * coeff, g * i^2 * coeff, g * i^3 * coeff, ..., g * i^n * coeff]
+pub fn multiples_with_n_powers_of_i<G: AffineCurve>(
+    g: &G,
+    i: G::ScalarField,
+    n: usize,
+    coeff: &G::ScalarField,
+) -> Vec<G> {
+    let mut i_powers = vec![i * coeff];
+    for j in 1..n {
+        i_powers.push(i_powers[j - 1] * i);
+    }
+    batch_normalize_projective_into_affine(multiply_field_elems_with_same_group_elem(
+        g.into_projective(),
+        &i_powers,
+    ))
 }
 
 /// In each round i, current g is split in 2 halves, g_l and g_r and new g is created as c_i*g_l + g_r
@@ -142,6 +172,22 @@ macro_rules! impl_simple_linear_form {
 
             fn size(&self) -> usize {
                 self.constants.len()
+            }
+
+            fn pad(&self, new_size: usize) -> Self {
+                let mut new_consts = self.constants.clone();
+                if self.constants.len() < new_size {
+                    for _ in 0..new_size - self.constants.len() {
+                        new_consts.push(<$type>::zero())
+                    }
+                    Self {
+                        constants: new_consts,
+                    }
+                } else {
+                    Self {
+                        constants: new_consts,
+                    }
+                }
             }
         }
     };

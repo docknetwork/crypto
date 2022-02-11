@@ -12,11 +12,14 @@ use ark_std::{
 };
 use digest::Digest;
 
+use dock_crypto_utils::ff::inner_product;
+
 use crate::compressed_linear_form;
 use crate::error::CompSigmaError;
 use crate::transforms::LinearForm;
 
 use crate::utils::{amortized_response, get_n_powers};
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -76,7 +79,7 @@ where
     pub fn response(
         &self,
         witnesses: Vec<&[G::ScalarField]>,
-        gammas: Vec<&G::ScalarField>,
+        gammas: &[G::ScalarField],
         challenge: &G::ScalarField,
     ) -> Result<Response<G>, CompSigmaError> {
         if witnesses.len() != gammas.len() {
@@ -90,10 +93,7 @@ where
         let z_tilde = amortized_response(self.max_size, &challenge_powers, &self.r, witnesses);
 
         // phi = rho + \sum_{j}(gamma_j * c^j)
-        let phi = self.rho
-            + cfg_into_iter!(0..count_commitments)
-                .map(|i| challenge_powers[i] * gammas[i])
-                .reduce(|| G::ScalarField::zero(), |accum, v| accum + v);
+        let phi = self.rho + inner_product(&challenge_powers, gammas);
         Ok(Response { z_tilde, phi })
     }
 }
@@ -146,9 +146,7 @@ where
         }
 
         // Check \sum_{i}(y_i * c^i) + t == L(z_tilde)
-        let c_y = cfg_into_iter!(0..count_commitments)
-            .map(|i| challenge_powers[i] * y[i])
-            .reduce(|| G::ScalarField::zero(), |accum, v| accum + v);
+        let c_y = inner_product(&challenge_powers, y);
         if !(c_y + t - linear_form.eval(&self.z_tilde)).is_zero() {
             return Err(CompSigmaError::InvalidResponse);
         }
@@ -299,6 +297,10 @@ mod tests {
         fn size(&self) -> usize {
             unimplemented!()
         }
+
+        fn pad(&self, _new_size: usize) -> Self {
+            unimplemented!()
+        }
     }
 
     #[derive(Clone)]
@@ -365,13 +367,8 @@ mod tests {
                 RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form_1, None).unwrap();
             assert_eq!(rand_comm.r.len(), max_size);
             let challenge = Fr::rand(&mut rng);
-            let response = rand_comm
-                .response(
-                    vec![&x1, &x2, &x3],
-                    vec![&gamma1, &gamma2, &gamma3],
-                    &challenge,
-                )
-                .unwrap();
+            let response =
+                rand_comm.response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge).unwrap();
             assert_eq!(response.z_tilde.len(), max_size);
             response
                 .is_valid(
@@ -391,13 +388,8 @@ mod tests {
                 RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form_2, None).unwrap();
             assert_eq!(rand_comm.r.len(), max_size);
             let challenge = Fr::rand(&mut rng);
-            let response = rand_comm
-                .response(
-                    vec![&x1, &x2, &x3],
-                    vec![&gamma1, &gamma2, &gamma3],
-                    &challenge,
-                )
-                .unwrap();
+            let response =
+                rand_comm.response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge).unwrap();
             assert_eq!(response.z_tilde.len(), max_size);
             response
                 .is_valid(
@@ -478,7 +470,7 @@ mod tests {
         assert_eq!(rand_comm.r.len(), max_size);
         let c_0 = Fr::rand(&mut rng);
         let response = rand_comm
-            .response(vec![&x1, &x2, &x3], vec![&gamma1, &gamma2, &gamma3], &c_0)
+            .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &c_0)
             .unwrap();
         assert_eq!(response.z_tilde.len(), max_size);
         response
