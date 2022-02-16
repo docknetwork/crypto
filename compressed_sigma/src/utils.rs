@@ -2,6 +2,7 @@ use ark_ec::AffineCurve;
 use ark_ff::PrimeField;
 use ark_std::{vec, vec::Vec};
 
+use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 
 /// Pad given homomorphisms such that all have the same size after padding
@@ -150,15 +151,15 @@ macro_rules! impl_simple_homomorphism {
     ($name: ident, $preimage_type: ty, $image_type: ty) => {
         impl Homomorphism<$preimage_type> for $name<$image_type> {
             type Output = $image_type;
-            fn eval(&self, x: &[$preimage_type]) -> Self::Output {
-                VariableBaseMSM::multi_scalar_mul(
+            fn eval(&self, x: &[$preimage_type]) -> Result<Self::Output, CompSigmaError> {
+                Ok(VariableBaseMSM::multi_scalar_mul(
                     &self.constants,
                     x.iter()
                         .map(|x| x.into_repr())
                         .collect::<Vec<_>>()
                         .as_slice(),
                 )
-                .into_affine()
+                .into_affine())
             }
 
             fn scale(&self, scalar: &$preimage_type) -> Self {
@@ -169,15 +170,15 @@ macro_rules! impl_simple_homomorphism {
                 }
             }
 
-            fn add(&self, other: &Self) -> Self {
-                Self {
+            fn add(&self, other: &Self) -> Result<Self, CompSigmaError> {
+                Ok(Self {
                     constants: self
                         .constants
                         .iter()
                         .zip(other.constants.iter())
                         .map(|(a, b)| *a + *b)
                         .collect::<Vec<_>>(),
-                }
+                })
             }
 
             fn split_in_half(&self) -> (Self, Self) {

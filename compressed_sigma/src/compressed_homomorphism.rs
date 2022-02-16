@@ -65,7 +65,7 @@ where
         } else {
             (0..g.len()).map(|_| G::ScalarField::rand(rng)).collect()
         };
-        let t = homomorphism.eval(&r);
+        let t = homomorphism.eval(&r).unwrap();
         let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
 
         let A_hat = VariableBaseMSM::multi_scalar_mul(g, &scalars);
@@ -135,8 +135,8 @@ where
                 &g,
                 &z_r.iter().map(|z| z.into_repr()).collect::<Vec<_>>(),
             );
-            let a = f_r.eval(&z);
-            let b = f_l.eval(&z_r);
+            let a = f_r.eval(&z).unwrap();
+            let b = f_l.eval(&z_r).unwrap();
 
             A.serialize(&mut bytes).unwrap();
             B.serialize(&mut bytes).unwrap();
@@ -152,7 +152,7 @@ where
                 .map(|(l, r)| l.mul(c_repr).add_mixed(r).into_affine())
                 .collect::<Vec<_>>();
             // Set `f` to f' in the paper
-            f = f_l.scale(&c).add(&f_r);
+            f = f_l.scale(&c).add(&f_r).unwrap();
             z = z
                 .iter()
                 .zip(z_r.iter())
@@ -269,7 +269,7 @@ where
                 .collect::<Vec<_>>();
 
             let (f_l, f_r) = f.split_in_half();
-            f = f_l.scale(&c).add(&f_r);
+            f = f_l.scale(&c).add(&f_r).unwrap();
 
             let c_sq = c.square().into_repr();
             Q = A.into_projective() + Q.mul(c_repr) + B.mul(c_sq);
@@ -288,7 +288,10 @@ where
             return Err(CompSigmaError::InvalidResponse);
         }
 
-        let f_prime_z_prime = f.eval(&[self.z_prime_0, self.z_prime_1]).into_projective();
+        let f_prime_z_prime = f
+            .eval(&[self.z_prime_0, self.z_prime_1])
+            .unwrap()
+            .into_projective();
 
         if Y != f_prime_z_prime {
             return Err(CompSigmaError::InvalidResponse);
@@ -323,7 +326,7 @@ where
             // TODO: When `f` is an elliptic curve group, the following can use MSM and can be taken out
             // of this loop
             let (f_l, f_r) = f.split_in_half();
-            f = f_l.scale(&c).add(&f_r);
+            f = f_l.scale(&c).add(&f_r).unwrap();
 
             challenge_squares.push(c.square());
             challenges.push(c);
@@ -390,7 +393,10 @@ where
         let Y_prime = VariableBaseMSM::multi_scalar_mul(&self.a, &challenges_repr)
             + VariableBaseMSM::multi_scalar_mul(&self.b, &B_multiples)
             + Y;
-        let f_prime_z_prime = f.eval(&[self.z_prime_0, self.z_prime_1]).into_projective();
+        let f_prime_z_prime = f
+            .eval(&[self.z_prime_0, self.z_prime_1])
+            .unwrap()
+            .into_projective();
         if Y_prime != f_prime_z_prime {
             return Err(CompSigmaError::InvalidResponse);
         }
@@ -459,7 +465,7 @@ mod tests {
                 &x.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
             )
             .into_affine();
-            let y = homomorphism.eval(&x);
+            let y = homomorphism.eval(&x).unwrap();
 
             let rand_comm = RandomCommitment::new(&mut rng, &g, &homomorphism, None).unwrap();
 

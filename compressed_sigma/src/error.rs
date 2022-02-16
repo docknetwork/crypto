@@ -9,6 +9,7 @@ pub enum CompSigmaError {
     UncompressedNotPowerOf2,
     Serialization(SerializationError),
     WrongRecursionLevel,
+    FaultyParameterSize,
 }
 
 impl From<SerializationError> for CompSigmaError {

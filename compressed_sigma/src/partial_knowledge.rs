@@ -85,16 +85,18 @@ macro_rules! impl_homomorphism {
     ($name: ident, $G: ident) => {
         impl<$G: AffineCurve> Homomorphism<$G::ScalarField> for $name<$G> {
             type Output = $G;
-            fn eval(&self, x: &[$G::ScalarField]) -> Self::Output {
+            fn eval(&self, x: &[$G::ScalarField]) -> Result<Self::Output, CompSigmaError> {
                 let n = self.g.len();
                 let n_k = self.P.len();
-                assert!(x.len() >= n + n_k);
+                if x.len() < (n + n_k) {
+                    return Err(CompSigmaError::VectorTooShort);
+                }
                 let x_repr = cfg_iter!(x).map(|t| t.into_repr()).collect::<Vec<_>>();
                 let a = &x_repr[0..n_k];
                 let t = &x_repr[n_k..n_k + n];
                 let g = VariableBaseMSM::multi_scalar_mul(&self.g, &t);
                 let P = VariableBaseMSM::multi_scalar_mul(&self.P, &a);
-                (g - P).into_affine()
+                Ok((g - P).into_affine())
             }
 
             fn scale(&self, scalar: &$G::ScalarField) -> Self {
@@ -107,10 +109,14 @@ macro_rules! impl_homomorphism {
                 }
             }
 
-            fn add(&self, other: &Self) -> Self {
-                assert_eq!(self.g.len(), other.g.len());
-                assert_eq!(self.P.len(), other.P.len());
-                Self {
+            fn add(&self, other: &Self) -> Result<Self, CompSigmaError> {
+                if self.g.len() != other.g.len() {
+                    return Err(CompSigmaError::VectorLenMismatch);
+                }
+                if self.P.len() != other.P.len() {
+                    return Err(CompSigmaError::VectorLenMismatch);
+                }
+                Ok(Self {
                     g: cfg_iter!(self.g)
                         .zip(cfg_iter!(other.g))
                         .map(|(a, b)| a.add(*b))
@@ -119,7 +125,7 @@ macro_rules! impl_homomorphism {
                         .zip(cfg_iter!(other.P))
                         .map(|(a, b)| a.add(*b))
                         .collect::<Vec<_>>(),
-                }
+                })
             }
 
             fn split_in_half(&self) -> (Self, Self) {
@@ -139,7 +145,7 @@ macro_rules! impl_homomorphism {
 
 // TODO: The proof of knowledge of P does not use compression but it should especially when witnesses are vectors
 
-/// This module is when witnesses are single field elements and DLs are of for `P_1 = g^{x_1}`, `P_2 = g^{x_2}`, ...
+/// This module is when witnesses are single field elements and DLs are of form `P_1 = g^{x_1}`, `P_2 = g^{x_2}`, ...
 pub mod single {
     use super::*;
 
@@ -167,16 +173,20 @@ pub mod single {
         known_x: BTreeMap<usize, &G::ScalarField>,
         gs: &[G],
         h: &G,
-    ) -> (Vec<G::ScalarField>, G::ScalarField, G) {
-        assert!(Ps.len() > known_x.len());
+    ) -> Result<(Vec<G::ScalarField>, G::ScalarField, G), CompSigmaError> {
+        if Ps.len() <= known_x.len() {
+            return Err(CompSigmaError::VectorTooShort);
+        }
         let n = Ps.len();
         let k = known_x.len();
-        assert_eq!(gs.len(), 2 * n - k);
+        if gs.len() != (2 * n - k) {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
 
         let y = create_y::<G::ScalarField>(n, known_x);
 
         let (gamma, P) = create_P(rng, &y, gs, h);
-        (y, gamma, P)
+        Ok((y, gamma, P))
     }
 
     #[derive(Clone)]
@@ -186,10 +196,10 @@ pub mod single {
     }
 
     impl<G: AffineCurve> Hom<G> {
-        pub fn new(g: G, P: G, k: usize, n: usize, i: usize) -> Self {
-            assert!(n > 1);
-            assert!(n > k);
-            assert!(n > i);
+        pub fn new(g: G, P: G, k: usize, n: usize, i: usize) -> Result<Self, CompSigmaError> {
+            if n <= 1 || n <= k || n <= i {
+                return Err(CompSigmaError::FaultyParameterSize);
+            }
             let size = n - k;
             let mut g_vec = vec![G::zero(); n];
             g_vec[i] = g;
@@ -198,12 +208,12 @@ pub mod single {
             for j in 1..size {
                 i_powers.push(i_powers[j - 1] * i);
             }
-            Self {
+            Ok(Self {
                 g: g_vec,
                 P: batch_normalize_projective_into_affine(
                     multiply_field_elems_with_same_group_elem(P.into_projective(), &i_powers),
                 ),
-            }
+            })
         }
     }
 
@@ -218,7 +228,7 @@ pub mod single {
         assert_eq!(Ps.len(), n);
         cfg_into_iter!(Ps)
             .enumerate()
-            .map(|(i, Ps)| Hom::new(g.clone(), Ps, k, n, i))
+            .map(|(i, Ps)| Hom::new(g.clone(), Ps, k, n, i).unwrap())
             .collect()
     }
 }
@@ -268,11 +278,15 @@ pub mod multiple {
         known_x: BTreeMap<usize, &[G::ScalarField]>,
         gs: &[G],
         h: &G,
-    ) -> (Vec<G::ScalarField>, G::ScalarField, G) {
-        assert!(Ps.len() > known_x.len());
+    ) -> Result<(Vec<G::ScalarField>, G::ScalarField, G), CompSigmaError> {
+        if Ps.len() <= known_x.len() {
+            return Err(CompSigmaError::VectorTooShort);
+        }
         let n = Ps.len();
         let k = known_x.len();
-        assert_eq!(unknown_witness_sizes.len() + known_x.len(), n);
+        if (unknown_witness_sizes.len() + known_x.len()) != n {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
 
         let mut total_witness_count = unknown_witness_sizes
             .values()
@@ -281,12 +295,14 @@ pub mod multiple {
             .values()
             .map(|v| v.len())
             .fold(0, |accum, size| accum + size);
-        assert_eq!(gs.len(), total_witness_count + n - k);
+        if gs.len() != (total_witness_count + n - k) {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
 
         let y = create_y::<G::ScalarField>(n, unknown_witness_sizes, known_x);
 
         let (gamma, P) = create_P(rng, &y, gs, h);
-        (y, gamma, P)
+        Ok((y, gamma, P))
     }
 
     /// All values of `known_x` are of same size (after padding)
@@ -322,16 +338,20 @@ pub mod multiple {
         known_x: BTreeMap<usize, &[G::ScalarField]>,
         gs: &[G],
         h: &G,
-    ) -> (Vec<G::ScalarField>, G::ScalarField, G) {
-        assert!(Ps.len() > known_x.len());
+    ) -> Result<(Vec<G::ScalarField>, G::ScalarField, G), CompSigmaError> {
+        if Ps.len() <= known_x.len() {
+            return Err(CompSigmaError::VectorTooShort);
+        }
         let n = Ps.len();
         let k = known_x.len();
-        assert_eq!(gs.len(), (m + 1) * n - k);
+        if gs.len() != ((m + 1) * n - k) {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
 
         let y = create_y_for_same_size_witnesses::<G::ScalarField>(n, m, known_x);
 
         let (gamma, P) = create_P(rng, &y, gs, h);
-        (y, gamma, P)
+        Ok((y, gamma, P))
     }
 
     // TODO: It might make sense to move the struct outside and have 3 different implementations of
@@ -345,11 +365,20 @@ pub mod multiple {
     }
 
     impl<G: AffineCurve> Hom<G> {
-        pub fn new(g: &[G], P: G, k: usize, n: usize, witness_sizes: &[usize], i: usize) -> Self {
-            assert!(n > 1);
-            assert!(n > k);
-            assert!(n > i);
-            assert_eq!(witness_sizes.len(), n);
+        pub fn new(
+            g: &[G],
+            P: G,
+            k: usize,
+            n: usize,
+            witness_sizes: &[usize],
+            i: usize,
+        ) -> Result<Self, CompSigmaError> {
+            if n <= 1 || n <= k || n <= i {
+                return Err(CompSigmaError::FaultyParameterSize);
+            }
+            if witness_sizes.len() != n {
+                return Err(CompSigmaError::VectorLenMismatch);
+            }
             let size = n - k;
             let total_witness_count = witness_sizes.iter().sum();
             let mut g_vec = vec![G::zero(); total_witness_count];
@@ -363,12 +392,12 @@ pub mod multiple {
             for j in 1..size {
                 i_powers.push(i_powers[j - 1] * i);
             }
-            Self {
+            Ok(Self {
                 g: g_vec,
                 P: batch_normalize_projective_into_affine(
                     multiply_field_elems_with_same_group_elem(P.into_projective(), &i_powers),
                 ),
-            }
+            })
         }
 
         pub fn new_for_same_size_witnesses(
@@ -378,10 +407,10 @@ pub mod multiple {
             n: usize,
             m: usize,
             i: usize,
-        ) -> Self {
-            assert!(n > 1);
-            assert!(n > k);
-            assert!(n > i);
+        ) -> Result<Self, CompSigmaError> {
+            if n <= 1 || n <= k || n <= i {
+                return Err(CompSigmaError::FaultyParameterSize);
+            }
             let size = n - k;
             let mut g_vec = vec![G::zero(); m * n];
             for (j, g) in g.into_iter().enumerate() {
@@ -392,12 +421,12 @@ pub mod multiple {
             for j in 1..size {
                 i_powers.push(i_powers[j - 1] * i);
             }
-            Self {
+            Ok(Self {
                 g: g_vec,
                 P: batch_normalize_projective_into_affine(
                     multiply_field_elems_with_same_group_elem(P.into_projective(), &i_powers),
                 ),
-            }
+            })
         }
     }
 
@@ -409,7 +438,10 @@ pub mod multiple {
         n: usize,
         k: usize,
         witness_sizes: &[usize],
-    ) -> Vec<Hom<G>> {
+    ) -> Result<Vec<Hom<G>>, CompSigmaError> {
+        if Ps.len() != n {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
         assert_eq!(Ps.len(), n);
         cfg_into_iter!(Ps)
             .enumerate()
@@ -423,8 +455,10 @@ pub mod multiple {
         n: usize,
         k: usize,
         m: usize,
-    ) -> Vec<Hom<G>> {
-        assert_eq!(Ps.len(), n);
+    ) -> Result<Vec<Hom<G>>, CompSigmaError> {
+        if Ps.len() != n {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
         cfg_into_iter!(Ps)
             .enumerate()
             .map(|(i, Ps)| Hom::new_for_same_size_witnesses(g.clone(), Ps, k, n, m, i))
@@ -556,7 +590,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let start = Instant::now();
-            let (y, gamma, P) = single::prepare(&mut rng, &Ps, known_x, &gs, &h);
+            let (y, gamma, P) = single::prepare(&mut rng, &Ps, known_x, &gs, &h).unwrap();
             let fs = single::create_homomorphisms(g.clone(), Ps.clone(), n, k);
 
             assert_eq!(fs.len(), n);
@@ -647,14 +681,16 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let (y, gamma, P) =
-                multiple::prepare_for_same_size_witnesses(&mut rng, m, &Ps, known_x, &gs, &h);
+                multiple::prepare_for_same_size_witnesses(&mut rng, m, &Ps, known_x, &gs, &h)
+                    .unwrap();
             let fs = multiple::create_homomorphisms_for_same_size_witnesses(
                 g.clone(),
                 Ps.clone(),
                 n,
                 k,
                 m,
-            );
+            )
+            .unwrap();
 
             assert_eq!(fs.len(), n);
             for i in 0..n {
@@ -756,8 +792,9 @@ mod tests {
                 known_x,
                 &gs,
                 &h,
-            );
-            let fs = multiple::create_homomorphisms(&g, Ps.clone(), n, k, &witness_sizes);
+            )
+            .unwrap();
+            let fs = multiple::create_homomorphisms(&g, Ps.clone(), n, k, &witness_sizes).unwrap();
 
             assert_eq!(fs.len(), n);
             let mut y_offset = 0;

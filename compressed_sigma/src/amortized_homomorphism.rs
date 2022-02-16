@@ -62,7 +62,7 @@ where
         } else {
             (0..max_size).map(|_| G::ScalarField::rand(rng)).collect()
         };
-        let t = f.eval(&r);
+        let t = f.eval(&r).unwrap();
         let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
         let A = VariableBaseMSM::multi_scalar_mul(g, &scalars);
         Ok(Self {
@@ -139,7 +139,7 @@ where
 
         // Check \sum_{i}(y_i * c^i) + t == f(z_tilde)
         let c_y = VariableBaseMSM::multi_scalar_mul(y, &challenge_powers_repr);
-        if c_y.add_mixed(t).into_affine() != f.eval(&self.z_tilde) {
+        if c_y.add_mixed(t).into_affine() != f.eval(&self.z_tilde).unwrap() {
             return Err(CompSigmaError::InvalidResponse);
         }
         Ok(())
@@ -248,21 +248,21 @@ mod tests {
                 &x1.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
             )
             .into_affine();
-            let eval1 = homomorphism.eval(&x1);
+            let eval1 = homomorphism.eval(&x1).unwrap();
 
             let comm2 = VariableBaseMSM::multi_scalar_mul(
                 &g,
                 &x2.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
             )
             .into_affine();
-            let eval2 = homomorphism.eval(&x2);
+            let eval2 = homomorphism.eval(&x2).unwrap();
 
             let comm3 = VariableBaseMSM::multi_scalar_mul(
                 &g,
                 &x3.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
             )
             .into_affine();
-            let eval3 = homomorphism.eval(&x3);
+            let eval3 = homomorphism.eval(&x3).unwrap();
 
             let rand_comm =
                 RandomCommitment::new(&mut rng, &g, max_size, &homomorphism, None).unwrap();
@@ -320,21 +320,21 @@ mod tests {
             &x1.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
         )
         .into_affine();
-        let eval1 = homomorphism.eval(&x1);
+        let eval1 = homomorphism.eval(&x1).unwrap();
 
         let comm2 = VariableBaseMSM::multi_scalar_mul(
             &g,
             &x2.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
         )
         .into_affine();
-        let eval2 = homomorphism.eval(&x2);
+        let eval2 = homomorphism.eval(&x2).unwrap();
 
         let comm3 = VariableBaseMSM::multi_scalar_mul(
             &g,
             &x3.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
         )
         .into_affine();
-        let eval3 = homomorphism.eval(&x3);
+        let eval3 = homomorphism.eval(&x3).unwrap();
 
         let comms = [comm1, comm2, comm3];
         let evals = [eval1, eval2, eval3];

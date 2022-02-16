@@ -77,7 +77,7 @@ pub fn combine_f<G: AffineCurve, F: Homomorphism<G::ScalarField, Output = G>>(
     fs.iter()
         .zip(rho_powers.iter())
         .map(|(f, r)| f.scale(r))
-        .reduce(|a, b| a.add(&b))
+        .reduce(|a, b| a.add(&b).unwrap())
         .unwrap()
 }
 
@@ -108,7 +108,7 @@ where
         } else {
             (0..g.len()).map(|_| G::ScalarField::rand(rng)).collect()
         };
-        let t = f_rho.eval(&r);
+        let t = f_rho.eval(&r).unwrap();
         let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
 
         let A = VariableBaseMSM::multi_scalar_mul(g, &scalars);
@@ -166,7 +166,7 @@ where
         let rho_powers = create_rho_powers::<D, _>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
         let y_rho = combine_y(ys, &rho_powers);
-        if f_rho.eval(&self.z) != y_rho.mul(challenge_repr).add_mixed(t).into_affine() {
+        if f_rho.eval(&self.z).unwrap() != y_rho.mul(challenge_repr).add_mixed(t).into_affine() {
             return Err(CompSigmaError::InvalidResponse);
         }
         Ok(())
@@ -280,7 +280,7 @@ mod tests {
         .into_affine();
 
         let fs = pad_homomorphisms_to_have_same_size(&homs);
-        let ys = fs.iter().map(|f| f.eval(&x)).collect::<Vec<_>>();
+        let ys = fs.iter().map(|f| f.eval(&x).unwrap()).collect::<Vec<_>>();
         let rand_comm =
             RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let challenge = Fr::rand(&mut rng);
@@ -333,7 +333,7 @@ mod tests {
         .into_affine();
 
         let fs = pad_homomorphisms_to_have_same_size(&homs);
-        let ys = fs.iter().map(|f| f.eval(&x)).collect::<Vec<_>>();
+        let ys = fs.iter().map(|f| f.eval(&x).unwrap()).collect::<Vec<_>>();
         let rand_comm =
             RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let challenge = Fr::rand(&mut rng);
