@@ -321,7 +321,14 @@ pub mod multiple {
         /// can be written as vector `[(P_i * -i), (P_i * -i^2), ..., (P_i * -i^{n-k})]` of size `n-k`.
         /// Thus the final bases are `[(P_i * -i), (P_i * -i^2), ..., (P_i * -i^{n-k}), 0, 0, ..., g_1, g_2, ..., g_m, 0, ..., 0]`
         /// of size `T+n-k`
-        pub fn new(g: &[G], P: G, k: usize, n: usize, witness_sizes: &[usize], i: usize) -> Result<Self, CompSigmaError> {
+        pub fn new(
+            g: &[G],
+            P: G,
+            k: usize,
+            n: usize,
+            witness_sizes: &[usize],
+            i: usize,
+        ) -> Result<Self, CompSigmaError> {
             if n <= 1 || n <= k || n <= i {
                 return Err(CompSigmaError::FaultyParameterSize);
             }
@@ -497,7 +504,8 @@ mod tests {
 
             let start = Instant::now();
             let (y, gamma, P) =
-                single::create_new_witnesses_and_their_commitment(&mut rng, &Ps, known_x, &gs, &h).unwrap();
+                single::create_new_witnesses_and_their_commitment(&mut rng, &Ps, known_x, &gs, &h)
+                    .unwrap();
             let fs = single::create_homomorphisms(g.clone(), Ps.clone(), n, k);
 
             assert_eq!(fs.len(), n);
@@ -608,7 +616,8 @@ mod tests {
                 known_x,
                 &gs,
                 &h,
-            ).unwrap();
+            )
+            .unwrap();
             let fs = multiple::create_homomorphisms(&g, Ps.clone(), n, k, &witness_sizes).unwrap();
 
             assert_eq!(fs.len(), n);
@@ -761,7 +770,7 @@ mod tests {
             &h,
         )
         .unwrap();
-            let mut fs = multiple::create_homomorphisms(&g, Ps.clone(), n, k, &witness_sizes).unwrap();
+        let mut fs = multiple::create_homomorphisms(&g, Ps.clone(), n, k, &witness_sizes).unwrap();
 
         assert_eq!(fs.len(), n);
         let mut y_offset = 0;
@@ -802,8 +811,8 @@ mod tests {
         }
 
         let rand_comm =
-            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
-        .unwrap();let challenge = Fr::rand(&mut rng);
+            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None).unwrap();
+        let challenge = Fr::rand(&mut rng);
         let response = rand_comm.response(&new_y, &challenge).unwrap();
         response
             .is_valid::<Blake2b, _>(

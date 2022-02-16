@@ -367,8 +367,9 @@ mod tests {
                 RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form_1, None).unwrap();
             assert_eq!(rand_comm.r.len(), max_size);
             let challenge = Fr::rand(&mut rng);
-            let response =
-                rand_comm.response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge).unwrap();
+            let response = rand_comm
+                .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
+                .unwrap();
             assert_eq!(response.z_tilde.len(), max_size);
             response
                 .is_valid(
@@ -388,8 +389,9 @@ mod tests {
                 RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form_2, None).unwrap();
             assert_eq!(rand_comm.r.len(), max_size);
             let challenge = Fr::rand(&mut rng);
-            let response =
-                rand_comm.response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge).unwrap();
+            let response = rand_comm
+                .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
+                .unwrap();
             assert_eq!(response.z_tilde.len(), max_size);
             response
                 .is_valid(

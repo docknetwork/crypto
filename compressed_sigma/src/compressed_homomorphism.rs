@@ -390,10 +390,7 @@ where
         let Y_prime = VariableBaseMSM::multi_scalar_mul(&self.a, &challenges_repr)
             + VariableBaseMSM::multi_scalar_mul(&self.b, &B_multiples)
             + Y;
-        let f_prime_z_prime = f
-            .eval(&g_multiples)
-            .unwrap()
-            .into_projective();
+        let f_prime_z_prime = f.eval(&g_multiples).unwrap().into_projective();
         if Y_prime != f_prime_z_prime {
             return Err(CompSigmaError::InvalidResponse);
         }

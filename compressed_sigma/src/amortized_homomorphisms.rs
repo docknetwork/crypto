@@ -389,9 +389,12 @@ mod tests {
             start.elapsed()
         );
 
-        let rand_comm = compressed_homomorphism::RandomCommitment::new(&mut rng, &g, &f_rho, None).unwrap();
+        let rand_comm =
+            compressed_homomorphism::RandomCommitment::new(&mut rng, &g, &f_rho, None).unwrap();
         let challenge = Fr::rand(&mut rng);
-        let response = rand_comm.response::<Blake2b, _>(&g, &f_rho, &x, &challenge).unwrap();
+        let response = rand_comm
+            .response::<Blake2b, _>(&g, &f_rho, &x, &challenge)
+            .unwrap();
         response
             .is_valid::<Blake2b, _>(
                 &g,
