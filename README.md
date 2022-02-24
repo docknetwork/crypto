@@ -13,6 +13,7 @@ Library providing privacy enhancing cryptographic primitives.
 3. [Dynamic accumulators, both positive and universal](./vb_accumulator). Based on the paper [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
 4. [Proof system](./proof_system) that combines above primitives for use cases like prove knowledge of a BBS+ signature and the corresponding messages and the (non)membership of a certain message in the accumulator.
 5. [Verifiable encryption](./saver) using [SAVER](https://eprint.iacr.org/2019/1270) paper. This is PoC implementation.
+6. [Compression and amortization of Sigma protocols](./compressed_sigma). This is PoC implementation.
 
 ## Build
 

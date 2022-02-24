@@ -421,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn combine_homomorphisms() {
+    fn create_homomorphisms() {
         fn check_hom(n: usize, known_indices: BTreeSet<usize>) {
             let mut rng = StdRng::seed_from_u64(0u64);
             let k = known_indices.len();
@@ -451,7 +451,9 @@ mod tests {
             let scalars = (0..fs.len())
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<Vec<_>>();
-            let f_rho = combine_f(&fs, &scalars);
+            let f_rho = AmortizeHomomorphisms::<_, _>::new_homomorphism_from_given_randomness(
+                &fs, &scalars,
+            );
             assert_eq!(
                 f_rho.eval(&y).unwrap(),
                 VariableBaseMSM::multi_scalar_mul(
@@ -522,8 +524,7 @@ mod tests {
             new_y.push(gamma);
 
             let rand_comm =
-                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
-                    .unwrap();
+                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &Ps, &fs, None).unwrap();
             let challenge = Fr::rand(&mut rng);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
@@ -638,8 +639,7 @@ mod tests {
             new_y.push(gamma);
 
             let rand_comm =
-                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
-                    .unwrap();
+                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &Ps, &fs, None).unwrap();
             let challenge = Fr::rand(&mut rng);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
@@ -811,7 +811,7 @@ mod tests {
         }
 
         let rand_comm =
-            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None).unwrap();
+            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &Ps, &fs, None).unwrap();
         let challenge = Fr::rand(&mut rng);
         let response = rand_comm.response(&new_y, &challenge).unwrap();
         response
@@ -826,7 +826,7 @@ mod tests {
             )
             .unwrap();
 
-        let comp_resp = response.compress::<Blake2b, _>(&new_gs, &P, &Ps, &fs);
+        let comp_resp = response.compress::<Blake2b, _>(&new_gs, &Ps, &fs);
         Response::is_valid_compressed::<Blake2b, _>(
             &new_gs,
             &fs,

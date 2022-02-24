@@ -22,6 +22,7 @@ use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
 use dock_crypto_utils::msm::WindowTable;
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -209,18 +210,7 @@ where
         c_0: &G::ScalarField,
         c_1: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        if !(g.len() + 1).is_power_of_two() {
-            return Err(CompSigmaError::UncompressedNotPowerOf2);
-        }
-        if self.A.len() != self.B.len() {
-            return Err(CompSigmaError::VectorLenMismatch);
-        }
-        if (g.len() + 1) != (1 << (self.A.len() + 1)) {
-            return Err(CompSigmaError::WrongRecursionLevel);
-        }
-        if !linear_form.size().is_power_of_two() {
-            return Err(CompSigmaError::UncompressedNotPowerOf2);
-        }
+        self.check_sizes(g, linear_form)?;
 
         let (g_hat, L_tilde) =
             prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
@@ -246,10 +236,7 @@ where
         c_0: &G::ScalarField,
         c_1: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        assert!((g.len() + 1).is_power_of_two());
-        assert_eq!(self.A.len(), self.B.len());
-        assert_eq!(g.len() + 1, 1 << (self.A.len() + 1));
-        assert!(linear_form.size().is_power_of_two());
+        self.check_sizes(g, linear_form)?;
 
         let (g_hat, L_tilde) =
             prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
@@ -386,6 +373,26 @@ where
         } else {
             Err(CompSigmaError::InvalidResponse)
         }
+    }
+
+    fn check_sizes<L: LinearForm<G::ScalarField>>(
+        &self,
+        g: &[G],
+        linear_form: &L,
+    ) -> Result<(), CompSigmaError> {
+        if !(g.len() + 1).is_power_of_two() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
+        if self.A.len() != self.B.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
+        if (g.len() + 1) != (1 << (self.A.len() + 1)) {
+            return Err(CompSigmaError::WrongRecursionLevel);
+        }
+        if !linear_form.size().is_power_of_two() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
+        Ok(())
     }
 }
 

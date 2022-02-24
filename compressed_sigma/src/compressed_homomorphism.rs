@@ -190,24 +190,7 @@ where
         t: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        if !g.len().is_power_of_two() {
-            return Err(CompSigmaError::UncompressedNotPowerOf2);
-        }
-        if self.A.len() != self.B.len() {
-            return Err(CompSigmaError::VectorLenMismatch);
-        }
-        if self.a.len() != self.b.len() {
-            return Err(CompSigmaError::VectorLenMismatch);
-        }
-        if self.A.len() != self.a.len() {
-            return Err(CompSigmaError::VectorLenMismatch);
-        }
-        if g.len() != 1 << (self.A.len() + 1) {
-            return Err(CompSigmaError::WrongRecursionLevel);
-        }
-        if !f.size().is_power_of_two() {
-            return Err(CompSigmaError::UncompressedNotPowerOf2);
-        }
+        self.check_sizes(g, f)?;
 
         let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
         self.recursively_validate_compressed::<D, F>(Q, Y, g.to_vec(), f.clone())
@@ -225,12 +208,7 @@ where
         t: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        assert!(g.len().is_power_of_two());
-        assert_eq!(self.A.len(), self.B.len());
-        assert_eq!(self.a.len(), self.b.len());
-        assert_eq!(self.A.len(), self.a.len());
-        assert_eq!(g.len(), 1 << (self.A.len() + 1));
-        assert!(f.size().is_power_of_two());
+        self.check_sizes(g, f)?;
 
         let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
         self.validate_compressed::<D, F>(Q, Y, g.to_vec(), f.clone())
@@ -396,6 +374,32 @@ where
         }
         Ok(())
     }
+
+    fn check_sizes<F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+        &self,
+        g: &[G],
+        f: &F,
+    ) -> Result<(), CompSigmaError> {
+        if !g.len().is_power_of_two() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
+        if self.A.len() != self.B.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
+        if self.a.len() != self.b.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
+        if self.A.len() != self.a.len() {
+            return Err(CompSigmaError::VectorLenMismatch);
+        }
+        if g.len() != 1 << (self.A.len() + 1) {
+            return Err(CompSigmaError::WrongRecursionLevel);
+        }
+        if !f.size().is_power_of_two() {
+            return Err(CompSigmaError::UncompressedNotPowerOf2);
+        }
+        Ok(())
+    }
 }
 
 /// Q = A + P * challenge
@@ -440,7 +444,8 @@ mod tests {
     fn compression() {
         fn check_compression(size: usize) {
             let mut rng = StdRng::seed_from_u64(0u64);
-            let homomorphism = TestHom {
+            // Setup
+            let mut homomorphism = TestHom {
                 constants: (0..size)
                     .map(|_| {
                         <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine()
@@ -448,10 +453,23 @@ mod tests {
                     .collect::<Vec<_>>(),
             };
 
-            let x = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
-            let g = (0..size)
+            let mut x = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
+            let mut g = (0..size)
                 .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
+
+            // Pad if necessary
+            if !size.is_power_of_two() {
+                let new_size = size.next_power_of_two();
+                let pod_size = new_size - size;
+                homomorphism = homomorphism.pad(new_size);
+                for _ in 0..pod_size {
+                    x.push(Fr::zero());
+                    g.push(
+                        <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine(),
+                    );
+                }
+            }
 
             let P = VariableBaseMSM::multi_scalar_mul(
                 &g,
@@ -505,9 +523,22 @@ mod tests {
             );
         }
         check_compression(4);
+        check_compression(5);
+        check_compression(6);
+        check_compression(7);
         check_compression(8);
+        check_compression(9);
+        check_compression(11);
+        check_compression(15);
         check_compression(16);
+        check_compression(17);
+        check_compression(18);
+        check_compression(20);
+        check_compression(25);
+        check_compression(31);
         check_compression(32);
+        check_compression(48);
+        check_compression(63);
         check_compression(64);
     }
 }

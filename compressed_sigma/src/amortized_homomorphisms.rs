@@ -9,6 +9,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError
 use ark_std::{cfg_iter, vec, vec::Vec, UniformRand};
 use ark_std::{
     io::{Read, Write},
+    marker::PhantomData,
     ops::Add,
     rand::RngCore,
 };
@@ -40,49 +41,73 @@ pub struct Response<G: AffineCurve> {
     pub z: Vec<G::ScalarField>,
 }
 
-/// Create a random challenge `rho` and returns its `n` powers as `[1, rho, rho^2, ..., rho^{n-1}]`
-/// `rho` is created by hashing the publicly known values, in this case `P`, vectors `g` and `ys`,
-pub fn create_rho_powers<D: Digest, G: AffineCurve>(
-    g: &[G],
-    P: &G,
-    ys: &[G],
-) -> Vec<G::ScalarField> {
-    let mut bytes = vec![];
-    P.serialize(&mut bytes).unwrap();
-    for g_ in g.iter() {
-        g_.serialize(&mut bytes).unwrap();
-    }
-    for y in ys.iter() {
-        y.serialize(&mut bytes).unwrap();
+/// To amortize many given homomorphisms into a single
+pub struct AmortizeHomomorphisms<G: AffineCurve, F: Homomorphism<G::ScalarField, Output = G>>(
+    PhantomData<G>,
+    PhantomData<F>,
+);
+
+impl<G: AffineCurve, F: Homomorphism<G::ScalarField, Output = G>> AmortizeHomomorphisms<G, F> {
+    /// Amortize many homomorphisms into a single by generating randomness from the given public
+    /// data.
+    pub fn new_homomorphism<D: Digest>(g: &[G], ys: &[G], fs: &[F]) -> F {
+        let randomness = Self::generate_randomness::<D>(g, ys);
+        Self::new_homomorphism_from_given_randomness(fs, &randomness)
     }
 
-    let rho = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-    // rho_powers = [1, rho, rho^2, rho^3, ..., rho^{ys.len()-1}]
-    let mut rho_powers = get_n_powers(rho, ys.len() - 1);
-    rho_powers.insert(0, G::ScalarField::one());
-    rho_powers
-}
+    /// Amortize many homomorphisms and their respective evaluations into a single by generating randomness
+    /// from the given public data. Returns the new homomorphism and its evaluation as a pair
+    pub fn new_homomorphism_and_evaluation<D: Digest>(
+        g: &[G],
+        ys: &[G],
+        fs: &[F],
+    ) -> (F, G::Projective) {
+        let randomness = Self::generate_randomness::<D>(g, ys);
+        (
+            Self::new_homomorphism_from_given_randomness(fs, &randomness),
+            Self::new_evaluation_from_given_randomness(ys, &randomness),
+        )
+    }
 
-/// Inner product of vectors `ys` and `rho_powers`
-/// Outputs the point y_1 + rho*y_2 + ... + rho^{s-1}*y_s
-pub fn combine_y<G: AffineCurve>(ys: &[G], rho_powers: &[G::ScalarField]) -> G::Projective {
-    let r = cfg_iter!(rho_powers[..ys.len()])
-        .map(|r| r.into_repr())
-        .collect::<Vec<_>>();
-    VariableBaseMSM::multi_scalar_mul(ys, &r)
-}
+    /// Create a random challenge `rho` and returns its `n` powers as `[1, rho, rho^2, ..., rho^{n-1}]`
+    /// `rho` is created by hashing the publicly known values, in this case vectors `g` and `ys`
+    pub fn generate_randomness<D: Digest>(g: &[G], ys: &[G]) -> Vec<G::ScalarField> {
+        let mut bytes = vec![];
+        for g_ in g.iter() {
+            g_.serialize(&mut bytes).unwrap();
+        }
+        for y in ys.iter() {
+            y.serialize(&mut bytes).unwrap();
+        }
 
-/// Inner product of vectors `fs` and `rho_powers`.
-/// Outputs the homomorphism f(x) `fs[0] * rho_powers[0] + fs[1] * rho_powers[1] + ... + fs[n] * rho_powers[n]`
-pub fn combine_f<G: AffineCurve, F: Homomorphism<G::ScalarField, Output = G>>(
-    fs: &[F],
-    rho_powers: &[G::ScalarField],
-) -> F {
-    fs.iter()
-        .zip(rho_powers.iter())
-        .map(|(f, r)| f.scale(r))
-        .reduce(|a, b| a.add(&b).unwrap())
-        .unwrap()
+        let rho = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
+        // rho_powers = [1, rho, rho^2, rho^3, ..., rho^{ys.len()-1}]
+        let mut rho_powers = get_n_powers(rho, ys.len() - 1);
+        rho_powers.insert(0, G::ScalarField::one());
+        rho_powers
+    }
+
+    /// Inner product of vectors `ys` and `rho_powers`
+    /// Outputs the point y_1 + rho*y_2 + ... + rho^{s-1}*y_s
+    pub fn new_evaluation_from_given_randomness(
+        ys: &[G],
+        rho_powers: &[G::ScalarField],
+    ) -> G::Projective {
+        let r = cfg_iter!(rho_powers[..ys.len()])
+            .map(|r| r.into_repr())
+            .collect::<Vec<_>>();
+        VariableBaseMSM::multi_scalar_mul(ys, &r)
+    }
+
+    /// Inner product of vectors `fs` and `rho_powers`.
+    /// Outputs the homomorphism f(x) `fs[0] * rho_powers[0] + fs[1] * rho_powers[1] + ... + fs[n] * rho_powers[n]`
+    pub fn new_homomorphism_from_given_randomness(fs: &[F], rho_powers: &[G::ScalarField]) -> F {
+        fs.iter()
+            .zip(rho_powers.iter())
+            .map(|(f, r)| f.scale(r))
+            .reduce(|a, b| a.add(&b).unwrap())
+            .unwrap()
+    }
 }
 
 impl<G> RandomCommitment<G>
@@ -92,7 +117,6 @@ where
     pub fn new<R: RngCore, D: Digest, F: Homomorphism<G::ScalarField, Output = G>>(
         rng: &mut R,
         g: &[G],
-        P: &G,
         ys: &[G],
         fs: &[F],
         blindings: Option<Vec<G::ScalarField>>,
@@ -101,8 +125,7 @@ where
             return Err(CompSigmaError::VectorLenMismatch);
         }
 
-        let rho_powers = create_rho_powers::<D, _>(g, P, ys);
-        let f_rho = combine_f(fs, &rho_powers);
+        let f_rho = AmortizeHomomorphisms::<_, _>::new_homomorphism::<D>(g, ys, fs);
 
         let r = if let Some(blindings) = blindings {
             if blindings.len() != g.len() {
@@ -167,9 +190,8 @@ where
             return Err(CompSigmaError::InvalidResponse);
         }
 
-        let rho_powers = create_rho_powers::<D, _>(g, P, ys);
-        let f_rho = combine_f(fs, &rho_powers);
-        let y_rho = combine_y(ys, &rho_powers);
+        let (f_rho, y_rho) =
+            AmortizeHomomorphisms::<_, _>::new_homomorphism_and_evaluation::<D>(g, ys, fs);
         if f_rho.eval(&self.z).unwrap() != y_rho.mul(challenge_repr).add_mixed(t).into_affine() {
             return Err(CompSigmaError::InvalidResponse);
         }
@@ -179,12 +201,10 @@ where
     pub fn compress<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
         self,
         g: &[G],
-        P: &G,
         ys: &[G],
         fs: &[F],
     ) -> compressed_homomorphism::Response<G> {
-        let rho_powers = create_rho_powers::<D, _>(g, P, ys);
-        let f_rho = combine_f(fs, &rho_powers);
+        let f_rho = AmortizeHomomorphisms::<_, _>::new_homomorphism::<D>(g, ys, fs);
         compressed_homomorphism::RandomCommitment::compressed_response::<D, F>(
             self.z,
             g.to_vec(),
@@ -202,9 +222,8 @@ where
         challenge: &G::ScalarField,
         compressed_resp: &compressed_homomorphism::Response<G>,
     ) -> Result<(), CompSigmaError> {
-        let rho_powers = create_rho_powers::<D, _>(g, P, ys);
-        let f_rho = combine_f(fs, &rho_powers);
-        let y_rho = combine_y(ys, &rho_powers);
+        let (f_rho, y_rho) =
+            AmortizeHomomorphisms::<_, _>::new_homomorphism_and_evaluation::<D>(g, ys, fs);
         let (Q, Y) = compressed_homomorphism::calculate_Q_and_Y::<G>(
             P,
             &y_rho.into_affine(),
@@ -275,7 +294,7 @@ mod tests {
         let fs = pad_homomorphisms_to_have_same_size(&homs);
         let ys = fs.iter().map(|f| f.eval(&x).unwrap()).collect::<Vec<_>>();
         let rand_comm =
-            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
+            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &ys, &fs, None).unwrap();
         let challenge = Fr::rand(&mut rng);
         let response = rand_comm.response(&x, &challenge).unwrap();
         response
@@ -308,7 +327,7 @@ mod tests {
         let fs = pad_homomorphisms_to_have_same_size(&homs);
         let ys = fs.iter().map(|f| f.eval(&x).unwrap()).collect::<Vec<_>>();
         let rand_comm =
-            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
+            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &ys, &fs, None).unwrap();
         let challenge = Fr::rand(&mut rng);
         let response = rand_comm.response(&x, &challenge).unwrap();
 
@@ -324,7 +343,7 @@ mod tests {
         );
 
         let start = Instant::now();
-        let comp_resp = response.compress::<Blake2b, _>(&g, &comm, &ys, &fs);
+        let comp_resp = response.compress::<Blake2b, _>(&g, &ys, &fs);
         println!(
             "Compressing response of {} homomorphisms, each of size {} takes: {:?}",
             homs.len(),
@@ -379,9 +398,8 @@ mod tests {
 
         // Amortize before the protocol is started
         let start = Instant::now();
-        let rho_powers = create_rho_powers::<Blake2b, _>(&g, &comm, &ys);
-        let f_rho = combine_f(&fs, &rho_powers);
-        let y_rho = combine_y(&ys, &rho_powers).into_affine();
+        let (f_rho, y_rho) =
+            AmortizeHomomorphisms::<_, _>::new_homomorphism_and_evaluation::<Blake2b>(&g, &ys, &fs);
         println!(
             "Time to amortize {} homomorphisms, each of size {} takes: {:?}",
             fs.len(),
@@ -399,7 +417,7 @@ mod tests {
             .is_valid::<Blake2b, _>(
                 &g,
                 &comm,
-                &y_rho,
+                &y_rho.into_affine(),
                 &f_rho,
                 &rand_comm.A_hat,
                 &rand_comm.t,
