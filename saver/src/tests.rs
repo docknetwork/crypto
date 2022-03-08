@@ -1,7 +1,8 @@
-use crate::commitment::{commitment_to_chunks, create_gs};
-use crate::encryption::{decrypt, encrypt, verify_ciphertext_commitment};
-use crate::saver_groth16::{create_proof, generate_crs, verify_proof, BitsizeCheckCircuit};
-use crate::setup::{keygen, Generators};
+use crate::circuit::BitsizeCheckCircuit;
+use crate::commitment::ChunkedCommitment;
+use crate::encryption::Encryption;
+use crate::keygen::{keygen, Generators};
+use crate::saver_groth16::{create_proof, generate_srs, verify_proof};
 use crate::utils::decompose;
 use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
@@ -63,21 +64,18 @@ fn bbs_plus_verifiably_encrypt_user_id() {
     // User id at message index `user_id_idx`
     let user_id_idx = 1;
 
+    // Decryptor creates public parameters
     let gens = Generators::<Bls12_381>::new_using_rng(&mut rng);
 
-    // These could be same as `gens`
+    // For transformed commitment to the message
     let G = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
     let H = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
 
     let chunk_bit_size = 8;
-    let chunks_count = 32;
 
-    let circuit = BitsizeCheckCircuit {
-        required_bit_size: chunk_bit_size,
-        values_count: chunks_count,
-        values: None,
-    };
-    let params = generate_crs::<Bls12_381, _, _>(circuit, &gens, &mut rng).unwrap();
+    let circuit = BitsizeCheckCircuit::new(8, None, None, true);
+    let chunks_count = circuit.num_values;
+    let params = generate_srs::<Bls12_381, _, _>(circuit, &gens, &mut rng).unwrap();
 
     let g_i = &params.pk.vk.gamma_abc_g1[1..];
 
@@ -92,8 +90,7 @@ fn bbs_plus_verifiably_encrypt_user_id() {
     );
 
     // User encrypts
-    let (ct, r) = encrypt(&mut rng, &messages[user_id_idx], &ek, &g_i, chunk_bit_size);
-    let comm_ct = ct.last().unwrap();
+    let (ct, r) = Encryption::encrypt(&mut rng, &messages[user_id_idx], &ek, &g_i, chunk_bit_size);
 
     // User creates proof
     let decomposed_message = decompose(&messages[user_id_idx], chunk_bit_size)
@@ -101,35 +98,29 @@ fn bbs_plus_verifiably_encrypt_user_id() {
         .map(|m| Fr::from(m as u64))
         .collect::<Vec<_>>();
 
-    let circuit = BitsizeCheckCircuit {
-        required_bit_size: 8,
-        values_count: 4,
-        values: Some(decomposed_message.clone()),
-    };
+    let circuit = BitsizeCheckCircuit::new(8, None, Some(decomposed_message.clone()), true);
 
     let start = Instant::now();
-    let blinding = Fr::rand(&mut rng);
 
-    let comm_full_message = G
+    let blinding = Fr::rand(&mut rng);
+    let comm_single = G
         .mul(messages[user_id_idx].into_repr())
         .add(&(H.mul(blinding.into_repr())));
-    let comm_chunks = commitment_to_chunks(
+    let comm_chunks = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
         &messages[user_id_idx],
-        chunks_count,
-        &G,
-        chunk_bit_size,
-        &H,
         &blinding,
-    );
+        chunk_bit_size,
+        &G,
+        &H,
+    ).0;
 
-    let mut bases_comm_chunks = create_gs(&G, chunks_count, 1 << chunk_bit_size);
+    let mut bases_comm_chunks = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(&G, chunk_bit_size, 1 << chunk_bit_size);
     bases_comm_chunks.push(H.clone());
     let mut wit_comm_chunks = decomposed_message.clone();
     wit_comm_chunks.push(blinding.clone());
 
     let mut bases_comm_ct = ek.Y.clone();
     bases_comm_ct.push(ek.P_1.clone());
-
     let mut wit_comm_ct = decomposed_message.clone();
     wit_comm_ct.push(r.clone());
 
@@ -141,7 +132,7 @@ fn bbs_plus_verifiably_encrypt_user_id() {
     }));
     statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
         bases: vec![G, H],
-        commitment: comm_full_message.into_affine(),
+        commitment: comm_single.into_affine(),
     }));
     statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
         bases: bases_comm_chunks.clone(),
@@ -149,7 +140,7 @@ fn bbs_plus_verifiably_encrypt_user_id() {
     }));
     statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
         bases: bases_comm_ct.clone(),
-        commitment: comm_ct.clone(),
+        commitment: ct.commitment.clone(),
     }));
 
     let mut meta_statements = MetaStatements::new();
@@ -202,7 +193,7 @@ fn bbs_plus_verifiably_encrypt_user_id() {
     println!("Time taken to create Groth16 proof {:?}", start.elapsed());
 
     let start = Instant::now();
-    assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
+    assert!(ct.verify_commitment(&ek, &gens));
     println!(
         "Time taken to verify ciphertext commitment {:?}",
         start.elapsed()
@@ -214,7 +205,7 @@ fn bbs_plus_verifiably_encrypt_user_id() {
     println!("Time taken to verify Groth16 proof {:?}", start.elapsed());
 
     // Decryptor decrypts
-    let (decrypted_message, nu_) = decrypt(&ct, &sk, &dk, &g_i, chunk_bit_size);
+    let (decrypted_message, nu_) = ct.decrypt(&sk, &dk, &g_i, chunk_bit_size);
     assert_eq!(decrypted_message, messages[user_id_idx]);
 }
 
@@ -243,19 +234,15 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
 
     let gens = Generators::<Bls12_381>::new_using_rng(&mut rng);
 
-    // These could be same as `gens`
+    // For transformed commitment to the message
     let G = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
     let H = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
 
     let chunk_bit_size = 8;
-    let chunks_count = 32;
 
-    let circuit = BitsizeCheckCircuit {
-        required_bit_size: chunk_bit_size,
-        values_count: chunks_count,
-        values: None,
-    };
-    let params = generate_crs::<Bls12_381, _, _>(circuit, &gens, &mut rng).unwrap();
+    let circuit = BitsizeCheckCircuit::new(8, None, None, true);
+    let chunks_count = circuit.num_values;
+    let params = generate_srs::<Bls12_381, _, _>(circuit, &gens, &mut rng).unwrap();
 
     let g_i = &params.pk.vk.gamma_abc_g1[1..];
 
@@ -270,24 +257,22 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     );
 
     // User encrypts 1st user id
-    let (ct_1, r_1) = encrypt(
+    let (ct_1, r_1) = Encryption::encrypt(
         &mut rng,
         &messages_1[user_id_idx],
         &ek,
         &g_i,
         chunk_bit_size,
     );
-    let comm_ct_1 = ct_1.last().unwrap();
 
     // User encrypts 2nd user id
-    let (ct_2, r_2) = encrypt(
+    let (ct_2, r_2) = Encryption::encrypt(
         &mut rng,
         &messages_2[user_id_idx],
         &ek,
         &g_i,
         chunk_bit_size,
     );
-    let comm_ct_2 = ct_2.last().unwrap();
 
     // User creates proof
     let decomposed_message_1 = decompose(&messages_1[user_id_idx], chunk_bit_size)
@@ -301,46 +286,36 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
         .map(|m| Fr::from(m as u64))
         .collect::<Vec<_>>();
 
-    let circuit_1 = BitsizeCheckCircuit {
-        required_bit_size: 8,
-        values_count: 4,
-        values: Some(decomposed_message_1.clone()),
-    };
-    let circuit_2 = BitsizeCheckCircuit {
-        required_bit_size: 8,
-        values_count: 4,
-        values: Some(decomposed_message_2.clone()),
-    };
+    let circuit_1 = BitsizeCheckCircuit::new(8, None, Some(decomposed_message_1.clone()), true);
+    let circuit_2 = BitsizeCheckCircuit::new(8, None, Some(decomposed_message_2.clone()), true);
 
     let start = Instant::now();
     let blinding_1 = Fr::rand(&mut rng);
     let blinding_2 = Fr::rand(&mut rng);
 
-    let comm_full_message_1 = G
+    let comm_single_1 = G
         .mul(messages_1[user_id_idx].into_repr())
         .add(&(H.mul(blinding_1.into_repr())));
-    let comm_chunks_1 = commitment_to_chunks(
+    let comm_chunks_1 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
         &messages_1[user_id_idx],
-        chunks_count,
-        &G,
-        chunk_bit_size,
-        &H,
         &blinding_1,
-    );
+        chunk_bit_size,
+        &G,
+        &H,
+    ).0;
 
-    let comm_full_message_2 = G
+    let comm_single_2 = G
         .mul(messages_2[user_id_idx].into_repr())
         .add(&(H.mul(blinding_2.into_repr())));
-    let comm_chunks_2 = commitment_to_chunks(
+    let comm_chunks_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
         &messages_2[user_id_idx],
-        chunks_count,
-        &G,
-        chunk_bit_size,
-        &H,
         &blinding_2,
-    );
+        chunk_bit_size,
+        &G,
+        &H,
+    ).0;
 
-    let mut bases_comm_chunks = create_gs(&G, chunks_count, 1 << chunk_bit_size);
+    let mut bases_comm_chunks = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(&G, chunk_bit_size, 1 << chunk_bit_size);
     bases_comm_chunks.push(H.clone());
 
     let mut wit_comm_chunks_1 = decomposed_message_1.clone();
@@ -367,7 +342,7 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     }));
     statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
         bases: vec![G, H],
-        commitment: comm_full_message_1.into_affine(),
+        commitment: comm_single_1.into_affine(),
     }));
     statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
         bases: bases_comm_chunks.clone(),
@@ -375,7 +350,7 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     }));
     statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
         bases: bases_comm_ct.clone(),
-        commitment: comm_ct_1.clone(),
+        commitment: ct_1.commitment.clone(),
     }));
 
     // For 2nd sig
@@ -386,7 +361,7 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     }));
     statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
         bases: vec![G, H],
-        commitment: comm_full_message_2.into_affine(),
+        commitment: comm_single_2.into_affine(),
     }));
     statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
         bases: bases_comm_chunks.clone(),
@@ -394,7 +369,7 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     }));
     statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
         bases: bases_comm_ct.clone(),
-        commitment: comm_ct_2.clone(),
+        commitment: ct_2.commitment.clone(),
     }));
 
     let mut meta_statements = MetaStatements::new();
@@ -480,8 +455,8 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
 
     let start = Instant::now();
-    assert!(verify_ciphertext_commitment(&ct_1, &ek, &gens));
-    assert!(verify_ciphertext_commitment(&ct_2, &ek, &gens));
+    assert!(ct_1.verify_commitment(&ek, &gens));
+    assert!(ct_2.verify_commitment(&ek, &gens));
     println!(
         "Time taken to verify ciphertext commitment {:?}",
         start.elapsed()
@@ -493,9 +468,9 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     println!("Time taken to verify 2 Groth16 proof {:?}", start.elapsed());
 
     // Decryptor decrypts
-    let (decrypted_message_1, _) = decrypt(&ct_1, &sk, &dk, &g_i, chunk_bit_size);
+    let (decrypted_message_1, _) = ct_1.decrypt(&sk, &dk, &g_i, chunk_bit_size);
     assert_eq!(decrypted_message_1, messages_1[user_id_idx]);
 
-    let (decrypted_message_2, _) = decrypt(&ct_2, &sk, &dk, &g_i, chunk_bit_size);
+    let (decrypted_message_2, _) = ct_2.decrypt(&sk, &dk, &g_i, chunk_bit_size);
     assert_eq!(decrypted_message_2, messages_2[user_id_idx]);
 }

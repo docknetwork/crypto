@@ -1,9 +1,12 @@
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{to_bytes, One, PrimeField, SquareRootField};
-use ark_std::ops::AddAssign;
-use ark_std::{rand::RngCore, vec::Vec, UniformRand};
+use ark_std::{cfg_iter, ops::AddAssign, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
+use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 use dock_crypto_utils::{
     ec::batch_normalize_projective_into_affine, hashing_utils::affine_group_elem_from_try_and_incr,
 };
@@ -21,27 +24,27 @@ pub struct SecretKey<F: PrimeField + SquareRootField>(pub F);
 
 /// Used to encrypt, rerandomize and verify the encryption. Called "PK" in the paper.
 pub struct EncryptionKey<E: PairingEngine> {
-    /// G * delta
+    /// `G * delta`
     pub X_0: E::G1Affine,
-    /// G * delta*s_i
+    /// `G * delta*s_i`
     pub X: Vec<E::G1Affine>,
-    /// G_i * t_i
+    /// `G_i * t_i`
     pub Y: Vec<E::G1Affine>,
-    /// H * t_i
+    /// `H * t_i`
     pub Z: Vec<E::G2Affine>,
-    /// (G*delta) * t_0 + (G*delta) * t_1*s_0 + (G*delta) * t_2*s_1 + .. (G*delta) * t_n*s_{n-1}
+    /// `(G*delta) * t_0 + (G*delta) * t_1*s_0 + (G*delta) * t_2*s_1 + .. (G*delta) * t_n*s_{n-1}`
     pub P_1: E::G1Affine,
-    /// (G*-gamma) * (1 + s_0 + s_1 + .. s_{n-1})
+    /// `(G*-gamma) * (1 + s_0 + s_1 + .. s_{n-1})`
     pub P_2: E::G1Affine,
 }
 
 /// Used to decrypt and verify decryption. Called "VK" in the paper.
 pub struct DecryptionKey<E: PairingEngine> {
-    // H * rho
+    /// `H * rho`
     pub V_0: E::G2Affine,
-    // H * s_i*v_i
+    /// `H * s_i*v_i`
     pub V_1: Vec<E::G2Affine>,
-    // H * rho*v_i
+    /// `H * rho*v_i`
     pub V_2: Vec<E::G2Affine>,
 }
 
@@ -74,24 +77,23 @@ pub fn keygen<R: RngCore, E: PairingEngine>(
     gamma_g: &E::G1Affine,
 ) -> (SecretKey<E::Fr>, EncryptionKey<E>, DecryptionKey<E>) {
     let n = n as usize;
-    assert_eq!(g_i.len(), n);
+    assert!(g_i.len() >= n);
 
     let rho = E::Fr::rand(rng);
     let s = (0..n).map(|_| E::Fr::rand(rng)).collect::<Vec<_>>();
     let t = (0..=n).map(|_| E::Fr::rand(rng)).collect::<Vec<_>>();
     let v = (0..n).map(|_| E::Fr::rand(rng)).collect::<Vec<_>>();
 
-    // TODO: Biginteger conversion can be done in parallel
     let delta_g_proj = delta_g.into_projective();
-    let X = (0..n)
-        .map(|i| delta_g_proj.mul(s[i].into_repr()))
-        .collect::<Vec<_>>(); // TODO: Use MSM
-    let Y = (0..n).map(|i| g_i[i].mul(t[i + 1].into_repr())).collect();
-    let Z = (0..=n).map(|i| gens.H.mul(t[i].into_repr())).collect(); // TODO: Use MSM
-    let mut P_1 = delta_g_proj.mul(t[0].into_repr());
-    for i in 0..n {
-        P_1.add_assign(delta_g_proj.mul((s[i] * t[i + 1]).into_repr()));
-    }
+    let t_repr = cfg_iter!(t).map(|t| t.into_repr()).collect::<Vec<_>>();
+
+    let X = multiply_field_elems_with_same_group_elem(delta_g_proj.clone(), &s);
+    let Y = (0..n).map(|i| g_i[i].mul(t_repr[i + 1])).collect();
+    let Z = multiply_field_elems_with_same_group_elem(gens.H.into_projective(), &t);
+
+    // P_1 = G*delta * (t_0 + \sum_{j in 0..n}(s_j * t_{j+1}))
+    let P_1 = delta_g_proj.mul((t[0] + (0..n).map(|j| s[j] * t[j + 1]).sum::<E::Fr>()).into_repr());
+
     let ek = EncryptionKey {
         X_0: delta_g.clone(),
         X: batch_normalize_projective_into_affine(X),
@@ -102,15 +104,17 @@ pub fn keygen<R: RngCore, E: PairingEngine>(
             .mul((E::Fr::one() + s.iter().sum::<E::Fr>()).into_repr())
             .into_affine(),
     };
-    let V_0 = gens.H.mul(rho.into_repr()).into_affine();
-    let V_1 = (0..n)
-        .map(|i| gens.H.mul((s[i] * v[i]).into_repr()))
-        .collect::<Vec<_>>(); // TODO: Use MSM
-    let V_2 = (0..n)
-        .map(|i| V_0.mul(v[i].into_repr()))
-        .collect::<Vec<_>>(); // TODO: Use MSM
+    let V_0 = gens.H.mul(rho.into_repr());
+    let V_2 = multiply_field_elems_with_same_group_elem(V_0.clone(), &v);
+    let V_1 = multiply_field_elems_with_same_group_elem(
+        gens.H.into_projective(),
+        &s.into_iter()
+            .zip(v.into_iter())
+            .map(|(s_i, v_i)| s_i * v_i)
+            .collect::<Vec<_>>(),
+    );
     let dk = DecryptionKey {
-        V_0,
+        V_0: V_0.into_affine(),
         V_1: batch_normalize_projective_into_affine(V_1),
         V_2: batch_normalize_projective_into_affine(V_2),
     };

@@ -1,14 +1,13 @@
 //! Using SAVER with LegoGroth16
 
+use crate::circuit::BitsizeCheckCircuit;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::AllocationMode;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::{AllocVar, Boolean, EqGadget};
 use ark_r1cs_std::ToBitsGadget;
-use ark_relations::r1cs::{
-    ConstraintSynthesizer, ConstraintSystemRef, Result as R1CSResult, SynthesisError,
-};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::ops::{AddAssign, Sub};
 use ark_std::{
@@ -18,11 +17,12 @@ use ark_std::{
     UniformRand,
 };
 use legogroth16::{
-    create_random_proof, generate_parameters, verify_link_proof, PreparedVerifyingKey, Proof,
-    VerifyingKey,
+    create_random_proof, generate_parameters_with_qap, verify_link_proof, LibsnarkReduction,
+    LinkPublicGenerators, PreparedVerifyingKey, Proof, VerifyingKey,
 };
 
-use crate::setup::{EncryptionKey, Generators};
+use crate::error::Error;
+use crate::keygen::{EncryptionKey, Generators};
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProvingKey<E: PairingEngine> {
@@ -37,13 +37,13 @@ pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1A
     &vk.gamma_abc_g1[1..]
 }
 
-pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr>>(
+pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr>>(
     circuit: C,
     gens: &Generators<E>,
-    pedersen_bases: Vec<E::G1Affine>,
+    link_gens: LinkPublicGenerators<E>,
     bit_blocks_count: u8,
     rng: &mut R,
-) -> R1CSResult<ProvingKey<E>> {
+) -> crate::Result<ProvingKey<E>> {
     let alpha = E::Fr::rand(rng);
     let beta = E::Fr::rand(rng);
     let gamma = E::Fr::rand(rng);
@@ -53,7 +53,7 @@ pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
     let g1_generator = gens.G.into_projective();
     let neg_gamma_g1 = g1_generator.mul((-gamma).into_repr());
 
-    let pk = generate_parameters::<E, C, R>(
+    let pk = generate_parameters_with_qap::<E, C, R, LibsnarkReduction>(
         circuit,
         alpha,
         beta,
@@ -62,7 +62,7 @@ pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
         eta,
         g1_generator,
         gens.H.into_projective(),
-        pedersen_bases,
+        link_gens,
         bit_blocks_count as usize,
         rng,
     )?;
@@ -78,6 +78,7 @@ pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
 /// computational.
 mod protocol_1 {
     use super::*;
+    use crate::encryption::Ciphertext;
 
     #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
     pub struct Proof<E: PairingEngine> {
@@ -94,7 +95,7 @@ mod protocol_1 {
         pk: &ProvingKey<E>,
         encryption_key: &EncryptionKey<E>,
         rng: &mut R,
-    ) -> R1CSResult<Proof<E>>
+    ) -> crate::Result<Proof<E>>
     where
         E: PairingEngine,
         C: ConstraintSynthesizer<E::Fr>,
@@ -117,15 +118,12 @@ mod protocol_1 {
     pub fn verify_proof<E: PairingEngine>(
         pvk: &PreparedVerifyingKey<E>,
         proof: &Proof<E>,
-        ciphertext: &[E::G1Affine],
-    ) -> R1CSResult<bool> {
-        // TODO: Return error indicating what failed rather than a boolean
-        let link_verified = verify_link_proof(&pvk.vk, &proof.proof);
-        if !link_verified {
-            return Ok(false);
-        }
-        let mut d = ciphertext[0].into_projective();
-        for c in ciphertext[1..ciphertext.len() - 1].iter() {
+        ciphertext: &Ciphertext<E>,
+    ) -> crate::Result<()> {
+        verify_link_proof(&pvk.vk, &proof.proof)?;
+
+        let mut d = ciphertext.X_r.into_projective();
+        for c in ciphertext.enc_chunks.iter() {
             d.add_assign(c.into_projective())
         }
         d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
@@ -140,9 +138,12 @@ mod protocol_1 {
             .iter(),
         );
 
-        let test = E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?;
-
-        Ok(test == pvk.alpha_g1_beta_g2)
+        if E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?
+            != pvk.alpha_g1_beta_g2
+        {
+            return Err(Error::InvalidProof);
+        }
+        Ok(())
     }
 }
 
@@ -150,6 +151,7 @@ mod protocol_1 {
 /// as well, i.e. uses encrypt_alt
 mod protocol_2 {
     use super::*;
+    use crate::encryption::{Ciphertext, CiphertextAlt};
 
     /// `r` is the randomness used during the encryption
     pub fn create_proof<E, C, R>(
@@ -160,7 +162,7 @@ mod protocol_2 {
         pk: &ProvingKey<E>,
         encryption_key: &EncryptionKey<E>,
         rng: &mut R,
-    ) -> R1CSResult<Proof<E>>
+    ) -> crate::Result<Proof<E>>
     where
         E: PairingEngine,
         C: ConstraintSynthesizer<E::Fr>,
@@ -179,28 +181,24 @@ mod protocol_2 {
     pub fn verify_proof<E: PairingEngine>(
         pvk: &PreparedVerifyingKey<E>,
         proof: &Proof<E>,
-        ciphertext: &[E::G1Affine],
-        x_r_sum: &E::G1Affine, // r*X_1 + r*X_2 + .. + r*X_n
-    ) -> R1CSResult<bool> {
-        // TODO: Return error indicating what failed rather than a boolean
-        let link_verified = verify_link_proof(&pvk.vk, &proof);
-        if !link_verified {
-            return Ok(false);
-        }
+        ciphertext: &CiphertextAlt<E>,
+    ) -> crate::Result<()> {
+        verify_link_proof(&pvk.vk, &proof)?;
 
         // Get v * (eta/gamma)*G
         // proof.d = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G
         // ct_sum = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n]
-        let mut ct_sum = ciphertext[1].into_projective();
-        for c in ciphertext[2..ciphertext.len() - 1].iter() {
+        let mut ct_sum = ciphertext.enc_chunks[0].into_projective();
+        for c in ciphertext.enc_chunks[1..].iter() {
             ct_sum.add_assign_mixed(c)
         }
         // ct_sum_plus_g_0 = ct_sum + G[0]
         let ct_sum_plus_g_0 = ct_sum.add_mixed(&pvk.vk.gamma_abc_g1[0]);
-        // ct_sum_plus_g_0_minus_x_r_sum = ct_sum + G[0] - x_r_sum
+        // ct_sum_plus_g_0_minus_X_r_sum = ct_sum + G[0] - X_r_sum
         // = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + G[0] - (r*X_1 + r*X_2 + .. + r*X_n)
         // = G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n]
-        let ct_sum_plus_g_0_minus_x_r_sum = ct_sum_plus_g_0.sub(x_r_sum.into_projective());
+        let ct_sum_plus_g_0_minus_x_r_sum =
+            ct_sum_plus_g_0.sub(ciphertext.X_r_sum.into_projective());
 
         // proof.d - ct_sum_plus_g_0_minus_x_r_sum
         // = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G - (G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n])
@@ -212,7 +210,7 @@ mod protocol_2 {
 
         // d = G[0] + r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + r * X_0 + v * (eta/gamma)*G
         let mut d = ct_sum_plus_g_0;
-        d.add_assign_mixed(&ciphertext[0]);
+        d.add_assign_mixed(&ciphertext.X_r);
         d.add_assign(&v_eta_gamma_inv);
 
         let qap = E::miller_loop(
@@ -224,52 +222,11 @@ mod protocol_2 {
             .iter(),
         );
 
-        let test = E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?;
-
-        Ok(test == pvk.alpha_g1_beta_g2)
-    }
-}
-
-#[derive(Clone)]
-pub struct BitsizeCheckCircuit<F: PrimeField> {
-    pub required_bit_size: u8,
-    // TODO: Make it fixed
-    pub values_count: u8,
-    pub values: Option<Vec<F>>,
-}
-
-impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
-    for BitsizeCheckCircuit<ConstraintF>
-{
-    fn generate_constraints(
-        self,
-        cs: ConstraintSystemRef<ConstraintF>,
-    ) -> Result<(), SynthesisError> {
-        let values = match self.values {
-            Some(vals) => vals.into_iter().map(|v| Some(v)).collect::<Vec<_>>(),
-            _ => (0..self.values_count).map(|_| None).collect::<Vec<_>>(),
-        };
-
-        // Allocate variables for main witnesses (`values`) first as they need to be in the commitment
-        let mut vars = Vec::with_capacity(values.len());
-        for value in values {
-            vars.push(FpVar::new_variable(
-                cs.clone(),
-                || value.ok_or(SynthesisError::AssignmentMissing),
-                AllocationMode::Witness,
-            )?);
+        if E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?
+            != pvk.alpha_g1_beta_g2
+        {
+            return Err(Error::InvalidProof);
         }
-
-        // For each variable, ensure that only last `self.required_bit_size` _may_ be set, rest *must* be unset
-        for v in vars {
-            let bits = v.to_bits_be()?;
-            let modulus_bits = ConstraintF::size_in_bits();
-            let zero_bits = modulus_bits - self.required_bit_size as usize;
-            for b in bits[..zero_bits].iter() {
-                b.enforce_equal(&Boolean::constant(false))?;
-            }
-        }
-
         Ok(())
     }
 }
@@ -277,13 +234,13 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Add;
     use std::time::Instant;
 
-    use crate::encryption::{
-        decrypt_to_chunks, encrypt_decomposed_message_alt, verify_ciphertext_commitment,
-    };
-    use crate::setup::keygen;
+    use crate::encryption::{Ciphertext, CiphertextAlt, Encryption};
+    use crate::keygen::keygen;
     use ark_bls12_381::Bls12_381;
+    use ark_ff::Zero;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::{Rng, SeedableRng};
     use legogroth16::prepare_verifying_key;
@@ -291,43 +248,60 @@ mod tests {
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
 
+    pub fn get_link_public_gens<R: RngCore, E: PairingEngine>(
+        rng: &mut R,
+        count: usize,
+    ) -> LinkPublicGenerators<E> {
+        let pedersen_gens = (0..count)
+            .map(|_| E::G1Projective::rand(rng).into_affine())
+            .collect::<Vec<_>>();
+        let g1 = E::G1Projective::rand(rng).into_affine();
+        let g2 = E::G2Projective::rand(rng).into_affine();
+        LinkPublicGenerators {
+            pedersen_gens,
+            g1,
+            g2,
+        }
+    }
+
     #[test]
     fn encrypt_and_snark_verification() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let n = 4;
         let gens = Generators::<Bls12_381>::new_using_rng(&mut rng);
-
-        let pedersen_bases = (0..n + 2)
-            .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-            .collect::<Vec<_>>();
+        let link_gens = get_link_public_gens(&mut rng, n + 2);
 
         let msgs = vec![2, 47, 239, 155];
+        let n = msgs.len() as u8;
         let msgs_as_field_elems = msgs.iter().map(|m| Fr::from(*m as u64)).collect::<Vec<_>>();
 
-        let circuit = BitsizeCheckCircuit {
-            required_bit_size: 8,
-            values_count: 4,
-            values: None,
-        };
-        let params =
-            generate_crs::<Bls12_381, _, _>(circuit, &gens, pedersen_bases.clone(), n, &mut rng)
+        let circuit = BitsizeCheckCircuit::new(8, Some(4), None, false);
+        let snark_srs =
+            generate_srs::<Bls12_381, _, _>(circuit, &gens, link_gens.clone(), n, &mut rng)
                 .unwrap();
 
-        let g_i = &params.pk.vk.gamma_abc_g1[1..];
+        let g_i = &snark_srs.pk.vk.gamma_abc_g1[1..];
         let (sk, ek, dk) = keygen(
             &mut rng,
             4,
             &gens,
             g_i,
-            &params.pk.delta_g1,
-            &params.gamma_g1,
+            &snark_srs.pk.delta_g1,
+            &snark_srs.gamma_g1,
         );
 
         // Using the version of encrypt that outputs the sum X_i^r as well
-        let (ct, x_r_sum, r) = encrypt_decomposed_message_alt(&mut rng, msgs.clone(), &ek, &g_i);
-        assert_eq!(ct.len(), msgs.len() + 2);
+        let (ct, r) = Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i);
+        let x_r_sum =
+            ek.X.iter()
+                .fold(<Bls12_381 as PairingEngine>::G1Affine::zero(), |a, &b| {
+                    a.add(b)
+                })
+                .mul(r)
+                .into_affine();
 
-        let (m_, nu) = decrypt_to_chunks(&ct, &sk, &dk, &g_i, 8);
+        let (m_, nu) =
+            Encryption::decrypt_to_chunks(&ct[0], &ct[1..n as usize + 1], &sk, &dk, &g_i, 8);
 
         assert_eq!(m_, msgs);
 
@@ -335,11 +309,8 @@ mod tests {
         let v = Fr::rand(&mut rng);
         let link_v = Fr::rand(&mut rng);
 
-        let circuit = BitsizeCheckCircuit {
-            required_bit_size: 8,
-            values_count: 4,
-            values: Some(msgs_as_field_elems.clone()),
-        };
+        let circuit =
+            BitsizeCheckCircuit::new(8, Some(4), Some(msgs_as_field_elems.clone()), false);
 
         let start = Instant::now();
         let proof_2 = protocol_2::create_proof(
@@ -347,7 +318,7 @@ mod tests {
             v.clone(),
             link_v.clone(),
             r.clone(),
-            &params,
+            &snark_srs,
             &ek,
             &mut rng,
         )
@@ -358,60 +329,80 @@ mod tests {
         );
 
         let start = Instant::now();
-        let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
-        assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
-        // assert!(verify_proof(&pvk, &proof, &ct).unwrap());
-        assert!(protocol_2::verify_proof(&pvk, &proof_2, &ct, &x_r_sum).unwrap());
+        let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
+        assert!(Encryption::verify_ciphertext_commitment(
+            &ct[0],
+            &ct[1..n as usize + 1],
+            &ct[n as usize + 1],
+            &ek,
+            &gens
+        ));
+        let ct1 = CiphertextAlt {
+            X_r: ct[0].clone(),
+            enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
+            commitment: ct[n as usize + 1].clone(),
+            X_r_sum: x_r_sum,
+        };
+        protocol_2::verify_proof(&pvk, &proof_2, &ct1).unwrap();
         println!(
             "Time taken to verify LegoGroth16 proof as per protocol 2 {:?}",
             start.elapsed()
         );
 
-        assert!(verify_link_commitment(
+        verify_link_commitment(
             &pvk.vk.link_bases,
             &proof_2,
             &[],
             &msgs_as_field_elems,
-            &link_v
+            &link_v,
         )
-        .unwrap());
-        assert!(
-            verify_commitment(&pvk.vk, &proof_2, &[], &msgs_as_field_elems, &v, &link_v).unwrap()
-        );
+        .unwrap();
+        verify_commitment(&pvk.vk, &proof_2, &[], &msgs_as_field_elems, &v, &link_v).unwrap();
 
         let start = Instant::now();
         let proof_1 =
-            protocol_1::create_proof(circuit, v, link_v, r, &params, &ek, &mut rng).unwrap();
+            protocol_1::create_proof(circuit, v, link_v, r, &snark_srs, &ek, &mut rng).unwrap();
         println!(
             "Time taken to create LegoGroth16 proof as per protocol 1 {:?}",
             start.elapsed()
         );
 
         let start = Instant::now();
-        let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
-        assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
-        assert!(protocol_1::verify_proof(&pvk, &proof_1, &ct).unwrap());
+        let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
+        assert!(Encryption::verify_ciphertext_commitment(
+            &ct[0],
+            &ct[1..n as usize + 1],
+            &ct[n as usize + 1],
+            &ek,
+            &gens
+        ));
+        let ct2 = Ciphertext {
+            X_r: ct[0].clone(),
+            enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
+            commitment: ct[n as usize + 1].clone(),
+        };
+        protocol_1::verify_proof(&pvk, &proof_1, &ct2).unwrap();
         println!(
             "Time taken to verify LegoGroth16 proof as per protocol 1 {:?}",
             start.elapsed()
         );
 
-        assert!(verify_link_commitment(
+        verify_link_commitment(
             &pvk.vk.link_bases,
             &proof_1.proof,
             &[],
             &msgs_as_field_elems,
-            &link_v
+            &link_v,
         )
-        .unwrap());
-        assert!(verify_commitment(
+        .unwrap();
+        verify_commitment(
             &pvk.vk,
             &proof_1.proof,
             &[],
             &msgs_as_field_elems,
             &v,
-            &link_v
+            &link_v,
         )
-        .unwrap());
+        .unwrap();
     }
 }

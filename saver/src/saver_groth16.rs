@@ -17,12 +17,14 @@ use ark_std::{
     UniformRand,
 };
 
+use crate::circuit::BitsizeCheckCircuit;
+use crate::encryption::Ciphertext;
 use ark_groth16::{
     create_random_proof, generate_parameters, PreparedVerifyingKey, Proof, VerifyingKey,
 };
 use ark_std::ops::AddAssign;
 
-use crate::setup::{EncryptionKey, Generators};
+use crate::keygen::{EncryptionKey, Generators};
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProvingKey<E: PairingEngine> {
@@ -37,7 +39,7 @@ pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1A
     &vk.gamma_abc_g1[1..]
 }
 
-pub fn generate_crs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr>>(
+pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr>>(
     circuit: C,
     gens: &Generators<E>,
     rng: &mut R,
@@ -93,14 +95,12 @@ where
 pub fn verify_proof<E: PairingEngine>(
     pvk: &PreparedVerifyingKey<E>,
     proof: &Proof<E>,
-    ciphertext: &[E::G1Affine],
+    ciphertext: &Ciphertext<E>,
 ) -> R1CSResult<bool> {
-    let mut d = ciphertext[0].into_projective();
-    for c in ciphertext[1..ciphertext.len() - 1].iter() {
+    let mut d = ciphertext.X_r.into_projective();
+    for c in ciphertext.enc_chunks.iter() {
         d.add_assign(c.into_projective())
     }
-    // TODO: CRS should only contain one element in `gamma_abc_g1` i.e. `gamma_abc_g1[0]` as the
-    // rest of the values are not needed.
 
     d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
 
@@ -118,57 +118,11 @@ pub fn verify_proof<E: PairingEngine>(
     Ok(test == pvk.alpha_g1_beta_g2)
 }
 
-#[derive(Clone)]
-pub struct BitsizeCheckCircuit<F: PrimeField> {
-    pub required_bit_size: u8,
-    // TODO: Make it fixed
-    pub values_count: u8,
-    pub values: Option<Vec<F>>,
-}
-
-impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
-    for BitsizeCheckCircuit<ConstraintF>
-{
-    fn generate_constraints(
-        self,
-        cs: ConstraintSystemRef<ConstraintF>,
-    ) -> Result<(), SynthesisError> {
-        let values = match self.values {
-            Some(vals) => vals.into_iter().map(|v| Some(v)).collect::<Vec<_>>(),
-            _ => (0..self.values_count).map(|_| None).collect::<Vec<_>>(),
-        };
-
-        // Allocate variables for main witnesses (`values`) first as they need to be in the commitment
-        let mut vars = Vec::with_capacity(values.len());
-        for value in values {
-            vars.push(FpVar::new_variable(
-                cs.clone(),
-                || value.ok_or(SynthesisError::AssignmentMissing),
-                AllocationMode::Input,
-            )?);
-        }
-
-        // For each variable, ensure that only last `self.required_bit_size` _may_ be set, rest *must* be unset
-        for v in vars {
-            let bits = v.to_bits_be()?;
-            let modulus_bits = ConstraintF::size_in_bits();
-            let zero_bits = modulus_bits - self.required_bit_size as usize;
-            for b in bits[..zero_bits].iter() {
-                b.enforce_equal(&Boolean::constant(false))?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encryption::{
-        decrypt_to_chunks, encrypt_decomposed_message, verify_ciphertext_commitment,
-    };
-    use crate::setup::keygen;
+    use crate::encryption::Encryption;
+    use crate::keygen::keygen;
     use ark_bls12_381::Bls12_381;
     use ark_ec::group::Group;
     use ark_groth16::prepare_verifying_key;
@@ -184,45 +138,49 @@ mod tests {
         let gens = Generators::<Bls12_381>::new_using_rng(&mut rng);
 
         let msgs = vec![2, 47, 239, 155];
+        let n = msgs.len() as u8;
         let msgs_as_field_elems = msgs.iter().map(|m| Fr::from(*m as u64)).collect::<Vec<_>>();
 
-        let circuit = BitsizeCheckCircuit {
-            required_bit_size: 8,
-            values_count: 4,
-            values: None,
-        };
-        let params = generate_crs::<Bls12_381, _, _>(circuit, &gens, &mut rng).unwrap();
+        let circuit = BitsizeCheckCircuit::new(8, Some(4), None, true);
+        let snark_srs = generate_srs::<Bls12_381, _, _>(circuit, &gens, &mut rng).unwrap();
 
-        let g_i = &params.pk.vk.gamma_abc_g1[1..];
+        let g_i = &snark_srs.pk.vk.gamma_abc_g1[1..];
         let (sk, ek, dk) = keygen(
             &mut rng,
-            4,
+            n as u8,
             &gens,
             g_i,
-            &params.pk.delta_g1,
-            &params.gamma_g1,
+            &snark_srs.pk.delta_g1,
+            &snark_srs.gamma_g1,
         );
 
-        let (ct, r) = encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i);
-        assert_eq!(ct.len(), msgs.len() + 2);
+        let (ct, r) = Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i);
 
-        let (m_, nu) = decrypt_to_chunks(&ct, &sk, &dk, &g_i, 8);
+        let (m_, nu) =
+            Encryption::decrypt_to_chunks(&ct[0], &ct[1..n as usize + 1], &sk, &dk, &g_i, 8);
 
         assert_eq!(m_, msgs);
 
-        let circuit = BitsizeCheckCircuit {
-            required_bit_size: 8,
-            values_count: 4,
-            values: Some(msgs_as_field_elems.clone()),
-        };
+        let circuit = BitsizeCheckCircuit::new(8, Some(4), Some(msgs_as_field_elems.clone()), true);
 
         let start = Instant::now();
-        let proof = create_proof(circuit, r, &params, &ek, &mut rng).unwrap();
+        let proof = create_proof(circuit, r, &snark_srs, &ek, &mut rng).unwrap();
         println!("Time taken to create Groth16 proof {:?}", start.elapsed());
 
         let start = Instant::now();
-        assert!(verify_ciphertext_commitment(&ct, &ek, &gens));
-        let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
+        assert!(Encryption::verify_ciphertext_commitment(
+            &ct[0],
+            &ct[1..n as usize + 1],
+            &ct[n as usize + 1],
+            &ek,
+            &gens
+        ));
+        let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
+        let ct = Ciphertext {
+            X_r: ct[0].clone(),
+            enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
+            commitment: ct[n as usize + 1].clone(),
+        };
         assert!(verify_proof(&pvk, &proof, &ct).unwrap());
         println!("Time taken to verify Groth16 proof {:?}", start.elapsed());
     }

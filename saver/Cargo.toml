@@ -23,7 +23,7 @@ bbs_plus = { default-features = false, path = "../bbs_plus" }
 
 [dependencies.legogroth16]
 git = "https://github.com/lovesh/legogro16"
-branch = "modified"
+branch = "comm-wit"
 #path = "/home/lovesh/dev/legogro16"
 
 [dev-dependencies]

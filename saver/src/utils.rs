@@ -1,3 +1,4 @@
+use crate::error::Error;
 use ark_ec::ProjectiveCurve;
 use ark_ff::{BigInteger, PrimeField};
 use ark_std::{vec, vec::Vec};
@@ -39,6 +40,51 @@ pub fn compose<F: PrimeField>(decomposed: &[u8], chunk_bit_size: u8) -> F {
         _ => panic!("Only 4 and 8 allowed"),
     }
 }
+
+pub fn chunks_count<F: PrimeField>(chunk_bit_size: u8) -> u8 {
+    let scalar_size = F::size_in_bits();
+    let bit_size = chunk_bit_size as usize;
+    // ceil(scalar_size / bit_size)
+    ((scalar_size + bit_size - 1) / bit_size) as u8
+}
+
+/*/// Given an element `F`, break it into chunks with each chunk is of bits `chunk_bit_size`. This is
+/// essential an n-ary representation where n is chunk_bit_size.
+pub fn decompose<F: PrimeField>(message: &F, chunk_bit_size: u8) -> crate::Result<Vec<u8>> {
+    let bytes = message.into_repr().to_bytes_be();
+    let mut decomposition = vec![];
+    match chunk_bit_size {
+        4 => {
+            for b in bytes {
+                decomposition.push(b >> 4);
+                decomposition.push(b & 15);
+            }
+        }
+        8 => {
+            for b in bytes {
+                decomposition.push(b);
+            }
+        }
+        b => return Err(Error::UnexpectedBase(b))
+    }
+    Ok(decomposition)
+}
+
+/// Recreate a field element back from output of `decompose`
+pub fn compose<F: PrimeField>(decomposed: &[u8], chunk_bit_size: u8) -> crate::Result<F> {
+    match chunk_bit_size {
+        4 => {
+            assert_eq!(decomposed.len() % 2, 0);
+            let mut bytes = vec![];
+            for nibbles in decomposed.chunks(2) {
+                bytes.push(nibbles[0] * 16 + nibbles[1]);
+            }
+            Ok(F::from_be_bytes_mod_order(&bytes))
+        }
+        8 => Ok(F::from_be_bytes_mod_order(&decomposed)),
+        b => Err(Error::UnexpectedBase(b))
+    }
+}*/
 
 #[cfg(test)]
 pub(crate) mod tests {
