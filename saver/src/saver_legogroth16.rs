@@ -17,8 +17,8 @@ use ark_std::{
     UniformRand,
 };
 use legogroth16::{
-    create_random_proof, generate_parameters_with_qap, verify_link_proof, LibsnarkReduction,
-    LinkPublicGenerators, PreparedVerifyingKey, Proof, VerifyingKey,
+    create_random_proof, generate_parameters_with_qap, verify_link_proof, verify_qap_proof,
+    LibsnarkReduction, LinkPublicGenerators, PreparedVerifyingKey, Proof, VerifyingKey,
 };
 
 use crate::error::Error;
@@ -129,29 +129,23 @@ mod protocol_1 {
         d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
         d.add_assign_mixed(&proof.v_eta_gamma_inv);
 
-        let qap = E::miller_loop(
-            [
-                (proof.proof.a.into(), proof.proof.b.into()),
-                (proof.proof.c.into(), pvk.delta_g2_neg_pc.clone()),
-                (d.into_affine().into(), pvk.gamma_g2_neg_pc.clone()),
-            ]
-            .iter(),
-        );
-
-        if E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?
-            != pvk.alpha_g1_beta_g2
-        {
-            return Err(Error::InvalidProof);
-        }
-        Ok(())
+        verify_qap_proof(
+            pvk,
+            proof.proof.a,
+            proof.proof.b,
+            proof.proof.c,
+            d.into_affine(),
+        )
+        .map_err(|e| e.into())
     }
 }
 
 /// This modifies the encryption algorithm from the paper by also outputting `r*X_1 + r*X_2 + .. + r*X_n`
-/// as well, i.e. uses encrypt_alt
+/// as well in encryption, i.e. uses `encrypt_alt`
 mod protocol_2 {
     use super::*;
     use crate::encryption::{Ciphertext, CiphertextAlt};
+    use std::ops::Add;
 
     /// `r` is the randomness used during the encryption
     pub fn create_proof<E, C, R>(
@@ -184,50 +178,11 @@ mod protocol_2 {
         ciphertext: &CiphertextAlt<E>,
     ) -> crate::Result<()> {
         verify_link_proof(&pvk.vk, &proof)?;
-
-        // Get v * (eta/gamma)*G
-        // proof.d = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G
-        // ct_sum = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n]
-        let mut ct_sum = ciphertext.enc_chunks[0].into_projective();
-        for c in ciphertext.enc_chunks[1..].iter() {
-            ct_sum.add_assign_mixed(c)
-        }
-        // ct_sum_plus_g_0 = ct_sum + G[0]
-        let ct_sum_plus_g_0 = ct_sum.add_mixed(&pvk.vk.gamma_abc_g1[0]);
-        // ct_sum_plus_g_0_minus_X_r_sum = ct_sum + G[0] - X_r_sum
-        // = r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + G[0] - (r*X_1 + r*X_2 + .. + r*X_n)
-        // = G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n]
-        let ct_sum_plus_g_0_minus_x_r_sum =
-            ct_sum_plus_g_0.sub(ciphertext.X_r_sum.into_projective());
-
-        // proof.d - ct_sum_plus_g_0_minus_x_r_sum
-        // = G[0] + m1*G[1] + m2*G[2] + ... + v * (eta/gamma)*G - (G[0] + m1*G[1] + m2*G[2] + ... + mn*G[n])
-        // = v * (eta/gamma)*G
-        let v_eta_gamma_inv = proof
-            .d
-            .into_projective()
-            .sub(&ct_sum_plus_g_0_minus_x_r_sum);
-
         // d = G[0] + r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + r * X_0 + v * (eta/gamma)*G
-        let mut d = ct_sum_plus_g_0;
+        let mut d = proof.d.into_projective().add_mixed(&ciphertext.X_r_sum);
+        d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
         d.add_assign_mixed(&ciphertext.X_r);
-        d.add_assign(&v_eta_gamma_inv);
-
-        let qap = E::miller_loop(
-            [
-                (proof.a.into(), proof.b.into()),
-                (proof.c.into(), pvk.delta_g2_neg_pc.clone()),
-                (d.into_affine().into(), pvk.gamma_g2_neg_pc.clone()),
-            ]
-            .iter(),
-        );
-
-        if E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?
-            != pvk.alpha_g1_beta_g2
-        {
-            return Err(Error::InvalidProof);
-        }
-        Ok(())
+        verify_qap_proof(pvk, proof.a, proof.b, proof.c, d.into_affine()).map_err(|e| e.into())
     }
 }
 
@@ -269,7 +224,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
         let n = 4;
         let gens = Generators::<Bls12_381>::new_using_rng(&mut rng);
-        let link_gens = get_link_public_gens(&mut rng, n + 2);
+        let link_gens = get_link_public_gens(&mut rng, n + 1);
 
         let msgs = vec![2, 47, 239, 155];
         let n = msgs.len() as u8;
@@ -349,15 +304,9 @@ mod tests {
             start.elapsed()
         );
 
-        verify_link_commitment(
-            &pvk.vk.link_bases,
-            &proof_2,
-            &[],
-            &msgs_as_field_elems,
-            &link_v,
-        )
-        .unwrap();
-        verify_commitment(&pvk.vk, &proof_2, &[], &msgs_as_field_elems, &v, &link_v).unwrap();
+        verify_link_commitment(&pvk.vk.link_bases, &proof_2, &msgs_as_field_elems, &link_v)
+            .unwrap();
+        verify_commitment(&pvk.vk, &proof_2, 0, &msgs_as_field_elems, &v, &link_v).unwrap();
 
         let start = Instant::now();
         let proof_1 =
@@ -390,7 +339,6 @@ mod tests {
         verify_link_commitment(
             &pvk.vk.link_bases,
             &proof_1.proof,
-            &[],
             &msgs_as_field_elems,
             &link_v,
         )
@@ -398,7 +346,7 @@ mod tests {
         verify_commitment(
             &pvk.vk,
             &proof_1.proof,
-            &[],
+            0,
             &msgs_as_field_elems,
             &v,
             &link_v,

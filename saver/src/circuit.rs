@@ -1,3 +1,4 @@
+use crate::utils::chunks_count;
 use ark_ff::PrimeField;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::{AllocVar, AllocationMode, Boolean, EqGadget};
@@ -23,10 +24,7 @@ impl<F: PrimeField> BitsizeCheckCircuit<F> {
         let num_values = if num_values.is_some() {
             num_values.unwrap()
         } else {
-            let scalar_size = F::size_in_bits();
-            let bit_size = required_bit_size as usize;
-            // ceil(scalar_size / bit_size)
-            ((scalar_size + bit_size - 1) / bit_size) as u8
+            chunks_count::<F>(required_bit_size)
         };
         Self {
             required_bit_size,

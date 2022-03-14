@@ -34,7 +34,13 @@ impl<G: AffineCurve> ChunkedCommitment<G> {
     /// Decompose a given field element `message` to `chunks_count` chunks each of size `chunk_bit_size` and
     /// create a Pedersen commitment to those chunks. say `m` is decomposed as `m_1`, `m_2`, .. `m_n`.
     /// Create multiples of `g` as `g_n, g_{n-1}, ..., g_2, g_1` using `create_gs`. Now commit as `m_1 * g_1 + m_2 * g_2 + ... + m_n * g_n + r * h`
-    pub fn new(message: &G::ScalarField, blinding: &G::ScalarField, chunk_bit_size: u8, g: &G, h: &G) -> Self {
+    pub fn new(
+        message: &G::ScalarField,
+        blinding: &G::ScalarField,
+        chunk_bit_size: u8,
+        g: &G,
+        h: &G,
+    ) -> Self {
         let mut decomposed = decompose(message, chunk_bit_size)
             .into_iter()
             .map(|m| <G::ScalarField as PrimeField>::BigInt::from(m as u64))
@@ -126,7 +132,10 @@ mod tests {
 
         let start = Instant::now();
         let gs_1 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key_for_radix_power_of_2(g, chunks_count, 1 << chunk_bit_size);
-        println!("commitment_key_for_radix_power_of_2 time {:?}", start.elapsed());
+        println!(
+            "commitment_key_for_radix_power_of_2 time {:?}",
+            start.elapsed()
+        );
 
         let start = Instant::now();
         let gs_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key_for_radix_non_power_of_2(g, chunks_count, 1 << chunk_bit_size);
@@ -158,7 +167,14 @@ mod tests {
             let blinding = Fr::rand(&mut rng);
 
             let comm_1 = G.mul(m.into_repr()).add(&(H.mul(blinding.into_repr())));
-            let comm_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(&m,  &blinding, chunk_bit_size, &G, &H).0;
+            let comm_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
+                &m,
+                &blinding,
+                chunk_bit_size,
+                &G,
+                &H,
+            )
+            .0;
 
             assert_eq!(comm_1, comm_2);
 
@@ -169,7 +185,12 @@ mod tests {
                 .into_iter()
                 .map(|m| Fr::from(m as u64))
                 .collect::<Vec<_>>();
-            let mut gs = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(&G, chunk_bit_size, 1 << chunk_bit_size);
+            let mut gs =
+                ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
+                    &G,
+                    chunk_bit_size,
+                    1 << chunk_bit_size,
+                );
             assert_eq!(gs.len(), decomposed.len());
             gs.push(H.clone());
             decomposed.push(blinding);

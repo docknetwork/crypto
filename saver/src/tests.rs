@@ -112,9 +112,15 @@ fn bbs_plus_verifiably_encrypt_user_id() {
         chunk_bit_size,
         &G,
         &H,
-    ).0;
+    )
+    .0;
 
-    let mut bases_comm_chunks = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(&G, chunk_bit_size, 1 << chunk_bit_size);
+    let mut bases_comm_chunks =
+        ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
+            &G,
+            chunk_bit_size,
+            1 << chunk_bit_size,
+        );
     bases_comm_chunks.push(H.clone());
     let mut wit_comm_chunks = decomposed_message.clone();
     wit_comm_chunks.push(blinding.clone());
@@ -302,7 +308,8 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
         chunk_bit_size,
         &G,
         &H,
-    ).0;
+    )
+    .0;
 
     let comm_single_2 = G
         .mul(messages_2[user_id_idx].into_repr())
@@ -313,9 +320,15 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
         chunk_bit_size,
         &G,
         &H,
-    ).0;
+    )
+    .0;
 
-    let mut bases_comm_chunks = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(&G, chunk_bit_size, 1 << chunk_bit_size);
+    let mut bases_comm_chunks =
+        ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
+            &G,
+            chunk_bit_size,
+            1 << chunk_bit_size,
+        );
     bases_comm_chunks.push(H.clone());
 
     let mut wit_comm_chunks_1 = decomposed_message_1.clone();
