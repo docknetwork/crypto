@@ -1,34 +1,37 @@
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{to_bytes, One, PrimeField, SquareRootField};
-use ark_std::{cfg_iter, ops::AddAssign, rand::RngCore, vec::Vec, UniformRand};
-use digest::Digest;
+use ark_ff::{One, PrimeField, SquareRootField};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_std::{
+    cfg_iter,
+    io::{Read, Write},
+    ops::AddAssign,
+    rand::RngCore,
+    vec::Vec,
+    UniformRand,
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
+use crate::error::Error;
+use crate::setup::EncryptionGens;
+use crate::utils::chunks_count;
 use dock_crypto_utils::{
-    ec::batch_normalize_projective_into_affine, hashing_utils::affine_group_elem_from_try_and_incr,
+    ec::batch_normalize_projective_into_affine, msm::multiply_field_elems_with_same_group_elem,
 };
 
-/// Create "G" and "H" from the paper.
-pub struct Generators<E: PairingEngine> {
-    pub G: E::G1Affine,
-    pub H: E::G2Affine,
-}
-
 /// Used to decrypt
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SecretKey<F: PrimeField + SquareRootField>(pub F);
 
-// TODO: Consider including number of message chunks `n` in encryption and decryption keys to avoid accidental errors
-
 /// Used to encrypt, rerandomize and verify the encryption. Called "PK" in the paper.
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct EncryptionKey<E: PairingEngine> {
     /// `G * delta`
     pub X_0: E::G1Affine,
     /// `G * delta*s_i`
     pub X: Vec<E::G1Affine>,
-    /// `G_i * t_i`
+    /// `G_i * t_{i+1}`
     pub Y: Vec<E::G1Affine>,
     /// `H * t_i`
     pub Z: Vec<E::G2Affine>,
@@ -39,6 +42,7 @@ pub struct EncryptionKey<E: PairingEngine> {
 }
 
 /// Used to decrypt and verify decryption. Called "VK" in the paper.
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct DecryptionKey<E: PairingEngine> {
     /// `H * rho`
     pub V_0: E::G2Affine,
@@ -48,36 +52,53 @@ pub struct DecryptionKey<E: PairingEngine> {
     pub V_2: Vec<E::G2Affine>,
 }
 
-impl<E: PairingEngine> Generators<E> {
-    pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let G = affine_group_elem_from_try_and_incr::<E::G1Affine, D>(
-            &to_bytes![label, " : G".as_bytes()].unwrap(),
-        );
-        let H = affine_group_elem_from_try_and_incr::<E::G2Affine, D>(
-            &to_bytes![label, " : H".as_bytes()].unwrap(),
-        );
-        Self { G, H }
+impl<E: PairingEngine> EncryptionKey<E> {
+    pub fn supported_chunks_count(&self) -> crate::Result<u8> {
+        let n = self.X.len();
+        if self.Y.len() != n {
+            return Err(Error::MalformedEncryptionKey(self.Y.len(), n));
+        }
+        if self.Z.len() != (n + 1) {
+            return Err(Error::MalformedEncryptionKey(self.Z.len(), n));
+        }
+        Ok(n as u8)
     }
 
-    pub fn new_using_rng<R: RngCore>(rng: &mut R) -> Self {
-        let G = E::G1Projective::rand(rng).into_affine();
-        let H = E::G2Projective::rand(rng).into_affine();
-        Self { G, H }
+    pub fn validate(&self) -> crate::Result<()> {
+        self.supported_chunks_count()?;
+        Ok(())
+    }
+}
+
+impl<E: PairingEngine> DecryptionKey<E> {
+    pub fn supported_chunks_count(&self) -> crate::Result<u8> {
+        let n = self.V_1.len();
+        if self.V_2.len() != n {
+            return Err(Error::MalformedDecryptionKey(self.V_2.len(), n));
+        }
+        Ok(n as u8)
+    }
+
+    pub fn validate(&self) -> crate::Result<()> {
+        self.supported_chunks_count()?;
+        Ok(())
     }
 }
 
 /// Generate keys for encryption and decryption. The parameters `g_i`, `delta_g` and `gamma_g` are
-/// shared with the SNARK CRS.
+/// shared with the SNARK SRS.
 pub fn keygen<R: RngCore, E: PairingEngine>(
     rng: &mut R,
-    n: u8,
-    gens: &Generators<E>,
+    chunk_bit_size: u8,
+    gens: &EncryptionGens<E>,
     g_i: &[E::G1Affine],
     delta_g: &E::G1Affine,
     gamma_g: &E::G1Affine,
-) -> (SecretKey<E::Fr>, EncryptionKey<E>, DecryptionKey<E>) {
-    let n = n as usize;
-    assert!(g_i.len() >= n);
+) -> crate::Result<(SecretKey<E::Fr>, EncryptionKey<E>, DecryptionKey<E>)> {
+    let n = chunks_count::<E::Fr>(chunk_bit_size) as usize;
+    if n > g_i.len() {
+        return Err(Error::VectorShorterThanExpected(g_i.len(), n));
+    }
 
     let rho = E::Fr::rand(rng);
     let s = (0..n).map(|_| E::Fr::rand(rng)).collect::<Vec<_>>();
@@ -118,7 +139,7 @@ pub fn keygen<R: RngCore, E: PairingEngine>(
         V_1: batch_normalize_projective_into_affine(V_1),
         V_2: batch_normalize_projective_into_affine(V_2),
     };
-    (SecretKey(rho), ek, dk)
+    Ok((SecretKey(rho), ek, dk))
 }
 
 #[cfg(test)]
@@ -126,30 +147,36 @@ pub(crate) mod tests {
     use super::*;
 
     use ark_bls12_381::Bls12_381;
-    use ark_ec::group::Group;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
 
     #[test]
-    fn setup_works() {
-        let mut rng = StdRng::seed_from_u64(0u64);
+    fn keygen_works() {
+        fn check_keygen(chunk_bit_size: u8) {
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let n = chunks_count::<Fr>(chunk_bit_size) as usize;
+            let gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
+            let g_i = (0..n)
+                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .collect::<Vec<_>>();
+            let delta = Fr::rand(&mut rng);
+            let gamma = Fr::rand(&mut rng);
+            let g_delta = gens.G.mul(delta.into_repr()).into_affine();
+            let g_gamma = gens.G.mul(gamma.into_repr()).into_affine();
+            let (_, ek, dk) =
+                keygen(&mut rng, chunk_bit_size, &gens, &g_i, &g_delta, &g_gamma).unwrap();
+            assert_eq!(ek.X.len(), n);
+            assert_eq!(ek.Y.len(), n);
+            assert_eq!(ek.Z.len(), n + 1);
+            assert_eq!(dk.V_1.len(), n);
+            assert_eq!(dk.V_2.len(), n);
+            assert_eq!(ek.supported_chunks_count().unwrap(), n as u8);
+            assert_eq!(dk.supported_chunks_count().unwrap(), n as u8);
+        }
 
-        let n = 4usize;
-        let gens = Generators::<Bls12_381>::new_using_rng(&mut rng);
-        let g_i = (0..n)
-            .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
-            .collect::<Vec<_>>();
-        let delta = Fr::rand(&mut rng);
-        let gamma = Fr::rand(&mut rng);
-        let g_delta = gens.G.mul(delta.into_repr()).into_affine();
-        let g_gamma = gens.G.mul(gamma.into_repr()).into_affine();
-        let (_, ek, dk) = keygen(&mut rng, n as u8, &gens, &g_i, &g_delta, &g_gamma);
-        assert_eq!(ek.X.len(), n);
-        assert_eq!(ek.Y.len(), n);
-        assert_eq!(ek.Z.len(), n + 1);
-        assert_eq!(dk.V_1.len(), n);
-        assert_eq!(dk.V_2.len(), n);
+        check_keygen(4);
+        check_keygen(8);
     }
 }

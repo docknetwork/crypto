@@ -2,29 +2,22 @@
 
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::PrimeField;
-use ark_r1cs_std::alloc::AllocationMode;
-use ark_r1cs_std::fields::fp::FpVar;
-use ark_r1cs_std::prelude::{AllocVar, Boolean, EqGadget};
-use ark_r1cs_std::ToBitsGadget;
-use ark_relations::r1cs::{
-    ConstraintSynthesizer, ConstraintSystemRef, Result as R1CSResult, SynthesisError,
-};
+use ark_relations::r1cs::{ConstraintSynthesizer, Result as R1CSResult, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     io::{Read, Write},
     rand::{Rng, RngCore},
-    vec::Vec,
     UniformRand,
 };
 
-use crate::circuit::BitsizeCheckCircuit;
 use crate::encryption::Ciphertext;
 use ark_groth16::{
     create_random_proof, generate_parameters, PreparedVerifyingKey, Proof, VerifyingKey,
 };
 use ark_std::ops::AddAssign;
 
-use crate::keygen::{EncryptionKey, Generators};
+use crate::keygen::EncryptionKey;
+use crate::setup::EncryptionGens;
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProvingKey<E: PairingEngine> {
@@ -41,7 +34,7 @@ pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1A
 
 pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr>>(
     circuit: C,
-    gens: &Generators<E>,
+    gens: &EncryptionGens<E>,
     rng: &mut R,
 ) -> R1CSResult<ProvingKey<E>> {
     let alpha = E::Fr::rand(rng);
@@ -121,13 +114,14 @@ pub fn verify_proof<E: PairingEngine>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::circuit::BitsizeCheckCircuit;
     use crate::encryption::Encryption;
     use crate::keygen::keygen;
+    use crate::utils::chunks_count;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::group::Group;
     use ark_groth16::prepare_verifying_key;
     use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::{Rng, SeedableRng};
+    use ark_std::rand::SeedableRng;
     use std::time::Instant;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
@@ -135,29 +129,39 @@ mod tests {
     #[test]
     fn encrypt_and_snark_verification() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let gens = Generators::<Bls12_381>::new_using_rng(&mut rng);
+        let gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
 
-        let msgs = vec![2, 47, 239, 155];
-        let n = msgs.len() as u8;
+        let chunk_bit_size = 8;
+        let n = chunks_count::<Fr>(chunk_bit_size);
+        let msgs = (0..n).map(|_| u8::rand(&mut rng)).collect::<Vec<_>>();
         let msgs_as_field_elems = msgs.iter().map(|m| Fr::from(*m as u64)).collect::<Vec<_>>();
 
-        let circuit = BitsizeCheckCircuit::new(8, Some(4), None, true);
+        let circuit = BitsizeCheckCircuit::new(chunk_bit_size, Some(n), None, true);
         let snark_srs = generate_srs::<Bls12_381, _, _>(circuit, &gens, &mut rng).unwrap();
 
-        let g_i = &snark_srs.pk.vk.gamma_abc_g1[1..];
+        let g_i = get_gs_for_encryption(&snark_srs.pk.vk);
         let (sk, ek, dk) = keygen(
             &mut rng,
-            n as u8,
+            chunk_bit_size,
             &gens,
             g_i,
             &snark_srs.pk.delta_g1,
             &snark_srs.gamma_g1,
-        );
+        )
+        .unwrap();
 
-        let (ct, r) = Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i);
+        let (ct, r) =
+            Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i).unwrap();
 
-        let (m_, nu) =
-            Encryption::decrypt_to_chunks(&ct[0], &ct[1..n as usize + 1], &sk, &dk, &g_i, 8);
+        let (m_, _) = Encryption::decrypt_to_chunks(
+            &ct[0],
+            &ct[1..n as usize + 1],
+            &sk,
+            &dk,
+            &g_i,
+            chunk_bit_size,
+        )
+        .unwrap();
 
         assert_eq!(m_, msgs);
 
@@ -168,14 +172,16 @@ mod tests {
         println!("Time taken to create Groth16 proof {:?}", start.elapsed());
 
         let start = Instant::now();
-        assert!(Encryption::verify_ciphertext_commitment(
+        Encryption::verify_ciphertext_commitment(
             &ct[0],
             &ct[1..n as usize + 1],
             &ct[n as usize + 1],
             &ek,
-            &gens
-        ));
+            &gens,
+        )
+        .unwrap();
         let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
+
         let ct = Ciphertext {
             X_r: ct[0].clone(),
             enc_chunks: ct[1..n as usize + 1].to_vec().clone(),

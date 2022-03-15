@@ -6,7 +6,15 @@ pub enum Error {
     UnexpectedBase(u8),
     LegoGroth16Error(LegoGroth16Error),
     SynthesisError(SynthesisError),
+    AtLeastOneNonNoneRequired,
+    VectorShorterThanExpected(usize, usize),
+    MalformedEncryptionKey(usize, usize),
+    MalformedDecryptionKey(usize, usize),
+    IncompatibleEncryptionKey(usize, usize),
+    IncompatibleDecryptionKey(usize, usize),
     InvalidProof,
+    InvalidCommitment,
+    InvalidDecryption,
 }
 
 impl From<SynthesisError> for Error {

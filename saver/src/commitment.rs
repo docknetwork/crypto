@@ -21,13 +21,20 @@
 //!
 //! Since `b`, `n` and `G` are public, it can be ensured that `G_i`s are correctly created.
 
+use crate::setup::ChunkedCommitmentGens;
 use crate::utils::{chunks_count, decompose};
 use ark_ec::msm::{FixedBaseMSM, VariableBaseMSM};
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{Field, One, PrimeField};
-use ark_std::{vec, vec::Vec};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_std::{
+    io::{Read, Write},
+    vec,
+    vec::Vec,
+};
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ChunkedCommitment<G: AffineCurve>(pub G);
 
 impl<G: AffineCurve> ChunkedCommitment<G> {
@@ -38,29 +45,35 @@ impl<G: AffineCurve> ChunkedCommitment<G> {
         message: &G::ScalarField,
         blinding: &G::ScalarField,
         chunk_bit_size: u8,
-        g: &G,
-        h: &G,
-    ) -> Self {
-        let mut decomposed = decompose(message, chunk_bit_size)
+        gens: &ChunkedCommitmentGens<G>,
+    ) -> crate::Result<Self> {
+        let mut decomposed = decompose(message, chunk_bit_size)?
             .into_iter()
             .map(|m| <G::ScalarField as PrimeField>::BigInt::from(m as u64))
             .collect::<Vec<_>>();
-        let mut gs = Self::commitment_key(g, chunk_bit_size, 1 << chunk_bit_size);
-        gs.push(h.clone());
         decomposed.push(blinding.into_repr());
-        Self(VariableBaseMSM::multi_scalar_mul(&gs, &decomposed).into_affine())
+        let gs = Self::commitment_key(gens, chunk_bit_size, 1 << chunk_bit_size);
+        Ok(Self(
+            VariableBaseMSM::multi_scalar_mul(&gs, &decomposed).into_affine(),
+        ))
     }
 
     /// Given a group element `g`, create `chunks_count` multiples of `g` as `g_n, g_{n-1}, ..., g_2, g_1` where each `g_i = {radix^i} * g`.
-    pub fn commitment_key(g: &G, chunk_bit_size: u8, radix: u16) -> Vec<G> {
+    pub fn commitment_key(
+        gens: &ChunkedCommitmentGens<G>,
+        chunk_bit_size: u8,
+        radix: u16,
+    ) -> Vec<G> {
         let chunks = chunks_count::<G::ScalarField>(chunk_bit_size);
         let mut gs = if radix.is_power_of_two() {
-            Self::commitment_key_for_radix_power_of_2(g.into_projective(), chunks, radix)
+            Self::commitment_key_for_radix_power_of_2(gens.G.into_projective(), chunks, radix)
         } else {
-            Self::commitment_key_for_radix_non_power_of_2(g.into_projective(), chunks, radix)
+            Self::commitment_key_for_radix_non_power_of_2(gens.G.into_projective(), chunks, radix)
         };
         G::Projective::batch_normalization(&mut gs);
-        gs.into_iter().map(|v| v.into()).collect()
+        let mut ck = gs.into_iter().map(|v| v.into()).collect::<Vec<_>>();
+        ck.push(gens.H);
+        ck
     }
 
     fn commitment_key_for_radix_power_of_2(
@@ -149,102 +162,110 @@ mod tests {
 
     #[test]
     fn commitment_transform_works() {
-        let mut rng = StdRng::seed_from_u64(0u64);
+        fn check(chunk_bit_size: u8) {
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let n = chunks_count::<Fr>(chunk_bit_size) as usize;
+            let (_, g_i, _, ek, _) = enc_setup(chunk_bit_size, &mut rng);
 
-        let chunk_bit_size = 8u8;
-        let n = 32;
-        let (_, g_i, _, ek, _) = enc_setup(n, &mut rng);
-
-        let G = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
-        let H = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
-
-        let count = 10;
-        let mut total_prove = Duration::default();
-        let mut total_verify = Duration::default();
-
-        for _ in 0..count {
-            let m = Fr::rand(&mut rng);
-            let blinding = Fr::rand(&mut rng);
-
-            let comm_1 = G.mul(m.into_repr()).add(&(H.mul(blinding.into_repr())));
-            let comm_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
-                &m,
-                &blinding,
-                chunk_bit_size,
-                &G,
-                &H,
-            )
-            .0;
-
-            assert_eq!(comm_1, comm_2);
-
-            let (ct, r) = Encryption::encrypt(&mut rng, &m, &ek, &g_i, chunk_bit_size);
-            let comm_ct = ct.commitment;
-
-            let mut decomposed = decompose(&m, chunk_bit_size)
-                .into_iter()
-                .map(|m| Fr::from(m as u64))
-                .collect::<Vec<_>>();
-            let mut gs =
-                ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
-                    &G,
-                    chunk_bit_size,
-                    1 << chunk_bit_size,
+            let gens =
+                ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
+                    &mut rng,
                 );
-            assert_eq!(gs.len(), decomposed.len());
-            gs.push(H.clone());
-            decomposed.push(blinding);
 
-            let mut bases = ek.Y.clone();
-            bases.push(ek.P_1.clone());
+            let count = 10;
+            let mut total_prove = Duration::default();
+            let mut total_verify = Duration::default();
 
-            let mut wit2 = decomposed.clone();
-            wit2[n as usize] = r;
+            for _ in 0..count {
+                let m = Fr::rand(&mut rng);
+                let blinding = Fr::rand(&mut rng);
 
-            let start = Instant::now();
-            let mut statements = Statements::new();
-            statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-                bases: gs.clone(),
-                commitment: comm_2.clone(),
-            }));
-            statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-                bases: bases.clone(),
-                commitment: comm_ct.clone(),
-            }));
+                let comm_1 = gens
+                    .G
+                    .mul(m.into_repr())
+                    .add(&(gens.H.mul(blinding.into_repr())));
+                let comm_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
+                    &m,
+                    &blinding,
+                    chunk_bit_size,
+                    &gens,
+                )
+                .unwrap()
+                .0;
 
-            let mut meta_statements = MetaStatements::new();
-            for i in 0..n as usize {
-                meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-                    vec![(0, i), (1, i)]
-                        .into_iter()
-                        .collect::<BTreeSet<WitnessRef>>(),
-                )));
+                assert_eq!(comm_1, comm_2);
+
+                let (ct, r) = Encryption::encrypt(&mut rng, &m, &ek, &g_i, chunk_bit_size).unwrap();
+                let comm_ct = ct.commitment;
+
+                let mut decomposed = decompose(&m, chunk_bit_size)
+                    .unwrap()
+                    .into_iter()
+                    .map(|m| Fr::from(m as u64))
+                    .collect::<Vec<_>>();
+                let gs =
+                    ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
+                        &gens,
+                        chunk_bit_size,
+                        1 << chunk_bit_size,
+                    );
+                decomposed.push(blinding);
+
+                assert_eq!(gs.len(), decomposed.len());
+
+                let mut bases = ek.Y.clone();
+                bases.push(ek.P_1.clone());
+
+                let mut wit2 = decomposed.clone();
+                wit2[n as usize] = r;
+
+                let start = Instant::now();
+                let mut statements = Statements::new();
+                statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+                    bases: gs.clone(),
+                    commitment: comm_2.clone(),
+                }));
+                statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
+                    bases: bases.clone(),
+                    commitment: comm_ct.clone(),
+                }));
+
+                let mut meta_statements = MetaStatements::new();
+                for i in 0..n as usize {
+                    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+                        vec![(0, i), (1, i)]
+                            .into_iter()
+                            .collect::<BTreeSet<WitnessRef>>(),
+                    )));
+                }
+
+                let proof_spec = ProofSpec {
+                    statements: statements.clone(),
+                    meta_statements: meta_statements.clone(),
+                    context: None,
+                };
+
+                let mut witnesses = Witnesses::new();
+                witnesses.add(Witness::PedersenCommitment(decomposed));
+                witnesses.add(Witness::PedersenCommitment(wit2));
+
+                let proof =
+                    ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), None).unwrap();
+                total_prove += start.elapsed();
+
+                let start = Instant::now();
+                proof.verify(proof_spec, None).unwrap();
+                total_verify += start.elapsed();
             }
 
-            let proof_spec = ProofSpec {
-                statements: statements.clone(),
-                meta_statements: meta_statements.clone(),
-                context: None,
-            };
-
-            let mut witnesses = Witnesses::new();
-            witnesses.add(Witness::PedersenCommitment(decomposed));
-            witnesses.add(Witness::PedersenCommitment(wit2));
-
-            let proof =
-                ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), None).unwrap();
-            total_prove += start.elapsed();
-
-            let start = Instant::now();
-            proof.verify(proof_spec, None).unwrap();
-            total_verify += start.elapsed();
+            println!(
+                "Time taken for {} iterations and {} chunk size:",
+                count, chunk_bit_size
+            );
+            println!("Proving {:?}", total_prove);
+            println!("Verifying {:?}", total_verify);
         }
-
-        println!(
-            "Time taken for {} iterations and {} chunk size:",
-            count, chunk_bit_size
-        );
-        println!("Proving {:?}", total_prove);
-        println!("Verifying {:?}", total_verify);
+        check(4);
+        check(8);
     }
 }

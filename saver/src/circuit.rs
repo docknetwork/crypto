@@ -4,13 +4,15 @@ use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::{AllocVar, AllocationMode, Boolean, EqGadget};
 use ark_r1cs_std::ToBitsGadget;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::borrow::Borrow;
 
+/// Circuit to check that each of `values` has bit size at most `required_bit_size`
 #[derive(Clone)]
 pub struct BitsizeCheckCircuit<F: PrimeField> {
     pub required_bit_size: u8,
     pub num_values: u8,
     pub values: Option<Vec<F>>,
+    /// Allocate the value as public input or private, used to switch between Groth16 and LegoGroth16.
+    /// For Groth16, its true, for LegoGroth16, its false
     pub alloc_as_public: bool,
 }
 
