@@ -2,9 +2,11 @@
 
 use crate::keygen::{DecryptionKey, EncryptionKey, Generators, SecretKey};
 use crate::utils;
+use ark_ec::bls12::Bls12;
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, One, PrimeField, Zero};
+use ark_groth16::Proof;
 use ark_std::ops::{Add, AddAssign};
 use ark_std::{marker::PhantomData, rand::RngCore, vec, vec::Vec, UniformRand};
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;

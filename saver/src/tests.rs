@@ -51,8 +51,8 @@ fn sig_setup<R: RngCore>(
 
 #[test]
 fn bbs_plus_verifiably_encrypt_user_id() {
-    // Given a BBS+ signature with one of the message as user id, verifiably encrypt the user id for an entity
-    // called decryptor which can decrypt the user id but the verifier can't decrypt, only verify
+    // Given a BBS+ signature with one of the messages as user id, verifiably encrypt the user id for an entity
+    // called decryptor which can decrypt the user id. But the verifier can't decrypt, only verify
 
     let mut rng = StdRng::seed_from_u64(0u64);
     // Prover has the BBS+ signature
@@ -73,7 +73,7 @@ fn bbs_plus_verifiably_encrypt_user_id() {
 
     let chunk_bit_size = 8;
 
-    let circuit = BitsizeCheckCircuit::new(8, None, None, true);
+    let circuit = BitsizeCheckCircuit::new(chunk_bit_size, None, None, true);
     let chunks_count = circuit.num_values;
     let params = generate_srs::<Bls12_381, _, _>(circuit, &gens, &mut rng).unwrap();
 
@@ -218,7 +218,7 @@ fn bbs_plus_verifiably_encrypt_user_id() {
 #[test]
 fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     // Given 2 BBS+ signatures with one of the message as user id, verifiably encrypt the user ids for an entity
-    // called decryptor which can decrypt the user id but the verifier can't decrypt, only verify
+    // called decryptor which can decrypt the user id. But the verifier can't decrypt, only verify
 
     let mut rng = StdRng::seed_from_u64(0u64);
 
@@ -463,7 +463,10 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     let start = Instant::now();
     let proof_1 = create_proof(circuit_1, r_1, &params, &ek, &mut rng).unwrap();
     let proof_2 = create_proof(circuit_2, r_2, &params, &ek, &mut rng).unwrap();
-    println!("Time taken to create 2 Groth16 proof {:?}", start.elapsed());
+    println!(
+        "Time taken to create 2 Groth16 proofs {:?}",
+        start.elapsed()
+    );
 
     let pvk = prepare_verifying_key::<Bls12_381>(&params.pk.vk);
 
@@ -478,7 +481,10 @@ fn bbs_plus_verifiably_encrypt_user_id_from_2_sigs() {
     let start = Instant::now();
     assert!(verify_proof(&pvk, &proof_1, &ct_1).unwrap());
     assert!(verify_proof(&pvk, &proof_2, &ct_2).unwrap());
-    println!("Time taken to verify 2 Groth16 proof {:?}", start.elapsed());
+    println!(
+        "Time taken to verify 2 Groth16 proofs {:?}",
+        start.elapsed()
+    );
 
     // Decryptor decrypts
     let (decrypted_message_1, _) = ct_1.decrypt(&sk, &dk, &g_i, chunk_bit_size);

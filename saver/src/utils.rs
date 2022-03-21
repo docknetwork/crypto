@@ -3,8 +3,8 @@ use ark_ec::ProjectiveCurve;
 use ark_ff::{BigInteger, PrimeField};
 use ark_std::{vec, vec::Vec};
 
-/// Given an element `F`, break it into chunks with each chunk is of bits `chunk_bit_size`. This is
-/// essential an n-ary representation where n is chunk_bit_size.
+/// Given an element `F`, break it into chunks where each chunk is of `chunk_bit_size` bits. This is
+/// essentially an n-ary representation where n is chunk_bit_size. Assumes BE
 pub fn decompose<F: PrimeField>(message: &F, chunk_bit_size: u8) -> Vec<u8> {
     let bytes = message.into_repr().to_bytes_be();
     let mut decomposition = vec![];
