@@ -14,4 +14,4 @@ pub mod setup;
 pub mod tests;
 pub mod utils;
 
-pub type Result<T> = core::result::Result<T, error::Error>;
+pub type Result<T> = core::result::Result<T, error::SaverError>;

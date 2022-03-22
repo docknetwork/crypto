@@ -1,6 +1,6 @@
 [package]
 name = "proof_system"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 authors = ["Dock.io"]
 license = "Apache-2.0"
@@ -22,8 +22,10 @@ bbs_plus = { version = "0.6.0", default-features = false, path = "../bbs_plus" }
 schnorr_pok = { version = "0.5.0", default-features = false, path = "../schnorr_pok" }
 vb_accumulator = { version = "0.7.0", default-features = false, path = "../vb_accumulator" }
 dock_crypto_utils = { version = "0.4.0", default-features = false, path = "../utils" }
+saver = { version = "0.1.0", default-features = false, path = "../saver" }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
+ark-groth16 = { version = "^0.3.0", default-features = false }
 
 [dev-dependencies]
 ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
@@ -32,6 +34,6 @@ serde_json = "1.0"
 
 [features]
 default = [ "std", "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std" ]
 print-trace = [ "ark-std/print-trace", "schnorr_pok/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace", "dock_crypto_utils/print-trace" ]
-parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel" ]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel" ]

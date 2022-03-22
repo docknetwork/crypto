@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::SaverError;
 use ark_ff::{BigInteger, PrimeField};
 use ark_std::{vec, vec::Vec};
 
@@ -26,7 +26,7 @@ pub fn decompose<F: PrimeField>(message: &F, chunk_bit_size: u8) -> crate::Resul
                 decomposition.push(b);
             }
         }
-        b => return Err(Error::UnexpectedBase(b)),
+        b => return Err(SaverError::UnexpectedBase(b)),
     }
     Ok(decomposition)
 }
@@ -43,8 +43,34 @@ pub fn compose<F: PrimeField>(decomposed: &[u8], chunk_bit_size: u8) -> crate::R
             Ok(F::from_be_bytes_mod_order(&bytes))
         }
         8 => Ok(F::from_be_bytes_mod_order(&decomposed)),
-        b => Err(Error::UnexpectedBase(b)),
+        b => Err(SaverError::UnexpectedBase(b)),
     }
+}
+
+#[cfg(test)]
+#[macro_export]
+macro_rules! test_serialization {
+    ($obj_type:ty, $obj: ident) => {
+        let mut serz = vec![];
+        CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
+        let deserz: $obj_type = CanonicalDeserialize::deserialize(&serz[..]).unwrap();
+        assert_eq!(deserz, $obj);
+
+        let mut serz = vec![];
+        $obj.serialize_unchecked(&mut serz).unwrap();
+        let deserz: $obj_type = CanonicalDeserialize::deserialize_unchecked(&serz[..]).unwrap();
+        assert_eq!(deserz, $obj);
+
+        let mut serz = vec![];
+        $obj.serialize_uncompressed(&mut serz).unwrap();
+        let deserz: $obj_type = CanonicalDeserialize::deserialize_uncompressed(&serz[..]).unwrap();
+        assert_eq!(deserz, $obj);
+
+        // Test JSON serialization
+        let ser = serde_json::to_string(&$obj).unwrap();
+        let deser = serde_json::from_str::<$obj_type>(&ser).unwrap();
+        assert_eq!($obj, deser);
+    };
 }
 
 #[cfg(test)]

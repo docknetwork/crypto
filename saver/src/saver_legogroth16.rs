@@ -1,6 +1,5 @@
 //! Using SAVER with LegoGroth16
 
-use crate::circuit::BitsizeCheckCircuit;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::PrimeField;
 use ark_relations::r1cs::ConstraintSynthesizer;
@@ -17,7 +16,7 @@ use legogroth16::{
     LibsnarkReduction, LinkPublicGenerators, PreparedVerifyingKey, Proof, VerifyingKey,
 };
 
-use crate::error::Error;
+use crate::error::SaverError;
 use crate::keygen::EncryptionKey;
 use crate::setup::EncryptionGens;
 
@@ -189,6 +188,7 @@ mod tests {
     use std::ops::Add;
     use std::time::Instant;
 
+    use crate::circuit::BitsizeCheckCircuit;
     use crate::encryption::{Ciphertext, CiphertextAlt, Encryption};
     use crate::keygen::keygen;
     use crate::utils::chunks_count;

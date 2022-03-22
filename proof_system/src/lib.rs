@@ -36,28 +36,39 @@
 //! *Note*: The design is tentative and will likely change as more protocols are integrated.
 //!
 //! [`Statement`]: crate::statement::Statement
-//! [`MetaStatement`]: crate::statement::MetaStatement
-//! [`ProofSpec`]: crate::proof::ProofSpec
+//! [`MetaStatement`]: crate::meta_statement::MetaStatement
+//! [`ProofSpec`]: crate::proof_spec::ProofSpec
 //! [`Witness`]: crate::witness::Witness
-//! [`StatementProof`]: crate::proof::StatementProof
+//! [`StatementProof`]: crate::statement_proof::StatementProof
 //! [`Proof`]: crate::proof::Proof
 //! [`SubProtocol`]: crate::sub_protocols::SubProtocol
 
 #[macro_use]
 pub mod util;
 pub mod error;
+pub mod meta_statement;
 pub mod proof;
+pub mod proof_spec;
 pub mod statement;
+pub mod statement_proof;
 pub mod sub_protocols;
 pub mod witness;
+
 #[cfg(test)]
 #[macro_use]
 pub mod test_utils;
+#[cfg(test)]
+mod tests;
+#[cfg(test)]
+mod tests_saver;
 
 pub mod prelude {
     pub use crate::error::ProofSystemError;
+    pub use crate::meta_statement::*;
     pub use crate::proof::*;
+    pub use crate::proof_spec::*;
     pub use crate::statement::*;
+    pub use crate::statement_proof::*;
     pub use crate::sub_protocols::*;
     pub use crate::witness::*;
 }

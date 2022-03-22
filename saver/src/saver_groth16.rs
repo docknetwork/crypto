@@ -9,22 +9,90 @@ use ark_std::{
     rand::{Rng, RngCore},
     UniformRand,
 };
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::encryption::Ciphertext;
-use ark_groth16::{
-    create_random_proof, generate_parameters, PreparedVerifyingKey, Proof, VerifyingKey,
-};
+pub use ark_groth16::Proof;
+use ark_groth16::{create_random_proof, generate_parameters, PreparedVerifyingKey, VerifyingKey};
 use ark_std::ops::AddAssign;
+
+use dock_crypto_utils::serde_utils::*;
 
 use crate::keygen::EncryptionKey;
 use crate::setup::EncryptionGens;
+pub use serialization::*;
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 pub struct ProvingKey<E: PairingEngine> {
     /// Groth16's proving key
+    #[serde_as(as = "ProvingKeyBytes")]
     pub pk: ark_groth16::ProvingKey<E>,
     /// The element `-gamma * G` in `E::G1`.
+    #[serde_as(as = "AffineGroupBytes")]
     pub gamma_g1: E::G1Affine,
+}
+
+impl<E: PairingEngine> PartialEq for ProvingKey<E> {
+    fn eq(&self, other: &Self) -> bool {
+        (self.pk == other.pk) && (self.gamma_g1 == other.gamma_g1)
+    }
+}
+
+impl<E: PairingEngine> Eq for ProvingKey<E> {}
+
+mod serialization {
+    use super::{CanonicalDeserialize, CanonicalSerialize, PairingEngine};
+    use ark_groth16::ProvingKey;
+    use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
+    use serde::de::{SeqAccess, Visitor};
+    use serde::{Deserializer, Serializer};
+    use serde_with::{DeserializeAs, SerializeAs};
+
+    pub struct ProvingKeyBytes;
+
+    impl<E: PairingEngine> SerializeAs<ProvingKey<E>> for ProvingKeyBytes {
+        fn serialize_as<S>(elem: &ProvingKey<E>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let mut bytes = vec![];
+            CanonicalSerialize::serialize(elem, &mut bytes).map_err(serde::ser::Error::custom)?;
+            serializer.serialize_bytes(&bytes)
+        }
+    }
+
+    impl<'de, E: PairingEngine> DeserializeAs<'de, ProvingKey<E>> for ProvingKeyBytes {
+        fn deserialize_as<D>(deserializer: D) -> Result<ProvingKey<E>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            struct PVisitor<E: PairingEngine>(PhantomData<E>);
+
+            impl<'a, E: PairingEngine> Visitor<'a> for PVisitor<E> {
+                type Value = ProvingKey<E>;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("expected ProvingKey")
+                }
+
+                fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+                where
+                    A: SeqAccess<'a>,
+                {
+                    let mut bytes = Vec::<u8>::new();
+                    while let Some(b) = seq.next_element()? {
+                        bytes.push(b);
+                    }
+                    let p: ProvingKey<E> = CanonicalDeserialize::deserialize(bytes.as_slice())
+                        .map_err(serde::de::Error::custom)?;
+                    Ok(p)
+                }
+            }
+            deserializer.deserialize_seq(PVisitor::<E>(PhantomData))
+        }
+    }
 }
 
 /// These parameters are needed for setting up keys for encryption/decryption

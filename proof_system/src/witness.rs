@@ -23,6 +23,8 @@ pub enum Witness<E: PairingEngine> {
     AccumulatorMembership(Membership<E>),
     AccumulatorNonMembership(NonMembership<E>),
     PedersenCommitment(#[serde_as(as = "Vec<FieldBytes>")] Vec<E::Fr>),
+    /// message being encrypted
+    Saver(#[serde_as(as = "FieldBytes")] E::Fr),
 }
 
 #[derive(
@@ -33,7 +35,7 @@ pub struct Witnesses<E>(pub Vec<Witness<E>>)
 where
     E: PairingEngine;
 
-/// Secret data corresponding when proving knowledge of BBS+ sig
+/// Secret data when proving knowledge of BBS+ sig
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -45,7 +47,7 @@ pub struct PoKBBSSignatureG1<E: PairingEngine> {
     pub unrevealed_messages: BTreeMap<usize, E::Fr>,
 }
 
-/// Secret data corresponding when proving accumulator membership
+/// Secret data when proving accumulator membership
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -57,7 +59,7 @@ pub struct Membership<E: PairingEngine> {
     pub witness: MembershipWitness<E::G1Affine>,
 }
 
-/// Secret data corresponding when proving accumulator non-membership
+/// Secret data when proving accumulator non-membership
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,

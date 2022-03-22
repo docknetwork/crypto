@@ -464,11 +464,9 @@ mod serialization {
             self.A_prime.serialize(&mut writer)?;
             self.A_bar.serialize(&mut writer)?;
             self.d.serialize(&mut writer)?;
-            // self.sc_comm_1.serialize(&mut writer)?;
             ark_serialize::CanonicalSerialize::serialize(&self.sc_comm_1, &mut writer)?;
             self.sc_wits_1[0].serialize(&mut writer)?;
             self.sc_wits_1[1].serialize(&mut writer)?;
-            // self.sc_comm_2.serialize(&mut writer)?;
             ark_serialize::CanonicalSerialize::serialize(&self.sc_comm_2, &mut writer)?;
             self.sc_wits_2.serialize(&mut writer)
         }
@@ -526,13 +524,11 @@ mod serialization {
             let A_prime = E::G1Affine::deserialize(&mut reader)?;
             let A_bar = E::G1Affine::deserialize(&mut reader)?;
             let d = E::G1Affine::deserialize(&mut reader)?;
-            // let sc_comm_1 = <SchnorrCommitment<E::G1Affine>>::deserialize(&mut reader)?;
             let sc_comm_1 = ark_serialize::CanonicalDeserialize::deserialize(&mut reader)?;
             let sc_wits_1 = [
                 E::Fr::deserialize(&mut reader)?,
                 E::Fr::deserialize(&mut reader)?,
             ];
-            // let sc_comm_2 = <SchnorrCommitment<E::G1Affine>>::deserialize(&mut reader)?;
             let sc_comm_2 = ark_serialize::CanonicalDeserialize::deserialize(&mut reader)?;
             let sc_wits_2 = <Vec<E::Fr>>::deserialize(&mut reader)?;
             Ok(Self {

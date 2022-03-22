@@ -1,7 +1,7 @@
 //! Encryption, decryption, verifying commitment and verifying decryption
 
 use crate::circuit::BitsizeCheckCircuit;
-use crate::error::Error;
+use crate::error::SaverError;
 use crate::keygen::{DecryptionKey, EncryptionKey, SecretKey};
 use crate::saver_groth16;
 use crate::saver_legogroth16;
@@ -20,12 +20,22 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
-use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
+use dock_crypto_utils::serde_utils::*;
+
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct Ciphertext<E: PairingEngine> {
+    #[serde_as(as = "AffineGroupBytes")]
     pub X_r: E::G1Affine,
+    #[serde_as(as = "Vec<AffineGroupBytes>")]
     pub enc_chunks: Vec<E::G1Affine>,
+    #[serde_as(as = "AffineGroupBytes")]
     pub commitment: E::G1Affine,
 }
 
@@ -181,8 +191,8 @@ impl<E: PairingEngine> Encryption<E> {
         ek: &EncryptionKey<E>,
         gens: &EncryptionGens<E>,
     ) -> crate::Result<()> {
-        if c.len() > ek.supported_chunks_count()? as usize {
-            return Err(Error::IncompatibleEncryptionKey(
+        if c.len() != ek.supported_chunks_count()? as usize {
+            return Err(SaverError::IncompatibleEncryptionKey(
                 c.len(),
                 ek.supported_chunks_count()? as usize,
             ));
@@ -196,7 +206,7 @@ impl<E: PairingEngine> Encryption<E> {
         if E::product_of_pairings(&product).is_one() {
             Ok(())
         } else {
-            return Err(Error::InvalidCommitment);
+            return Err(SaverError::InvalidCommitment);
         }
     }
 
@@ -210,14 +220,17 @@ impl<E: PairingEngine> Encryption<E> {
         g_i: &[E::G1Affine],
         gens: &EncryptionGens<E>,
     ) -> crate::Result<()> {
-        if messages.len() > dk.supported_chunks_count()? as usize {
-            return Err(Error::IncompatibleDecryptionKey(
+        if messages.len() != dk.supported_chunks_count()? as usize {
+            return Err(SaverError::IncompatibleDecryptionKey(
                 messages.len(),
                 dk.supported_chunks_count()? as usize,
             ));
         }
         if messages.len() > g_i.len() {
-            return Err(Error::VectorShorterThanExpected(messages.len(), g_i.len()));
+            return Err(SaverError::VectorShorterThanExpected(
+                messages.len(),
+                g_i.len(),
+            ));
         }
 
         let nu_prepared = E::G1Prepared::from(*nu);
@@ -227,7 +240,7 @@ impl<E: PairingEngine> Encryption<E> {
         ])
         .is_one()
         {
-            return Err(Error::InvalidDecryption);
+            return Err(SaverError::InvalidDecryption);
         }
         for i in 0..messages.len() {
             let g_i_m_i = g_i[i].mul(E::Fr::from(messages[i] as u64)).into_affine();
@@ -240,7 +253,7 @@ impl<E: PairingEngine> Encryption<E> {
             ])
             .is_one()
             {
-                return Err(Error::InvalidDecryption);
+                return Err(SaverError::InvalidDecryption);
             }
         }
         Ok(())
@@ -284,14 +297,14 @@ impl<E: PairingEngine> Encryption<E> {
         chunk_bit_size: u8,
     ) -> crate::Result<(Vec<u8>, E::G1Affine)> {
         let n = c.len();
-        if n > dk.supported_chunks_count()? as usize {
-            return Err(Error::IncompatibleDecryptionKey(
+        if n != dk.supported_chunks_count()? as usize {
+            return Err(SaverError::IncompatibleDecryptionKey(
                 n,
                 dk.supported_chunks_count()? as usize,
             ));
         }
         if n > g_i.len() {
-            return Err(Error::VectorShorterThanExpected(n, g_i.len()));
+            return Err(SaverError::VectorShorterThanExpected(n, g_i.len()));
         }
         // c_0 * -rho
         let c_0_rho = c_0.mul((-sk.0).into_repr());
@@ -324,32 +337,38 @@ impl<E: PairingEngine> Encryption<E> {
     /// Encrypt once the message has been broken into chunks
     pub fn encrypt_decomposed_message<R: RngCore>(
         rng: &mut R,
-        messages: Vec<u8>,
+        message_chunks: Vec<u8>,
         ek: &EncryptionKey<E>,
         g_i: &[E::G1Affine],
     ) -> crate::Result<(Vec<E::G1Affine>, E::Fr)> {
-        if messages.len() > ek.supported_chunks_count()? as usize {
-            return Err(Error::IncompatibleEncryptionKey(
-                messages.len(),
+        if message_chunks.len() != ek.supported_chunks_count()? as usize {
+            return Err(SaverError::IncompatibleEncryptionKey(
+                message_chunks.len(),
                 ek.supported_chunks_count()? as usize,
             ));
         }
-        if messages.len() > g_i.len() {
-            return Err(Error::VectorShorterThanExpected(messages.len(), g_i.len()));
+        if message_chunks.len() > g_i.len() {
+            return Err(SaverError::VectorShorterThanExpected(
+                message_chunks.len(),
+                g_i.len(),
+            ));
         }
         let r = E::Fr::rand(rng);
         let r_repr = r.into_repr();
         let mut ct = vec![];
         ct.push(ek.X_0.mul(r_repr));
-        let m = messages
+        let mut m = message_chunks
             .into_iter()
             .map(|m_i| <E::Fr as PrimeField>::BigInt::from(m_i as u64))
             .collect::<Vec<_>>();
         for i in 0..ek.X.len() {
             ct.push(ek.X[i].mul(r_repr).add(g_i[i].mul(m[i])));
         }
-        let mut psi = ek.P_1.mul(r);
-        psi.add_assign(VariableBaseMSM::multi_scalar_mul(&ek.Y, &m));
+
+        // Commit to the message chunks with randomness `r`
+        m.push(r.into_repr());
+        let psi = VariableBaseMSM::multi_scalar_mul(&ek.commitment_key(), &m);
+
         ct.push(psi);
         Ok((batch_normalize_projective_into_affine(ct), r))
     }
@@ -404,7 +423,7 @@ impl<E: PairingEngine> Ciphertext<E> {
         if saver_groth16::verify_proof(snark_vk, proof, self)? {
             Ok(())
         } else {
-            Err(Error::InvalidProof)
+            Err(SaverError::InvalidProof)
         }
     }
 

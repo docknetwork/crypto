@@ -32,10 +32,20 @@ use ark_std::{
     vec,
     vec::Vec,
 };
-use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ChunkedCommitment<G: AffineCurve>(pub G);
+use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
+use dock_crypto_utils::serde_utils::*;
+
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct ChunkedCommitment<G: AffineCurve>(
+    #[serde_as(as = "AffineGroupBytes")] pub G,
+    #[serde_as(as = "Vec<AffineGroupBytes>")] pub Vec<G>,
+);
 
 impl<G: AffineCurve> ChunkedCommitment<G> {
     /// Decompose a given field element `message` to `chunks_count` chunks each of size `chunk_bit_size` and
@@ -52,18 +62,16 @@ impl<G: AffineCurve> ChunkedCommitment<G> {
             .map(|m| <G::ScalarField as PrimeField>::BigInt::from(m as u64))
             .collect::<Vec<_>>();
         decomposed.push(blinding.into_repr());
-        let gs = Self::commitment_key(gens, chunk_bit_size, 1 << chunk_bit_size);
+        let gs = Self::commitment_key(gens, chunk_bit_size);
         Ok(Self(
             VariableBaseMSM::multi_scalar_mul(&gs, &decomposed).into_affine(),
+            gs,
         ))
     }
 
-    /// Given a group element `g`, create `chunks_count` multiples of `g` as `g_n, g_{n-1}, ..., g_2, g_1` where each `g_i = {radix^i} * g`.
-    pub fn commitment_key(
-        gens: &ChunkedCommitmentGens<G>,
-        chunk_bit_size: u8,
-        radix: u16,
-    ) -> Vec<G> {
+    /// Given a group element `g`, create `chunks_count` multiples of `g` as `g_n, g_{n-1}, ..., g_2, g_1` where each `g_i = {radix^i} * g` and `radix = 2^chunk_bit_ize`
+    pub fn commitment_key(gens: &ChunkedCommitmentGens<G>, chunk_bit_size: u8) -> Vec<G> {
+        let radix = (1 << chunk_bit_size) as u16;
         let chunks = chunks_count::<G::ScalarField>(chunk_bit_size);
         let mut gs = if radix.is_power_of_two() {
             Self::commitment_key_for_radix_power_of_2(gens.G.into_projective(), chunks, radix)
@@ -207,14 +215,12 @@ mod tests {
                     ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
                         &gens,
                         chunk_bit_size,
-                        1 << chunk_bit_size,
                     );
                 decomposed.push(blinding);
 
                 assert_eq!(gs.len(), decomposed.len());
 
-                let mut bases = ek.Y.clone();
-                bases.push(ek.P_1.clone());
+                let bases = ek.commitment_key();
 
                 let mut wit2 = decomposed.clone();
                 wit2[n as usize] = r;

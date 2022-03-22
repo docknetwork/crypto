@@ -1,6 +1,7 @@
 use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeSet, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::error::BBSPlusError;
+use saver::error::SaverError;
 use schnorr_pok::error::SchnorrError;
 use vb_accumulator::error::VBAccumulatorError;
 
@@ -27,6 +28,10 @@ pub enum ProofSystemError {
     UnsatisfiedWitnessEqualities(Vec<BTreeSet<(usize, usize)>>),
     /// `StatementProof`s were missing for some `Statement`s
     UnsatisfiedStatements(usize, usize),
+    SaverError(SaverError),
+    SaverInequalChunkedCommitment,
+    SaverInsufficientChunkedCommitmentResponses,
+    SaverInequalChunkedCommitmentResponse,
 }
 
 impl From<SchnorrError> for ProofSystemError {
@@ -44,6 +49,12 @@ impl From<BBSPlusError> for ProofSystemError {
 impl From<VBAccumulatorError> for ProofSystemError {
     fn from(e: VBAccumulatorError) -> Self {
         Self::VBAccumError(e)
+    }
+}
+
+impl From<SaverError> for ProofSystemError {
+    fn from(e: SaverError) -> Self {
+        Self::SaverError(e)
     }
 }
 

@@ -18,8 +18,8 @@ ark-groth16 = { version = "^0.3.0", default-features = false }
 digest = "0.9"
 rayon = { version = "1", optional = true }
 dock_crypto_utils = { default-features = false, path = "../utils" }
-proof_system = { default-features = false, path = "../proof_system" }
-bbs_plus = { default-features = false, path = "../bbs_plus" }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
 
 [dependencies.legogroth16]
 git = "https://github.com/lovesh/legogro16"
@@ -30,6 +30,8 @@ branch = "comm-wit"
 blake2 = { version = "0.9", default-features = false }
 ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
 serde_json = "1.0"
+proof_system = { default-features = false, path = "../proof_system" }
+bbs_plus = { default-features = false, path = "../bbs_plus" }
 
 [features]
 default = [ "std", "parallel" ]

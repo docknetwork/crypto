@@ -2,7 +2,7 @@ use ark_relations::r1cs::SynthesisError;
 use legogroth16::error::Error as LegoGroth16Error;
 
 #[derive(Clone, Debug)]
-pub enum Error {
+pub enum SaverError {
     UnexpectedBase(u8),
     LegoGroth16Error(LegoGroth16Error),
     SynthesisError(SynthesisError),
@@ -17,13 +17,13 @@ pub enum Error {
     InvalidDecryption,
 }
 
-impl From<SynthesisError> for Error {
+impl From<SynthesisError> for SaverError {
     fn from(e: SynthesisError) -> Self {
         Self::SynthesisError(e)
     }
 }
 
-impl From<LegoGroth16Error> for Error {
+impl From<LegoGroth16Error> for SaverError {
     fn from(e: LegoGroth16Error) -> Self {
         Self::LegoGroth16Error(e)
     }

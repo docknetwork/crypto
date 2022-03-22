@@ -10,12 +10,21 @@ use ark_std::{
     UniformRand,
 };
 use digest::Digest;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
 use dock_crypto_utils::hashing_utils::affine_group_elem_from_try_and_incr;
+use dock_crypto_utils::serde_utils::*;
 
 /// Create "G" and "H" from the paper.
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct EncryptionGens<E: PairingEngine> {
+    #[serde_as(as = "AffineGroupBytes")]
     pub G: E::G1Affine,
+    #[serde_as(as = "AffineGroupBytes")]
     pub H: E::G2Affine,
 }
 
@@ -37,9 +46,14 @@ impl<E: PairingEngine> EncryptionGens<E> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct ChunkedCommitmentGens<G: AffineCurve> {
+    #[serde_as(as = "AffineGroupBytes")]
     pub G: G,
+    #[serde_as(as = "AffineGroupBytes")]
     pub H: G,
 }
 
@@ -86,4 +100,50 @@ pub fn setup_for_groth16<E: PairingEngine, R: RngCore>(
         &proving_key.gamma_g1,
     )?;
     Ok((proving_key, sk, ek, dk))
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::saver_groth16::ProvingKey;
+    use crate::test_serialization;
+    use ark_bls12_381::Bls12_381;
+    use ark_std::rand::prelude::StdRng;
+    use ark_std::rand::SeedableRng;
+
+    type Fr = <Bls12_381 as PairingEngine>::Fr;
+
+    #[test]
+    fn setup_for_groth16_works() {
+        fn check(chunk_bit_size: u8) {
+            let chunk_count = crate::utils::chunks_count::<Fr>(chunk_bit_size) as usize;
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
+            let comm_gens =
+                ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
+                    &mut rng,
+                );
+            test_serialization!(EncryptionGens<Bls12_381>, enc_gens);
+            test_serialization!(
+                ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>,
+                comm_gens
+            );
+
+            let (snark_pk, sk, ek, dk) =
+                setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
+            assert_eq!(snark_pk.pk.vk.gamma_abc_g1.len(), chunk_count + 1);
+            ek.validate().unwrap();
+            dk.validate().unwrap();
+            assert_eq!(ek.supported_chunks_count().unwrap(), chunk_count as u8);
+            assert_eq!(dk.supported_chunks_count().unwrap(), chunk_count as u8);
+
+            test_serialization!(ProvingKey<Bls12_381>, snark_pk);
+            test_serialization!(EncryptionKey<Bls12_381>, ek);
+            test_serialization!(DecryptionKey<Bls12_381>, dk);
+            test_serialization!(SecretKey<Fr>, sk);
+        }
+
+        check(4);
+        check(8);
+    }
 }

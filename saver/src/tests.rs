@@ -118,13 +118,11 @@ fn bbs_plus_verifiably_encrypt_message() {
             ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
                 &chunked_comm_gens,
                 chunk_bit_size,
-                1 << chunk_bit_size,
             );
         let mut wit_comm_chunks = decomposed_message.clone();
         wit_comm_chunks.push(blinding.clone());
 
-        let mut bases_comm_ct = ek.Y.clone();
-        bases_comm_ct.push(ek.P_1.clone());
+        let bases_comm_ct = ek.commitment_key();
         let mut wit_comm_ct = decomposed_message.clone();
         wit_comm_ct.push(r.clone());
 
@@ -189,6 +187,7 @@ fn bbs_plus_verifiably_encrypt_message() {
         println!("Time taken to create proof {:?}", start.elapsed());
 
         // Verifies the proof
+        assert_eq!(comm_chunks, comm_single);
         let start = Instant::now();
         proof.verify(proof_spec, None).unwrap();
         println!("Time taken to verify proof {:?}", start.elapsed());
@@ -340,10 +339,8 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
             &chunked_comm_gens,
             chunk_bit_size,
-            1 << chunk_bit_size,
         );
-    let mut bases_comm_ct = ek.Y.clone();
-    bases_comm_ct.push(ek.P_1.clone());
+    let bases_comm_ct = ek.commitment_key();
 
     let mut wit_comm_chunks_1 = decomposed_message_1.clone();
     wit_comm_chunks_1.push(blinding_1.clone());
@@ -480,6 +477,10 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
 
     let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), None).unwrap();
 
+    // Verifies the proof
+    assert_eq!(comm_chunks_1, comm_single_1);
+    assert_eq!(comm_chunks_2, comm_single_2);
+    assert_eq!(comm_chunks_3, comm_single_3);
     let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
     proof.verify(proof_spec, None).unwrap();
     ct_1.verify_commitment_and_proof(&proof_1, &pvk, &ek, &enc_gens)
@@ -647,7 +648,6 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
             &chunked_comm_gens,
             chunk_bit_size,
-            1 << chunk_bit_size,
         );
 
     let mut wit_comm_chunks_1 = decomposed_message_1.clone();
@@ -656,8 +656,7 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
     let mut wit_comm_chunks_2 = decomposed_message_2.clone();
     wit_comm_chunks_2.push(blinding_2.clone());
 
-    let mut bases_comm_ct = ek.Y.clone();
-    bases_comm_ct.push(ek.P_1.clone());
+    let bases_comm_ct = ek.commitment_key();
 
     let mut wit_comm_ct_1 = decomposed_message_1.clone();
     wit_comm_ct_1.push(r_1.clone());
@@ -775,6 +774,8 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
     println!("Time taken to create proof {:?}", start.elapsed());
 
     // Verifies the proof
+    assert_eq!(comm_chunks_1, comm_single_1);
+    assert_eq!(comm_chunks_2, comm_single_2);
     let start = Instant::now();
     proof.verify(proof_spec, None).unwrap();
     println!("Time taken to verify proof {:?}", start.elapsed());

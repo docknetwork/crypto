@@ -19,6 +19,10 @@ macro_rules! impl_serialize {
                     CanonicalSerialize::serialize(&3u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
+                Self::Saver(s) => {
+                    CanonicalSerialize::serialize(&4u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
+                }
             }
         }
 
@@ -28,6 +32,7 @@ macro_rules! impl_serialize {
                 Self::AccumulatorMembership(s) => 1u8.serialized_size() + s.serialized_size(),
                 Self::AccumulatorNonMembership(s) => 2u8.serialized_size() + s.serialized_size(),
                 Self::PedersenCommitment(s) => 3u8.serialized_size() + s.serialized_size(),
+                Self::Saver(s) => 4u8.serialized_size() + s.serialized_size(),
             }
         }
 
@@ -52,6 +57,10 @@ macro_rules! impl_serialize {
                     3u8.serialize_uncompressed(&mut writer)?;
                     s.serialize_uncompressed(&mut writer)
                 }
+                Self::Saver(s) => {
+                    4u8.serialize_uncompressed(&mut writer)?;
+                    s.serialize_uncompressed(&mut writer)
+                }
             }
         }
 
@@ -73,6 +82,10 @@ macro_rules! impl_serialize {
                     3u8.serialize_unchecked(&mut writer)?;
                     s.serialize_unchecked(&mut writer)
                 }
+                Self::Saver(s) => {
+                    4u8.serialize_unchecked(&mut writer)?;
+                    s.serialize_unchecked(&mut writer)
+                }
             }
         }
 
@@ -84,6 +97,7 @@ macro_rules! impl_serialize {
                     2u8.uncompressed_size() + s.uncompressed_size()
                 }
                 Self::PedersenCommitment(s) => 3u8.uncompressed_size() + s.uncompressed_size(),
+                Self::Saver(s) => 4u8.uncompressed_size() + s.uncompressed_size(),
             }
         }
     };
@@ -107,6 +121,7 @@ macro_rules! impl_deserialize {
                 3u8 => Ok(Self::PedersenCommitment(CanonicalDeserialize::deserialize(
                     &mut reader,
                 )?)),
+                4u8 => Ok(Self::Saver(CanonicalDeserialize::deserialize(&mut reader)?)),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -125,6 +140,9 @@ macro_rules! impl_deserialize {
                 3u8 => Ok(Self::PedersenCommitment(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
+                4u8 => Ok(Self::Saver(CanonicalDeserialize::deserialize_uncompressed(
+                    &mut reader,
+                )?)),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -143,6 +161,9 @@ macro_rules! impl_deserialize {
                 3u8 => Ok(Self::PedersenCommitment(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
+                4u8 => Ok(Self::Saver(CanonicalDeserialize::deserialize_unchecked(
+                    &mut reader,
+                )?)),
                 _ => Err(SerializationError::InvalidData),
             }
         }

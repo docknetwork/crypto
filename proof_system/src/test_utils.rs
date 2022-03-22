@@ -141,6 +141,7 @@ macro_rules! test_serialization {
     ($obj_type:ty, $obj: ident) => {
         let mut serz = vec![];
         CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
+        println!("Serialized byte size: {}", serz.len());
         let deserz: $obj_type = CanonicalDeserialize::deserialize(&serz[..]).unwrap();
         assert_eq!(deserz, $obj);
 
