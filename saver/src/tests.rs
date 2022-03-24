@@ -78,6 +78,14 @@ fn bbs_plus_verifiably_encrypt_message() {
             setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
         let chunks_count = ek.supported_chunks_count().unwrap();
 
+        // Precomputation
+        let prepared_ek = ek.prepare();
+        let prepared_dk = dk.prepare();
+        let prepared_gens = enc_gens.prepared();
+        let pairing_powers = prepared_dk
+            .pairing_powers_given_groth16_vk(chunk_bit_size, &snark_srs.pk.vk)
+            .unwrap();
+
         // User encrypts
         let (ct, r) = Encryption::encrypt_given_snark_vk(
             &mut rng,
@@ -204,6 +212,14 @@ fn bbs_plus_verifiably_encrypt_message() {
         );
 
         let start = Instant::now();
+        ct.verify_commitment_given_prepared(&prepared_ek, &prepared_gens)
+            .unwrap();
+        println!(
+            "Time taken to verify ciphertext commitment using prepared {:?}",
+            start.elapsed()
+        );
+
+        let start = Instant::now();
         let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
         assert!(verify_proof(&pvk, &proof, &ct).unwrap());
         println!("Time taken to verify Groth16 proof {:?}", start.elapsed());
@@ -220,6 +236,45 @@ fn bbs_plus_verifiably_encrypt_message() {
             &dk,
             &snark_srs.pk.vk,
             &enc_gens,
+        )
+        .unwrap();
+
+        let (decrypted_message, nu) = ct
+            .decrypt_given_groth16_vk_and_prepared_key(
+                &sk,
+                &prepared_dk,
+                &snark_srs.pk.vk,
+                chunk_bit_size,
+            )
+            .unwrap();
+        assert_eq!(decrypted_message, messages[user_id_idx]);
+        ct.verify_decryption_given_groth16_vk_and_prepared(
+            &decrypted_message,
+            &nu,
+            chunk_bit_size,
+            &prepared_dk,
+            &snark_srs.pk.vk,
+            &prepared_gens,
+        )
+        .unwrap();
+
+        let (decrypted_message, nu) = ct
+            .decrypt_given_groth16_vk_and_prepared_key_and_pairing_powers(
+                &sk,
+                &prepared_dk,
+                &snark_srs.pk.vk,
+                chunk_bit_size,
+                &pairing_powers,
+            )
+            .unwrap();
+        assert_eq!(decrypted_message, messages[user_id_idx]);
+        ct.verify_decryption_given_groth16_vk_and_prepared(
+            &decrypted_message,
+            &nu,
+            chunk_bit_size,
+            &prepared_dk,
+            &snark_srs.pk.vk,
+            &prepared_gens,
         )
         .unwrap();
     }
@@ -251,6 +306,14 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
 
     let (snark_srs, sk, ek, dk) = setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
     let chunks_count = ek.supported_chunks_count().unwrap();
+
+    // Precomputation
+    let prepared_ek = ek.prepare();
+    let prepared_dk = dk.prepare();
+    let prepared_gens = enc_gens.prepared();
+    let pairing_powers = prepared_dk
+        .pairing_powers_given_groth16_vk(chunk_bit_size, &snark_srs.pk.vk)
+        .unwrap();
 
     // User encrypts
     let (ct_1, r_1, proof_1) = Encryption::encrypt_with_proof(
@@ -483,54 +546,70 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
     assert_eq!(comm_chunks_3, comm_single_3);
     let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
     proof.verify(proof_spec, None).unwrap();
-    ct_1.verify_commitment_and_proof(&proof_1, &pvk, &ek, &enc_gens)
-        .unwrap();
-    ct_2.verify_commitment_and_proof(&proof_2, &pvk, &ek, &enc_gens)
-        .unwrap();
-    ct_3.verify_commitment_and_proof(&proof_3, &pvk, &ek, &enc_gens)
+
+    for (ct, proof, m_idx) in vec![
+        (&ct_1, &proof_1, m_idx_1),
+        (&ct_2, &proof_2, m_idx_2),
+        (&ct_3, &proof_3, m_idx_3),
+    ] {
+        ct.verify_commitment_and_proof(proof, &snark_srs.pk.vk, &ek, &enc_gens)
+            .unwrap();
+        ct.verify_commitment_and_proof_given_prepared(proof, &pvk, &prepared_ek, &prepared_gens)
+            .unwrap();
+
+        let (decrypted_message, nu) = ct
+            .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
+            .unwrap();
+        assert_eq!(decrypted_message, messages[m_idx]);
+        ct.verify_decryption_given_groth16_vk(
+            &decrypted_message,
+            &nu,
+            chunk_bit_size,
+            &dk,
+            &snark_srs.pk.vk,
+            &enc_gens,
+        )
         .unwrap();
 
-    let (decrypted_message_1, nu_1) = ct_1
-        .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
+        let (decrypted_message, nu) = ct
+            .decrypt_given_groth16_vk_and_prepared_key(
+                &sk,
+                &prepared_dk,
+                &snark_srs.pk.vk,
+                chunk_bit_size,
+            )
+            .unwrap();
+        assert_eq!(decrypted_message, messages[m_idx]);
+        ct.verify_decryption_given_groth16_vk_and_prepared(
+            &decrypted_message,
+            &nu,
+            chunk_bit_size,
+            &prepared_dk,
+            &snark_srs.pk.vk,
+            &prepared_gens,
+        )
         .unwrap();
-    assert_eq!(decrypted_message_1, messages[m_idx_1]);
-    ct_1.verify_decryption_given_groth16_vk(
-        &decrypted_message_1,
-        &nu_1,
-        chunk_bit_size,
-        &dk,
-        &snark_srs.pk.vk,
-        &enc_gens,
-    )
-    .unwrap();
 
-    let (decrypted_message_2, nu_2) = ct_2
-        .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
+        let (decrypted_message, nu) = ct
+            .decrypt_given_groth16_vk_and_prepared_key_and_pairing_powers(
+                &sk,
+                &prepared_dk,
+                &snark_srs.pk.vk,
+                chunk_bit_size,
+                &pairing_powers,
+            )
+            .unwrap();
+        assert_eq!(decrypted_message, messages[m_idx]);
+        ct.verify_decryption_given_groth16_vk_and_prepared(
+            &decrypted_message,
+            &nu,
+            chunk_bit_size,
+            &prepared_dk,
+            &snark_srs.pk.vk,
+            &prepared_gens,
+        )
         .unwrap();
-    assert_eq!(decrypted_message_2, messages[m_idx_2]);
-    ct_2.verify_decryption_given_groth16_vk(
-        &decrypted_message_2,
-        &nu_2,
-        chunk_bit_size,
-        &dk,
-        &snark_srs.pk.vk,
-        &enc_gens,
-    )
-    .unwrap();
-
-    let (decrypted_message_3, nu_3) = ct_3
-        .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
-        .unwrap();
-    assert_eq!(decrypted_message_3, messages[m_idx_3]);
-    ct_3.verify_decryption_given_groth16_vk(
-        &decrypted_message_3,
-        &nu_3,
-        chunk_bit_size,
-        &dk,
-        &snark_srs.pk.vk,
-        &enc_gens,
-    )
-    .unwrap();
+    }
 }
 
 #[test]

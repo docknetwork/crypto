@@ -15,6 +15,8 @@ pub enum SaverError {
     InvalidProof,
     InvalidCommitment,
     InvalidDecryption,
+    CouldNotFindDiscreteLog,
+    InvalidPairingPowers,
 }
 
 impl From<SynthesisError> for SaverError {

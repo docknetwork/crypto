@@ -28,6 +28,13 @@ pub struct EncryptionGens<E: PairingEngine> {
     pub H: E::G2Affine,
 }
 
+/// Create "G" and "H" from the paper.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct PreparedEncryptionGens<E: PairingEngine> {
+    pub G: E::G1Prepared,
+    pub H: E::G2Prepared,
+}
+
 impl<E: PairingEngine> EncryptionGens<E> {
     pub fn new<D: Digest>(label: &[u8]) -> Self {
         let G = affine_group_elem_from_try_and_incr::<E::G1Affine, D>(
@@ -43,6 +50,13 @@ impl<E: PairingEngine> EncryptionGens<E> {
         let G = E::G1Projective::rand(rng).into_affine();
         let H = E::G2Projective::rand(rng).into_affine();
         Self { G, H }
+    }
+
+    pub fn prepared(&self) -> PreparedEncryptionGens<E> {
+        PreparedEncryptionGens {
+            G: E::G1Prepared::from(self.G),
+            H: E::G2Prepared::from(self.H),
+        }
     }
 }
 
@@ -75,6 +89,7 @@ impl<G: AffineCurve> ChunkedCommitmentGens<G> {
     }
 }
 
+/// Generate secret key, encryption key, decryption key and generate SNARK proving and verifying key
 pub fn setup_for_groth16<E: PairingEngine, R: RngCore>(
     rng: &mut R,
     chunk_bit_size: u8,

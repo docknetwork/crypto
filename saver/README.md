@@ -1,6 +1,6 @@
-# PoC of verifiable encryption using SAVER
+# Verifiable encryption using SAVER
 
-Prototype implementation of [SAVER](https://eprint.iacr.org/2019/1270). Implemented 
+Implementation of [SAVER](https://eprint.iacr.org/2019/1270). Implemented 
 - using [Groth16](src/saver_groth16.rs) 
 - as well as [LegoGroth16](src/saver_legogroth16.rs).
 
@@ -20,7 +20,7 @@ psi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
 
 #### Getting a commitment to the full message from commitment to the decomposition.
 
-An inefficient (insecure as well?) way to get a commitment `m*G + r'*H` from `psi` is to create a commitment `J` as:
+To get a commitment `m*G + r'*H` from `psi` is to create a commitment `J` as:
 
 ```
 J = m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H  
@@ -43,6 +43,3 @@ This is implemented [here](src/commitment.rs)
 #### Use with BBS+ signature
 
 See test [here](src/tests.rs)
-
-
-**WARNING:** This is an academic proof-of-concept prototype, and in particular has not received careful code review. This implementation is NOT ready for production use.

@@ -23,7 +23,7 @@
 
 use crate::setup::ChunkedCommitmentGens;
 use crate::utils::{chunks_count, decompose};
-use ark_ec::msm::{FixedBaseMSM, VariableBaseMSM};
+use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{Field, One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
@@ -38,6 +38,7 @@ use serde_with::serde_as;
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 use dock_crypto_utils::serde_utils::*;
 
+/// Generators used to create commitment key of the chunked commitment
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -69,6 +70,7 @@ impl<G: AffineCurve> ChunkedCommitment<G> {
         ))
     }
 
+    /// Commitment key (vector of all `g`s and `h`) for the chunked commitment
     /// Given a group element `g`, create `chunks_count` multiples of `g` as `g_n, g_{n-1}, ..., g_2, g_1` where each `g_i = {radix^i} * g` and `radix = 2^chunk_bit_ize`
     pub fn commitment_key(gens: &ChunkedCommitmentGens<G>, chunk_bit_size: u8) -> Vec<G> {
         let radix = (1 << chunk_bit_size) as u16;

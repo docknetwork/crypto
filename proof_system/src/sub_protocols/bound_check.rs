@@ -92,7 +92,6 @@ impl<E: PairingEngine> BoundCheckProtocol<E> {
             .as_ref()
             .unwrap()
             .challenge_contribution(&mut writer)?;
-        // TODO: Add more
         Ok(())
     }
 
@@ -167,7 +166,6 @@ impl<E: PairingEngine> BoundCheckProtocol<E> {
         .serialize_unchecked(&mut writer)?;
         proof.snark_proof.d.serialize_unchecked(&mut writer)?;
         proof.sp.t.serialize_unchecked(&mut writer)?;
-        // TODO: Add more
         Ok(())
     }
 }
@@ -216,6 +214,8 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
     }
 }
 
+/// Generate SNARK proving key and verification key for a circuit that checks that given a witness
+/// `w` and public inputs `min` and `max`, `min <= w <= max`
 pub fn generate_snark_srs_bound_check<E, R>(rng: &mut R) -> Result<ProvingKey<E>, ProofSystemError>
 where
     E: PairingEngine,

@@ -4,8 +4,10 @@
 
 pub mod circuit;
 pub mod commitment;
+#[macro_use]
 pub mod encryption;
 pub mod error;
+#[macro_use]
 pub mod keygen;
 pub mod saver_groth16;
 pub mod saver_legogroth16;

@@ -2,6 +2,7 @@ use crate::error::SaverError;
 use ark_ff::{BigInteger, PrimeField};
 use ark_std::{vec, vec::Vec};
 
+/// Return number of chunks given the bit size of chunk. Considers the size of the field.
 pub fn chunks_count<F: PrimeField>(chunk_bit_size: u8) -> u8 {
     let scalar_size = F::size_in_bits();
     let bit_size = chunk_bit_size as usize;

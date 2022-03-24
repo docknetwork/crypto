@@ -35,7 +35,9 @@ pub enum Statement<E: PairingEngine, G: AffineCurve> {
     AccumulatorNonMembership(AccumulatorNonMembership<E>),
     /// Proof of knowledge of committed elements in a Pedersen commitment
     PedersenCommitment(PedersenCommitment<G>),
+    /// Proving verifiable encryption using SAVER
     Saver(Saver<E>),
+    /// Proving witness satisfies publicly known bounds inclusively (<=, >=).
     BoundCheckLegoGroth16(BoundCheckLegoGroth16<E>),
 }
 
@@ -107,6 +109,7 @@ pub struct PedersenCommitment<G: AffineCurve> {
     pub commitment: G,
 }
 
+/// Proving knowledge of correctly encrypted message
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
@@ -119,6 +122,7 @@ pub struct Saver<E: PairingEngine> {
     pub snark_proving_key: saver::saver_groth16::ProvingKey<E>,
 }
 
+/// Proving knowledge of message that satisfies given bounds, i.e. min <= message <= max
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -212,6 +216,7 @@ impl<G: AffineCurve> PedersenCommitment<G> {
     }
 }
 
+/// Create a `Statement` variant for proving knowledge of correctly encrypted message
 impl<E: PairingEngine> Saver<E> {
     pub fn new_as_statement<G: AffineCurve>(
         chunk_bit_size: u8,

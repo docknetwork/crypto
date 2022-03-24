@@ -22,6 +22,7 @@ use saver::commitment::ChunkedCommitment;
 use saver::encryption::{Ciphertext, Encryption};
 use saver::utils::decompose;
 
+/// Apart from the SNARK protocol, this also runs 3 Schnorr proof of knowledge protocols
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SaverProtocol<E: PairingEngine> {
     pub id: usize,
@@ -31,8 +32,11 @@ pub struct SaverProtocol<E: PairingEngine> {
     pub snark_proof: Option<saver::saver_groth16::Proof<E>>,
     pub comm_chunks: Option<E::G1Affine>,
     pub comm_combined: Option<E::G1Affine>,
+    /// Schnorr protocol for proving knowledge of message chunks in ciphertext's commitment
     pub sp_ciphertext: Option<SchnorrProtocol<E::G1Affine>>,
+    /// Schnorr protocol for proving knowledge of message chunks in the chunked commitment
     pub sp_chunks: Option<SchnorrProtocol<E::G1Affine>>,
+    /// Schnorr protocol for proving knowledge of the whole message in the combined commitment
     pub sp_combined: Option<SchnorrProtocol<E::G1Affine>>,
 }
 
@@ -165,7 +169,6 @@ impl<E: PairingEngine> SaverProtocol<E> {
             .as_ref()
             .unwrap()
             .challenge_contribution(&mut writer)?;
-        // TODO: Add more
         Ok(())
     }
 
@@ -208,9 +211,13 @@ impl<E: PairingEngine> SaverProtocol<E> {
     ) -> Result<(), ProofSystemError> {
         match proof {
             StatementProof::Saver(proof) => {
+                // Both commitments, one to chunks and the other to the combined message must be same
                 if proof.comm_chunks != proof.comm_combined {
                     return Err(ProofSystemError::SaverInequalChunkedCommitment);
                 }
+
+                // Each chunk in the chunked commitment should be same as the chunk in ciphertext's
+                // commitment
                 if proof.sp_chunks.response.len() != proof.sp_ciphertext.response.len() {
                     return Err(ProofSystemError::SaverInsufficientChunkedCommitmentResponses);
                 }
@@ -221,13 +228,18 @@ impl<E: PairingEngine> SaverProtocol<E> {
                         return Err(ProofSystemError::SaverInequalChunkedCommitmentResponse);
                     }
                 }
+
                 let pvk = prepare_verifying_key(&self.statement.snark_proving_key.pk.vk);
-                proof.ciphertext.verify_commitment_and_proof(
-                    &proof.snark_proof,
-                    &pvk,
-                    &self.statement.encryption_key,
-                    &self.statement.encryption_gens,
-                )?;
+                let pek = self.statement.encryption_key.prepare();
+                let pgens = self.statement.encryption_gens.prepared();
+                proof
+                    .ciphertext
+                    .verify_commitment_and_proof_given_prepared(
+                        &proof.snark_proof,
+                        &pvk,
+                        &pek,
+                        &pgens,
+                    )?;
 
                 let ck_com_ct = self.statement.encryption_key.commitment_key();
                 let st_ciphertext = PedersenCommitment {
@@ -296,8 +308,6 @@ impl<E: PairingEngine> SaverProtocol<E> {
         .serialize_unchecked(&mut writer)?;
         proof.comm_combined.serialize_unchecked(&mut writer)?;
         proof.sp_combined.t.serialize_unchecked(&mut writer)?;
-
-        // TODO: Add more
         Ok(())
     }
 }

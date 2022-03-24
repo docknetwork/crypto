@@ -4,11 +4,10 @@ use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::PrimeField;
 use ark_relations::r1cs::ConstraintSynthesizer;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::ops::{AddAssign, Sub};
+use ark_std::ops::AddAssign;
 use ark_std::{
     io::{Read, Write},
     rand::{Rng, RngCore},
-    vec::Vec,
     UniformRand,
 };
 use legogroth16::{
