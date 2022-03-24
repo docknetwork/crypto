@@ -1,4 +1,5 @@
 use ark_ec::{AffineCurve, PairingEngine};
+use ark_relations::r1cs::SynthesisError;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     collections::BTreeMap,
@@ -19,6 +20,7 @@ use vb_accumulator::{
     setup::{PublicKey as AccumPublicKey, SetupParams as AccumParams},
 };
 
+use crate::error::ProofSystemError;
 pub use serialization::*;
 
 /// Type of proof and the public values (known to both prover and verifier) for the proof
@@ -217,15 +219,24 @@ impl<E: PairingEngine> Saver<E> {
         chunked_commitment_gens: ChunkedCommitmentGens<E::G1Affine>,
         encryption_key: EncryptionKey<E>,
         snark_proving_key: saver::saver_groth16::ProvingKey<E>,
-    ) -> Statement<E, G> {
-        // TODO: Check if encryption key is valid and compatible with `chunk_bit_size`
-        Statement::Saver(Self {
+    ) -> Result<Statement<E, G>, ProofSystemError> {
+        if encryption_key.supported_chunks_count()?
+            != saver::utils::chunks_count::<E::Fr>(chunk_bit_size)
+        {
+            return Err(ProofSystemError::SaverError(
+                saver::error::SaverError::IncompatibleEncryptionKey(
+                    saver::utils::chunks_count::<E::Fr>(chunk_bit_size) as usize,
+                    encryption_key.supported_chunks_count()? as usize,
+                ),
+            ));
+        }
+        Ok(Statement::Saver(Self {
             chunk_bit_size,
             encryption_gens,
             chunked_commitment_gens,
             encryption_key,
             snark_proving_key,
-        })
+        }))
     }
 }
 
@@ -234,13 +245,17 @@ impl<E: PairingEngine> BoundCheckLegoGroth16<E> {
         min: E::Fr,
         max: E::Fr,
         snark_proving_key: LegoProvingKey<E>,
-    ) -> Statement<E, G> {
-        // TODO: Check if snark proving key has sufficient generators
-        Statement::BoundCheckLegoGroth16(Self {
+    ) -> Result<Statement<E, G>, ProofSystemError> {
+        if snark_proving_key.vk.gamma_abc_g1.len() < 4 {
+            return Err(ProofSystemError::LegoGroth16Error(
+                legogroth16::error::Error::SynthesisError(SynthesisError::MalformedVerifyingKey),
+            ));
+        }
+        Ok(Statement::BoundCheckLegoGroth16(Self {
             min,
             max,
             snark_proving_key,
-        })
+        }))
     }
 }
 

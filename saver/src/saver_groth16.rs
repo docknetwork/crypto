@@ -24,7 +24,9 @@ use crate::setup::EncryptionGens;
 pub use serialization::*;
 
 #[serde_as]
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct ProvingKey<E: PairingEngine> {
     /// Groth16's proving key
     #[serde_as(as = "ProvingKeyBytes")]

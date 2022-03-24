@@ -6,7 +6,7 @@ use crate::prelude::{
 use crate::statement::{
     BoundCheckLegoGroth16 as BoundCheckStmt, PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
 };
-use crate::test_utils::sig_setup;
+use crate::test_utils::sig_setup_given_messages;
 use crate::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_ec::PairingEngine;
@@ -27,7 +27,11 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     let mut rng = StdRng::seed_from_u64(0u64);
 
     let msg_count = 5;
-    let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
+    let msgs = (0..msg_count)
+        .into_iter()
+        .map(|i| Fr::from(101u64 + i as u64))
+        .collect::<Vec<_>>();
+    let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
 
     // Verifier sets up LegoGroth16 public parameters. Ideally this should be done only once per
     // verifier and can be published by the verifier for any proofs submitted to him
@@ -46,7 +50,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    statements.add(BoundCheckStmt::new_as_statement(min, max, snark_pk.clone()));
+    statements.add(BoundCheckStmt::new_as_statement(min, max, snark_pk.clone()).unwrap());
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -138,7 +142,11 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     let mut rng = StdRng::seed_from_u64(0u64);
 
     let msg_count = 5;
-    let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
+    let msgs = (0..msg_count)
+        .into_iter()
+        .map(|i| Fr::from(101u64 + i as u64))
+        .collect::<Vec<_>>();
+    let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
 
     // Verifier sets up LegoGroth16 public parameters. Ideally this should be done only once per
     // verifier and can be published by the verifier for any proofs submitted to him
@@ -157,7 +165,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    statements.add(BoundCheckStmt::new_as_statement(msg, max, snark_pk.clone()));
+    statements.add(BoundCheckStmt::new_as_statement(msg, max, snark_pk.clone()).unwrap());
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -189,7 +197,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    statements.add(BoundCheckStmt::new_as_statement(min, msg, snark_pk.clone()));
+    statements.add(BoundCheckStmt::new_as_statement(min, msg, snark_pk.clone()).unwrap());
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -213,4 +221,99 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
 
     let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), None).unwrap();
     proof.verify(proof_spec.clone(), None).unwrap();
+}
+
+#[test]
+fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
+    // Prove knowledge of BBS+ signature and certain messages satisfy some bounds.
+    let mut rng = StdRng::seed_from_u64(0u64);
+
+    let msg_count = 5;
+    let msgs = (0..msg_count)
+        .into_iter()
+        .map(|i| Fr::from(101u64 + i as u64))
+        .collect::<Vec<_>>();
+    let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
+
+    // Verifier sets up LegoGroth16 public parameters. Ideally this should be done only once per
+    // verifier and can be published by the verifier for any proofs submitted to him
+    let snark_pk = generate_snark_srs_bound_check::<Bls12_381, _>(&mut rng).unwrap();
+
+    // Following messages's bounds will be checked
+    let msg_idx_1 = 1;
+    let msg_idx_2 = 2;
+    let msg_idx_3 = 4;
+    let msg_1 = msgs[msg_idx_1].clone();
+    let msg_2 = msgs[msg_idx_2].clone();
+    let msg_3 = msgs[msg_idx_3].clone();
+
+    let min_1 = msg_1 - Fr::from(50u64);
+    let max_1 = msg_1 + Fr::from(100u64);
+
+    let min_2 = msg_2 - Fr::from(60u64);
+    let max_2 = msg_2 + Fr::from(200u64);
+
+    let min_3 = msg_3 - Fr::from(70u64);
+    let max_3 = msg_3 + Fr::from(180u64);
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_as_statement(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(BoundCheckStmt::new_as_statement(min_1, max_1, snark_pk.clone()).unwrap());
+    statements.add(BoundCheckStmt::new_as_statement(min_2, max_2, snark_pk.clone()).unwrap());
+    statements.add(BoundCheckStmt::new_as_statement(min_3, max_3, snark_pk.clone()).unwrap());
+
+    let mut meta_statements = MetaStatements::new();
+    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        vec![(0, msg_idx_1), (1, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    )));
+    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        vec![(0, msg_idx_2), (2, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    )));
+    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        vec![(0, msg_idx_3), (3, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    )));
+
+    let proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+        statements.clone(),
+        meta_statements.clone(),
+        None,
+    );
+    assert!(proof_spec.is_valid());
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig.clone(),
+        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+    ));
+    witnesses.add(Witness::BoundCheckLegoGroth16(msg_1));
+    witnesses.add(Witness::BoundCheckLegoGroth16(msg_2));
+    witnesses.add(Witness::BoundCheckLegoGroth16(msg_3));
+
+    let start = Instant::now();
+    let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), None).unwrap();
+    println!(
+        "Time taken to create proof of bound check of 3 messages in signature over {} messages {:?}",
+        msg_count,
+        start.elapsed()
+    );
+
+    test_serialization!(ProofG1, proof);
+
+    let start = Instant::now();
+    proof.verify(proof_spec.clone(), None).unwrap();
+    println!(
+        "Time taken to verify proof of bound check of 3 messages in signature over {} messages {:?}",
+        msg_count,
+        start.elapsed()
+    );
 }

@@ -33,6 +33,21 @@ pub fn sig_setup<R: RngCore>(
     (messages, params, keypair, sig)
 }
 
+pub fn sig_setup_given_messages<R: RngCore>(
+    rng: &mut R,
+    messages: &[Fr],
+) -> (
+    SignatureParamsG1<Bls12_381>,
+    KeypairG2<Bls12_381>,
+    SignatureG1<Bls12_381>,
+) {
+    let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, messages.len());
+    let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
+    let sig = SignatureG1::<Bls12_381>::new(rng, messages, &keypair.secret_key, &params).unwrap();
+    sig.verify(&messages, &keypair.public_key, &params).unwrap();
+    (params, keypair, sig)
+}
+
 #[derive(Clone, Debug)]
 pub struct InMemoryInitialElements<T: Clone> {
     pub db: HashSet<T>,

@@ -1,9 +1,10 @@
 use crate::utils::chunks_count;
-use ark_ff::PrimeField;
+use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::{AllocVar, AllocationMode, Boolean, EqGadget};
 use ark_r1cs_std::ToBitsGadget;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_std::vec::Vec;
 
 /// Circuit to check that each of `values` has bit size at most `required_bit_size`
 #[derive(Clone)]

@@ -50,13 +50,16 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    statements.add(SaverStmt::new_as_statement(
-        chunk_bit_size,
-        enc_gens.clone(),
-        chunked_comm_gens,
-        ek,
-        snark_pk.clone(),
-    ));
+    statements.add(
+        SaverStmt::new_as_statement(
+            chunk_bit_size,
+            enc_gens.clone(),
+            chunked_comm_gens,
+            ek,
+            snark_pk.clone(),
+        )
+        .unwrap(),
+    );
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -196,13 +199,16 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
         BTreeMap::new(),
     ));
     for (i, j) in enc_msg_indices.iter().enumerate() {
-        statements.add(SaverStmt::new_as_statement(
-            chunk_bit_size,
-            enc_gens.clone(),
-            chunked_comm_gens.clone(),
-            ek.clone(),
-            snark_pk.clone(),
-        ));
+        statements.add(
+            SaverStmt::new_as_statement(
+                chunk_bit_size,
+                enc_gens.clone(),
+                chunked_comm_gens.clone(),
+                ek.clone(),
+                snark_pk.clone(),
+            )
+            .unwrap(),
+        );
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
             vec![(0, *j), (1 + i, 0)]
                 .into_iter()

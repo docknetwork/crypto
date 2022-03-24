@@ -23,8 +23,8 @@ serde_with = { version = "1.10.0", default-features = false, features = ["macros
 
 [dependencies.legogroth16]
 git = "https://github.com/lovesh/legogro16"
-branch = "comm-wit"
-#path = "/home/lovesh/dev/legogro16"
+#branch = "comm-wit"
+rev = 'ac206b4bfe4ca8dfefe5aeb5a4b1fd3ecb78a6ec'
 
 [dev-dependencies]
 blake2 = { version = "0.9", default-features = false }
