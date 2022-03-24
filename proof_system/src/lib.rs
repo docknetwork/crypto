@@ -60,6 +60,8 @@ pub mod test_utils;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_bound;
+#[cfg(test)]
 mod tests_saver;
 
 pub mod prelude {

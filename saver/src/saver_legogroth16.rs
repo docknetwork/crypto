@@ -12,11 +12,10 @@ use ark_std::{
     UniformRand,
 };
 use legogroth16::{
-    create_random_proof, generate_parameters_with_qap, verify_link_proof, verify_qap_proof,
-    LibsnarkReduction, LinkPublicGenerators, PreparedVerifyingKey, Proof, VerifyingKey,
+    create_random_proof, generate_parameters_with_qap, verify_qap_proof, LibsnarkReduction,
+    PreparedVerifyingKey, Proof, VerifyingKey,
 };
 
-use crate::error::SaverError;
 use crate::keygen::EncryptionKey;
 use crate::setup::EncryptionGens;
 
@@ -36,7 +35,6 @@ pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1A
 pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr>>(
     circuit: C,
     gens: &EncryptionGens<E>,
-    link_gens: LinkPublicGenerators<E>,
     bit_blocks_count: u8,
     rng: &mut R,
 ) -> crate::Result<ProvingKey<E>> {
@@ -58,7 +56,6 @@ pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
         eta,
         g1_generator,
         gens.H.into_projective(),
-        link_gens,
         bit_blocks_count as usize,
         rng,
     )?;
@@ -86,7 +83,6 @@ mod protocol_1 {
     pub fn create_proof<E, C, R>(
         circuit: C,
         v: E::Fr,
-        link_v: E::Fr,
         r: E::Fr,
         pk: &ProvingKey<E>,
         encryption_key: &EncryptionKey<E>,
@@ -97,7 +93,7 @@ mod protocol_1 {
         C: ConstraintSynthesizer<E::Fr>,
         R: Rng,
     {
-        let mut proof = create_random_proof(circuit, v, link_v, &pk.pk, rng)?;
+        let mut proof = create_random_proof(circuit, v, &pk.pk, rng)?;
 
         // proof.c = proof.c + r * P_2
         let mut c = proof.c.into_projective();
@@ -116,7 +112,7 @@ mod protocol_1 {
         proof: &Proof<E>,
         ciphertext: &Ciphertext<E>,
     ) -> crate::Result<()> {
-        verify_link_proof(&pvk.vk, &proof.proof)?;
+        // verify_link_proof(&pvk.vk, &proof.proof)?;
 
         let mut d = ciphertext.X_r.into_projective();
         for c in ciphertext.enc_chunks.iter() {
@@ -141,13 +137,11 @@ mod protocol_1 {
 mod protocol_2 {
     use super::*;
     use crate::encryption::CiphertextAlt;
-    use std::ops::Add;
 
     /// `r` is the randomness used during the encryption
     pub fn create_proof<E, C, R>(
         circuit: C,
         v: E::Fr,
-        link_v: E::Fr,
         r: E::Fr,
         pk: &ProvingKey<E>,
         encryption_key: &EncryptionKey<E>,
@@ -158,7 +152,7 @@ mod protocol_2 {
         C: ConstraintSynthesizer<E::Fr>,
         R: Rng,
     {
-        let mut proof = create_random_proof(circuit, v, link_v, &pk.pk, rng)?;
+        let mut proof = create_random_proof(circuit, v, &pk.pk, rng)?;
 
         // proof.c = proof.c + r * P_2
         let mut c = proof.c.into_projective();
@@ -173,7 +167,7 @@ mod protocol_2 {
         proof: &Proof<E>,
         ciphertext: &CiphertextAlt<E>,
     ) -> crate::Result<()> {
-        verify_link_proof(&pvk.vk, &proof)?;
+        // verify_link_proof(&pvk.vk, &proof)?;
         // d = G[0] + r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + r * X_0 + v * (eta/gamma)*G
         let mut d = proof.d.into_projective().add_mixed(&ciphertext.X_r_sum);
         d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
@@ -195,27 +189,11 @@ mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_ff::Zero;
     use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::{Rng, SeedableRng};
+    use ark_std::rand::SeedableRng;
     use legogroth16::prepare_verifying_key;
-    use legogroth16::prover::{verify_commitment, verify_link_commitment};
+    use legogroth16::prover::verify_witness_commitment;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
-
-    pub fn get_link_public_gens<R: RngCore, E: PairingEngine>(
-        rng: &mut R,
-        count: usize,
-    ) -> LinkPublicGenerators<E> {
-        let pedersen_gens = (0..count)
-            .map(|_| E::G1Projective::rand(rng).into_affine())
-            .collect::<Vec<_>>();
-        let g1 = E::G1Projective::rand(rng).into_affine();
-        let g2 = E::G2Projective::rand(rng).into_affine();
-        LinkPublicGenerators {
-            pedersen_gens,
-            g1,
-            g2,
-        }
-    }
 
     #[test]
     fn encrypt_and_snark_verification() {
@@ -223,15 +201,12 @@ mod tests {
         let chunk_bit_size = 8;
         let n = chunks_count::<Fr>(chunk_bit_size);
         let gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
-        let link_gens = get_link_public_gens(&mut rng, n as usize + 1);
 
         let msgs = (0..n).map(|_| u8::rand(&mut rng)).collect::<Vec<_>>();
         let msgs_as_field_elems = msgs.iter().map(|m| Fr::from(*m as u64)).collect::<Vec<_>>();
 
         let circuit = BitsizeCheckCircuit::new(chunk_bit_size, Some(n), None, false);
-        let snark_srs =
-            generate_srs::<Bls12_381, _, _>(circuit, &gens, link_gens.clone(), n, &mut rng)
-                .unwrap();
+        let snark_srs = generate_srs::<Bls12_381, _, _>(circuit, &gens, n, &mut rng).unwrap();
 
         let g_i = &get_gs_for_encryption(&snark_srs.pk.vk);
         let (sk, ek, dk) = keygen(
@@ -239,7 +214,7 @@ mod tests {
             chunk_bit_size,
             &gens,
             g_i,
-            &snark_srs.pk.delta_g1,
+            &snark_srs.pk.common.delta_g1,
             &snark_srs.gamma_g1,
         )
         .unwrap();
@@ -269,7 +244,6 @@ mod tests {
 
         // Create commitment randomness
         let v = Fr::rand(&mut rng);
-        let link_v = Fr::rand(&mut rng);
 
         let circuit = BitsizeCheckCircuit::new(
             chunk_bit_size,
@@ -282,7 +256,6 @@ mod tests {
         let proof_2 = protocol_2::create_proof(
             circuit.clone(),
             v.clone(),
-            link_v.clone(),
             r.clone(),
             &snark_srs,
             &ek,
@@ -316,13 +289,10 @@ mod tests {
             start.elapsed()
         );
 
-        verify_link_commitment(&pvk.vk.link_bases, &proof_2, &msgs_as_field_elems, &link_v)
-            .unwrap();
-        verify_commitment(&pvk.vk, &proof_2, 0, &msgs_as_field_elems, &v, &link_v).unwrap();
+        verify_witness_commitment(&pvk.vk, &proof_2, 0, &msgs_as_field_elems, &v).unwrap();
 
         let start = Instant::now();
-        let proof_1 =
-            protocol_1::create_proof(circuit, v, link_v, r, &snark_srs, &ek, &mut rng).unwrap();
+        let proof_1 = protocol_1::create_proof(circuit, v, r, &snark_srs, &ek, &mut rng).unwrap();
         println!(
             "Time taken to create LegoGroth16 proof as per protocol 1 {:?}",
             start.elapsed()
@@ -349,21 +319,6 @@ mod tests {
             start.elapsed()
         );
 
-        verify_link_commitment(
-            &pvk.vk.link_bases,
-            &proof_1.proof,
-            &msgs_as_field_elems,
-            &link_v,
-        )
-        .unwrap();
-        verify_commitment(
-            &pvk.vk,
-            &proof_1.proof,
-            0,
-            &msgs_as_field_elems,
-            &v,
-            &link_v,
-        )
-        .unwrap();
+        verify_witness_commitment(&pvk.vk, &proof_1.proof, 0, &msgs_as_field_elems, &v).unwrap();
     }
 }

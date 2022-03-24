@@ -24,7 +24,7 @@ use crate::setup::EncryptionGens;
 pub use serialization::*;
 
 #[serde_as]
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 pub struct ProvingKey<E: PairingEngine> {
     /// Groth16's proving key
     #[serde_as(as = "ProvingKeyBytes")]
@@ -33,14 +33,6 @@ pub struct ProvingKey<E: PairingEngine> {
     #[serde_as(as = "AffineGroupBytes")]
     pub gamma_g1: E::G1Affine,
 }
-
-impl<E: PairingEngine> PartialEq for ProvingKey<E> {
-    fn eq(&self, other: &Self) -> bool {
-        (self.pk == other.pk) && (self.gamma_g1 == other.gamma_g1)
-    }
-}
-
-impl<E: PairingEngine> Eq for ProvingKey<E> {}
 
 mod serialization {
     use super::{CanonicalDeserialize, CanonicalSerialize, PairingEngine};

@@ -9,6 +9,7 @@ use ark_std::{
 
 use bbs_plus::setup::{PublicKeyG2 as BBSPublicKeyG2, SignatureParamsG1 as BBSSignatureParamsG1};
 use dock_crypto_utils::serde_utils::*;
+use legogroth16::ProvingKey as LegoProvingKey;
 use saver::keygen::EncryptionKey;
 use saver::setup::{ChunkedCommitmentGens, EncryptionGens};
 use serde::{Deserialize, Serialize};
@@ -21,7 +22,7 @@ use vb_accumulator::{
 pub use serialization::*;
 
 /// Type of proof and the public values (known to both prover and verifier) for the proof
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub enum Statement<E: PairingEngine, G: AffineCurve> {
     /// Proof of knowledge of BBS+ signature
@@ -33,10 +34,11 @@ pub enum Statement<E: PairingEngine, G: AffineCurve> {
     /// Proof of knowledge of committed elements in a Pedersen commitment
     PedersenCommitment(PedersenCommitment<G>),
     Saver(Saver<E>),
+    BoundCheckLegoGroth16(BoundCheckLegoGroth16<E>),
 }
 
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
 pub struct Statements<E, G>(pub Vec<Statement<E, G>>)
@@ -104,7 +106,7 @@ pub struct PedersenCommitment<G: AffineCurve> {
 }
 
 #[derive(
-    Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
 pub struct Saver<E: PairingEngine> {
@@ -113,6 +115,20 @@ pub struct Saver<E: PairingEngine> {
     pub chunked_commitment_gens: ChunkedCommitmentGens<E::G1Affine>,
     pub encryption_key: EncryptionKey<E>,
     pub snark_proving_key: saver::saver_groth16::ProvingKey<E>,
+}
+
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct BoundCheckLegoGroth16<E: PairingEngine> {
+    #[serde_as(as = "FieldBytes")]
+    pub min: E::Fr,
+    #[serde_as(as = "FieldBytes")]
+    pub max: E::Fr,
+    #[serde_as(as = "LegoProvingKeyBytes")]
+    pub snark_proving_key: LegoProvingKey<E>,
 }
 
 impl<E, G> Statements<E, G>
@@ -213,8 +229,27 @@ impl<E: PairingEngine> Saver<E> {
     }
 }
 
+impl<E: PairingEngine> BoundCheckLegoGroth16<E> {
+    pub fn new_as_statement<G: AffineCurve>(
+        min: E::Fr,
+        max: E::Fr,
+        snark_proving_key: LegoProvingKey<E>,
+    ) -> Statement<E, G> {
+        // TODO: Check if snark proving key has sufficient generators
+        Statement::BoundCheckLegoGroth16(Self {
+            min,
+            max,
+            snark_proving_key,
+        })
+    }
+}
+
 mod serialization {
     use super::*;
+    use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
+    use serde::de::{SeqAccess, Visitor};
+    use serde::{Deserializer, Serializer};
+    use serde_with::{DeserializeAs, SerializeAs};
 
     impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for Statement<E, G> {
         impl_serialize!();
@@ -223,6 +258,12 @@ mod serialization {
     impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for Statement<E, G> {
         impl_deserialize!();
     }
+
+    impl_for_groth16_struct!(
+        LegoProvingKeyBytes,
+        LegoProvingKey,
+        "expected LegoProvingKey"
+    );
 }
 
 #[cfg(test)]

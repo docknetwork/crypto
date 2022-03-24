@@ -23,8 +23,10 @@ pub enum Witness<E: PairingEngine> {
     AccumulatorMembership(Membership<E>),
     AccumulatorNonMembership(NonMembership<E>),
     PedersenCommitment(#[serde_as(as = "Vec<FieldBytes>")] Vec<E::Fr>),
-    /// message being encrypted
+    /// Message being encrypted
     Saver(#[serde_as(as = "FieldBytes")] E::Fr),
+    /// Message whose bounds are checked
+    BoundCheckLegoGroth16(#[serde_as(as = "FieldBytes")] E::Fr),
 }
 
 #[derive(

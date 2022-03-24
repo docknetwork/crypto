@@ -1,5 +1,6 @@
 pub mod accumulator;
 pub mod bbs_plus;
+pub mod bound_check;
 pub mod saver;
 pub mod schnorr;
 
@@ -8,6 +9,7 @@ use ark_ec::{AffineCurve, PairingEngine};
 use ark_std::io::Write;
 
 use crate::statement_proof::StatementProof;
+use crate::sub_protocols::bound_check::BoundCheckProtocol;
 use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol};
 use ark_ff::{PrimeField, SquareRootField};
 
@@ -20,6 +22,7 @@ pub enum SubProtocol<E: PairingEngine, G: AffineCurve> {
     AccumulatorNonMembership(AccumulatorNonMembershipSubProtocol<E>),
     PoKDiscreteLogs(self::schnorr::SchnorrProtocol<G>),
     Saver(self::saver::SaverProtocol<E>),
+    BoundCheckProtocol(BoundCheckProtocol<E>),
 }
 
 pub trait ProofSubProtocol<
@@ -53,6 +56,7 @@ impl<
             SubProtocol::AccumulatorNonMembership(s) => s.challenge_contribution(writer),
             SubProtocol::PoKDiscreteLogs(s) => s.challenge_contribution(writer),
             SubProtocol::Saver(s) => s.challenge_contribution(writer),
+            SubProtocol::BoundCheckProtocol(s) => s.challenge_contribution(writer),
         }
     }
 
@@ -66,6 +70,7 @@ impl<
             SubProtocol::AccumulatorNonMembership(s) => s.gen_proof_contribution(challenge),
             SubProtocol::PoKDiscreteLogs(s) => s.gen_proof_contribution(challenge),
             SubProtocol::Saver(s) => s.gen_proof_contribution(challenge),
+            SubProtocol::BoundCheckProtocol(s) => s.gen_proof_contribution(challenge),
         }
     }
 
@@ -82,6 +87,7 @@ impl<
             }
             SubProtocol::PoKDiscreteLogs(s) => s.verify_proof_contribution(challenge, proof),
             SubProtocol::Saver(s) => s.verify_proof_contribution(challenge, proof),
+            SubProtocol::BoundCheckProtocol(s) => s.verify_proof_contribution(challenge, proof),
         }
     }
 }

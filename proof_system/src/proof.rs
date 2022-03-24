@@ -25,6 +25,7 @@ use crate::sub_protocols::accumulator::{
     AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol,
 };
 use crate::sub_protocols::bbs_plus::PoKBBSSigG1SubProtocol;
+use crate::sub_protocols::bound_check::BoundCheckProtocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
@@ -185,6 +186,21 @@ where
                         let mut sp = SaverProtocol::new(s_idx, s);
                         sp.init(rng, w, blinding)?;
                         sub_protocols.push(SubProtocol::Saver(sp));
+                    }
+                    _ => {
+                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", witness),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
+                Statement::BoundCheckLegoGroth16(s) => match witness {
+                    Witness::BoundCheckLegoGroth16(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let mut sp = BoundCheckProtocol::new(s_idx, s);
+                        sp.init(rng, w, blinding)?;
+                        sub_protocols.push(SubProtocol::BoundCheckProtocol(sp));
                     }
                     _ => {
                         return Err(ProofSystemError::WitnessIncompatibleWithStatement(
@@ -432,6 +448,35 @@ where
                         ))
                     }
                 },
+                Statement::BoundCheckLegoGroth16(s) => match proof {
+                    StatementProof::BoundCheckLegoGroth16(p) => {
+                        for i in 0..witness_equalities.len() {
+                            if witness_equalities[i].contains(&(s_idx, 0)) {
+                                let resp = p.get_schnorr_response_for_message()?;
+                                Self::check_response_for_equality(
+                                    s_idx,
+                                    0,
+                                    i,
+                                    &mut responses_for_equalities,
+                                    resp,
+                                )?;
+                            }
+                        }
+
+                        BoundCheckProtocol::compute_challenge_contribution(
+                            s,
+                            &p,
+                            &mut challenge_bytes,
+                        )?;
+                    }
+                    _ => {
+                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", proof),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
             }
         }
 
@@ -517,6 +562,19 @@ where
                 Statement::Saver(s) => match proof {
                     StatementProof::Saver(ref _p) => {
                         let sp = SaverProtocol::new(s_idx, s);
+                        sp.verify_proof_contribution(&challenge, &proof)?
+                    }
+                    _ => {
+                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", proof),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
+                Statement::BoundCheckLegoGroth16(s) => match proof {
+                    StatementProof::BoundCheckLegoGroth16(ref _p) => {
+                        let sp = BoundCheckProtocol::new(s_idx, s);
                         sp.verify_proof_contribution(&challenge, &proof)?
                     }
                     _ => {

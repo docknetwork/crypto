@@ -554,7 +554,7 @@ pub(crate) mod tests {
     use crate::utils::{chunks_count, decompose};
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::{Rng, SeedableRng};
+    use ark_std::rand::SeedableRng;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
 

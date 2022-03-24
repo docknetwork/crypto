@@ -1,6 +1,7 @@
 use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeSet, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::error::BBSPlusError;
+use legogroth16::error::Error as LegoGroth16Error;
 use saver::error::SaverError;
 use schnorr_pok::error::SchnorrError;
 use vb_accumulator::error::VBAccumulatorError;
@@ -32,6 +33,8 @@ pub enum ProofSystemError {
     SaverInequalChunkedCommitment,
     SaverInsufficientChunkedCommitmentResponses,
     SaverInequalChunkedCommitmentResponse,
+    LegoGroth16Error(LegoGroth16Error),
+    LegoGroth16InequalResponse,
 }
 
 impl From<SchnorrError> for ProofSystemError {
@@ -55,6 +58,12 @@ impl From<VBAccumulatorError> for ProofSystemError {
 impl From<SaverError> for ProofSystemError {
     fn from(e: SaverError) -> Self {
         Self::SaverError(e)
+    }
+}
+
+impl From<LegoGroth16Error> for ProofSystemError {
+    fn from(e: LegoGroth16Error) -> Self {
+        Self::LegoGroth16Error(e)
     }
 }
 
