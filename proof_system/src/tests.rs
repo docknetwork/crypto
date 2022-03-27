@@ -745,7 +745,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
 }
 
 #[test]
-fn pok_of_knowledge_in_pedersen_commitment_and_BBS_plus_sig() {
+fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     // Prove knowledge of commitment in Pedersen commitments and equality with a BBS+ signature.
     // Useful when requesting a blind signature and proving knowledge of a signature along with
     // some the equality of certain messages in the commitment and signature
@@ -856,7 +856,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_BBS_plus_sig() {
 }
 
 #[test]
-fn requesting_partially_blind_BBS_plus_sig() {
+fn requesting_partially_blind_bbs_plus_sig() {
     // Request a partially blind signature by first proving knowledge of values in a Pedersen commitment. The
     // requester then unblinds the signature and verifies it.
 

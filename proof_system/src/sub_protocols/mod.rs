@@ -21,7 +21,9 @@ pub enum SubProtocol<E: PairingEngine, G: AffineCurve> {
     AccumulatorMembership(AccumulatorMembershipSubProtocol<E>),
     AccumulatorNonMembership(AccumulatorNonMembershipSubProtocol<E>),
     PoKDiscreteLogs(self::schnorr::SchnorrProtocol<G>),
+    /// For verifiable encryption using SAVER
     Saver(self::saver::SaverProtocol<E>),
+    /// For range proof using LegoGroth16
     BoundCheckProtocol(BoundCheckProtocol<E>),
 }
 

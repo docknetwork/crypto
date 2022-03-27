@@ -17,6 +17,7 @@ use ark_std::ops::Add;
 use ark_std::{
     io::{Read, Write},
     marker::PhantomData,
+    ops::Neg,
     rand::RngCore,
     vec,
     vec::Vec,
@@ -24,7 +25,6 @@ use ark_std::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use std::ops::Neg;
 
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 use dock_crypto_utils::serde_utils::*;
@@ -52,6 +52,7 @@ pub struct CiphertextAlt<E: PairingEngine> {
 
 macro_rules! impl_enc_funcs {
     () => {
+        /// Decrypt this ciphertext returning the plaintext and commitment to randomness
         pub fn decrypt(
             &self,
             sk: &SecretKey<E::Fr>,
@@ -62,6 +63,7 @@ macro_rules! impl_enc_funcs {
             Encryption::decrypt(&self.X_r, &self.enc_chunks, sk, dk, g_i, chunk_bit_size)
         }
 
+        /// Same as `Self::decrypt` but takes prepared decryption key for faster decryption
         pub fn decrypt_given_prepared(
             &self,
             sk: &SecretKey<E::Fr>,
@@ -79,6 +81,8 @@ macro_rules! impl_enc_funcs {
             )
         }
 
+        /// Same as `Self::decrypt` but takes prepared decryption key and pairing powers (see `PreparedDecryptionKey::pairing_powers`)
+        /// that can be precomputed for even faster decryption
         pub fn decrypt_given_prepared_and_pairing_powers(
             &self,
             sk: &SecretKey<E::Fr>,
@@ -98,6 +102,7 @@ macro_rules! impl_enc_funcs {
             )
         }
 
+        /// Verify that the ciphertext correctly commits to the message
         pub fn verify_commitment(
             &self,
             ek: &EncryptionKey<E>,
@@ -112,6 +117,7 @@ macro_rules! impl_enc_funcs {
             )
         }
 
+        /// Same as `Self::verify_commitment_given_prepared` but takes prepared parameters for faster verification.
         pub fn verify_commitment_given_prepared(
             &self,
             ek: &PreparedEncryptionKey<E>,
@@ -126,6 +132,7 @@ macro_rules! impl_enc_funcs {
             )
         }
 
+        /// Verify that the decrypted message corresponds to original plaintext in the ciphertext
         pub fn verify_decryption(
             &self,
             message: &E::Fr,
@@ -147,6 +154,7 @@ macro_rules! impl_enc_funcs {
             )
         }
 
+        /// Same as `Self::verify_decryption` but uses prepared parameters
         pub fn verify_decryption_given_prepared(
             &self,
             message: &E::Fr,
@@ -624,12 +632,7 @@ impl<E: PairingEngine> Encryption<E> {
                     E::G1Prepared::from(g_i[i]),
                     dk.V_2[i].clone(),
                 )));
-                decrypted_chunks.push(Self::solve_discrete_log(
-                    chunk_bit_size,
-                    chunk_max_val as u8,
-                    g_i_v_i,
-                    p,
-                )?);
+                decrypted_chunks.push(Self::solve_discrete_log(chunk_max_val as u8, g_i_v_i, p)?);
             } else {
                 decrypted_chunks.push(Self::solve_discrete_log_using_pairing_powers(
                     i,
@@ -682,12 +685,7 @@ impl<E: PairingEngine> Encryption<E> {
     }
 
     /// Does not use precomputation
-    fn solve_discrete_log(
-        chunk_bit_size: u8,
-        chunk_max_val: u8,
-        g_i_v_i: E::Fqk,
-        p: E::Fqk,
-    ) -> crate::Result<u8> {
+    fn solve_discrete_log(chunk_max_val: u8, g_i_v_i: E::Fqk, p: E::Fqk) -> crate::Result<u8> {
         if p == g_i_v_i {
             return Ok(1);
         }
