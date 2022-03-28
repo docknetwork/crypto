@@ -623,11 +623,7 @@ impl<E: PairingEngine> Encryption<E> {
             }
 
             if pairing_powers.len() == 0 {
-                // Precomputed powers are not provided, compute the neccessary pairings
-                if p.is_one() {
-                    decrypted_chunks.push(0);
-                    continue;
-                }
+                // Precomputed powers are not provided, compute the necessary pairings
                 let g_i_v_i = E::product_of_pairings(core::iter::once(&(
                     E::G1Prepared::from(g_i[i]),
                     dk.V_2[i].clone(),
