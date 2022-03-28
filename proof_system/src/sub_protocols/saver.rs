@@ -22,15 +22,18 @@ use saver::commitment::ChunkedCommitment;
 use saver::encryption::{Ciphertext, Encryption};
 use saver::utils::decompose;
 
-/// Apart from the SNARK protocol, this also runs 3 Schnorr proof of knowledge protocols
+/// Apart from the SAVER protocol (encryption and snark proof), this also runs 3 Schnorr proof of knowledge protocols
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SaverProtocol<E: PairingEngine> {
     pub id: usize,
     pub statement: statement::Saver<E>,
     pub ciphertext: Option<Ciphertext<E>>,
+    /// Randomness used in encryption
     pub randomness_enc: Option<E::Fr>,
     pub snark_proof: Option<saver::saver_groth16::Proof<E>>,
+    /// Commitment to the same chunks (decomposition of the message) as done during encryption
     pub comm_chunks: Option<E::G1Affine>,
+    /// Commitment to the message before breaking into chunks. Its value should be same as `comm_chunks`
     pub comm_combined: Option<E::G1Affine>,
     /// Schnorr protocol for proving knowledge of message chunks in ciphertext's commitment
     pub sp_ciphertext: Option<SchnorrProtocol<E::G1Affine>>,
@@ -56,6 +59,8 @@ impl<E: PairingEngine> SaverProtocol<E> {
         }
     }
 
+    /// Encrypt the message and create proof using SAVER. Then initialize 3 Schnorr proof of knowledge
+    /// protocols
     pub fn init<R: RngCore>(
         &mut self,
         rng: &mut R,
@@ -65,6 +70,7 @@ impl<E: PairingEngine> SaverProtocol<E> {
         if self.ciphertext.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
         }
+        // Create ciphertext and the snark proof
         let (ciphertext, randomness_enc, proof) = Encryption::encrypt_with_proof(
             rng,
             &message,
@@ -72,12 +78,20 @@ impl<E: PairingEngine> SaverProtocol<E> {
             &self.statement.snark_proving_key,
             self.statement.chunk_bit_size,
         )?;
+
+        // blinding used for `H` in both commitments
         let h_blinding = E::Fr::rand(rng);
+
+        // blinding used to prove knowledge of message in `comm_combined`. The caller of this method ensures
+        // that this will be same as the one used proving knowledge of the corresponding message in BBS+
+        // signature, thus allowing them to be proved equal.
         let blinding_combined_message = if blinding_combined_message.is_none() {
             E::Fr::rand(rng)
         } else {
             blinding_combined_message.unwrap()
         };
+
+        // Initialize the 3 Schnorr protocols
         let comm_combined = self
             .statement
             .chunked_commitment_gens
@@ -98,11 +112,6 @@ impl<E: PairingEngine> SaverProtocol<E> {
             &self.statement.chunked_commitment_gens,
         )?;
 
-        let decomposed_message = decompose(&message, self.statement.chunk_bit_size)?
-            .into_iter()
-            .map(|m| E::Fr::from(m as u64))
-            .collect::<Vec<_>>();
-
         let ck_com_ct = self.statement.encryption_key.commitment_key();
         let st_ciphertext = PedersenCommitment {
             bases: ck_com_ct,
@@ -120,19 +129,24 @@ impl<E: PairingEngine> SaverProtocol<E> {
             commitment: comm_combined,
         };
 
+        let message_chunks = decompose(&message, self.statement.chunk_bit_size)?
+            .into_iter()
+            .map(|m| E::Fr::from(m as u64))
+            .collect::<Vec<_>>();
+
         // NOTE: value of id is dummy
         let mut sp_ciphertext = SchnorrProtocol::new(10000, st_ciphertext);
         let mut sp_chunks = SchnorrProtocol::new(10000, st_chunks);
         let mut sp_combined = SchnorrProtocol::new(10000, st_combined);
 
-        let blindings_chunks = (0..decomposed_message.len())
+        let blindings_chunks = (0..message_chunks.len())
             .map(|i| (i, E::Fr::rand(rng)))
             .collect::<BTreeMap<usize, E::Fr>>();
-        let mut sp_ciphertext_wit = decomposed_message.clone();
+        let mut sp_ciphertext_wit = message_chunks.clone();
         sp_ciphertext_wit.push(randomness_enc);
         sp_ciphertext.init(rng, blindings_chunks.clone(), sp_ciphertext_wit)?;
 
-        let mut sp_chunks_wit = decomposed_message.clone();
+        let mut sp_chunks_wit = message_chunks.clone();
         sp_chunks_wit.push(h_blinding);
         sp_chunks.init(rng, blindings_chunks, sp_chunks_wit)?;
 
@@ -172,6 +186,7 @@ impl<E: PairingEngine> SaverProtocol<E> {
         Ok(())
     }
 
+    /// Generate responses for the 3 Schnorr protocols
     pub fn gen_proof_contribution<G: AffineCurve>(
         &mut self,
         challenge: &E::Fr,
@@ -204,6 +219,9 @@ impl<E: PairingEngine> SaverProtocol<E> {
         }))
     }
 
+    /// Verify that the snark proof is valid, the commitment in the ciphertext is correct, the commitment
+    /// to the chunks and the combined message are equal, the chunks committed in ciphertext are same
+    /// as the ones committed in the chunked commitment and all the 3 Schnorr proofs are valid.
     pub fn verify_proof_contribution<G: AffineCurve>(
         &self,
         challenge: &E::Fr,
@@ -211,7 +229,7 @@ impl<E: PairingEngine> SaverProtocol<E> {
     ) -> Result<(), ProofSystemError> {
         match proof {
             StatementProof::Saver(proof) => {
-                // Both commitments, one to chunks and the other to the combined message must be same
+                // Both commitments, one to the chunks and the other to the combined message must be same
                 if proof.comm_chunks != proof.comm_combined {
                     return Err(ProofSystemError::SaverInequalChunkedCommitment);
                 }

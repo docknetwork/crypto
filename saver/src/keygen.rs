@@ -1,5 +1,5 @@
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{Field, One, PrimeField, SquareRootField};
+use ark_ff::{One, PrimeField, SquareRootField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     cfg_iter,

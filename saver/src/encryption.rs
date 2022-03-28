@@ -11,7 +11,7 @@ use crate::setup::{EncryptionGens, PreparedEncryptionGens};
 use crate::utils;
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{Field, One, PrimeField, Zero};
+use ark_ff::{One, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::ops::Add;
 use ark_std::{

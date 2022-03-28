@@ -13,8 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::encryption::Ciphertext;
-pub use ark_groth16::Proof;
-use ark_groth16::{create_random_proof, generate_parameters, PreparedVerifyingKey, VerifyingKey};
+pub use ark_groth16::{
+    create_random_proof, generate_parameters, PreparedVerifyingKey, Proof, VerifyingKey,
+};
 use ark_std::ops::AddAssign;
 
 use dock_crypto_utils::serde_utils::*;

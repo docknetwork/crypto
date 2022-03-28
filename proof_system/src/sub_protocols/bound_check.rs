@@ -23,6 +23,8 @@ use legogroth16::{
     ProvingKey,
 };
 
+/// Runs the LegoGroth16 protocol for proving bounds of a witness and a Schnorr protocol for proving
+/// knowledge of the witness committed in the LegoGroth16 proof.
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct BoundCheckProtocol<E: PairingEngine> {
     pub id: usize,
@@ -41,6 +43,8 @@ impl<E: PairingEngine> BoundCheckProtocol<E> {
         }
     }
 
+    /// Runs the LegoGroth16 protocol to prove that the message is bounded and initialize a Schnorr proof of knowledge
+    /// protocol to prove knowledge of the committed message
     pub fn init<R: RngCore>(
         &mut self,
         rng: &mut R,
@@ -55,8 +59,13 @@ impl<E: PairingEngine> BoundCheckProtocol<E> {
             max: Some(self.statement.max),
             value: Some(message),
         };
+        // blinding for the commitment in the snark proof
         let v = E::Fr::rand(rng);
         let snark_proof = create_random_proof(circuit, v, &self.statement.snark_proving_key, rng)?;
+
+        // blinding used to prove knowledge of message in `snark_proof.d`. The caller of this method ensures
+        // that this will be same as the one used proving knowledge of the corresponding message in BBS+
+        // signature, thus allowing them to be proved equal.
         let blinding = if blinding.is_none() {
             E::Fr::rand(rng)
         } else {
@@ -95,6 +104,7 @@ impl<E: PairingEngine> BoundCheckProtocol<E> {
         Ok(())
     }
 
+    /// Generate responses for the Schnorr protocol
     pub fn gen_proof_contribution<G: AffineCurve>(
         &mut self,
         challenge: &E::Fr,
@@ -116,6 +126,7 @@ impl<E: PairingEngine> BoundCheckProtocol<E> {
         ))
     }
 
+    /// Verify that the snark proof and the Schnorr proof are valid.
     pub fn verify_proof_contribution<G: AffineCurve>(
         &self,
         challenge: &E::Fr,

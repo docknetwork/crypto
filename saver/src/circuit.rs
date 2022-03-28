@@ -1,5 +1,5 @@
 use crate::utils::chunks_count;
-use ark_ff::{Field, PrimeField};
+use ark_ff::PrimeField;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::{AllocVar, AllocationMode, Boolean, EqGadget};
 use ark_r1cs_std::ToBitsGadget;

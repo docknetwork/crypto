@@ -29,6 +29,7 @@ pub enum ProofSystemError {
     UnsatisfiedWitnessEqualities(Vec<BTreeSet<(usize, usize)>>),
     /// `StatementProof`s were missing for some `Statement`s
     UnsatisfiedStatements(usize, usize),
+    InvalidStatementProofIndex(usize),
     SaverError(SaverError),
     SaverInequalChunkedCommitment,
     SaverInsufficientChunkedCommitmentResponses,

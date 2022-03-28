@@ -590,6 +590,20 @@ where
         Ok(())
     }
 
+    pub fn statement_proof(&self, index: usize) -> Result<&StatementProof<E, G>, ProofSystemError> {
+        self.statement_proofs()
+            .get(index)
+            .ok_or(ProofSystemError::InvalidStatementProofIndex(index))
+    }
+
+    pub fn statement_proofs(&self) -> &[StatementProof<E, G>] {
+        &self.0
+    }
+
+    pub fn nonce(&self) -> &Option<Vec<u8>> {
+        &self.1
+    }
+
     /// Used to check if response (from Schnorr protocol) for a witness is equal to other witnesses that
     /// it must be equal to. This is required when the `ProofSpec` demands certain witnesses to be equal.
     fn check_response_for_equality<'a>(

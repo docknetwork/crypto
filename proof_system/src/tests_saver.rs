@@ -33,7 +33,7 @@ pub fn decrypt_and_verify(
     enc_gens: &EncryptionGens<Bls12_381>,
     chunk_bit_size: u8,
 ) {
-    let ct = match &proof.0[stmt_idx] {
+    let ct = match &proof.statement_proof(stmt_idx).unwrap() {
         StatementProof::Saver(s) => &s.ciphertext,
         _ => panic!("This should never happen"),
     };
@@ -99,7 +99,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements, Instant);
     test_serialization!(MetaStatements, meta_statements);
 
     let proof_spec = ProofSpec::new_with_statements_and_meta_statements(

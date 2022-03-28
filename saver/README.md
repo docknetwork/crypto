@@ -42,4 +42,4 @@ This is implemented [here](src/commitment.rs)
 
 #### Use with BBS+ signature
 
-See test [here](src/tests.rs)
+See tests [here](src/tests.rs)

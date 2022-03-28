@@ -28,8 +28,8 @@ ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "cu
 serde_json = "1.0"
 
 [features]
-default = [ "std", "parallel" ]
+default = [ "parallel" ]
 std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "serde/std"]
 print-trace = [ "ark-std/print-trace", "dock_crypto_utils/print-trace" ]
-parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon" ]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel" ]
 #with-serde = ["serde", "serde_with", "dock_crypto_utils/with-serde"]

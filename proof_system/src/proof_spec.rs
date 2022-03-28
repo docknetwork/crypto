@@ -49,12 +49,12 @@ where
         }
     }
 
-    pub fn add_statement(&mut self, statement: Statement<E, G>) {
-        self.statements.add(statement);
+    pub fn add_statement(&mut self, statement: Statement<E, G>) -> usize {
+        self.statements.add(statement)
     }
 
-    pub fn add_meta_statement(&mut self, meta_statement: MetaStatement) {
-        self.meta_statements.add(meta_statement);
+    pub fn add_meta_statement(&mut self, meta_statement: MetaStatement) -> usize {
+        self.meta_statements.add(meta_statement)
     }
 
     pub fn is_valid(&self) -> bool {
