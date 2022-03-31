@@ -8,8 +8,8 @@ use ark_std::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Describes the relations that need to proven. This is known to the prover and verifier and must
-/// be agreed upon before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s.
+/// Describes the relations that need to proven. This is created independently by the prover and verifier and must
+/// be agreed upon and be same before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s.
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
@@ -57,6 +57,8 @@ where
         self.meta_statements.add(meta_statement)
     }
 
+    /// Sanity check to ensure the proof spec is valid. This should never be false as these are used
+    /// by same entity creating them.
     pub fn is_valid(&self) -> bool {
         for mt in &self.meta_statements.0 {
             match mt {

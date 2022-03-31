@@ -5,7 +5,7 @@
 //! psi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
 //! `
 //!
-//! To get a commitment to the message `m`, `m*G + r'*H` from `psi`, create a commitment `J` as:
+//! To get a commitment to the message `m`, `m*G + r'*H` from `psi`, create a "chunked" commitment `J` as:
 //!
 //! ` J = m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H `
 //!
@@ -20,6 +20,11 @@
 //! `
 //!
 //! Since `b`, `n` and `G` are public, it can be ensured that `G_i`s are correctly created.
+//!
+//! CAVEAT: Since the same blinding `r'` is used for `H` in both the chunked commitment `J` and the commitment
+//! to the full message, they can be divided to get a value that is unique to the message and thus can
+//! be used to link 2 different proofs created for the same message. One solution to this is to generate a
+//! different `G` for each proof by hashing an agreed upon string appended with a counter.
 
 use crate::setup::ChunkedCommitmentGens;
 use crate::utils::{chunks_count, decompose};
@@ -144,7 +149,7 @@ mod tests {
     use proof_system::statement::PedersenCommitment as PedersenCommitmentStmt;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
-    type ProofG1 = Proof<Bls12_381, G1Affine, Fr, Blake2b>;
+    type ProofG1 = Proof<Bls12_381, G1Affine, Blake2b>;
 
     #[test]
     fn commitment_key_creation() {

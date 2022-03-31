@@ -9,13 +9,13 @@ use ark_std::{
     rand::RngCore,
     vec,
     vec::Vec,
+    UniformRand,
 };
 
 use crate::statement::Statement;
 use crate::sub_protocols::SubProtocol;
 use crate::witness::Witness;
 use crate::{error::ProofSystemError, witness::Witnesses};
-use ark_ff::{PrimeField, SquareRootField};
 use digest::Digest;
 
 use crate::meta_statement::WitnessRef;
@@ -35,26 +35,22 @@ pub use serialization::*;
 /// Created by the prover and verified by the verifier
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct Proof<E: PairingEngine, G: AffineCurve, F: PrimeField + SquareRootField, D: Digest>(
+pub struct Proof<E: PairingEngine, G: AffineCurve, D: Digest>(
     pub Vec<StatementProof<E, G>>,
     pub Option<Vec<u8>>,
-    PhantomData<F>,
     PhantomData<D>,
 );
 
-impl<E: PairingEngine, G: AffineCurve, F: PrimeField + SquareRootField, D: Digest> PartialEq
-    for Proof<E, G, F, D>
-{
+impl<E: PairingEngine, G: AffineCurve, D: Digest> PartialEq for Proof<E, G, D> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl<E, G, F, D> Proof<E, G, F, D>
+impl<E, G, D> Proof<E, G, D>
 where
-    E: PairingEngine<Fr = F>,
-    G: AffineCurve<ScalarField = F>,
-    F: PrimeField + SquareRootField,
+    E: PairingEngine,
+    G: AffineCurve<ScalarField = E::Fr>,
     D: Digest,
 {
     /// Create a new proof. `nonce` is random data that needs to be hashed into the proof and
@@ -82,7 +78,7 @@ where
         // Keep blinding for each witness reference that is part of an equality. This means that for
         // any 2 witnesses that are equal, same blinding will be stored. This will be drained during
         // proof creation and should be empty by the end.
-        let mut blindings = BTreeMap::<WitnessRef, F>::new();
+        let mut blindings = BTreeMap::<WitnessRef, E::Fr>::new();
 
         // Prepare blindings for any witnesses that need to be proven equal.
         if !proof_spec.meta_statements.is_empty() {
@@ -240,7 +236,7 @@ where
         for mut p in sub_protocols {
             statement_proofs.push(p.gen_proof_contribution(&challenge)?);
         }
-        Ok(Self(statement_proofs, nonce, PhantomData, PhantomData))
+        Ok(Self(statement_proofs, nonce, PhantomData))
     }
 
     /// Verify the `Proof` given the `ProofSpec` and `nonce`
@@ -625,7 +621,7 @@ where
     /// Hash bytes to a field element. This is vulnerable to timing attack and is only used input
     /// is public anyway like when generating setup parameters or challenge
     fn generate_challenge_from_bytes(bytes: &[u8]) -> E::Fr {
-        field_elem_from_try_and_incr::<F, D>(bytes)
+        field_elem_from_try_and_incr::<E::Fr, D>(bytes)
     }
 }
 

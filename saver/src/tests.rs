@@ -27,7 +27,7 @@ use std::ops::Add;
 use std::time::Instant;
 
 type Fr = <Bls12_381 as PairingEngine>::Fr;
-type ProofG1 = Proof<Bls12_381, G1Affine, Fr, Blake2b>;
+type ProofG1 = Proof<Bls12_381, G1Affine, Blake2b>;
 
 fn sig_setup<R: RngCore>(
     rng: &mut R,

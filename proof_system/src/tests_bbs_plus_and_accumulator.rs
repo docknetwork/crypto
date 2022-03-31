@@ -31,7 +31,7 @@ use crate::test_serialization;
 use crate::test_utils::{setup_positive_accum, setup_universal_accum, sig_setup};
 
 type Fr = <Bls12_381 as PairingEngine>::Fr;
-type ProofG1 = Proof<Bls12_381, G1Affine, Fr, Blake2b>;
+type ProofG1 = Proof<Bls12_381, G1Affine, Blake2b>;
 
 #[test]
 fn pok_of_3_bbs_plus_sig_and_message_equality() {
@@ -509,7 +509,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     // Prove knowledge of signature and
     // - membership of message with index `accum_member_1_idx` in positive accumulator
-    // - -membership of message with index `accum_member_2_idx` in universal accumulator
+    // - membership of message with index `accum_member_2_idx` in universal accumulator
     // - non-membership of message with index `accum_non_member_idx` in universal accumulator
     let mut statements = Statements::new();
     statements.add(Statement::PoKBBSSignatureG1(PoKSignatureBBSG1Stmt {

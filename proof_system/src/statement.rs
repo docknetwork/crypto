@@ -1,7 +1,9 @@
 use ark_ec::{AffineCurve, PairingEngine};
+use ark_ff::PrimeField;
 use ark_relations::r1cs::SynthesisError;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
+    cmp::Ordering,
     collections::BTreeMap,
     fmt::Debug,
     io::{Read, Write},
@@ -10,7 +12,7 @@ use ark_std::{
 
 use bbs_plus::setup::{PublicKeyG2 as BBSPublicKeyG2, SignatureParamsG1 as BBSSignatureParamsG1};
 use dock_crypto_utils::serde_utils::*;
-use legogroth16::ProvingKey as LegoProvingKey;
+pub use legogroth16::ProvingKey as LegoProvingKey;
 use saver::keygen::EncryptionKey;
 use saver::setup::{ChunkedCommitmentGens, EncryptionGens};
 use serde::{Deserialize, Serialize};
@@ -256,6 +258,23 @@ impl<E: PairingEngine> BoundCheckLegoGroth16<E> {
                 legogroth16::error::Error::SynthesisError(SynthesisError::MalformedVerifyingKey),
             ));
         }
+
+        // For comparisons to be valid, both max must be <= (p-1)/2. This is enforced in the
+        // circuit as well.
+        let max_allowed = E::Fr::modulus_minus_one_div_two();
+        let max_big = max.into_repr();
+        match max_big.cmp(&max_allowed) {
+            Ordering::Greater => return Err(ProofSystemError::BoundCheckMaxGreaterThanAllowed),
+            _ => (),
+        }
+
+        // min must be < max
+        let min_big = min.into_repr();
+        match min_big.cmp(&max_big) {
+            Ordering::Less => (),
+            _ => return Err(ProofSystemError::BoundCheckMaxNotGreaterThanMin),
+        }
+
         Ok(Statement::BoundCheckLegoGroth16(Self {
             min,
             max,
@@ -289,6 +308,7 @@ mod serialization {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sub_protocols::bound_check::generate_snark_srs_bound_check;
     use crate::test_serialization;
     use crate::test_utils::{setup_positive_accum, setup_universal_accum, sig_setup};
     use ark_bls12_381::Bls12_381;
@@ -296,6 +316,7 @@ mod tests {
     use ark_ec::msm::VariableBaseMSM;
     use ark_ec::ProjectiveCurve;
     use ark_ff::fields::PrimeField;
+    use ark_ff::{BigInteger, One};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -368,5 +389,56 @@ mod tests {
 
         statements.add(stmt_4);
         test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+    }
+
+    #[test]
+    fn bound_check_statement_validity() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let snark_pk = generate_snark_srs_bound_check::<Bls12_381, _>(&mut rng).unwrap();
+        assert!(
+            BoundCheckLegoGroth16::new_as_statement::<<Bls12_381 as PairingEngine>::G1Affine>(
+                Fr::from(5u64),
+                Fr::from(5u64),
+                snark_pk.clone()
+            )
+            .is_err()
+        );
+        assert!(
+            BoundCheckLegoGroth16::new_as_statement::<<Bls12_381 as PairingEngine>::G1Affine>(
+                Fr::from(5u64),
+                Fr::from(4u64),
+                snark_pk.clone()
+            )
+            .is_err()
+        );
+        assert!(
+            BoundCheckLegoGroth16::new_as_statement::<<Bls12_381 as PairingEngine>::G1Affine>(
+                Fr::from(5u64),
+                Fr::from(6u64),
+                snark_pk.clone()
+            )
+            .is_ok()
+        );
+
+        let max_allowed = Fr::modulus_minus_one_div_two();
+        let mut max = max_allowed.clone();
+        max.add_nocarry(&Fr::one().into_repr());
+
+        assert!(
+            BoundCheckLegoGroth16::new_as_statement::<<Bls12_381 as PairingEngine>::G1Affine>(
+                Fr::from(5u64),
+                Fr::from(max),
+                snark_pk.clone()
+            )
+            .is_err()
+        );
+        assert!(
+            BoundCheckLegoGroth16::new_as_statement::<<Bls12_381 as PairingEngine>::G1Affine>(
+                Fr::from(5u64),
+                Fr::from(max_allowed),
+                snark_pk.clone()
+            )
+            .is_ok()
+        );
     }
 }

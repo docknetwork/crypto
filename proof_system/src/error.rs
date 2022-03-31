@@ -36,6 +36,8 @@ pub enum ProofSystemError {
     SaverInequalChunkedCommitmentResponse,
     LegoGroth16Error(LegoGroth16Error),
     LegoGroth16InequalResponse,
+    BoundCheckMaxGreaterThanAllowed,
+    BoundCheckMaxNotGreaterThanMin,
 }
 
 impl From<SchnorrError> for ProofSystemError {

@@ -6,8 +6,8 @@ use crate::statement::{PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt, Saver as Save
 use crate::test_serialization;
 use crate::test_utils::sig_setup;
 use crate::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
-use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
-use ark_ec::{PairingEngine, ProjectiveCurve};
+use ark_bls12_381::{Bls12_381, G1Affine};
+use ark_ec::PairingEngine;
 use ark_groth16::VerifyingKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -21,7 +21,7 @@ use saver::setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens};
 use std::time::Instant;
 
 type Fr = <Bls12_381 as PairingEngine>::Fr;
-type ProofG1 = Proof<Bls12_381, G1Affine, Fr, Blake2b>;
+type ProofG1 = Proof<Bls12_381, G1Affine, Blake2b>;
 
 pub fn decrypt_and_verify(
     proof: &ProofG1,

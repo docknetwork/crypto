@@ -11,7 +11,6 @@ use ark_std::io::Write;
 use crate::statement_proof::StatementProof;
 use crate::sub_protocols::bound_check::BoundCheckProtocol;
 use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol};
-use ark_ff::{PrimeField, SquareRootField};
 
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to
 /// form a `Proof`
@@ -27,30 +26,20 @@ pub enum SubProtocol<E: PairingEngine, G: AffineCurve> {
     BoundCheckProtocol(BoundCheckProtocol<E>),
 }
 
-pub trait ProofSubProtocol<
-    F: PrimeField + SquareRootField,
-    E: PairingEngine<Fr = F>,
-    G: AffineCurve<ScalarField = F>,
->
-{
+pub trait ProofSubProtocol<E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> {
     fn challenge_contribution(&self, target: &mut [u8]) -> Result<(), ProofSystemError>;
     fn gen_proof_contribution(
         &mut self,
-        challenge: &F,
+        challenge: &E::Fr,
     ) -> Result<StatementProof<E, G>, ProofSystemError>;
     fn verify_proof_contribution(
         &self,
-        challenge: &F,
+        challenge: &E::Fr,
         proof: &StatementProof<E, G>,
     ) -> Result<(), ProofSystemError>;
 }
 
-impl<
-        F: PrimeField + SquareRootField,
-        E: PairingEngine<Fr = F>,
-        G: AffineCurve<ScalarField = F>,
-    > SubProtocol<E, G>
-{
+impl<E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> SubProtocol<E, G> {
     pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ProofSystemError> {
         match self {
             SubProtocol::PoKBBSSignatureG1(s) => s.challenge_contribution(writer),
@@ -64,7 +53,7 @@ impl<
 
     pub fn gen_proof_contribution(
         &mut self,
-        challenge: &F,
+        challenge: &E::Fr,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         match self {
             SubProtocol::PoKBBSSignatureG1(s) => s.gen_proof_contribution(challenge),
@@ -78,7 +67,7 @@ impl<
 
     pub fn verify_proof_contribution(
         &self,
-        challenge: &F,
+        challenge: &E::Fr,
         proof: &StatementProof<E, G>,
     ) -> Result<(), ProofSystemError> {
         match self {

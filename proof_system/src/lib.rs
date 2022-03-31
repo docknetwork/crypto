@@ -66,7 +66,7 @@ pub mod witness;
 #[macro_use]
 pub mod test_utils;
 #[cfg(test)]
-mod tests;
+mod tests_bbs_plus_and_accumulator;
 #[cfg(test)]
 mod tests_bound;
 #[cfg(test)]

@@ -20,25 +20,8 @@ psi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
 
 #### Getting a commitment to the full message from commitment to the decomposition.
 
-To get a commitment `m*G + r'*H` from `psi` is to create a commitment `J` as:
-
-```
-J = m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H  
-```
-
-where `G_i = {b^{n-i}}*G` so `G_1 = {b^{n-1}}*G`, and so on.  
-Now prove the equality of openings of the commitments `phi` and `J`. Note that `J` is same as `m*G + r'*H` because
-
-```
-m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H 
-  = m_1*{b^{n-1}}*G + m_2*{b^{n-2}}*G + ... + m_n*G + r'*H  
-  = ( m_1*{b^{n-1}} + m_2*{b^{n-2}} + ... + m_n ) * G + r'*H 
-  = m*G + r'*H
-```
-
-Since `b`, `n` and `G` are public, it can be ensured that `G_i`s are correctly created.
-
-This is implemented [here](src/commitment.rs)
+To use the ciphertext commitment for equality of a committed message using a Schnorr protocol, the commitment must be transformed 
+to a commitment to the full (non-decomposed) message. This is implemented [here](src/commitment.rs) and the module docs describe the process.
 
 #### Use with BBS+ signature
 
