@@ -15,15 +15,15 @@ use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubP
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to
 /// form a `Proof`
 #[derive(Clone, Debug, PartialEq)]
-pub enum SubProtocol<E: PairingEngine, G: AffineCurve> {
-    PoKBBSSignatureG1(self::bbs_plus::PoKBBSSigG1SubProtocol<E>),
-    AccumulatorMembership(AccumulatorMembershipSubProtocol<E>),
-    AccumulatorNonMembership(AccumulatorNonMembershipSubProtocol<E>),
-    PoKDiscreteLogs(self::schnorr::SchnorrProtocol<G>),
+pub enum SubProtocol<'a, E: PairingEngine, G: AffineCurve> {
+    PoKBBSSignatureG1(self::bbs_plus::PoKBBSSigG1SubProtocol<'a, E>),
+    AccumulatorMembership(AccumulatorMembershipSubProtocol<'a, E>),
+    AccumulatorNonMembership(AccumulatorNonMembershipSubProtocol<'a, E>),
+    PoKDiscreteLogs(self::schnorr::SchnorrProtocol<'a, G>),
     /// For verifiable encryption using SAVER
-    Saver(self::saver::SaverProtocol<E>),
+    Saver(self::saver::SaverProtocol<'a, E>),
     /// For range proof using LegoGroth16
-    BoundCheckProtocol(BoundCheckProtocol<E>),
+    BoundCheckProtocol(BoundCheckProtocol<'a, E>),
 }
 
 pub trait ProofSubProtocol<E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> {
@@ -39,7 +39,7 @@ pub trait ProofSubProtocol<E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>
     ) -> Result<(), ProofSystemError>;
 }
 
-impl<E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> SubProtocol<E, G> {
+impl<'a, E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> SubProtocol<'a, E, G> {
     pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ProofSystemError> {
         match self {
             SubProtocol::PoKBBSSignatureG1(s) => s.challenge_contribution(writer),

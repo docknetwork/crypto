@@ -12,14 +12,14 @@ use ark_std::{
     UniformRand,
 };
 
-use crate::statement::Statement;
+use crate::statement_v2::StatementV2;
 use crate::sub_protocols::SubProtocol;
 use crate::witness::Witness;
 use crate::{error::ProofSystemError, witness::Witnesses};
 use digest::Digest;
 
 use crate::meta_statement::WitnessRef;
-use crate::proof_spec::ProofSpec;
+use crate::proof_spec_v2::ProofSpecV2;
 use crate::statement_proof::StatementProof;
 use crate::sub_protocols::accumulator::{
     AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol,
@@ -34,19 +34,19 @@ use serde::{Deserialize, Serialize};
 /// Created by the prover and verified by the verifier
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct Proof<E: PairingEngine, G: AffineCurve, D: Digest>(
+pub struct ProofV2<E: PairingEngine, G: AffineCurve, D: Digest>(
     pub Vec<StatementProof<E, G>>,
     pub Option<Vec<u8>>,
     PhantomData<D>,
 );
 
-impl<E: PairingEngine, G: AffineCurve, D: Digest> PartialEq for Proof<E, G, D> {
+impl<E: PairingEngine, G: AffineCurve, D: Digest> PartialEq for ProofV2<E, G, D> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl<E, G, D> Proof<E, G, D>
+impl<E, G, D> ProofV2<E, G, D>
 where
     E: PairingEngine,
     G: AffineCurve<ScalarField = E::Fr>,
@@ -58,7 +58,7 @@ where
     /// the proof as its own or the verifier might want to require the user to create fresh proof.
     pub fn new<R: RngCore>(
         rng: &mut R,
-        proof_spec: ProofSpec<E, G>,
+        proof_spec: ProofSpecV2<E, G>,
         witnesses: Witnesses<E>,
         nonce: Option<Vec<u8>>,
     ) -> Result<Self, ProofSystemError> {
@@ -97,12 +97,12 @@ where
         for (s_idx, (statement, witness)) in proof_spec
             .statements
             .0
-            .into_iter()
+            .iter()
             .zip(witnesses.0.into_iter())
             .enumerate()
         {
             match statement {
-                Statement::PoKBBSSignatureG1(s) => match witness {
+                StatementV2::PoKBBSSignatureG1(s) => match witness {
                     Witness::PoKBBSSignatureG1(w) => {
                         // Prepare blindings for this BBS+ signature proof
                         let mut blindings_map = BTreeMap::new();
@@ -112,7 +112,14 @@ where
                                 None => None,
                             };
                         }
-                        let mut sp = PoKBBSSigG1SubProtocol::new(s_idx, s);
+                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = PoKBBSSigG1SubProtocol::new(
+                            s_idx,
+                            &s.revealed_messages,
+                            sig_params,
+                            pk,
+                        );
                         sp.init(rng, blindings_map, w)?;
                         sub_protocols.push(SubProtocol::PoKBBSSignatureG1(sp));
                     }
@@ -124,10 +131,19 @@ where
                         ))
                     }
                 },
-                Statement::AccumulatorMembership(s) => match witness {
+                StatementV2::AccumulatorMembership(s) => match witness {
                     Witness::AccumulatorMembership(w) => {
                         let blinding = blindings.remove(&(s_idx, 0));
-                        let mut sp = AccumulatorMembershipSubProtocol::new(s_idx, s);
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = AccumulatorMembershipSubProtocol::new(
+                            s_idx,
+                            params,
+                            pk,
+                            prk,
+                            s.accumulator_value,
+                        );
                         sp.init(rng, blinding, w)?;
                         sub_protocols.push(SubProtocol::AccumulatorMembership(sp));
                     }
@@ -139,10 +155,19 @@ where
                         ))
                     }
                 },
-                Statement::AccumulatorNonMembership(s) => match witness {
+                StatementV2::AccumulatorNonMembership(s) => match witness {
                     Witness::AccumulatorNonMembership(w) => {
                         let blinding = blindings.remove(&(s_idx, 0));
-                        let mut sp = AccumulatorNonMembershipSubProtocol::new(s_idx, s);
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = AccumulatorNonMembershipSubProtocol::new(
+                            s_idx,
+                            params,
+                            pk,
+                            prk,
+                            s.accumulator_value,
+                        );
                         sp.init(rng, blinding, w)?;
                         sub_protocols.push(SubProtocol::AccumulatorNonMembership(sp));
                     }
@@ -154,7 +179,7 @@ where
                         ))
                     }
                 },
-                Statement::PedersenCommitment(s) => match witness {
+                StatementV2::PedersenCommitment(s) => match witness {
                     Witness::PedersenCommitment(w) => {
                         let mut blindings_map = BTreeMap::new();
                         for i in 0..w.len() {
@@ -163,7 +188,8 @@ where
                                 None => None,
                             };
                         }
-                        let mut sp = SchnorrProtocol::new(s_idx, s);
+                        let comm_key = s.get_commitment_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = SchnorrProtocol::new(s_idx, comm_key, s.commitment);
                         sp.init(rng, blindings_map, w)?;
                         sub_protocols.push(SubProtocol::PoKDiscreteLogs(sp));
                     }
@@ -175,10 +201,22 @@ where
                         ))
                     }
                 },
-                Statement::Saver(s) => match witness {
+                StatementV2::SaverProver(s) => match witness {
                     Witness::Saver(w) => {
                         let blinding = blindings.remove(&(s_idx, 0));
-                        let mut sp = SaverProtocol::new(s_idx, s);
+                        let enc_gens = s.get_encryption_gens(&proof_spec.setup_params, s_idx)?;
+                        let comm_gens =
+                            s.get_chunked_commitment_gens(&proof_spec.setup_params, s_idx)?;
+                        let enc_key = s.get_encryption_key(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_snark_proving_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = SaverProtocol::new_for_prover(
+                            s_idx,
+                            s.chunk_bit_size,
+                            enc_gens,
+                            comm_gens,
+                            enc_key,
+                            pk,
+                        );
                         sp.init(rng, w, blinding)?;
                         sub_protocols.push(SubProtocol::Saver(sp));
                     }
@@ -190,10 +228,12 @@ where
                         ))
                     }
                 },
-                Statement::BoundCheckLegoGroth16(s) => match witness {
+                StatementV2::BoundCheckLegoGroth16Prover(s) => match witness {
                     Witness::BoundCheckLegoGroth16(w) => {
                         let blinding = blindings.remove(&(s_idx, 0));
-                        let mut sp = BoundCheckProtocol::new(s_idx, s);
+                        let proving_key = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp =
+                            BoundCheckProtocol::new_for_prover(s_idx, s.min, s.max, proving_key);
                         sp.init(rng, w, blinding)?;
                         sub_protocols.push(SubProtocol::BoundCheckProtocol(sp));
                     }
@@ -205,6 +245,7 @@ where
                         ))
                     }
                 },
+                _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
 
@@ -241,7 +282,7 @@ where
     /// Verify the `Proof` given the `ProofSpec` and `nonce`
     pub fn verify(
         self,
-        proof_spec: ProofSpec<E, G>,
+        proof_spec: ProofSpecV2<E, G>,
         nonce: Option<Vec<u8>>,
     ) -> Result<(), ProofSystemError> {
         if !proof_spec.is_valid() {
@@ -288,11 +329,12 @@ where
             .enumerate()
         {
             match statement {
-                Statement::PoKBBSSignatureG1(s) => match proof {
+                StatementV2::PoKBBSSignatureG1(s) => match proof {
                     StatementProof::PoKBBSSignatureG1(p) => {
                         let revealed_msg_ids = s.revealed_messages.keys().map(|k| *k).collect();
+                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
                         // Check witness equalities for this statement.
-                        for i in 0..s.signature_params.supported_message_count() {
+                        for i in 0..sig_params.supported_message_count() {
                             let w_ref = (s_idx, i);
                             for j in 0..witness_equalities.len() {
                                 if witness_equalities[j].contains(&w_ref) {
@@ -309,7 +351,7 @@ where
                         }
                         p.challenge_contribution(
                             &s.revealed_messages,
-                            &s.signature_params,
+                            sig_params,
                             &mut challenge_bytes,
                         )?;
                     }
@@ -321,7 +363,7 @@ where
                         ))
                     }
                 },
-                Statement::AccumulatorMembership(s) => match proof {
+                StatementV2::AccumulatorMembership(s) => match proof {
                     StatementProof::AccumulatorMembership(p) => {
                         for i in 0..witness_equalities.len() {
                             // Check witness equalities for this statement. As there is only 1 witness
@@ -337,11 +379,14 @@ where
                                 )?;
                             }
                         }
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
                         p.challenge_contribution(
                             &s.accumulator_value,
-                            &s.public_key,
-                            &s.params,
-                            &s.proving_key,
+                            pk,
+                            params,
+                            prk,
                             &mut challenge_bytes,
                         )?;
                     }
@@ -353,7 +398,7 @@ where
                         ))
                     }
                 },
-                Statement::AccumulatorNonMembership(s) => match proof {
+                StatementV2::AccumulatorNonMembership(s) => match proof {
                     StatementProof::AccumulatorNonMembership(p) => {
                         // Check witness equalities for this statement. As there is only 1 witness
                         // of interest, i.e. the accumulator non-member, its index is always 0
@@ -369,11 +414,14 @@ where
                                 )?;
                             }
                         }
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
                         p.challenge_contribution(
                             &s.accumulator_value,
-                            &s.public_key,
-                            &s.params,
-                            &s.proving_key,
+                            pk,
+                            params,
+                            prk,
                             &mut challenge_bytes,
                         )?;
                     }
@@ -385,9 +433,10 @@ where
                         ))
                     }
                 },
-                Statement::PedersenCommitment(s) => match proof {
+                StatementV2::PedersenCommitment(s) => match proof {
                     StatementProof::PedersenCommitment(p) => {
-                        for i in 0..s.key.len() {
+                        let comm_key = s.get_commitment_key(&proof_spec.setup_params, s_idx)?;
+                        for i in 0..comm_key.len() {
                             // Check witness equalities for this statement.
                             for j in 0..witness_equalities.len() {
                                 if witness_equalities[j].contains(&(s_idx, i)) {
@@ -404,7 +453,7 @@ where
                         }
 
                         SchnorrProtocol::compute_challenge_contribution(
-                            &s.key,
+                            comm_key,
                             &s.commitment,
                             &p.t,
                             &mut challenge_bytes,
@@ -418,7 +467,7 @@ where
                         ))
                     }
                 },
-                Statement::Saver(s) => match proof {
+                StatementV2::SaverVerifier(s) => match proof {
                     StatementProof::Saver(p) => {
                         for i in 0..witness_equalities.len() {
                             if witness_equalities[i].contains(&(s_idx, 0)) {
@@ -432,8 +481,16 @@ where
                                 )?;
                             }
                         }
-
-                        SaverProtocol::compute_challenge_contribution(s, &p, &mut challenge_bytes)?;
+                        let comm_gens =
+                            s.get_chunked_commitment_gens(&proof_spec.setup_params, s_idx)?;
+                        let enc_key = s.get_encryption_key(&proof_spec.setup_params, s_idx)?;
+                        SaverProtocol::compute_challenge_contribution(
+                            s.chunk_bit_size,
+                            comm_gens,
+                            enc_key,
+                            p,
+                            &mut challenge_bytes,
+                        )?;
                     }
                     _ => {
                         return Err(ProofSystemError::ProofIncompatibleWithStatement(
@@ -443,7 +500,7 @@ where
                         ))
                     }
                 },
-                Statement::BoundCheckLegoGroth16(s) => match proof {
+                StatementV2::BoundCheckLegoGroth16Verifier(s) => match proof {
                     StatementProof::BoundCheckLegoGroth16(p) => {
                         for i in 0..witness_equalities.len() {
                             if witness_equalities[i].contains(&(s_idx, 0)) {
@@ -458,8 +515,9 @@ where
                             }
                         }
 
+                        let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
                         BoundCheckProtocol::compute_challenge_contribution(
-                            s,
+                            verifying_key,
                             &p,
                             &mut challenge_bytes,
                         )?;
@@ -472,6 +530,7 @@ where
                         ))
                     }
                 },
+                _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
 
@@ -502,9 +561,16 @@ where
             .enumerate()
         {
             match statement {
-                Statement::PoKBBSSignatureG1(s) => match proof {
+                StatementV2::PoKBBSSignatureG1(s) => match proof {
                     StatementProof::PoKBBSSignatureG1(ref _p) => {
-                        let sp = PoKBBSSigG1SubProtocol::new(s_idx, s);
+                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = PoKBBSSigG1SubProtocol::new(
+                            s_idx,
+                            &s.revealed_messages,
+                            sig_params,
+                            pk,
+                        );
                         sp.verify_proof_contribution(&challenge, &proof)?
                     }
                     _ => {
@@ -515,9 +581,18 @@ where
                         ))
                     }
                 },
-                Statement::AccumulatorMembership(s) => match proof {
+                StatementV2::AccumulatorMembership(s) => match proof {
                     StatementProof::AccumulatorMembership(ref _p) => {
-                        let sp = AccumulatorMembershipSubProtocol::new(s_idx, s);
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = AccumulatorMembershipSubProtocol::new(
+                            s_idx,
+                            params,
+                            pk,
+                            prk,
+                            s.accumulator_value,
+                        );
                         sp.verify_proof_contribution(&challenge, &proof)?
                     }
                     _ => {
@@ -528,9 +603,18 @@ where
                         ))
                     }
                 },
-                Statement::AccumulatorNonMembership(s) => match proof {
+                StatementV2::AccumulatorNonMembership(s) => match proof {
                     StatementProof::AccumulatorNonMembership(ref _p) => {
-                        let sp = AccumulatorNonMembershipSubProtocol::new(s_idx, s);
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = AccumulatorNonMembershipSubProtocol::new(
+                            s_idx,
+                            params,
+                            pk,
+                            prk,
+                            s.accumulator_value,
+                        );
                         sp.verify_proof_contribution(&challenge, &proof)?
                     }
                     _ => {
@@ -541,9 +625,10 @@ where
                         ))
                     }
                 },
-                Statement::PedersenCommitment(s) => match proof {
+                StatementV2::PedersenCommitment(s) => match proof {
                     StatementProof::PedersenCommitment(ref _p) => {
-                        let sp = SchnorrProtocol::new(s_idx, s);
+                        let comm_key = s.get_commitment_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = SchnorrProtocol::new(s_idx, comm_key, s.commitment);
                         sp.verify_proof_contribution(&challenge, &proof)?
                     }
                     _ => {
@@ -554,9 +639,21 @@ where
                         ))
                     }
                 },
-                Statement::Saver(s) => match proof {
+                StatementV2::SaverVerifier(s) => match proof {
                     StatementProof::Saver(ref _p) => {
-                        let sp = SaverProtocol::new(s_idx, s);
+                        let enc_gens = s.get_encryption_gens(&proof_spec.setup_params, s_idx)?;
+                        let comm_gens =
+                            s.get_chunked_commitment_gens(&proof_spec.setup_params, s_idx)?;
+                        let enc_key = s.get_encryption_key(&proof_spec.setup_params, s_idx)?;
+                        let vk = s.get_snark_verifying_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = SaverProtocol::new_for_verifier(
+                            s_idx,
+                            s.chunk_bit_size,
+                            enc_gens,
+                            comm_gens,
+                            enc_key,
+                            vk,
+                        );
                         sp.verify_proof_contribution(&challenge, &proof)?
                     }
                     _ => {
@@ -567,9 +664,15 @@ where
                         ))
                     }
                 },
-                Statement::BoundCheckLegoGroth16(s) => match proof {
+                StatementV2::BoundCheckLegoGroth16Verifier(s) => match proof {
                     StatementProof::BoundCheckLegoGroth16(ref _p) => {
-                        let sp = BoundCheckProtocol::new(s_idx, s);
+                        let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = BoundCheckProtocol::new_for_verifier(
+                            s_idx,
+                            s.min,
+                            s.max,
+                            verifying_key,
+                        );
                         sp.verify_proof_contribution(&challenge, &proof)?
                     }
                     _ => {
@@ -580,6 +683,7 @@ where
                         ))
                     }
                 },
+                _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
         Ok(())

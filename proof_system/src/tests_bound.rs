@@ -65,7 +65,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
-    let proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         meta_statements.clone(),
         None,
@@ -112,7 +112,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         meta_statements_wrong,
         None,
@@ -131,7 +131,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     witnesses_wrong.add(Witness::BoundCheckLegoGroth16(min + Fr::one()));
 
     let proof_spec =
-        ProofSpec::new_with_statements_and_meta_statements(statements, meta_statements, None);
+        ProofSpec::new(statements, meta_statements, None);
     assert!(proof_spec.is_valid());
 
     let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses_wrong, None).unwrap();
@@ -176,7 +176,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         meta_statements.clone(),
         None,
@@ -208,7 +208,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         meta_statements.clone(),
         None,
@@ -286,7 +286,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    let proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         meta_statements.clone(),
         None,
@@ -395,7 +395,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
-    let proof_spec = ProofSpec::new_with_statements_and_meta_statements(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         meta_statements.clone(),
         None,

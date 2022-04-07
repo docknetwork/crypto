@@ -7,24 +7,33 @@ use ark_std::{
     io::{Read, Write},
     vec::Vec,
 };
+use bbs_plus::prelude::{PublicKeyG2, SignatureParamsG1};
 use bbs_plus::proof::PoKOfSignatureG1Protocol;
 
 use crate::error::ProofSystemError;
-use crate::statement::PoKBBSSignatureG1;
 use crate::statement_proof::StatementProof;
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PoKBBSSigG1SubProtocol<E: PairingEngine> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PoKBBSSigG1SubProtocol<'a, E: PairingEngine> {
     pub id: usize,
-    pub statement: PoKBBSSignatureG1<E>,
+    pub revealed_messages: &'a BTreeMap<usize, E::Fr>,
+    pub signature_params: &'a SignatureParamsG1<E>,
+    pub public_key: &'a PublicKeyG2<E>,
     pub protocol: Option<PoKOfSignatureG1Protocol<E>>,
 }
 
-impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
-    pub fn new(id: usize, statement: PoKBBSSignatureG1<E>) -> Self {
+impl<'a, E: PairingEngine> PoKBBSSigG1SubProtocol<'a, E> {
+    pub fn new(
+        id: usize,
+        revealed_messages: &'a BTreeMap<usize, E::Fr>,
+        signature_params: &'a SignatureParamsG1<E>,
+        public_key: &'a PublicKeyG2<E>,
+    ) -> Self {
         Self {
             id,
-            statement,
+            revealed_messages,
+            signature_params,
+            public_key,
             protocol: None,
         }
     }
@@ -39,14 +48,14 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
         }
         // Create messages from revealed messages in statement and unrevealed in witness
-        let mut messages = Vec::with_capacity(self.statement.params.supported_message_count());
+        let mut messages = Vec::with_capacity(self.signature_params.supported_message_count());
         let mut revealed_indices = BTreeSet::new();
-        for i in 0..self.statement.params.supported_message_count() {
+        for i in 0..self.signature_params.supported_message_count() {
             if witness.unrevealed_messages.contains_key(&i) {
                 messages.push(witness.unrevealed_messages.remove(&i).unwrap());
-            } else if self.statement.revealed_messages.contains_key(&i) {
+            } else if self.revealed_messages.contains_key(&i) {
                 revealed_indices.insert(i);
-                messages.push(self.statement.revealed_messages.get(&i).unwrap().clone());
+                messages.push(self.revealed_messages.get(&i).unwrap().clone());
             } else {
                 return Err(ProofSystemError::BBSPlusProtocolMessageAbsent(self.id, i));
             }
@@ -54,7 +63,7 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
         let protocol = PoKOfSignatureG1Protocol::init(
             rng,
             &witness.signature,
-            &self.statement.params,
+            self.signature_params,
             &messages,
             blindings,
             revealed_indices,
@@ -70,8 +79,8 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
             ));
         }
         self.protocol.as_ref().unwrap().challenge_contribution(
-            &self.statement.revealed_messages,
-            &self.statement.params,
+            self.revealed_messages,
+            self.signature_params,
             writer,
         )?;
         Ok(())
@@ -99,17 +108,14 @@ impl<E: PairingEngine> PoKBBSSigG1SubProtocol<E> {
         match proof {
             StatementProof::PoKBBSSignatureG1(p) => {
                 p.verify(
-                    &self.statement.revealed_messages,
+                    self.revealed_messages,
                     challenge,
-                    &self.statement.public_key,
-                    &self.statement.params,
+                    self.public_key,
+                    self.signature_params,
                 )?;
                 Ok(())
             }
-            _ => Err(ProofSystemError::ProofIncompatibleWithProtocol(format!(
-                "{:?}",
-                self.statement
-            ))),
+            _ => Err(ProofSystemError::ProofIncompatibleWithBBSPlusProtocol),
         }
     }
 }

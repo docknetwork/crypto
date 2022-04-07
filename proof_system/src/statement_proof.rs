@@ -86,13 +86,24 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Proof<E> {
 }
 
 mod serialization {
-    use super::{CanonicalDeserialize, CanonicalSerialize, PairingEngine};
+    use super::{
+        AffineCurve, CanonicalDeserialize, CanonicalSerialize, PairingEngine, Read,
+        SerializationError, StatementProof, Write,
+    };
     use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
     use legogroth16::Proof as LegoProof;
     use saver::saver_groth16::Proof;
     use serde::de::{SeqAccess, Visitor};
     use serde::{Deserializer, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
+
+    impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for StatementProof<E, G> {
+        impl_serialize!();
+    }
+
+    impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for StatementProof<E, G> {
+        impl_deserialize!();
+    }
 
     impl_for_groth16_struct!(ProofBytes, Proof, "expected Proof");
     impl_for_groth16_struct!(LegoProofBytes, LegoProof, "expected LegoProofBytes");

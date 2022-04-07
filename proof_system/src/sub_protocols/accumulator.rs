@@ -1,5 +1,4 @@
 use crate::error::ProofSystemError;
-use crate::statement::{AccumulatorMembership, AccumulatorNonMembership};
 use crate::statement_proof::StatementProof;
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
@@ -8,27 +7,45 @@ use ark_std::{
     format,
     io::{Read, Write},
 };
-use vb_accumulator::prelude::{MembershipProofProtocol, NonMembershipProofProtocol};
+use vb_accumulator::prelude::{
+    MembershipProofProtocol, MembershipProvingKey, NonMembershipProofProtocol,
+    NonMembershipProvingKey, PublicKey, SetupParams as AccumParams,
+};
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct AccumulatorMembershipSubProtocol<E: PairingEngine> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AccumulatorMembershipSubProtocol<'a, E: PairingEngine> {
     pub id: usize,
-    pub statement: AccumulatorMembership<E>,
+    pub params: &'a AccumParams<E>,
+    pub public_key: &'a PublicKey<E::G2Affine>,
+    pub proving_key: &'a MembershipProvingKey<E::G1Affine>,
+    pub accumulator_value: E::G1Affine,
     pub protocol: Option<MembershipProofProtocol<E>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct AccumulatorNonMembershipSubProtocol<E: PairingEngine> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AccumulatorNonMembershipSubProtocol<'a, E: PairingEngine> {
     pub id: usize,
-    pub statement: AccumulatorNonMembership<E>,
+    pub params: &'a AccumParams<E>,
+    pub public_key: &'a PublicKey<E::G2Affine>,
+    pub proving_key: &'a NonMembershipProvingKey<E::G1Affine>,
+    pub accumulator_value: E::G1Affine,
     pub protocol: Option<NonMembershipProofProtocol<E>>,
 }
 
-impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
-    pub fn new(id: usize, statement: AccumulatorMembership<E>) -> Self {
+impl<'a, E: PairingEngine> AccumulatorMembershipSubProtocol<'a, E> {
+    pub fn new(
+        id: usize,
+        params: &'a AccumParams<E>,
+        public_key: &'a PublicKey<E::G2Affine>,
+        proving_key: &'a MembershipProvingKey<E::G1Affine>,
+        accumulator_value: E::G1Affine,
+    ) -> Self {
         Self {
             id,
-            statement,
+            params,
+            public_key,
+            proving_key,
+            accumulator_value,
             protocol: None,
         }
     }
@@ -47,9 +64,9 @@ impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
             &witness.element,
             blinding,
             &witness.witness,
-            &self.statement.public_key,
-            &self.statement.params,
-            &self.statement.proving_key,
+            self.public_key,
+            self.params,
+            self.proving_key,
         );
         self.protocol = Some(protocol);
         Ok(())
@@ -62,10 +79,10 @@ impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
             ));
         }
         self.protocol.as_ref().unwrap().challenge_contribution(
-            &self.statement.accumulator_value,
-            &self.statement.public_key,
-            &self.statement.params,
-            &self.statement.proving_key,
+            &self.accumulator_value,
+            self.public_key,
+            self.params,
+            self.proving_key,
             writer,
         )?;
         Ok(())
@@ -93,27 +110,33 @@ impl<E: PairingEngine> AccumulatorMembershipSubProtocol<E> {
         match proof {
             StatementProof::AccumulatorMembership(p) => {
                 p.verify(
-                    &self.statement.accumulator_value,
+                    &self.accumulator_value,
                     challenge,
-                    &self.statement.public_key,
-                    &self.statement.params,
-                    &self.statement.proving_key,
+                    self.public_key,
+                    self.params,
+                    self.proving_key,
                 )?;
                 Ok(())
             }
-            _ => Err(ProofSystemError::ProofIncompatibleWithProtocol(format!(
-                "{:?}",
-                self.statement
-            ))),
+            _ => Err(ProofSystemError::ProofIncompatibleWithAccumulatorMembershipProtocol),
         }
     }
 }
 
-impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
-    pub fn new(id: usize, statement: AccumulatorNonMembership<E>) -> Self {
+impl<'a, E: PairingEngine> AccumulatorNonMembershipSubProtocol<'a, E> {
+    pub fn new(
+        id: usize,
+        params: &'a AccumParams<E>,
+        public_key: &'a PublicKey<E::G2Affine>,
+        proving_key: &'a NonMembershipProvingKey<E::G1Affine>,
+        accumulator_value: E::G1Affine,
+    ) -> Self {
         Self {
             id,
-            statement,
+            params,
+            public_key,
+            proving_key,
+            accumulator_value,
             protocol: None,
         }
     }
@@ -132,9 +155,9 @@ impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
             &witness.element,
             blinding,
             &witness.witness,
-            &self.statement.public_key,
-            &self.statement.params,
-            &self.statement.proving_key,
+            self.public_key,
+            self.params,
+            self.proving_key,
         );
         self.protocol = Some(protocol);
         Ok(())
@@ -147,10 +170,10 @@ impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
             ));
         }
         self.protocol.as_ref().unwrap().challenge_contribution(
-            &self.statement.accumulator_value,
-            &self.statement.public_key,
-            &self.statement.params,
-            &self.statement.proving_key,
+            &self.accumulator_value,
+            self.public_key,
+            self.params,
+            self.proving_key,
             writer,
         )?;
         Ok(())
@@ -178,18 +201,15 @@ impl<E: PairingEngine> AccumulatorNonMembershipSubProtocol<E> {
         match proof {
             StatementProof::AccumulatorNonMembership(p) => {
                 p.verify(
-                    &self.statement.accumulator_value,
+                    &self.accumulator_value,
                     challenge,
-                    &self.statement.public_key,
-                    &self.statement.params,
-                    &self.statement.proving_key,
+                    self.public_key,
+                    self.params,
+                    self.proving_key,
                 )?;
                 Ok(())
             }
-            _ => Err(ProofSystemError::ProofIncompatibleWithProtocol(format!(
-                "{:?}",
-                self.statement
-            ))),
+            _ => Err(ProofSystemError::ProofIncompatibleWithAccumulatorNonMembershipProtocol),
         }
     }
 }

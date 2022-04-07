@@ -11,23 +11,24 @@ use ark_std::{
 use schnorr_pok::{SchnorrChallengeContributor, SchnorrCommitment};
 
 use crate::error::ProofSystemError;
-use crate::statement::PedersenCommitment;
 use crate::statement_proof::{PedersenCommitmentProof, StatementProof};
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SchnorrProtocol<G: AffineCurve> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SchnorrProtocol<'a, G: AffineCurve> {
     pub id: usize,
-    pub statement: PedersenCommitment<G>,
-    pub commitment: Option<SchnorrCommitment<G>>,
+    pub commitment_key: &'a [G],
+    pub commitment: G,
+    pub commitment_to_randomness: Option<SchnorrCommitment<G>>,
     pub witnesses: Option<Vec<G::ScalarField>>,
 }
 
-impl<G: AffineCurve> SchnorrProtocol<G> {
-    pub fn new(id: usize, statement: PedersenCommitment<G>) -> Self {
+impl<'a, G: AffineCurve> SchnorrProtocol<'a, G> {
+    pub fn new(id: usize, commitment_key: &'a [G], commitment: G) -> Self {
         Self {
             id,
-            statement,
-            commitment: None,
+            commitment_key,
+            commitment,
+            commitment_to_randomness: None,
             witnesses: None,
         }
     }
@@ -39,7 +40,7 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
         mut blindings: BTreeMap<usize, G::ScalarField>,
         witnesses: Vec<G::ScalarField>,
     ) -> Result<(), ProofSystemError> {
-        if self.commitment.is_some() {
+        if self.commitment_to_randomness.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
         }
         let blindings = (0..witnesses.len())
@@ -49,20 +50,21 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
                     .unwrap_or_else(|| G::ScalarField::rand(rng))
             })
             .collect::<Vec<_>>();
-        self.commitment = Some(SchnorrCommitment::new(&self.statement.bases, blindings));
+        self.commitment_to_randomness =
+            Some(SchnorrCommitment::new(&self.commitment_key, blindings));
         self.witnesses = Some(witnesses);
         Ok(())
     }
 
     pub fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ProofSystemError> {
-        if self.commitment.is_none() {
+        if self.commitment_to_randomness.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateChallenge(
                 self.id,
             ));
         }
-        self.statement.bases.serialize_unchecked(&mut writer)?;
-        self.statement.commitment.serialize_unchecked(&mut writer)?;
-        self.commitment
+        self.commitment_key.serialize_unchecked(&mut writer)?;
+        self.commitment.serialize_unchecked(&mut writer)?;
+        self.commitment_to_randomness
             .as_ref()
             .unwrap()
             .challenge_contribution(writer)?;
@@ -82,12 +84,12 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
         &mut self,
         challenge: &G::ScalarField,
     ) -> Result<PedersenCommitmentProof<G>, ProofSystemError> {
-        if self.commitment.is_none() {
+        if self.commitment_to_randomness.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,
             ));
         }
-        let commitment = self.commitment.take().unwrap();
+        let commitment = self.commitment_to_randomness.take().unwrap();
         let responses = commitment.response(self.witnesses.as_ref().unwrap(), challenge)?;
         Ok(PedersenCommitmentProof::new(commitment.t, responses))
     }
@@ -101,10 +103,7 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
             StatementProof::PedersenCommitment(p) => {
                 self.verify_proof_contribution_as_struct(challenge, p)
             }
-            _ => Err(ProofSystemError::ProofIncompatibleWithProtocol(format!(
-                "{:?}",
-                self.statement
-            ))),
+            _ => Err(ProofSystemError::ProofIncompatibleWithSchnorrProtocol),
         }
     }
 
@@ -115,12 +114,7 @@ impl<G: AffineCurve> SchnorrProtocol<G> {
     ) -> Result<(), ProofSystemError> {
         proof
             .response
-            .is_valid(
-                self.statement.bases.as_slice(),
-                &self.statement.commitment,
-                &proof.t,
-                challenge,
-            )
+            .is_valid(self.commitment_key, &self.commitment, &proof.t, challenge)
             .map_err(|e| e.into())
     }
 
