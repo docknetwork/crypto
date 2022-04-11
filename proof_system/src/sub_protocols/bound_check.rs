@@ -32,6 +32,7 @@ pub struct BoundCheckProtocol<'a, E: PairingEngine> {
     pub verifying_key: Option<&'a VerifyingKey<E>>,
     pub snark_proof: Option<Proof<E>>,
     pub sp: Option<SchnorrProtocol<'a, E::G1Affine>>,
+    pub sp_comm_key: Vec<E::G1Affine>,
 }
 
 impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
@@ -49,6 +50,7 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
             verifying_key: None,
             snark_proof: None,
             sp: None,
+            sp_comm_key: vec![]
         }
     }
 
@@ -66,13 +68,14 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
             verifying_key: Some(verifying_key),
             snark_proof: None,
             sp: None,
+            sp_comm_key: vec![]
         }
     }
 
     /// Runs the LegoGroth16 protocol to prove that the message is bounded and initialize a Schnorr proof of knowledge
     /// protocol to prove knowledge of the committed message
-    pub fn init<R: RngCore>(
-        &mut self,
+    pub fn init<'b: 'a, R: RngCore>(
+        &'b mut self,
         rng: &mut R,
         message: E::Fr,
         blinding: Option<E::Fr>,
@@ -100,12 +103,12 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         } else {
             blinding.unwrap()
         };
-        let comm_key = vec![
+        self.sp_comm_key = vec![
             proving_key.vk.gamma_abc_g1[1 + 2],
             proving_key.vk.eta_gamma_inv_g1,
         ];
         // NOTE: value of id is dummy
-        let mut sp = SchnorrProtocol::new(10000, &comm_key, snark_proof.d);
+        let mut sp = SchnorrProtocol::new(10000, &self.sp_comm_key, snark_proof.d);
         let mut blindings = BTreeMap::new();
         blindings.insert(0, blinding);
         sp.init(rng, blindings, vec![message, v])?;

@@ -56,23 +56,31 @@ pub struct ChunkedCommitment<G: AffineCurve>(
 impl<G: AffineCurve> ChunkedCommitment<G> {
     /// Decompose a given field element `message` to `chunks_count` chunks each of size `chunk_bit_size` and
     /// create a Pedersen commitment to those chunks. say `m` is decomposed as `m_1`, `m_2`, .. `m_n`.
-    /// Create multiples of `g` as `g_n, g_{n-1}, ..., g_2, g_1` using `create_gs`. Now commit as `m_1 * g_1 + m_2 * g_2 + ... + m_n * g_n + r * h`
+    /// Create commitment key as multiples of `g` as `g_n, g_{n-1}, ..., g_2, g_1` using `create_gs`. Now commit as `m_1 * g_1 + m_2 * g_2 + ... + m_n * g_n + r * h`
+    /// Return the commitment and commitment key
     pub fn new(
         message: &G::ScalarField,
         blinding: &G::ScalarField,
         chunk_bit_size: u8,
         gens: &ChunkedCommitmentGens<G>,
     ) -> crate::Result<Self> {
-        let mut decomposed = decompose(message, chunk_bit_size)?
-            .into_iter()
-            .map(|m| <G::ScalarField as PrimeField>::BigInt::from(m as u64))
-            .collect::<Vec<_>>();
-        decomposed.push(blinding.into_repr());
+        let decomposed = Self::get_values_to_commit(message, blinding, chunk_bit_size)?;
         let gs = Self::commitment_key(gens, chunk_bit_size);
         Ok(Self(
             VariableBaseMSM::multi_scalar_mul(&gs, &decomposed).into_affine(),
             gs,
         ))
+    }
+
+    /// Similar to `Self::new` but expects the commitment key to be created already. Returns the commitment.
+    pub fn get_commitment_given_commitment_key(
+        message: &G::ScalarField,
+        blinding: &G::ScalarField,
+        chunk_bit_size: u8,
+        comm_key: &[G],
+    ) -> crate::Result<G> {
+        let decomposed = Self::get_values_to_commit(message, blinding, chunk_bit_size)?;
+        Ok(VariableBaseMSM::multi_scalar_mul(comm_key, &decomposed).into_affine())
     }
 
     /// Commitment key (vector of all `g`s and `h`) for the chunked commitment
@@ -89,6 +97,19 @@ impl<G: AffineCurve> ChunkedCommitment<G> {
         let mut ck = gs.into_iter().map(|v| v.into()).collect::<Vec<_>>();
         ck.push(gens.H);
         ck
+    }
+
+    fn get_values_to_commit(
+        message: &G::ScalarField,
+        blinding: &G::ScalarField,
+        chunk_bit_size: u8,
+    ) -> crate::Result<Vec<<G::ScalarField as PrimeField>::BigInt>> {
+        let mut decomposed = decompose(message, chunk_bit_size)?
+            .into_iter()
+            .map(|m| <G::ScalarField as PrimeField>::BigInt::from(m as u64))
+            .collect::<Vec<_>>();
+        decomposed.push(blinding.into_repr());
+        Ok(decomposed)
     }
 
     fn commitment_key_for_radix_power_of_2(

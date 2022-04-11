@@ -6,7 +6,7 @@ pub mod schnorr;
 
 use crate::error::ProofSystemError;
 use ark_ec::{AffineCurve, PairingEngine};
-use ark_std::io::Write;
+use ark_std::{io::Write};
 
 use crate::statement_proof::StatementProof;
 use crate::sub_protocols::bound_check::BoundCheckProtocol;
