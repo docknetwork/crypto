@@ -1,5 +1,9 @@
 use ark_ec::{AffineCurve, PairingEngine};
-use ark_std::io::{Read, Write};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_std::{
+    io::{Read, Write},
+    vec::Vec,
+};
 use serde::{Deserialize, Serialize};
 
 pub mod bbs_plus;
@@ -26,7 +30,10 @@ pub enum StatementV2<E: PairingEngine, G: AffineCurve> {
     BoundCheckLegoGroth16Verifier(bound_check_legogroth16::BoundCheckLegoGroth16Verifier<E>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct StatementsV2<E, G>(pub Vec<StatementV2<E, G>>)
 where
     E: PairingEngine,
@@ -57,11 +64,6 @@ where
 
 mod serialization {
     use super::*;
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-    use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
-    use serde::de::{SeqAccess, Visitor};
-    use serde::{Deserializer, Serializer};
-    use serde_with::{DeserializeAs, SerializeAs};
 
     impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for StatementV2<E, G> {
         fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {

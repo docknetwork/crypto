@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 
 /// Describes the relations that need to proven. This is created independently by the prover and verifier and must
 /// be agreed upon and be same before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct ProofSpecV2<E: PairingEngine, G: AffineCurve> {
     pub statements: StatementsV2<E, G>,
     pub meta_statements: MetaStatements,

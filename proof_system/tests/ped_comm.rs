@@ -2,6 +2,7 @@ use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::ProjectiveCurve;
 use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
 use proof_system::prelude::{
@@ -54,7 +55,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         commitment_2.clone(),
     ));
 
-    // test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -72,7 +73,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     witnesses.add(Witness::PedersenCommitment(scalars_1.clone()));
     witnesses.add(Witness::PedersenCommitment(scalars_2.clone()));
 
-    // test_serialization!(Witnesses<Bls12_381>, witnesses);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let context = Some(b"test".to_vec());
 
@@ -84,7 +85,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     );
     assert!(proof_spec.is_valid());
 
-    // test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
 
     let nonce = Some(b"test nonce".to_vec());
     let proof = ProofG1::new(
@@ -95,7 +96,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     )
     .unwrap();
 
-    // test_serialization!(ProofG1, proof);
+    test_serialization!(ProofG1, proof);
 
     proof.verify(proof_spec, nonce.clone()).unwrap();
 
@@ -195,6 +196,8 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     let mut all_setup_params = vec![];
     all_setup_params.push(SetupParams::PedersenCommitmentKey(bases));
 
+    test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, all_setup_params);
+
     let mut statements = StatementsV2::new();
     statements.add(PedersenCommitmentStmt::new_statement_from_params_refs(
         0,
@@ -209,7 +212,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
         commitment_3.clone(),
     ));
 
-    // test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -228,7 +231,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     witnesses.add(Witness::PedersenCommitment(scalars_2.clone()));
     witnesses.add(Witness::PedersenCommitment(scalars_3.clone()));
 
-    // test_serialization!(Witnesses<Bls12_381>, witnesses);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let context = Some(b"test".to_vec());
 
@@ -240,7 +243,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     );
     assert!(proof_spec.is_valid());
 
-    // test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
 
     let nonce = Some(b"test nonce".to_vec());
     let proof = ProofG1::new(
@@ -251,7 +254,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     )
     .unwrap();
 
-    // test_serialization!(ProofG1, proof);
+    test_serialization!(ProofG1, proof);
 
     proof.verify(proof_spec, nonce.clone()).unwrap();
 }

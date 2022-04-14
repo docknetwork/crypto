@@ -1,12 +1,16 @@
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    collections::BTreeMap,
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     format,
     io::{Read, Write},
     marker::PhantomData,
+    pin::Pin,
+    ptr,
     rand::RngCore,
+    rc::Rc,
     vec,
     vec::Vec,
     UniformRand,
@@ -29,6 +33,8 @@ use crate::sub_protocols::bound_check::BoundCheckProtocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
+use saver::keygen::EncryptionKey;
+use saver::setup::ChunkedCommitmentGens;
 use serde::{Deserialize, Serialize};
 
 /// Created by the prover and verified by the verifier
@@ -91,7 +97,71 @@ where
             }
         }
 
-        let mut sub_protocols: Vec<SubProtocol<E, G>> = vec![];
+        let mut bound_check_vks = Vec::new();
+        let mut bound_check_comm_keys = BTreeMap::new();
+        let mut bound_check_statement_comm_key = BTreeMap::new();
+
+        let mut saver_eks = Vec::new();
+        let mut saver_ek_comm_keys = BTreeMap::new();
+        let mut saver_statement_ek_comm_key = BTreeMap::new();
+
+        let mut saver_chunked_comms = Vec::new();
+        let mut saver_chunked_comm_keys = BTreeMap::new();
+        let mut saver_statement_chunked_comm_key = BTreeMap::new();
+
+        for (s_idx, statement) in proof_spec.statements.0.iter().enumerate() {
+            match statement {
+                StatementV2::BoundCheckLegoGroth16Prover(s) => {
+                    let proving_key = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                    let k_idx = bound_check_vks
+                        .iter()
+                        .position(|v: &&legogroth16::VerifyingKey<E>| **v == proving_key.vk);
+                    if let Some(k) = k_idx {
+                        bound_check_statement_comm_key.insert(s_idx, k);
+                    } else {
+                        let comm_key = BoundCheckProtocol::schnorr_comm_key(&proving_key.vk);
+                        bound_check_comm_keys.insert(bound_check_vks.len(), comm_key);
+                        bound_check_statement_comm_key.insert(s_idx, bound_check_vks.len());
+                        bound_check_vks.push(&proving_key.vk);
+                    }
+                }
+                StatementV2::SaverProver(s) => {
+                    let enc_key = s.get_encryption_key(&proof_spec.setup_params, s_idx)?;
+                    let ek_idx = saver_eks
+                        .iter()
+                        .position(|e: &&EncryptionKey<E>| **e == *enc_key);
+                    if let Some(k) = ek_idx {
+                        saver_statement_ek_comm_key.insert(s_idx, k);
+                    } else {
+                        let comm_key = SaverProtocol::encryption_comm_key(enc_key);
+                        saver_ek_comm_keys.insert(saver_eks.len(), comm_key);
+                        saver_statement_ek_comm_key.insert(s_idx, saver_eks.len());
+                        saver_eks.push(enc_key);
+                    }
+
+                    let comm_gens =
+                        s.get_chunked_commitment_gens(&proof_spec.setup_params, s_idx)?;
+                    let g_idx = saver_chunked_comms.iter().position(
+                        |(b, g): &(u8, &ChunkedCommitmentGens<E::G1Affine>)| {
+                            *b == s.chunk_bit_size && **g == *comm_gens
+                        },
+                    );
+                    if let Some(k) = g_idx {
+                        saver_statement_chunked_comm_key.insert(s_idx, k);
+                    } else {
+                        let comm_keys =
+                            SaverProtocol::<E>::chunked_comm_keys(comm_gens, s.chunk_bit_size);
+                        saver_chunked_comm_keys.insert(saver_chunked_comms.len(), comm_keys);
+                        saver_statement_chunked_comm_key.insert(s_idx, saver_chunked_comms.len());
+                        saver_chunked_comms.push((s.chunk_bit_size, comm_gens));
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        let mut sub_protocols =
+            Vec::<SubProtocol<E, G>>::with_capacity(proof_spec.statements.0.len());
 
         // Initialize sub-protocols for each statement
         for (s_idx, (statement, witness)) in proof_spec
@@ -217,7 +287,19 @@ where
                             enc_key,
                             pk,
                         );
-                        sp.init(rng, w, blinding)?;
+                        let cc_keys = saver_chunked_comm_keys
+                            .get(saver_statement_chunked_comm_key.get(&s_idx).unwrap())
+                            .unwrap();
+                        sp.init(
+                            rng,
+                            saver_ek_comm_keys
+                                .get(saver_statement_ek_comm_key.get(&s_idx).unwrap())
+                                .unwrap(),
+                            &cc_keys.0,
+                            &cc_keys.1,
+                            w,
+                            blinding,
+                        )?;
                         sub_protocols.push(SubProtocol::Saver(sp));
                     }
                     _ => {
@@ -232,10 +314,66 @@ where
                     Witness::BoundCheckLegoGroth16(w) => {
                         let blinding = blindings.remove(&(s_idx, 0));
                         let proving_key = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        // let mut sp = Box::pin(BoundCheckProtocol::new_for_prover(
+                        //     s_idx,
+                        //     s.min,
+                        //     s.max,
+                        //     proving_key,
+                        // ));
                         let mut sp =
                             BoundCheckProtocol::new_for_prover(s_idx, s.min, s.max, proving_key);
-                        sp.init(rng, w, blinding)?;
+                        sp.init(
+                            rng,
+                            bound_check_comm_keys
+                                .get(bound_check_statement_comm_key.get(&s_idx).unwrap())
+                                .unwrap(),
+                            w,
+                            blinding,
+                        )?;
                         sub_protocols.push(SubProtocol::BoundCheckProtocol(sp));
+                        // let idx = sub_protocols.len() - 1;
+                        /*unsafe {
+                            let mut sp_pointer = ptr::addr_of_mut!(sub_protocols[idx]);
+                            match sp_pointer {
+                                SubProtocol::BoundCheckProtocol(mut s) => {
+                                    s.init(rng, w, blinding)?;
+                                }
+                                _ => ()
+                            }
+                        }*/
+
+                        /*match &sub_protocols[idx] {
+                            SubProtocol::BoundCheckProtocol(ref sp) => {
+                                let mut sp_pointer = ptr::addr_of_mut!(sp);
+                                sp.init(rng, w, blinding)?;
+                            }
+                            _ => ()
+                        }*/
+                        // unimplemented!()
+
+                        // match &mut sub_protocols[idx] {
+                        //     SubProtocol::BoundCheckProtocol(ref mut sp) => {
+                        //         sp.init(rng, w, blinding)?;
+                        //     }
+                        //     _ => ()
+                        // }
+
+                        /*match &mut sub_protocols.last() {
+                            Some(SubProtocol::BoundCheckProtocol(ref mut sp)) => {
+                                sp.init(rng, w, blinding)?;
+                            }
+                            _ => ()
+                        }*/
+                        // sp.init(rng, w, blinding)?;
+                        // let sp = unsafe {
+                        //     sp.as_mut().get_unchecked_mut()
+                        // };
+                        // sp.init(rng, w, blinding)?;
+                        // let mut sp = unsafe { Pin::new_unchecked(&mut sp) };
+                        // let sp = unsafe {
+                        //     // sp.into_inner_unchecked()
+                        //     Pin::<Box<BoundCheckProtocol<'_, E>>>::into_inner_unchecked(sp)
+                        // };
                     }
                     _ => {
                         return Err(ProofSystemError::WitnessIncompatibleWithStatement(

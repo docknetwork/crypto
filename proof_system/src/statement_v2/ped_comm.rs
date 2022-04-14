@@ -1,6 +1,9 @@
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
+use ark_std::{
+    io::{Read, Write},
+    vec::Vec,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 

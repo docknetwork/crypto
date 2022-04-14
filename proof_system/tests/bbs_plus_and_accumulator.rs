@@ -2,6 +2,7 @@ use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
 use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{PairingEngine, ProjectiveCurve};
 use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
 use bbs_plus::prelude::SignatureG1;
@@ -145,8 +146,8 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    // test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
-    // test_serialization!(MetaStatements, meta_statements);
+    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(MetaStatements, meta_statements);
 
     // Create a proof spec, this is shared between prover and verifier
     // Context must be known to both prover and verifier
@@ -154,7 +155,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
     let proof_spec = ProofSpecV2::new(statements, meta_statements, vec![], context);
     assert!(proof_spec.is_valid());
 
-    // test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
 
     // Prover now creates/loads it witnesses corresponding to the proof spec
     let mut witnesses = Witnesses::new();
@@ -171,7 +172,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
         unrevealed_msgs_3.clone(),
     ));
 
-    // test_serialization!(Witnesses<Bls12_381>, witnesses);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     // Prover now creates the proof using the proof spec and witnesses. This will be sent to the verifier
     let nonce = Some(b"some nonce".to_vec());
@@ -186,7 +187,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
         .verify(proof_spec.clone(), Some(b"random...".to_vec()))
         .is_err());
 
-    // test_serialization!(ProofG1, proof);
+    test_serialization!(ProofG1, proof);
     // Verifier verifies the proof
     proof.verify(proof_spec, nonce).unwrap();
 }
@@ -250,14 +251,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    // test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
-    // test_serialization!(MetaStatements, meta_statements);
+    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(MetaStatements, meta_statements);
 
     let context = Some(b"test".to_vec());
     let proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
 
-    // test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -268,7 +269,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         accum_member_1.clone(),
         mem_1_wit.clone(),
     ));
-    // test_serialization!(Witnesses<Bls12_381>, witnesses);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let nonce = Some(b"test-nonce".to_vec());
 
@@ -280,7 +281,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     )
     .unwrap();
 
-    // test_serialization!(ProofG1, proof);
+    test_serialization!(ProofG1, proof);
 
     proof.verify(proof_spec.clone(), nonce.clone()).unwrap();
 
@@ -392,14 +393,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    // test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
-    // test_serialization!(MetaStatements, meta_statements);
-    // test_serialization!(Witnesses<Bls12_381>, witnesses);
+    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(MetaStatements, meta_statements);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
 
-    // test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
 
     let proof = ProofG1::new(
         &mut rng,
@@ -409,7 +410,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     )
     .unwrap();
 
-    // test_serialization!(ProofG1, proof);
+    test_serialization!(ProofG1, proof);
 
     proof.verify(proof_spec, nonce.clone()).unwrap();
 
@@ -461,14 +462,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    // test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
-    // test_serialization!(MetaStatements, meta_statements);
-    // test_serialization!(Witnesses<Bls12_381>, witnesses);
+    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(MetaStatements, meta_statements);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
 
-    // test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
 
     let proof = ProofG1::new(
         &mut rng,
@@ -478,7 +479,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     )
     .unwrap();
 
-    // test_serialization!(ProofG1, proof);
+    test_serialization!(ProofG1, proof);
 
     proof.verify(proof_spec, nonce.clone()).unwrap();
 
@@ -536,8 +537,8 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    // test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
-    // test_serialization!(MetaStatements, meta_statements);
+    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(MetaStatements, meta_statements);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(Witness::PoKBBSSignatureG1(PoKSignatureBBSG1Wit {
@@ -557,7 +558,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         witness: non_mem_wit.clone(),
     }));
 
-    // test_serialization!(Witnesses<Bls12_381>, witnesses);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let proof_spec = ProofSpecV2::new(
         statements.clone(),
@@ -567,7 +568,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     );
     assert!(proof_spec.is_valid());
 
-    // test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
 
     let proof = ProofG1::new(
         &mut rng,
@@ -577,7 +578,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     )
     .unwrap();
 
-    // test_serialization!(ProofG1, proof);
+    test_serialization!(ProofG1, proof);
 
     proof.verify(proof_spec, nonce.clone()).unwrap();
 }
@@ -617,7 +618,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
         commitment.clone(),
     ));
 
-    // test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -635,7 +636,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     let proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
 
-    // test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -644,7 +645,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     ));
     witnesses.add(Witness::PedersenCommitment(scalars.clone()));
 
-    // test_serialization!(Witnesses<Bls12_381>, witnesses);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let nonce = Some(b"test nonce".to_vec());
     let proof = ProofG1::new(
@@ -655,7 +656,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     )
     .unwrap();
 
-    // test_serialization!(ProofG1, proof);
+    test_serialization!(ProofG1, proof);
 
     proof.verify(proof_spec, nonce.clone()).unwrap();
 
@@ -729,7 +730,7 @@ fn requesting_partially_blind_bbs_plus_sig() {
         commitment.clone(),
     ));
 
-    // test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
 
     let context = Some(b"test".to_vec());
     let proof_spec = ProofSpecV2::new(
@@ -740,12 +741,12 @@ fn requesting_partially_blind_bbs_plus_sig() {
     );
     assert!(proof_spec.is_valid());
 
-    // test_serialization!(ProofSpec<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, proof_spec);
+    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(Witness::PedersenCommitment(committed_msgs));
 
-    // test_serialization!(Witnesses<Bls12_381>, witnesses);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let nonce = Some(b"test nonce".to_vec());
     let proof = ProofG1::new(
@@ -756,7 +757,7 @@ fn requesting_partially_blind_bbs_plus_sig() {
     )
     .unwrap();
 
-    // test_serialization!(ProofG1, proof);
+    test_serialization!(ProofG1, proof);
 
     proof.verify(proof_spec, nonce).unwrap();
 

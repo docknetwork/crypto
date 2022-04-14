@@ -107,6 +107,9 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
     pub fn init<R: RngCore>(
         &mut self,
         rng: &mut R,
+        ck_comm_ct: &'a [E::G1Affine],
+        ck_comm_chunks: &'a [E::G1Affine],
+        ck_comm_combined: &'a [E::G1Affine],
         message: E::Fr,
         blinding_combined_message: Option<E::Fr>,
     ) -> Result<(), ProofSystemError> {
@@ -138,24 +141,28 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         };
 
         // Initialize the 3 Schnorr protocols
+        /* let ck_comm_ct = self.encryption_key.commitment_key();
+        let ck_comm_chunks = ChunkedCommitment::<E::G1Affine>::commitment_key(
+            &self.chunked_commitment_gens,
+            self.chunk_bit_size,
+        );
+        let ck_comm_combined = vec![
+            self.chunked_commitment_gens.G,
+            self.chunked_commitment_gens.H,
+        ];*/
+
         let comm_combined = self
             .chunked_commitment_gens
             .G
             .mul(message.into_repr())
             .add(&(self.chunked_commitment_gens.H.mul(h_blinding.into_repr())))
             .into_affine();
-        let comm_chunks = ChunkedCommitment::<E::G1Affine>::new(
+        let comm_chunks = ChunkedCommitment::<E::G1Affine>::get_commitment_given_commitment_key(
             &message,
             &h_blinding,
             self.chunk_bit_size,
-            self.chunked_commitment_gens,
+            &ck_comm_chunks,
         )?;
-
-        let ck_com_ct = self.encryption_key.commitment_key();
-        let ck_comm_combined = vec![
-            self.chunked_commitment_gens.G,
-            self.chunked_commitment_gens.H,
-        ];
 
         let message_chunks = decompose(&message, self.chunk_bit_size)?
             .into_iter()
@@ -163,9 +170,9 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
             .collect::<Vec<_>>();
 
         // NOTE: value of id is dummy
-        let mut sp_ciphertext = SchnorrProtocol::new(10000, &ck_com_ct, ciphertext.commitment);
-        let mut sp_chunks = SchnorrProtocol::new(10000, &comm_chunks.1, comm_chunks.0);
-        let mut sp_combined = SchnorrProtocol::new(10000, &ck_comm_combined, comm_combined);
+        let mut sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, ciphertext.commitment);
+        let mut sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, comm_chunks);
+        let mut sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, comm_combined);
 
         let blindings_chunks = (0..message_chunks.len())
             .map(|i| (i, E::Fr::rand(rng)))
@@ -185,7 +192,7 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         self.ciphertext = Some(ciphertext);
         self.randomness_enc = Some(randomness_enc);
         self.snark_proof = Some(proof);
-        self.comm_chunks = Some(comm_chunks.0);
+        self.comm_chunks = Some(comm_chunks);
         self.comm_combined = Some(comm_combined);
         self.sp_ciphertext = Some(sp_ciphertext);
         self.sp_chunks = Some(sp_chunks);
@@ -301,10 +308,10 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
                     self.chunked_commitment_gens.H,
                 ];
                 // NOTE: value of id is dummy
-                let mut sp_ciphertext =
+                let sp_ciphertext =
                     SchnorrProtocol::new(10000, &ck_com_ct, proof.ciphertext.commitment);
-                let mut sp_chunks = SchnorrProtocol::new(10000, &ck_comm_chunks, proof.comm_chunks);
-                let mut sp_combined =
+                let sp_chunks = SchnorrProtocol::new(10000, &ck_comm_chunks, proof.comm_chunks);
+                let sp_combined =
                     SchnorrProtocol::new(10000, &ck_comm_combined, proof.comm_combined);
 
                 sp_ciphertext
@@ -362,5 +369,21 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         } else {
             Ok(())
         }
+    }
+
+    pub fn encryption_comm_key(encryption_key: &EncryptionKey<E>) -> Vec<E::G1Affine> {
+        encryption_key.commitment_key()
+    }
+
+    pub fn chunked_comm_keys(
+        chunked_commitment_gens: &ChunkedCommitmentGens<E::G1Affine>,
+        chunk_bit_size: u8,
+    ) -> (Vec<E::G1Affine>, Vec<E::G1Affine>) {
+        let ck_comm_chunks = ChunkedCommitment::<E::G1Affine>::commitment_key(
+            chunked_commitment_gens,
+            chunk_bit_size,
+        );
+        let ck_comm_combined = vec![chunked_commitment_gens.G, chunked_commitment_gens.H];
+        (ck_comm_chunks, ck_comm_combined)
     }
 }

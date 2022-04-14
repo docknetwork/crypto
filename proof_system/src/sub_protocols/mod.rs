@@ -6,7 +6,7 @@ pub mod schnorr;
 
 use crate::error::ProofSystemError;
 use ark_ec::{AffineCurve, PairingEngine};
-use ark_std::{io::Write};
+use ark_std::{boxed::Box, io::Write, pin::Pin, rc::Rc};
 
 use crate::statement_proof::StatementProof;
 use crate::sub_protocols::bound_check::BoundCheckProtocol;
@@ -23,6 +23,7 @@ pub enum SubProtocol<'a, E: PairingEngine, G: AffineCurve> {
     /// For verifiable encryption using SAVER
     Saver(self::saver::SaverProtocol<'a, E>),
     /// For range proof using LegoGroth16
+    // BoundCheckProtocol(Pin<Box<BoundCheckProtocol<'a, E>>>),
     BoundCheckProtocol(BoundCheckProtocol<'a, E>),
 }
 
