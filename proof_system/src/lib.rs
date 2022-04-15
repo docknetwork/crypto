@@ -53,11 +53,12 @@
 
 #[macro_use]
 pub mod util;
+#[macro_use]
+pub mod setup_params;
 pub mod error;
 pub mod meta_statement;
 pub mod proof;
 pub mod proof_spec;
-pub mod setup_params;
 pub mod statement;
 pub mod statement_proof;
 pub mod sub_protocols;

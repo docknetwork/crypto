@@ -1,7 +1,7 @@
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fmt::Debug,
     format,
     io::{Read, Write},
@@ -93,6 +93,7 @@ where
             }
         }
 
+        // Prepare commitment keys for running Schnorr protocol
         let mut bound_check_vks = Vec::new();
         let mut bound_check_comm_keys = BTreeMap::new();
         let mut bound_check_statement_comm_key = BTreeMap::new();

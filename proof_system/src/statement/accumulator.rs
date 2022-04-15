@@ -87,23 +87,14 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a AccumParams<E>, ProofSystemError> {
-        if let Some(p) = &self.params {
-            return Ok(p);
-        }
-        if let Some(idx) = self.params_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::VbAccumulatorParams(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleAccumulatorSetupParamAtIndex(
-                        idx,
-                    )),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.params,
+            self.params_ref,
+            VbAccumulatorParams,
+            IncompatibleAccumulatorSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_public_key<'a, G: AffineCurve>(
@@ -111,23 +102,14 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a PublicKey<E::G2Affine>, ProofSystemError> {
-        if let Some(pk) = &self.public_key {
-            return Ok(pk);
-        }
-        if let Some(idx) = self.public_key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::VbAccumulatorPublicKey(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleAccumulatorSetupParamAtIndex(
-                        idx,
-                    )),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.public_key,
+            self.public_key_ref,
+            VbAccumulatorPublicKey,
+            IncompatibleAccumulatorSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_proving_key<'a, G: AffineCurve>(
@@ -135,23 +117,14 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a MembershipProvingKey<E::G1Affine>, ProofSystemError> {
-        if let Some(pk) = &self.proving_key {
-            return Ok(pk);
-        }
-        if let Some(idx) = self.proving_key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::VbAccumulatorMemProvingKey(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleAccumulatorSetupParamAtIndex(
-                        idx,
-                    )),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.proving_key,
+            self.proving_key_ref,
+            VbAccumulatorMemProvingKey,
+            IncompatibleAccumulatorSetupParamAtIndex,
+            st_idx
+        )
     }
 }
 
@@ -195,23 +168,14 @@ impl<E: PairingEngine> AccumulatorNonMembership<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a AccumParams<E>, ProofSystemError> {
-        if let Some(p) = &self.params {
-            return Ok(p);
-        }
-        if let Some(idx) = self.params_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::VbAccumulatorParams(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleAccumulatorSetupParamAtIndex(
-                        idx,
-                    )),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.params,
+            self.params_ref,
+            VbAccumulatorParams,
+            IncompatibleAccumulatorSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_public_key<'a, G: AffineCurve>(
@@ -219,23 +183,14 @@ impl<E: PairingEngine> AccumulatorNonMembership<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a PublicKey<E::G2Affine>, ProofSystemError> {
-        if let Some(pk) = &self.public_key {
-            return Ok(pk);
-        }
-        if let Some(idx) = self.public_key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::VbAccumulatorPublicKey(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleAccumulatorSetupParamAtIndex(
-                        idx,
-                    )),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.public_key,
+            self.public_key_ref,
+            VbAccumulatorPublicKey,
+            IncompatibleAccumulatorSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_proving_key<'a, G: AffineCurve>(
@@ -243,22 +198,13 @@ impl<E: PairingEngine> AccumulatorNonMembership<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a NonMembershipProvingKey<E::G1Affine>, ProofSystemError> {
-        if let Some(pk) = &self.proving_key {
-            return Ok(pk);
-        }
-        if let Some(idx) = self.proving_key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::VbAccumulatorNonMemProvingKey(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleAccumulatorSetupParamAtIndex(
-                        idx,
-                    )),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.proving_key,
+            self.proving_key_ref,
+            VbAccumulatorNonMemProvingKey,
+            IncompatibleAccumulatorSetupParamAtIndex,
+            st_idx
+        )
     }
 }

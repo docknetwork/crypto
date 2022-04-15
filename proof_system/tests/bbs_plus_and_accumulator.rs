@@ -14,10 +14,10 @@ use proof_system::prelude::{
 use proof_system::proof_spec::ProofSpec;
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::{
+    accumulator::AccumulatorMembership as AccumulatorMembershipStmt,
+    accumulator::AccumulatorNonMembership as AccumulatorNonMembershipStmt,
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
     ped_comm::PedersenCommitment as PedersenCommitmentStmt,
-    vb_accumulator::AccumulatorMembership as AccumulatorMembershipStmt,
-    vb_accumulator::AccumulatorNonMembership as AccumulatorNonMembershipStmt,
 };
 use proof_system::statement::{Statement, Statements};
 use proof_system::witness::{

@@ -63,21 +63,14 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a SignatureParamsG1<E>, ProofSystemError> {
-        if let Some(sp) = &self.signature_params {
-            return Ok(sp);
-        }
-        if let Some(idx) = self.signature_params_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::BBSPlusSignatureParams(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleBBSPlusSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.signature_params,
+            self.signature_params_ref,
+            BBSPlusSignatureParams,
+            IncompatibleBBSPlusSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_public_key<'a, G: AffineCurve>(
@@ -85,20 +78,13 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a PublicKeyG2<E>, ProofSystemError> {
-        if let Some(pk) = &self.public_key {
-            return Ok(pk);
-        }
-        if let Some(idx) = self.public_key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::BBSPlusPublicKey(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleBBSPlusSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.public_key,
+            self.public_key_ref,
+            BBSPlusPublicKey,
+            IncompatibleBBSPlusSetupParamAtIndex,
+            st_idx
+        )
     }
 }

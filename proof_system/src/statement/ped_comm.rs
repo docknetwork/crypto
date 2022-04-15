@@ -57,20 +57,13 @@ impl<G: AffineCurve> PedersenCommitment<G> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a Vec<G>, ProofSystemError> {
-        if let Some(k) = &self.key {
-            return Ok(k);
-        }
-        if let Some(idx) = self.key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::PedersenCommitmentKey(k) => Ok(k),
-                    _ => Err(ProofSystemError::IncompatiblePedCommSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.key,
+            self.key_ref,
+            PedersenCommitmentKey,
+            IncompatiblePedCommSetupParamAtIndex,
+            st_idx
+        )
     }
 }

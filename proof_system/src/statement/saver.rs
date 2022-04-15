@@ -96,21 +96,14 @@ impl<E: PairingEngine> SaverProver<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a EncryptionGens<E>, ProofSystemError> {
-        if let Some(g) = &self.encryption_gens {
-            return Ok(g);
-        }
-        if let Some(idx) = self.encryption_gens_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::SaverEncryptionGens(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleSaverSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.encryption_gens,
+            self.encryption_gens_ref,
+            SaverEncryptionGens,
+            IncompatibleSaverSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_chunked_commitment_gens<'a, G: AffineCurve>(
@@ -118,21 +111,14 @@ impl<E: PairingEngine> SaverProver<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a ChunkedCommitmentGens<E::G1Affine>, ProofSystemError> {
-        if let Some(g) = &self.chunked_commitment_gens {
-            return Ok(g);
-        }
-        if let Some(idx) = self.chunked_commitment_gens_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::SaverCommitmentGens(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleSaverSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.chunked_commitment_gens,
+            self.chunked_commitment_gens_ref,
+            SaverCommitmentGens,
+            IncompatibleSaverSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_encryption_key<'a, G: AffineCurve>(
@@ -140,21 +126,14 @@ impl<E: PairingEngine> SaverProver<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a EncryptionKey<E>, ProofSystemError> {
-        if let Some(k) = &self.encryption_key {
-            return Ok(k);
-        }
-        if let Some(idx) = self.encryption_key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::SaverEncryptionKey(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleSaverSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.encryption_key,
+            self.encryption_key_ref,
+            SaverEncryptionKey,
+            IncompatibleSaverSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_snark_proving_key<'a, G: AffineCurve>(
@@ -162,21 +141,14 @@ impl<E: PairingEngine> SaverProver<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a ProvingKey<E>, ProofSystemError> {
-        if let Some(k) = &self.snark_proving_key {
-            return Ok(k);
-        }
-        if let Some(idx) = self.snark_proving_key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::SaverProvingKey(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleSaverSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.snark_proving_key,
+            self.snark_proving_key_ref,
+            SaverProvingKey,
+            IncompatibleSaverSetupParamAtIndex,
+            st_idx
+        )
     }
 }
 
@@ -227,21 +199,14 @@ impl<E: PairingEngine> SaverVerifier<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a EncryptionGens<E>, ProofSystemError> {
-        if let Some(g) = &self.encryption_gens {
-            return Ok(g);
-        }
-        if let Some(idx) = self.encryption_gens_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::SaverEncryptionGens(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleSaverSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.encryption_gens,
+            self.encryption_gens_ref,
+            SaverEncryptionGens,
+            IncompatibleSaverSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_chunked_commitment_gens<'a, G: AffineCurve>(
@@ -249,21 +214,14 @@ impl<E: PairingEngine> SaverVerifier<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a ChunkedCommitmentGens<E::G1Affine>, ProofSystemError> {
-        if let Some(g) = &self.chunked_commitment_gens {
-            return Ok(g);
-        }
-        if let Some(idx) = self.chunked_commitment_gens_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::SaverCommitmentGens(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleSaverSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.chunked_commitment_gens,
+            self.chunked_commitment_gens_ref,
+            SaverCommitmentGens,
+            IncompatibleSaverSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_encryption_key<'a, G: AffineCurve>(
@@ -271,21 +229,14 @@ impl<E: PairingEngine> SaverVerifier<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a EncryptionKey<E>, ProofSystemError> {
-        if let Some(k) = &self.encryption_key {
-            return Ok(k);
-        }
-        if let Some(idx) = self.encryption_key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::SaverEncryptionKey(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleSaverSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.encryption_key,
+            self.encryption_key_ref,
+            SaverEncryptionKey,
+            IncompatibleSaverSetupParamAtIndex,
+            st_idx
+        )
     }
 
     pub fn get_snark_verifying_key<'a, G: AffineCurve>(
@@ -293,20 +244,13 @@ impl<E: PairingEngine> SaverVerifier<E> {
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
     ) -> Result<&'a VerifyingKey<E>, ProofSystemError> {
-        if let Some(k) = &self.snark_verifying_key {
-            return Ok(k);
-        }
-        if let Some(idx) = self.snark_verifying_key_ref {
-            if idx < setup_params.len() {
-                match &setup_params[idx] {
-                    SetupParams::SaverVerifyingKey(p) => Ok(p),
-                    _ => Err(ProofSystemError::IncompatibleSaverSetupParamAtIndex(idx)),
-                }
-            } else {
-                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
-            }
-        } else {
-            Err(ProofSystemError::NeitherParamsNorRefGiven(st_idx))
-        }
+        extract_param!(
+            setup_params,
+            &self.snark_verifying_key,
+            self.snark_verifying_key_ref,
+            SaverVerifyingKey,
+            IncompatibleSaverSetupParamAtIndex,
+            st_idx
+        )
     }
 }

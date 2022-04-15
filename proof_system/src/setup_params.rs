@@ -6,8 +6,8 @@ use legogroth16::data_structures::{
     ProvingKey as LegoSnarkProvingKey, VerifyingKey as LegoSnarkVerifyingKey,
 };
 use saver::prelude::{
-    ChunkedCommitmentGens, DecryptionKey, EncryptionGens, EncryptionKey,
-    ProvingKey as SaverSnarkProvingKey, VerifyingKey as SaverSnarkVerifyingKey,
+    ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey as SaverSnarkProvingKey,
+    VerifyingKey as SaverSnarkVerifyingKey,
 };
 use saver::saver_groth16::Groth16VerifyingKeyBytes;
 use vb_accumulator::prelude::{
@@ -37,6 +37,26 @@ pub enum SetupParams<E: PairingEngine, G: AffineCurve> {
     SaverVerifyingKey(#[serde_as(as = "Groth16VerifyingKeyBytes")] SaverSnarkVerifyingKey<E>),
     LegoSnarkProvingKey(#[serde_as(as = "LegoProvingKeyBytes")] LegoSnarkProvingKey<E>),
     LegoSnarkVerifyingKey(#[serde_as(as = "LegoVerifyingKeyBytes")] LegoSnarkVerifyingKey<E>),
+}
+
+macro_rules! extract_param {
+    ($setup_params: ident, $param: expr, $param_ref: expr, $param_variant: ident, $error_variant: ident, $statement_index: ident) => {{
+        if let Some(sp) = $param {
+            return Ok(sp);
+        }
+        if let Some(idx) = $param_ref {
+            if idx < $setup_params.len() {
+                match &$setup_params[idx] {
+                    SetupParams::$param_variant(p) => Ok(p),
+                    _ => Err(ProofSystemError::$error_variant(idx)),
+                }
+            } else {
+                Err(ProofSystemError::InvalidSetupParamsIndex(idx))
+            }
+        } else {
+            Err(ProofSystemError::NeitherParamsNorRefGiven($statement_index))
+        }
+    }};
 }
 
 mod serialization {
