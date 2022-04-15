@@ -8,13 +8,13 @@ use std::time::Instant;
 
 use proof_system::prelude::bound_check::generate_snark_srs_bound_check;
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, ProofSpecV2, Witness, WitnessRef, Witnesses,
+    EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
 };
 use proof_system::setup_params::SetupParams;
-use proof_system::statement_v2::{
+use proof_system::statement::{
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
     bound_check_legogroth16::BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
-    bound_check_legogroth16::BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt, StatementsV2,
+    bound_check_legogroth16::BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt, Statements,
 };
 use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 
@@ -45,7 +45,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     let min = msg - Fr::from(35u64);
     let max = msg + Fr::from(100u64);
 
-    let mut prover_statements = StatementsV2::new();
+    let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -61,10 +61,10 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, prover_statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
     test_serialization!(MetaStatements, meta_statements);
 
-    let proof_spec_prover = ProofSpecV2::new(
+    let proof_spec_prover = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
         vec![],
@@ -72,7 +72,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     );
     assert!(proof_spec_prover.is_valid());
     let start = Instant::now();
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec_prover);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec_prover);
     println!(
         "Testing serialization for 1 bound check takes {:?}",
         start.elapsed()
@@ -97,7 +97,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
 
     test_serialization!(ProofG1, proof);
 
-    let mut verifier_statements = StatementsV2::new();
+    let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -107,9 +107,9 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         BoundCheckVerifierStmt::new_statement_from_params(min, max, snark_pk.vk.clone()).unwrap(),
     );
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, verifier_statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
 
-    let verifier_proof_spec = ProofSpecV2::new(
+    let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements.clone(),
         vec![],
@@ -117,7 +117,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     );
     assert!(verifier_proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, verifier_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
     let start = Instant::now();
     proof
@@ -137,7 +137,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let proof_spec_prover = ProofSpecV2::new(
+    let proof_spec_prover = ProofSpec::new(
         prover_statements.clone(),
         meta_statements_wrong.clone(),
         vec![],
@@ -147,7 +147,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
 
     let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
 
-    let proof_spec_verifier = ProofSpecV2::new(
+    let proof_spec_verifier = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements_wrong,
         vec![],
@@ -165,11 +165,11 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     witnesses_wrong.add(Witness::BoundCheckLegoGroth16(min + Fr::one()));
 
     let proof_spec_prover =
-        ProofSpecV2::new(prover_statements, meta_statements.clone(), vec![], None);
+        ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
     assert!(proof_spec_prover.is_valid());
 
     let proof = ProofG1::new(&mut rng, proof_spec_prover, witnesses_wrong, None).unwrap();
-    let proof_spec_verifier = ProofSpecV2::new(verifier_statements, meta_statements, vec![], None);
+    let proof_spec_verifier = ProofSpec::new(verifier_statements, meta_statements, vec![], None);
     assert!(proof_spec_verifier.is_valid());
     assert!(proof.verify(proof_spec_verifier.clone(), None).is_err());
 }
@@ -198,7 +198,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     let max = msg + Fr::from(100u64);
 
     // Message same as minimum
-    let mut prover_statements = StatementsV2::new();
+    let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -213,7 +213,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let proof_spec_prover = ProofSpecV2::new(
+    let proof_spec_prover = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
         vec![],
@@ -230,7 +230,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
 
     let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
 
-    let mut verifier_statements = StatementsV2::new();
+    let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -239,7 +239,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     verifier_statements.add(
         BoundCheckVerifierStmt::new_statement_from_params(msg, max, snark_pk.vk.clone()).unwrap(),
     );
-    let proof_spec_verifier = ProofSpecV2::new(
+    let proof_spec_verifier = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements.clone(),
         vec![],
@@ -249,7 +249,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     proof.verify(proof_spec_verifier.clone(), None).unwrap();
 
     // Message same as maximum
-    let mut prover_statements = StatementsV2::new();
+    let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -264,7 +264,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let proof_spec_prover = ProofSpecV2::new(
+    let proof_spec_prover = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
         vec![],
@@ -281,7 +281,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
 
     let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
 
-    let mut verifier_statements = StatementsV2::new();
+    let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -290,7 +290,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     verifier_statements.add(
         BoundCheckVerifierStmt::new_statement_from_params(min, msg, snark_pk.vk.clone()).unwrap(),
     );
-    let proof_spec_verifier = ProofSpecV2::new(
+    let proof_spec_verifier = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements.clone(),
         vec![],
@@ -338,7 +338,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
 
     test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, prover_setup_params);
 
-    let mut prover_statements = StatementsV2::new();
+    let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -354,7 +354,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         min_3, max_3, 0,
     ));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, prover_statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -373,7 +373,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    let prover_proof_spec = ProofSpecV2::new(
+    let prover_proof_spec = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
         prover_setup_params,
@@ -381,7 +381,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
     );
     assert!(prover_proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, prover_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -407,7 +407,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
 
     test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, verifier_setup_params);
 
-    let mut verifier_statements = StatementsV2::new();
+    let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -423,9 +423,9 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         min_3, max_3, 0,
     ));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, verifier_statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
 
-    let verifier_proof_spec = ProofSpecV2::new(
+    let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements.clone(),
         verifier_setup_params,
@@ -433,7 +433,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
     );
     assert!(verifier_proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, verifier_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
     let start = Instant::now();
     proof.verify(verifier_proof_spec.clone(), None).unwrap();

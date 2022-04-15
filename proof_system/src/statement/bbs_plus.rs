@@ -9,7 +9,7 @@ use serde_with::{serde_as, Same};
 
 use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
-use crate::statement_v2::StatementV2;
+use crate::statement::Statement;
 use bbs_plus::prelude::{PublicKeyG2, SignatureParamsG1};
 use dock_crypto_utils::serde_utils::*;
 
@@ -34,8 +34,8 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
         signature_params: SignatureParamsG1<E>,
         public_key: PublicKeyG2<E>,
         revealed_messages: BTreeMap<usize, E::Fr>,
-    ) -> StatementV2<E, G> {
-        StatementV2::PoKBBSSignatureG1(Self {
+    ) -> Statement<E, G> {
+        Statement::PoKBBSSignatureG1(Self {
             revealed_messages,
             signature_params: Some(signature_params),
             public_key: Some(public_key),
@@ -48,8 +48,8 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
         signature_params_ref: usize,
         public_key_ref: usize,
         revealed_messages: BTreeMap<usize, E::Fr>,
-    ) -> StatementV2<E, G> {
-        StatementV2::PoKBBSSignatureG1(Self {
+    ) -> Statement<E, G> {
+        Statement::PoKBBSSignatureG1(Self {
             revealed_messages,
             signature_params: None,
             public_key: None,

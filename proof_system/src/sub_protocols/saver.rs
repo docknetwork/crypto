@@ -5,17 +5,9 @@ use crate::statement_proof::StatementProof;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::PrimeField;
 use ark_groth16::{prepare_verifying_key, VerifyingKey};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::CanonicalSerialize;
 use ark_std::rand::RngCore;
-use ark_std::{
-    collections::BTreeMap,
-    format,
-    io::{Read, Write},
-    ops::Add,
-    vec,
-    vec::Vec,
-    UniformRand,
-};
+use ark_std::{collections::BTreeMap, io::Write, ops::Add, vec, vec::Vec, UniformRand};
 use saver::commitment::ChunkedCommitment;
 use saver::encryption::{Ciphertext, Encryption};
 use saver::prelude::{ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey};
@@ -141,15 +133,6 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         };
 
         // Initialize the 3 Schnorr protocols
-        /* let ck_comm_ct = self.encryption_key.commitment_key();
-        let ck_comm_chunks = ChunkedCommitment::<E::G1Affine>::commitment_key(
-            &self.chunked_commitment_gens,
-            self.chunk_bit_size,
-        );
-        let ck_comm_combined = vec![
-            self.chunked_commitment_gens.G,
-            self.chunked_commitment_gens.H,
-        ];*/
 
         let comm_combined = self
             .chunked_commitment_gens

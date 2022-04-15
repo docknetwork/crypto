@@ -167,7 +167,7 @@ mod tests {
         EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statement, Statements,
         Witness, WitnessRef, Witnesses,
     };
-    use proof_system::statement::PedersenCommitment as PedersenCommitmentStmt;
+    use proof_system::statement::ped_comm::PedersenCommitment as PedersenCommitmentStmt;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
     type ProofG1 = Proof<Bls12_381, G1Affine, Blake2b>;
@@ -255,14 +255,14 @@ mod tests {
 
                 let start = Instant::now();
                 let mut statements = Statements::new();
-                statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-                    bases: gs.clone(),
-                    commitment: comm_2.clone(),
-                }));
-                statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-                    bases: bases.clone(),
-                    commitment: comm_ct.clone(),
-                }));
+                statements.add(PedersenCommitmentStmt::new_statement_from_params(
+                    gs.clone(),
+                    comm_2.clone(),
+                ));
+                statements.add(PedersenCommitmentStmt::new_statement_from_params(
+                    bases.clone(),
+                    comm_ct.clone(),
+                ));
 
                 let mut meta_statements = MetaStatements::new();
                 for i in 0..n as usize {
@@ -273,11 +273,8 @@ mod tests {
                     )));
                 }
 
-                let proof_spec = ProofSpec {
-                    statements: statements.clone(),
-                    meta_statements: meta_statements.clone(),
-                    context: None,
-                };
+                let proof_spec =
+                    ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], None);
 
                 let mut witnesses = Witnesses::new();
                 witnesses.add(Witness::PedersenCommitment(decomposed));

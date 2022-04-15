@@ -1,6 +1,6 @@
 use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
-use crate::statement_v2::StatementV2;
+use crate::statement::Statement;
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::io::{Read, Write};
@@ -53,8 +53,8 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
         public_key: PublicKey<E::G2Affine>,
         proving_key: MembershipProvingKey<E::G1Affine>,
         accumulator_value: E::G1Affine,
-    ) -> StatementV2<E, G> {
-        StatementV2::AccumulatorMembership(Self {
+    ) -> Statement<E, G> {
+        Statement::AccumulatorMembership(Self {
             accumulator_value,
             params: Some(params),
             public_key: Some(public_key),
@@ -70,8 +70,8 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
         public_key_ref: usize,
         proving_key_ref: usize,
         accumulator_value: E::G1Affine,
-    ) -> StatementV2<E, G> {
-        StatementV2::AccumulatorMembership(Self {
+    ) -> Statement<E, G> {
+        Statement::AccumulatorMembership(Self {
             accumulator_value,
             params: None,
             public_key: None,
@@ -161,8 +161,8 @@ impl<E: PairingEngine> AccumulatorNonMembership<E> {
         public_key: PublicKey<E::G2Affine>,
         proving_key: NonMembershipProvingKey<E::G1Affine>,
         accumulator_value: E::G1Affine,
-    ) -> StatementV2<E, G> {
-        StatementV2::AccumulatorNonMembership(Self {
+    ) -> Statement<E, G> {
+        Statement::AccumulatorNonMembership(Self {
             accumulator_value,
             params: Some(params),
             public_key: Some(public_key),
@@ -178,8 +178,8 @@ impl<E: PairingEngine> AccumulatorNonMembership<E> {
         public_key_ref: usize,
         proving_key_ref: usize,
         accumulator_value: E::G1Affine,
-    ) -> StatementV2<E, G> {
-        StatementV2::AccumulatorNonMembership(Self {
+    ) -> Statement<E, G> {
+        Statement::AccumulatorNonMembership(Self {
             accumulator_value,
             params: None,
             public_key: None,

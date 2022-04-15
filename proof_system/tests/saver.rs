@@ -7,15 +7,15 @@ use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
 use blake2::Blake2b;
 use proof_system::prelude::bound_check::generate_snark_srs_bound_check;
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, ProofSpecV2, StatementProof, Witness,
-    WitnessRef, Witnesses,
+    EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, StatementProof, Witness, WitnessRef,
+    Witnesses,
 };
 use proof_system::setup_params::SetupParams;
-use proof_system::statement_v2::{
+use proof_system::statement::{
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
     bound_check_legogroth16::BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
     bound_check_legogroth16::BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt,
-    saver::SaverProver as SaverProverStmt, saver::SaverVerifier as SaverVerifierStmt, StatementsV2,
+    saver::SaverProver as SaverProverStmt, saver::SaverVerifier as SaverVerifierStmt, Statements,
 };
 use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 use saver::keygen::{DecryptionKey, SecretKey};
@@ -79,7 +79,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let enc_msg_idx = 1;
     let enc_msg = msgs[enc_msg_idx].clone();
 
-    let mut prover_statements = StatementsV2::new();
+    let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -103,10 +103,10 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, prover_statements, Instant);
+    test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements, Instant);
     test_serialization!(MetaStatements, meta_statements);
 
-    let prover_proof_spec = ProofSpecV2::new(
+    let prover_proof_spec = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
         vec![],
@@ -115,7 +115,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     assert!(prover_proof_spec.is_valid());
 
     let start = Instant::now();
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, prover_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
     println!(
         "Testing serialization for 1 verifiable encryption takes {:?}",
         start.elapsed()
@@ -140,7 +140,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
 
     test_serialization!(ProofG1, proof);
 
-    let mut verifier_statements = StatementsV2::new();
+    let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -157,9 +157,9 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         .unwrap(),
     );
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, verifier_statements, Instant);
+    test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements, Instant);
 
-    let verifier_proof_spec = ProofSpecV2::new(
+    let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements.clone(),
         vec![],
@@ -167,7 +167,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     );
     assert!(verifier_proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, verifier_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
     let start = Instant::now();
     proof
@@ -204,7 +204,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let prover_proof_spec = ProofSpecV2::new(
+    let prover_proof_spec = ProofSpec::new(
         prover_statements.clone(),
         meta_statements_wrong.clone(),
         vec![],
@@ -214,7 +214,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
 
     let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
 
-    let verifier_proof_spec = ProofSpecV2::new(
+    let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements_wrong,
         vec![],
@@ -232,13 +232,13 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     witnesses_wrong.add(Witness::Saver(Fr::rand(&mut rng)));
 
     let prover_proof_spec =
-        ProofSpecV2::new(prover_statements, meta_statements.clone(), vec![], None);
+        ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
     assert!(prover_proof_spec.is_valid());
 
     let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses_wrong, None).unwrap();
 
     let verifier_proof_spec =
-        ProofSpecV2::new(verifier_statements.clone(), meta_statements, vec![], None);
+        ProofSpec::new(verifier_statements.clone(), meta_statements, vec![], None);
     assert!(verifier_proof_spec.is_valid());
     assert!(proof.verify(verifier_proof_spec.clone(), None).is_err());
 }
@@ -272,7 +272,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
     prover_setup_params.push(SetupParams::SaverEncryptionKey(ek.clone()));
     prover_setup_params.push(SetupParams::SaverProvingKey(snark_pk.clone()));
 
-    let mut prover_statements = StatementsV2::new();
+    let mut prover_statements = Statements::new();
     let mut meta_statements = MetaStatements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
@@ -290,16 +290,16 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
         )));
     }
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, prover_statements, Instant);
+    test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements, Instant);
 
-    let prover_proof_spec = ProofSpecV2::new(
+    let prover_proof_spec = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
         prover_setup_params,
         None,
     );
     assert!(prover_proof_spec.is_valid());
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, prover_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -325,7 +325,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
     verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek.clone()));
     verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk.pk.vk.clone()));
 
-    let mut verifier_statements = StatementsV2::new();
+    let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -336,16 +336,16 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
             SaverVerifierStmt::new_statement_from_params_ref(chunk_bit_size, 0, 1, 2, 3).unwrap(),
         );
     }
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, verifier_statements, Instant);
+    test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements, Instant);
 
-    let verifier_proof_spec = ProofSpecV2::new(
+    let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements.clone(),
         verifier_setup_params,
         None,
     );
     assert!(verifier_proof_spec.is_valid());
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, verifier_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
     let start = Instant::now();
     proof
@@ -434,7 +434,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
     prover_setup_params.push(SetupParams::SaverEncryptionKey(ek_2.clone()));
     prover_setup_params.push(SetupParams::SaverProvingKey(snark_pk_2.clone()));
 
-    let mut prover_statements = StatementsV2::new();
+    let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -453,7 +453,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
     prover_statements
         .add(SaverProverStmt::new_statement_from_params_ref(chunk_bit_size, 4, 5, 6, 7).unwrap());
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, prover_statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -477,7 +477,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    let prover_proof_spec = ProofSpecV2::new(
+    let prover_proof_spec = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
         prover_setup_params,
@@ -485,7 +485,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
     );
     assert!(prover_proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, prover_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -513,7 +513,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
     verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek_2.clone()));
     verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk_2.pk.vk.clone()));
 
-    let mut verifier_statements = StatementsV2::new();
+    let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -532,16 +532,16 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
     verifier_statements
         .add(SaverVerifierStmt::new_statement_from_params_ref(chunk_bit_size, 4, 5, 6, 7).unwrap());
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, verifier_statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
 
-    let verifier_proof_spec = ProofSpecV2::new(
+    let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements.clone(),
         verifier_setup_params,
         None,
     );
     assert!(verifier_proof_spec.is_valid());
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, verifier_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
     proof
         .clone()
@@ -628,7 +628,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     let mut prover_setup_params = vec![];
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(bound_snark_pk.clone()));
 
-    let mut prover_statements = StatementsV2::new();
+    let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -668,17 +668,17 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, prover_statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
     test_serialization!(MetaStatements, meta_statements);
 
-    let prover_proof_spec = ProofSpecV2::new(
+    let prover_proof_spec = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
         prover_setup_params,
         None,
     );
     assert!(prover_proof_spec.is_valid());
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, prover_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -699,7 +699,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         bound_snark_pk.vk.clone(),
     ));
 
-    let mut verifier_statements = StatementsV2::new();
+    let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -722,16 +722,16 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         .unwrap(),
     );
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, verifier_statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
 
-    let verifier_proof_spec = ProofSpecV2::new(
+    let verifier_proof_spec = ProofSpec::new(
         verifier_statements,
         meta_statements.clone(),
         verifier_setup_params,
         None,
     );
     assert!(verifier_proof_spec.is_valid());
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, verifier_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
     proof
         .clone()

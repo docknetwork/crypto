@@ -9,7 +9,7 @@ use serde_with::serde_as;
 
 use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
-use crate::statement_v2::StatementV2;
+use crate::statement::Statement;
 use dock_crypto_utils::serde_utils::*;
 
 /// Proving knowledge of scalars `s_i` in Pedersen commitment `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
@@ -33,8 +33,8 @@ impl<G: AffineCurve> PedersenCommitment<G> {
     pub fn new_statement_from_params<E: PairingEngine>(
         key: Vec<G>,
         commitment: G,
-    ) -> StatementV2<E, G> {
-        StatementV2::PedersenCommitment(Self {
+    ) -> Statement<E, G> {
+        Statement::PedersenCommitment(Self {
             commitment,
             key: Some(key),
             key_ref: None,
@@ -44,8 +44,8 @@ impl<G: AffineCurve> PedersenCommitment<G> {
     pub fn new_statement_from_params_refs<E: PairingEngine>(
         key_ref: usize,
         commitment: G,
-    ) -> StatementV2<E, G> {
-        StatementV2::PedersenCommitment(Self {
+    ) -> Statement<E, G> {
+        Statement::PedersenCommitment(Self {
             commitment,
             key: None,
             key_ref: Some(key_ref),

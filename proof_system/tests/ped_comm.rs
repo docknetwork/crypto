@@ -8,10 +8,10 @@ use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
 use proof_system::prelude::{
     EqualWitnesses, MetaStatement, MetaStatements, Witness, WitnessRef, Witnesses,
 };
-use proof_system::proof_spec_v2::ProofSpecV2;
+use proof_system::proof_spec::ProofSpec;
 use proof_system::setup_params::SetupParams;
-use proof_system::statement_v2::ped_comm::PedersenCommitment as PedersenCommitmentStmt;
-use proof_system::statement_v2::{StatementV2, StatementsV2};
+use proof_system::statement::ped_comm::PedersenCommitment as PedersenCommitmentStmt;
+use proof_system::statement::{Statement, Statements};
 
 #[macro_use]
 mod utils;
@@ -45,7 +45,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     )
     .into_affine();
 
-    let mut statements = StatementsV2::new();
+    let mut statements = Statements::new();
     statements.add(PedersenCommitmentStmt::new_statement_from_params(
         bases_1.clone(),
         commitment_1.clone(),
@@ -55,7 +55,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         commitment_2.clone(),
     ));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -77,7 +77,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
 
     let context = Some(b"test".to_vec());
 
-    let proof_spec = ProofSpecV2::new(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         meta_statements.clone(),
         vec![],
@@ -85,7 +85,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     );
     assert!(proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let nonce = Some(b"test nonce".to_vec());
     let proof = ProofG1::new(
@@ -101,7 +101,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     proof.verify(proof_spec, nonce.clone()).unwrap();
 
     // Wrong commitment should fail to verify
-    let mut statements_wrong = StatementsV2::new();
+    let mut statements_wrong = Statements::new();
     statements_wrong.add(PedersenCommitmentStmt::new_statement_from_params(
         bases_1.clone(),
         commitment_1.clone(),
@@ -112,7 +112,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         commitment_1.clone(),
     ));
 
-    let proof_spec_invalid = ProofSpecV2::new(
+    let proof_spec_invalid = ProofSpec::new(
         statements_wrong.clone(),
         meta_statements.clone(),
         vec![],
@@ -142,7 +142,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    let proof_spec_invalid = ProofSpecV2::new(
+    let proof_spec_invalid = ProofSpec::new(
         statements.clone(),
         meta_statements_wrong,
         vec![],
@@ -198,7 +198,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
 
     test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, all_setup_params);
 
-    let mut statements = StatementsV2::new();
+    let mut statements = Statements::new();
     statements.add(PedersenCommitmentStmt::new_statement_from_params_refs(
         0,
         commitment_1.clone(),
@@ -212,7 +212,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
         commitment_3.clone(),
     ));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -235,7 +235,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
 
     let context = Some(b"test".to_vec());
 
-    let proof_spec = ProofSpecV2::new(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         meta_statements.clone(),
         all_setup_params,
@@ -243,7 +243,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     );
     assert!(proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let nonce = Some(b"test nonce".to_vec());
     let proof = ProofG1::new(

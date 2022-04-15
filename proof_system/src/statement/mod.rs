@@ -16,7 +16,7 @@ pub use serialization::*;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub enum StatementV2<E: PairingEngine, G: AffineCurve> {
+pub enum Statement<E: PairingEngine, G: AffineCurve> {
     /// Proof of knowledge of BBS+ signature
     PoKBBSSignatureG1(bbs_plus::PoKBBSSignatureG1<E>),
     PedersenCommitment(ped_comm::PedersenCommitment<G>),
@@ -34,12 +34,12 @@ pub enum StatementV2<E: PairingEngine, G: AffineCurve> {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct StatementsV2<E, G>(pub Vec<StatementV2<E, G>>)
+pub struct Statements<E, G>(pub Vec<Statement<E, G>>)
 where
     E: PairingEngine,
     G: AffineCurve;
 
-impl<E, G> StatementsV2<E, G>
+impl<E, G> Statements<E, G>
 where
     E: PairingEngine,
     G: AffineCurve,
@@ -48,7 +48,7 @@ where
         Self(Vec::new())
     }
 
-    pub fn add(&mut self, item: StatementV2<E, G>) -> usize {
+    pub fn add(&mut self, item: Statement<E, G>) -> usize {
         self.0.push(item);
         self.0.len() - 1
     }
@@ -65,7 +65,7 @@ where
 mod serialization {
     use super::*;
 
-    impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for StatementV2<E, G> {
+    impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for Statement<E, G> {
         fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
             match self {
                 Self::PoKBBSSignatureG1(s) => {
@@ -215,7 +215,7 @@ mod serialization {
         }
     }
 
-    impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for StatementV2<E, G> {
+    impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for Statement<E, G> {
         fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
             let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
             match t {

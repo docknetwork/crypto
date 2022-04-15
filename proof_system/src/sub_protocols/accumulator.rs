@@ -1,12 +1,8 @@
 use crate::error::ProofSystemError;
 use crate::statement_proof::StatementProof;
 use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_std::io::Write;
 use ark_std::rand::RngCore;
-use ark_std::{
-    format,
-    io::{Read, Write},
-};
 use vb_accumulator::prelude::{
     MembershipProofProtocol, MembershipProvingKey, NonMembershipProofProtocol,
     NonMembershipProvingKey, PublicKey, SetupParams as AccumParams,

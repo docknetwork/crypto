@@ -1,13 +1,8 @@
 use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::CanonicalSerialize;
 use ark_std::rand::RngCore;
 use ark_std::UniformRand;
-use ark_std::{
-    collections::BTreeMap,
-    format,
-    io::{Read, Write},
-    vec::Vec,
-};
+use ark_std::{collections::BTreeMap, io::Write, vec::Vec};
 use schnorr_pok::{SchnorrChallengeContributor, SchnorrCommitment};
 
 use crate::error::ProofSystemError;

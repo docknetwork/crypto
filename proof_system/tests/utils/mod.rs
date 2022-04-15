@@ -7,7 +7,7 @@ use ark_std::{
 use bbs_plus::setup::{KeypairG2, SignatureParamsG1};
 use bbs_plus::signature::SignatureG1;
 use blake2::Blake2b;
-use proof_system::proof_v2::ProofV2;
+use proof_system::proof::Proof;
 use std::collections::HashSet;
 use std::hash::Hash;
 use vb_accumulator::persistence::{InitialElementsStore, State, UniversalAccumulatorState};
@@ -15,7 +15,7 @@ use vb_accumulator::positive::PositiveAccumulator;
 use vb_accumulator::setup::{Keypair, SetupParams};
 use vb_accumulator::universal::UniversalAccumulator;
 
-pub type ProofG1 = ProofV2<Bls12_381, G1Affine, Blake2b>;
+pub type ProofG1 = Proof<Bls12_381, G1Affine, Blake2b>;
 
 pub fn sig_setup<R: RngCore>(
     rng: &mut R,

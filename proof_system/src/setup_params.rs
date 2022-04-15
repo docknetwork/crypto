@@ -1,4 +1,4 @@
-use crate::statement_v2::bound_check_legogroth16::{LegoProvingKeyBytes, LegoVerifyingKeyBytes};
+use crate::statement::bound_check_legogroth16::{LegoProvingKeyBytes, LegoVerifyingKeyBytes};
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_std::vec::Vec;
 use bbs_plus::prelude::{PublicKeyG2 as BBSPublicKeyG2, SignatureParamsG1 as BBSSignatureParamsG1};
@@ -33,7 +33,6 @@ pub enum SetupParams<E: PairingEngine, G: AffineCurve> {
     SaverEncryptionGens(EncryptionGens<E>),
     SaverCommitmentGens(ChunkedCommitmentGens<E::G1Affine>),
     SaverEncryptionKey(EncryptionKey<E>),
-    SaverDecryptionKey(DecryptionKey<E>),
     SaverProvingKey(SaverSnarkProvingKey<E>),
     SaverVerifyingKey(#[serde_as(as = "Groth16VerifyingKeyBytes")] SaverSnarkVerifyingKey<E>),
     LegoSnarkProvingKey(#[serde_as(as = "LegoProvingKeyBytes")] LegoSnarkProvingKey<E>),
@@ -88,24 +87,20 @@ mod serialization {
                     CanonicalSerialize::serialize(&9u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
-                Self::SaverDecryptionKey(s) => {
+                Self::SaverProvingKey(s) => {
                     CanonicalSerialize::serialize(&10u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
-                Self::SaverProvingKey(s) => {
+                Self::SaverVerifyingKey(s) => {
                     CanonicalSerialize::serialize(&11u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
-                Self::SaverVerifyingKey(s) => {
+                Self::LegoSnarkProvingKey(s) => {
                     CanonicalSerialize::serialize(&12u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
-                Self::LegoSnarkProvingKey(s) => {
-                    CanonicalSerialize::serialize(&13u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
                 Self::LegoSnarkVerifyingKey(s) => {
-                    CanonicalSerialize::serialize(&14u8, &mut writer)?;
+                    CanonicalSerialize::serialize(&13u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
             }
@@ -125,11 +120,10 @@ mod serialization {
                 Self::SaverEncryptionGens(s) => 7u8.serialized_size() + s.serialized_size(),
                 Self::SaverCommitmentGens(s) => 8u8.serialized_size() + s.serialized_size(),
                 Self::SaverEncryptionKey(s) => 9u8.serialized_size() + s.serialized_size(),
-                Self::SaverDecryptionKey(s) => 10u8.serialized_size() + s.serialized_size(),
-                Self::SaverProvingKey(s) => 11u8.serialized_size() + s.serialized_size(),
-                Self::SaverVerifyingKey(s) => 12u8.serialized_size() + s.serialized_size(),
-                Self::LegoSnarkProvingKey(s) => 13u8.serialized_size() + s.serialized_size(),
-                Self::LegoSnarkVerifyingKey(s) => 14u8.serialized_size() + s.serialized_size(),
+                Self::SaverProvingKey(s) => 10u8.serialized_size() + s.serialized_size(),
+                Self::SaverVerifyingKey(s) => 11u8.serialized_size() + s.serialized_size(),
+                Self::LegoSnarkProvingKey(s) => 12u8.serialized_size() + s.serialized_size(),
+                Self::LegoSnarkVerifyingKey(s) => 13u8.serialized_size() + s.serialized_size(),
             }
         }
 
@@ -178,24 +172,20 @@ mod serialization {
                     CanonicalSerialize::serialize_uncompressed(&9u8, &mut writer)?;
                     CanonicalSerialize::serialize_uncompressed(s, &mut writer)
                 }
-                Self::SaverDecryptionKey(s) => {
+                Self::SaverProvingKey(s) => {
                     CanonicalSerialize::serialize_uncompressed(&10u8, &mut writer)?;
                     CanonicalSerialize::serialize_uncompressed(s, &mut writer)
                 }
-                Self::SaverProvingKey(s) => {
+                Self::SaverVerifyingKey(s) => {
                     CanonicalSerialize::serialize_uncompressed(&11u8, &mut writer)?;
                     CanonicalSerialize::serialize_uncompressed(s, &mut writer)
                 }
-                Self::SaverVerifyingKey(s) => {
+                Self::LegoSnarkProvingKey(s) => {
                     CanonicalSerialize::serialize_uncompressed(&12u8, &mut writer)?;
                     CanonicalSerialize::serialize_uncompressed(s, &mut writer)
                 }
-                Self::LegoSnarkProvingKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&13u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
                 Self::LegoSnarkVerifyingKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&14u8, &mut writer)?;
+                    CanonicalSerialize::serialize_uncompressed(&13u8, &mut writer)?;
                     CanonicalSerialize::serialize_uncompressed(s, &mut writer)
                 }
             }
@@ -243,24 +233,20 @@ mod serialization {
                     CanonicalSerialize::serialize_unchecked(&9u8, &mut writer)?;
                     CanonicalSerialize::serialize_unchecked(s, &mut writer)
                 }
-                Self::SaverDecryptionKey(s) => {
+                Self::SaverProvingKey(s) => {
                     CanonicalSerialize::serialize_unchecked(&10u8, &mut writer)?;
                     CanonicalSerialize::serialize_unchecked(s, &mut writer)
                 }
-                Self::SaverProvingKey(s) => {
+                Self::SaverVerifyingKey(s) => {
                     CanonicalSerialize::serialize_unchecked(&11u8, &mut writer)?;
                     CanonicalSerialize::serialize_unchecked(s, &mut writer)
                 }
-                Self::SaverVerifyingKey(s) => {
+                Self::LegoSnarkProvingKey(s) => {
                     CanonicalSerialize::serialize_unchecked(&12u8, &mut writer)?;
                     CanonicalSerialize::serialize_unchecked(s, &mut writer)
                 }
-                Self::LegoSnarkProvingKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&13u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
                 Self::LegoSnarkVerifyingKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&14u8, &mut writer)?;
+                    CanonicalSerialize::serialize_unchecked(&13u8, &mut writer)?;
                     CanonicalSerialize::serialize_unchecked(s, &mut writer)
                 }
             }
@@ -282,11 +268,10 @@ mod serialization {
                 Self::SaverEncryptionGens(s) => 7u8.uncompressed_size() + s.uncompressed_size(),
                 Self::SaverCommitmentGens(s) => 8u8.uncompressed_size() + s.uncompressed_size(),
                 Self::SaverEncryptionKey(s) => 9u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverDecryptionKey(s) => 10u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverProvingKey(s) => 11u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverVerifyingKey(s) => 12u8.uncompressed_size() + s.uncompressed_size(),
-                Self::LegoSnarkProvingKey(s) => 13u8.uncompressed_size() + s.uncompressed_size(),
-                Self::LegoSnarkVerifyingKey(s) => 14u8.uncompressed_size() + s.uncompressed_size(),
+                Self::SaverProvingKey(s) => 10u8.uncompressed_size() + s.uncompressed_size(),
+                Self::SaverVerifyingKey(s) => 11u8.uncompressed_size() + s.uncompressed_size(),
+                Self::LegoSnarkProvingKey(s) => 12u8.uncompressed_size() + s.uncompressed_size(),
+                Self::LegoSnarkVerifyingKey(s) => 13u8.uncompressed_size() + s.uncompressed_size(),
             }
         }
     }
@@ -325,19 +310,16 @@ mod serialization {
                 9u8 => Ok(Self::SaverEncryptionKey(CanonicalDeserialize::deserialize(
                     &mut reader,
                 )?)),
-                10u8 => Ok(Self::SaverDecryptionKey(CanonicalDeserialize::deserialize(
+                10u8 => Ok(Self::SaverProvingKey(CanonicalDeserialize::deserialize(
                     &mut reader,
                 )?)),
-                11u8 => Ok(Self::SaverProvingKey(CanonicalDeserialize::deserialize(
+                11u8 => Ok(Self::SaverVerifyingKey(CanonicalDeserialize::deserialize(
                     &mut reader,
                 )?)),
-                12u8 => Ok(Self::SaverVerifyingKey(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                13u8 => Ok(Self::LegoSnarkProvingKey(
+                12u8 => Ok(Self::LegoSnarkProvingKey(
                     CanonicalDeserialize::deserialize(&mut reader)?,
                 )),
-                14u8 => Ok(Self::LegoSnarkVerifyingKey(
+                13u8 => Ok(Self::LegoSnarkVerifyingKey(
                     CanonicalDeserialize::deserialize(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
@@ -376,19 +358,16 @@ mod serialization {
                 9u8 => Ok(Self::SaverEncryptionKey(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
-                10u8 => Ok(Self::SaverDecryptionKey(
+                10u8 => Ok(Self::SaverProvingKey(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
-                11u8 => Ok(Self::SaverProvingKey(
+                11u8 => Ok(Self::SaverVerifyingKey(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
-                12u8 => Ok(Self::SaverVerifyingKey(
+                12u8 => Ok(Self::LegoSnarkProvingKey(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
-                13u8 => Ok(Self::LegoSnarkProvingKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
-                )),
-                14u8 => Ok(Self::LegoSnarkVerifyingKey(
+                13u8 => Ok(Self::LegoSnarkVerifyingKey(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
@@ -427,19 +406,16 @@ mod serialization {
                 9u8 => Ok(Self::SaverEncryptionKey(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
-                10u8 => Ok(Self::SaverDecryptionKey(
+                10u8 => Ok(Self::SaverProvingKey(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
-                11u8 => Ok(Self::SaverProvingKey(
+                11u8 => Ok(Self::SaverVerifyingKey(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
-                12u8 => Ok(Self::SaverVerifyingKey(
+                12u8 => Ok(Self::LegoSnarkProvingKey(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
-                13u8 => Ok(Self::LegoSnarkProvingKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                14u8 => Ok(Self::LegoSnarkVerifyingKey(
+                13u8 => Ok(Self::LegoSnarkVerifyingKey(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),

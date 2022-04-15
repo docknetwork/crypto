@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::error::ProofSystemError;
-use crate::prelude::saver::SaverProtocol;
 use crate::setup_params::SetupParams;
-use crate::statement_v2::StatementV2;
+use crate::statement::Statement;
+use crate::sub_protocols::saver::SaverProtocol;
 use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, VerifyingKey,
 };
@@ -56,9 +56,9 @@ impl<E: PairingEngine> SaverProver<E> {
         chunked_commitment_gens: ChunkedCommitmentGens<E::G1Affine>,
         encryption_key: EncryptionKey<E>,
         snark_proving_key: ProvingKey<E>,
-    ) -> Result<StatementV2<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E, G>, ProofSystemError> {
         SaverProtocol::validate_encryption_key(chunk_bit_size, &encryption_key)?;
-        Ok(StatementV2::SaverProver(Self {
+        Ok(Statement::SaverProver(Self {
             chunk_bit_size,
             encryption_gens: Some(encryption_gens),
             chunked_commitment_gens: Some(chunked_commitment_gens),
@@ -77,8 +77,8 @@ impl<E: PairingEngine> SaverProver<E> {
         chunked_commitment_gens: usize,
         encryption_key: usize,
         snark_proving_key: usize,
-    ) -> Result<StatementV2<E, G>, ProofSystemError> {
-        Ok(StatementV2::SaverProver(Self {
+    ) -> Result<Statement<E, G>, ProofSystemError> {
+        Ok(Statement::SaverProver(Self {
             chunk_bit_size,
             encryption_gens: None,
             chunked_commitment_gens: None,
@@ -187,9 +187,9 @@ impl<E: PairingEngine> SaverVerifier<E> {
         chunked_commitment_gens: ChunkedCommitmentGens<E::G1Affine>,
         encryption_key: EncryptionKey<E>,
         snark_verifying_key: VerifyingKey<E>,
-    ) -> Result<StatementV2<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E, G>, ProofSystemError> {
         SaverProtocol::validate_encryption_key(chunk_bit_size, &encryption_key)?;
-        Ok(StatementV2::SaverVerifier(Self {
+        Ok(Statement::SaverVerifier(Self {
             chunk_bit_size,
             encryption_gens: Some(encryption_gens),
             chunked_commitment_gens: Some(chunked_commitment_gens),
@@ -208,8 +208,8 @@ impl<E: PairingEngine> SaverVerifier<E> {
         chunked_commitment_gens: usize,
         encryption_key: usize,
         snark_verifying_key: usize,
-    ) -> Result<StatementV2<E, G>, ProofSystemError> {
-        Ok(StatementV2::SaverVerifier(Self {
+    ) -> Result<Statement<E, G>, ProofSystemError> {
+        Ok(Statement::SaverVerifier(Self {
             chunk_bit_size,
             encryption_gens: None,
             chunked_commitment_gens: None,

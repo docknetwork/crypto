@@ -1,5 +1,6 @@
 use crate::meta_statement::{MetaStatement, MetaStatements};
-use crate::prelude::{Statement, Statements};
+use crate::setup_params::SetupParams;
+use crate::statement::{Statement, Statements};
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
@@ -17,6 +18,7 @@ use serde::{Deserialize, Serialize};
 pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
     pub statements: Statements<E, G>,
     pub meta_statements: MetaStatements,
+    pub setup_params: Vec<SetupParams<E, G>>,
     /// `context` is any arbitrary data that needs to be hashed into the proof and it must be kept
     /// same while creating and verifying the proof. Eg of `context` are the purpose of
     /// the proof or the verifier's identity or some verifier-specific identity of the holder
@@ -32,11 +34,13 @@ where
     pub fn new(
         statements: Statements<E, G>,
         meta_statements: MetaStatements,
+        setup_params: Vec<SetupParams<E, G>>,
         context: Option<Vec<u8>>,
     ) -> Self {
         Self {
             statements,
             meta_statements,
+            setup_params,
             context,
         }
     }
@@ -75,6 +79,7 @@ where
         Self {
             statements: Statements::new(),
             meta_statements: MetaStatements::new(),
+            setup_params: Vec::new(),
             context: None,
         }
     }

@@ -19,7 +19,8 @@ use proof_system::prelude::{
     Witness, WitnessRef, Witnesses,
 };
 use proof_system::statement::{
-    PedersenCommitment as PedersenCommitmentStmt, PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+    bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+    ped_comm::PedersenCommitment as PedersenCommitmentStmt,
 };
 use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 use std::collections::{BTreeMap, BTreeSet};
@@ -135,23 +136,23 @@ fn bbs_plus_verifiably_encrypt_message() {
         wit_comm_ct.push(r.clone());
 
         let mut statements = Statements::new();
-        statements.add(Statement::PoKBBSSignatureG1(PoKSignatureBBSG1Stmt {
-            params: sig_params.clone(),
-            public_key: keypair.public_key.clone(),
-            revealed_messages: BTreeMap::new(),
-        }));
-        statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-            bases: vec![chunked_comm_gens.G, chunked_comm_gens.H],
-            commitment: comm_single.into_affine(),
-        }));
-        statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-            bases: bases_comm_chunks.clone(),
-            commitment: comm_chunks.clone(),
-        }));
-        statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-            bases: bases_comm_ct.clone(),
-            commitment: ct.commitment.clone(),
-        }));
+        statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+            sig_params.clone(),
+            keypair.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            vec![chunked_comm_gens.G, chunked_comm_gens.H],
+            comm_single.into_affine(),
+        ));
+        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_chunks.clone(),
+            comm_chunks.clone(),
+        ));
+        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_ct.clone(),
+            ct.commitment.clone(),
+        ));
 
         let mut meta_statements = MetaStatements::new();
         meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -167,11 +168,7 @@ fn bbs_plus_verifiably_encrypt_message() {
             )));
         }
 
-        let proof_spec = ProofSpec {
-            statements: statements.clone(),
-            meta_statements: meta_statements.clone(),
-            context: None,
-        };
+        let proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], None);
 
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -421,50 +418,50 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
     wit_comm_ct_3.push(r_3.clone());
 
     let mut statements = Statements::new();
-    statements.add(Statement::PoKBBSSignatureG1(PoKSignatureBBSG1Stmt {
-        params: sig_params.clone(),
-        public_key: keypair.public_key.clone(),
-        revealed_messages: BTreeMap::new(),
-    }));
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
 
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: vec![chunked_comm_gens.G, chunked_comm_gens.H],
-        commitment: comm_single_1.into_affine(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_chunks.clone(),
-        commitment: comm_chunks_1.clone(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_ct.clone(),
-        commitment: ct_1.commitment.clone(),
-    }));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        vec![chunked_comm_gens.G, chunked_comm_gens.H],
+        comm_single_1.into_affine(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_chunks.clone(),
+        comm_chunks_1.clone(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_ct.clone(),
+        ct_1.commitment.clone(),
+    ));
 
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: vec![chunked_comm_gens.G, chunked_comm_gens.H],
-        commitment: comm_single_2.into_affine(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_chunks.clone(),
-        commitment: comm_chunks_2.clone(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_ct.clone(),
-        commitment: ct_2.commitment.clone(),
-    }));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        vec![chunked_comm_gens.G, chunked_comm_gens.H],
+        comm_single_2.into_affine(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_chunks.clone(),
+        comm_chunks_2.clone(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_ct.clone(),
+        ct_2.commitment.clone(),
+    ));
 
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: vec![chunked_comm_gens.G, chunked_comm_gens.H],
-        commitment: comm_single_3.into_affine(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_chunks.clone(),
-        commitment: comm_chunks_3.clone(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_ct.clone(),
-        commitment: ct_3.commitment.clone(),
-    }));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        vec![chunked_comm_gens.G, chunked_comm_gens.H],
+        comm_single_3.into_affine(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_chunks.clone(),
+        comm_chunks_3.clone(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_ct.clone(),
+        ct_3.commitment.clone(),
+    ));
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -501,11 +498,7 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         )));
     }
 
-    let proof_spec = ProofSpec {
-        statements: statements.clone(),
-        meta_statements: meta_statements.clone(),
-        context: None,
-    };
+    let proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], None);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -745,42 +738,42 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
 
     let mut statements = Statements::new();
     // For 1st sig
-    statements.add(Statement::PoKBBSSignatureG1(PoKSignatureBBSG1Stmt {
-        params: sig_params_1.clone(),
-        public_key: keypair_1.public_key.clone(),
-        revealed_messages: BTreeMap::new(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: vec![chunked_comm_gens.G, chunked_comm_gens.H],
-        commitment: comm_single_1.into_affine(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_chunks.clone(),
-        commitment: comm_chunks_1.clone(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_ct.clone(),
-        commitment: ct_1.commitment.clone(),
-    }));
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params_1.clone(),
+        keypair_1.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        vec![chunked_comm_gens.G, chunked_comm_gens.H],
+        comm_single_1.into_affine(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_chunks.clone(),
+        comm_chunks_1.clone(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_ct.clone(),
+        ct_1.commitment.clone(),
+    ));
 
     // For 2nd sig
-    statements.add(Statement::PoKBBSSignatureG1(PoKSignatureBBSG1Stmt {
-        params: sig_params_2.clone(),
-        public_key: keypair_2.public_key.clone(),
-        revealed_messages: BTreeMap::new(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: vec![chunked_comm_gens.G, chunked_comm_gens.H],
-        commitment: comm_single_2.into_affine(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_chunks.clone(),
-        commitment: comm_chunks_2.clone(),
-    }));
-    statements.add(Statement::PedersenCommitment(PedersenCommitmentStmt {
-        bases: bases_comm_ct.clone(),
-        commitment: ct_2.commitment.clone(),
-    }));
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params_2.clone(),
+        keypair_2.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        vec![chunked_comm_gens.G, chunked_comm_gens.H],
+        comm_single_2.into_affine(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_chunks.clone(),
+        comm_chunks_2.clone(),
+    ));
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases_comm_ct.clone(),
+        ct_2.commitment.clone(),
+    ));
 
     let mut meta_statements = MetaStatements::new();
 
@@ -810,11 +803,7 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         )));
     }
 
-    let proof_spec = ProofSpec {
-        statements: statements.clone(),
-        meta_statements: meta_statements.clone(),
-        context: None,
-    };
+    let proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], None);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(

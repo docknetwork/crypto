@@ -11,7 +11,7 @@ pub use legogroth16::{PreparedVerifyingKey, ProvingKey, VerifyingKey};
 
 use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
-use crate::statement_v2::StatementV2;
+use crate::statement::Statement;
 use crate::sub_protocols::bound_check::BoundCheckProtocol;
 use dock_crypto_utils::serde_utils::*;
 
@@ -54,10 +54,10 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Prover<E> {
         min: E::Fr,
         max: E::Fr,
         snark_proving_key: ProvingKey<E>,
-    ) -> Result<StatementV2<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E, G>, ProofSystemError> {
         BoundCheckProtocol::validate_bounds(min, max, &snark_proving_key.vk)?;
 
-        Ok(StatementV2::BoundCheckLegoGroth16Prover(Self {
+        Ok(Statement::BoundCheckLegoGroth16Prover(Self {
             min,
             max,
             snark_proving_key: Some(snark_proving_key),
@@ -69,8 +69,8 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Prover<E> {
         min: E::Fr,
         max: E::Fr,
         snark_proving_key_ref: usize,
-    ) -> StatementV2<E, G> {
-        StatementV2::BoundCheckLegoGroth16Prover(Self {
+    ) -> Statement<E, G> {
+        Statement::BoundCheckLegoGroth16Prover(Self {
             min,
             max,
             snark_proving_key: None,
@@ -108,10 +108,10 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Verifier<E> {
         min: E::Fr,
         max: E::Fr,
         snark_verifying_key: VerifyingKey<E>,
-    ) -> Result<StatementV2<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E, G>, ProofSystemError> {
         BoundCheckProtocol::validate_bounds(min, max, &snark_verifying_key)?;
 
-        Ok(StatementV2::BoundCheckLegoGroth16Verifier(Self {
+        Ok(Statement::BoundCheckLegoGroth16Verifier(Self {
             min,
             max,
             snark_verifying_key: Some(snark_verifying_key),
@@ -123,8 +123,8 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Verifier<E> {
         min: E::Fr,
         max: E::Fr,
         snark_verifying_key_ref: usize,
-    ) -> StatementV2<E, G> {
-        StatementV2::BoundCheckLegoGroth16Verifier(Self {
+    ) -> Statement<E, G> {
+        Statement::BoundCheckLegoGroth16Verifier(Self {
             min,
             max,
             snark_verifying_key: None,

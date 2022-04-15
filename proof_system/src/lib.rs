@@ -55,11 +55,11 @@
 pub mod util;
 pub mod error;
 pub mod meta_statement;
-pub mod proof_spec_v2;
-pub mod proof_v2;
+pub mod proof;
+pub mod proof_spec;
 pub mod setup_params;
+pub mod statement;
 pub mod statement_proof;
-pub mod statement_v2;
 pub mod sub_protocols;
 pub mod witness;
 
@@ -70,8 +70,9 @@ pub mod test_utils;
 pub mod prelude {
     pub use crate::error::ProofSystemError;
     pub use crate::meta_statement::*;
-    pub use crate::proof_spec_v2::*;
-    pub use crate::proof_v2::*;
+    pub use crate::proof::*;
+    pub use crate::proof_spec::*;
+    pub use crate::statement::*;
     pub use crate::statement_proof::*;
     pub use crate::sub_protocols::*;
     pub use crate::witness::*;

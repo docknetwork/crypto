@@ -6,20 +6,10 @@ use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::{AllocVar, AllocationMode};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
 use ark_std::{
-    cmp::Ordering,
-    collections::BTreeMap,
-    format,
-    io::{Read, Write},
-    marker::PhantomPinned,
-    pin::Pin,
-    rand::RngCore,
-    rc::Rc,
-    vec,
-    vec::Vec,
-    UniformRand,
+    cmp::Ordering, collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand,
 };
 use legogroth16::{
     create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof, Proof,

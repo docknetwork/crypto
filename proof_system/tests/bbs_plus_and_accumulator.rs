@@ -11,15 +11,15 @@ use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipPr
 use proof_system::prelude::{
     EqualWitnesses, MetaStatement, MetaStatements, Witness, WitnessRef, Witnesses,
 };
-use proof_system::proof_spec_v2::ProofSpecV2;
+use proof_system::proof_spec::ProofSpec;
 use proof_system::setup_params::SetupParams;
-use proof_system::statement_v2::{
+use proof_system::statement::{
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
     ped_comm::PedersenCommitment as PedersenCommitmentStmt,
     vb_accumulator::AccumulatorMembership as AccumulatorMembershipStmt,
     vb_accumulator::AccumulatorNonMembership as AccumulatorNonMembershipStmt,
 };
-use proof_system::statement_v2::{StatementV2, StatementsV2};
+use proof_system::statement::{Statement, Statements};
 use proof_system::witness::{
     Membership as MembershipWit, NonMembership as NonMembershipWit,
     PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
@@ -106,7 +106,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
         .collect::<BTreeMap<_, _>>();
 
     // Since proving knowledge of 3 BBS+ signatures, add 3 statements, all of the same type though.
-    let mut statements = StatementsV2::new();
+    let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         params_1.clone(),
         keypair_1.public_key.clone(),
@@ -146,16 +146,16 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
     // Create a proof spec, this is shared between prover and verifier
     // Context must be known to both prover and verifier
     let context = Some(b"test".to_vec());
-    let proof_spec = ProofSpecV2::new(statements, meta_statements, vec![], context);
+    let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context);
     assert!(proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     // Prover now creates/loads it witnesses corresponding to the proof spec
     let mut witnesses = Witnesses::new();
@@ -226,7 +226,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         &pos_accum_params
     ));
 
-    let mut statements = StatementsV2::new();
+    let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -251,14 +251,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let context = Some(b"test".to_vec());
-    let proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], context.clone());
+    let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -292,7 +292,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let proof_spec_incorrect = ProofSpecV2::new(
+    let proof_spec_incorrect = ProofSpec::new(
         statements.clone(),
         meta_statements_incorrect,
         vec![],
@@ -326,7 +326,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         .into_iter()
         .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let proof_spec = ProofSpecV2::new(statements, meta_statements, vec![], context.clone());
+    let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
     let proof = ProofG1::new(
         &mut rng,
@@ -363,7 +363,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         &uni_accum_params
     ));
 
-    let mut statements = StatementsV2::new();
+    let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -393,14 +393,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], context.clone());
+    let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let proof = ProofG1::new(
         &mut rng,
@@ -432,7 +432,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         &uni_accum_params
     ));
 
-    let mut statements = StatementsV2::new();
+    let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -462,14 +462,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], context.clone());
+    let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let proof = ProofG1::new(
         &mut rng,
@@ -495,7 +495,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     all_setup_params.push(SetupParams::VbAccumulatorMemProvingKey(derived_mem_prk));
     all_setup_params.push(SetupParams::VbAccumulatorNonMemProvingKey(non_mem_prk));
 
-    let mut statements = StatementsV2::new();
+    let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -537,7 +537,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let mut witnesses = Witnesses::new();
@@ -560,7 +560,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof_spec = ProofSpecV2::new(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         meta_statements,
         all_setup_params,
@@ -568,7 +568,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     );
     assert!(proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let proof = ProofG1::new(
         &mut rng,
@@ -607,7 +607,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     )
     .into_affine();
 
-    let mut statements = StatementsV2::new();
+    let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -618,7 +618,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
         commitment.clone(),
     ));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -633,10 +633,10 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     )));
 
     let context = Some(b"test".to_vec());
-    let proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], context.clone());
+    let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -673,7 +673,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    let proof_spec_invalid = ProofSpecV2::new(
+    let proof_spec_invalid = ProofSpec::new(
         statements.clone(),
         meta_statements_wrong,
         vec![],
@@ -718,7 +718,7 @@ fn requesting_partially_blind_bbs_plus_sig() {
         .unwrap();
 
     // Requester proves knowledge of committed messages
-    let mut statements = StatementsV2::new();
+    let mut statements = Statements::new();
     let mut bases = vec![sig_params.h_0.clone()];
     let mut committed_msgs = vec![blinding.clone()];
     for i in committed_indices.iter() {
@@ -730,10 +730,10 @@ fn requesting_partially_blind_bbs_plus_sig() {
         commitment.clone(),
     ));
 
-    test_serialization!(StatementsV2<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
 
     let context = Some(b"test".to_vec());
-    let proof_spec = ProofSpecV2::new(
+    let proof_spec = ProofSpec::new(
         statements.clone(),
         MetaStatements::new(),
         vec![],
@@ -741,7 +741,7 @@ fn requesting_partially_blind_bbs_plus_sig() {
     );
     assert!(proof_spec.is_valid());
 
-    test_serialization!(ProofSpecV2<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(Witness::PedersenCommitment(committed_msgs));
@@ -805,7 +805,7 @@ fn proof_spec_modification() {
         .verify(&msgs_2, &keypair_2.public_key, &params_2)
         .unwrap();
 
-    let mut statements = StatementsV2::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+    let mut statements = Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         params_1.clone(),
         keypair_1.public_key.clone(),
@@ -823,7 +823,7 @@ fn proof_spec_modification() {
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(invalid_eq_wit));
 
-    let invalid_proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], None);
+    let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
     assert!(!invalid_proof_spec.is_valid());
 
     let mut witnesses = Witnesses::new();
@@ -857,7 +857,7 @@ fn proof_spec_modification() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let invalid_proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], None);
+    let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
     assert!(ProofG1::new(
         &mut rng,
         invalid_proof_spec.clone(),
@@ -872,7 +872,7 @@ fn proof_spec_modification() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     )));
-    let invalid_proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], None);
+    let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
     assert!(ProofG1::new(
         &mut rng,
         invalid_proof_spec.clone(),
@@ -892,11 +892,11 @@ fn proof_spec_modification() {
     meta_statements.add(MetaStatement::WitnessEquality(valid_eq_wit));
 
     // Verifier's created proof spec
-    let orig_proof_spec = ProofSpecV2::new(statements.clone(), meta_statements, vec![], None);
+    let orig_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
 
     // Prover's modified proof spec
     let modified_proof_spec =
-        ProofSpecV2::new(statements.clone(), MetaStatements::new(), vec![], None);
+        ProofSpec::new(statements.clone(), MetaStatements::new(), vec![], None);
 
     // Proof created using modified proof spec wont be a valid
     let invalid_proof = ProofG1::new(
@@ -920,17 +920,17 @@ fn proof_spec_modification() {
     valid_proof.verify(orig_proof_spec.clone(), None).unwrap();
 
     // Verifier creates proof spec with 2 statements, prover modifies it to remove a statement
-    let orig_proof_spec = ProofSpecV2::new(statements.clone(), MetaStatements::new(), vec![], None);
+    let orig_proof_spec = ProofSpec::new(statements.clone(), MetaStatements::new(), vec![], None);
 
     // Prover's modified proof spec
     let mut only_1_statement =
-        StatementsV2::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+        Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
     only_1_statement.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         params_1.clone(),
         keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    let modified_proof_spec = ProofSpecV2::new(
+    let modified_proof_spec = ProofSpec::new(
         only_1_statement.clone(),
         MetaStatements::new(),
         vec![],
@@ -1018,7 +1018,7 @@ fn verifier_local_linkability() {
     assert_ne!(reg_commit_1, reg_commit_2);
 
     // Prover proves to verifier 1
-    let mut statements_1 = StatementsV2::new();
+    let mut statements_1 = Statements::new();
     statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -1037,7 +1037,7 @@ fn verifier_local_linkability() {
     )));
 
     let context = Some(b"For verifier 1".to_vec());
-    let proof_spec_1 = ProofSpecV2::new(
+    let proof_spec_1 = ProofSpec::new(
         statements_1.clone(),
         meta_statements_1.clone(),
         vec![],
@@ -1060,7 +1060,7 @@ fn verifier_local_linkability() {
     proof_1.verify(proof_spec_1, None).unwrap();
 
     // Prover proves to verifier 2
-    let mut statements_2 = StatementsV2::new();
+    let mut statements_2 = Statements::new();
     statements_2.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -1079,7 +1079,7 @@ fn verifier_local_linkability() {
     )));
 
     let context = Some(b"For verifier 2".to_vec());
-    let proof_spec_2 = ProofSpecV2::new(
+    let proof_spec_2 = ProofSpec::new(
         statements_2.clone(),
         meta_statements_2.clone(),
         vec![],
@@ -1116,7 +1116,7 @@ fn verifier_local_linkability() {
         }
     }
 
-    let mut statements_3 = StatementsV2::new();
+    let mut statements_3 = Statements::new();
     statements_3.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
@@ -1135,7 +1135,7 @@ fn verifier_local_linkability() {
     )));
 
     let context = Some(b"For verifier 1, revealing messages this time".to_vec());
-    let proof_spec_3 = ProofSpecV2::new(
+    let proof_spec_3 = ProofSpec::new(
         statements_3.clone(),
         meta_statements_3.clone(),
         vec![],
