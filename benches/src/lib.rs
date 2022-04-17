@@ -22,5 +22,3 @@ macro_rules! setup_bbs_plus {
             .collect::<Vec<_>>();
     };
 }
-
-pub mod accumulators;

@@ -4,6 +4,7 @@ use legogroth16::error::Error as LegoGroth16Error;
 #[derive(Clone, Debug)]
 pub enum SaverError {
     UnexpectedBase(u8),
+    InvalidDecomposition,
     LegoGroth16Error(LegoGroth16Error),
     SynthesisError(SynthesisError),
     AtLeastOneNonNoneRequired,

@@ -51,10 +51,13 @@
 //! [`Proof`]: crate::proof::Proof
 //! [`SubProtocol`]: crate::sub_protocols::SubProtocol
 
+extern crate core;
+
 #[macro_use]
 pub mod util;
 #[macro_use]
 pub mod setup_params;
+mod derived_params;
 pub mod error;
 pub mod meta_statement;
 pub mod proof;
@@ -64,15 +67,12 @@ pub mod statement_proof;
 pub mod sub_protocols;
 pub mod witness;
 
-#[cfg(test)]
-#[macro_use]
-pub mod test_utils;
-
 pub mod prelude {
     pub use crate::error::ProofSystemError;
     pub use crate::meta_statement::*;
     pub use crate::proof::*;
     pub use crate::proof_spec::*;
+    pub use crate::setup_params::*;
     pub use crate::statement::*;
     pub use crate::statement_proof::*;
     pub use crate::sub_protocols::*;

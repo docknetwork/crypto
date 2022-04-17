@@ -15,8 +15,8 @@ use bbs_plus::setup::{KeypairG2, SignatureParamsG1};
 use bbs_plus::signature::SignatureG1;
 use blake2::Blake2b;
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statement, Statements,
-    Witness, WitnessRef, Witnesses,
+    EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statements, Witness,
+    WitnessRef, Witnesses,
 };
 use proof_system::statement::{
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
@@ -80,8 +80,8 @@ fn bbs_plus_verifiably_encrypt_message() {
         let chunks_count = ek.supported_chunks_count().unwrap();
 
         // Precomputation
-        let prepared_ek = ek.prepare();
-        let prepared_dk = dk.prepare();
+        let prepared_ek = ek.prepared();
+        let prepared_dk = dk.prepared();
         let prepared_gens = enc_gens.prepared();
         let pairing_powers = prepared_dk
             .pairing_powers_given_groth16_vk(chunk_bit_size, &snark_srs.pk.vk)
@@ -305,8 +305,8 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
     let chunks_count = ek.supported_chunks_count().unwrap();
 
     // Precomputation
-    let prepared_ek = ek.prepare();
-    let prepared_dk = dk.prepare();
+    let prepared_ek = ek.prepared();
+    let prepared_dk = dk.prepared();
     let prepared_gens = enc_gens.prepared();
     let pairing_powers = prepared_dk
         .pairing_powers_given_groth16_vk(chunk_bit_size, &snark_srs.pk.vk)

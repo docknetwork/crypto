@@ -32,11 +32,6 @@ pub trait ProofSubProtocol<E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>
         &mut self,
         challenge: &E::Fr,
     ) -> Result<StatementProof<E, G>, ProofSystemError>;
-    fn verify_proof_contribution(
-        &self,
-        challenge: &E::Fr,
-        proof: &StatementProof<E, G>,
-    ) -> Result<(), ProofSystemError>;
 }
 
 impl<'a, E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> SubProtocol<'a, E, G> {
@@ -62,23 +57,6 @@ impl<'a, E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> SubProtocol<'a, 
             SubProtocol::PoKDiscreteLogs(s) => s.gen_proof_contribution(challenge),
             SubProtocol::Saver(s) => s.gen_proof_contribution(challenge),
             SubProtocol::BoundCheckProtocol(s) => s.gen_proof_contribution(challenge),
-        }
-    }
-
-    pub fn verify_proof_contribution(
-        &self,
-        challenge: &E::Fr,
-        proof: &StatementProof<E, G>,
-    ) -> Result<(), ProofSystemError> {
-        match self {
-            SubProtocol::PoKBBSSignatureG1(s) => s.verify_proof_contribution(challenge, proof),
-            SubProtocol::AccumulatorMembership(s) => s.verify_proof_contribution(challenge, proof),
-            SubProtocol::AccumulatorNonMembership(s) => {
-                s.verify_proof_contribution(challenge, proof)
-            }
-            SubProtocol::PoKDiscreteLogs(s) => s.verify_proof_contribution(challenge, proof),
-            SubProtocol::Saver(s) => s.verify_proof_contribution(challenge, proof),
-            SubProtocol::BoundCheckProtocol(s) => s.verify_proof_contribution(challenge, proof),
         }
     }
 }

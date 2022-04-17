@@ -13,21 +13,19 @@ use proof_system::prelude::{
 };
 use proof_system::proof_spec::ProofSpec;
 use proof_system::setup_params::SetupParams;
+use proof_system::statement::Statements;
 use proof_system::statement::{
     accumulator::AccumulatorMembership as AccumulatorMembershipStmt,
     accumulator::AccumulatorNonMembership as AccumulatorNonMembershipStmt,
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
     ped_comm::PedersenCommitment as PedersenCommitmentStmt,
 };
-use proof_system::statement::{Statement, Statements};
 use proof_system::witness::{
     Membership as MembershipWit, NonMembership as NonMembershipWit,
     PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
-
-#[macro_use]
-mod utils;
-use utils::*;
+use test_utils::{accumulators::*, bbs_plus::*};
+use test_utils::{test_serialization, Fr, ProofG1};
 
 #[test]
 fn pok_of_3_bbs_plus_sig_and_message_equality() {
@@ -1156,4 +1154,101 @@ fn verifier_local_linkability() {
     let proof_3 = ProofG1::new(&mut rng, proof_spec_3.clone(), witnesses_3.clone(), None).unwrap();
 
     proof_3.verify(proof_spec_3, None).unwrap();
+}
+
+#[test]
+fn pok_of_bbs_plus_sig_with_reusing_setup_params() {
+    let mut rng = StdRng::seed_from_u64(0u64);
+
+    let msg_count = 5;
+    let (msgs_1, params_1, keypair_1, sig_1) = sig_setup(&mut rng, msg_count);
+    let (msgs_2, params_2, keypair_2, sig_2) = sig_setup(&mut rng, msg_count);
+
+    let msgs_3: Vec<Fr> = (0..msg_count)
+        .into_iter()
+        .map(|_| Fr::rand(&mut rng))
+        .collect();
+    let sig_3 =
+        SignatureG1::<Bls12_381>::new(&mut rng, &msgs_3, &keypair_1.secret_key, &params_1).unwrap();
+    let msgs_4: Vec<Fr> = (0..msg_count)
+        .into_iter()
+        .map(|_| Fr::rand(&mut rng))
+        .collect();
+    let sig_4 =
+        SignatureG1::<Bls12_381>::new(&mut rng, &msgs_4, &keypair_2.secret_key, &params_2).unwrap();
+
+    let mut all_setup_params = vec![];
+    all_setup_params.push(SetupParams::BBSPlusSignatureParams(params_1.clone()));
+    all_setup_params.push(SetupParams::BBSPlusPublicKey(keypair_1.public_key.clone()));
+    all_setup_params.push(SetupParams::BBSPlusSignatureParams(params_2.clone()));
+    all_setup_params.push(SetupParams::BBSPlusPublicKey(keypair_2.public_key.clone()));
+
+    test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, all_setup_params);
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params_ref(
+        0,
+        1,
+        BTreeMap::new(),
+    ));
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params_ref(
+        0,
+        1,
+        BTreeMap::new(),
+    ));
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params_ref(
+        2,
+        3,
+        BTreeMap::new(),
+    ));
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params_ref(
+        2,
+        3,
+        BTreeMap::new(),
+    ));
+
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+
+    let proof_spec = ProofSpec::new(statements, MetaStatements::new(), all_setup_params, None);
+    assert!(proof_spec.is_valid());
+
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig_1.clone(),
+        msgs_1
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (i, *m))
+            .collect::<BTreeMap<_, _>>(),
+    ));
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig_3.clone(),
+        msgs_3
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (i, *m))
+            .collect::<BTreeMap<_, _>>(),
+    ));
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig_2.clone(),
+        msgs_2
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (i, *m))
+            .collect::<BTreeMap<_, _>>(),
+    ));
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig_4.clone(),
+        msgs_4
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (i, *m))
+            .collect::<BTreeMap<_, _>>(),
+    ));
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+    let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses, None).unwrap();
+    proof.verify(proof_spec.clone(), None).unwrap();
 }

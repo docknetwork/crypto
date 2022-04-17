@@ -14,22 +14,29 @@ pub mod saver;
 
 pub use serialization::*;
 
+/// Type of proof and the public values for the proof
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub enum Statement<E: PairingEngine, G: AffineCurve> {
-    /// Proof of knowledge of BBS+ signature
+    /// For proof of knowledge of BBS+ signature
     PoKBBSSignatureG1(bbs_plus::PoKBBSSignatureG1<E>),
+    /// For proof of knowledge of committed elements in a Pedersen commitment
     PedersenCommitment(ped_comm::PedersenCommitment<G>),
+    /// For proof of knowledge of an accumulator member and its corresponding witness
     AccumulatorMembership(accumulator::AccumulatorMembership<E>),
+    /// For proof of knowledge of an accumulator non-member and its corresponding witness
     AccumulatorNonMembership(accumulator::AccumulatorNonMembership<E>),
-    /// Proving verifiable encryption using SAVER
+    /// Used by prover to create proof of verifiable encryption using SAVER
     SaverProver(saver::SaverProver<E>),
+    /// Used by verifier to verify proof of verifiable encryption using SAVER
     SaverVerifier(saver::SaverVerifier<E>),
-    /// Proving witness satisfies publicly known bounds inclusively (<=, >=).
+    /// Used by prover to create proof that witness satisfies publicly known bounds inclusively (<=, >=)
     BoundCheckLegoGroth16Prover(bound_check_legogroth16::BoundCheckLegoGroth16Prover<E>),
+    /// Used by verifier to verify proof that witness satisfies publicly known bounds inclusively (<=, >=)
     BoundCheckLegoGroth16Verifier(bound_check_legogroth16::BoundCheckLegoGroth16Verifier<E>),
 }
 
+/// A collection of statements
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
@@ -312,8 +319,6 @@ mod serialization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_serialization;
-    use crate::test_utils::{setup_positive_accum, setup_universal_accum, sig_setup};
     use ark_bls12_381::Bls12_381;
     use ark_bls12_381::{fr::Fr, g1::G1Projective as G1Proj};
     use ark_ec::msm::VariableBaseMSM;
@@ -323,6 +328,11 @@ mod tests {
         collections::BTreeMap,
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
+    };
+    use test_utils::test_serialization;
+    use test_utils::{
+        accumulators::{setup_positive_accum, setup_universal_accum},
+        bbs_plus::sig_setup,
     };
     use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 

@@ -164,8 +164,8 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use proof_system::prelude::{
-        EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statement, Statements,
-        Witness, WitnessRef, Witnesses,
+        EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statements, Witness,
+        WitnessRef, Witnesses,
     };
     use proof_system::statement::ped_comm::PedersenCommitment as PedersenCommitmentStmt;
 

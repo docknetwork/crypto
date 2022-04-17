@@ -2,6 +2,9 @@
 name = "compressed_sigma"
 version = "0.0.1"
 edition = "2021"
+authors = ["Dock.io"]
+license = "Apache-2.0"
+repository = "https://github.com/docknetwork/crypto"
 
 [dependencies]
 ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }

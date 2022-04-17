@@ -1,11 +1,22 @@
+use crate::derived_params::{DerivedParamsTracker, StatementDerivedParams};
+use crate::error::ProofSystemError;
 use crate::meta_statement::{MetaStatement, MetaStatements};
 use crate::setup_params::SetupParams;
 use crate::statement::{Statement, Statements};
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
+    collections::BTreeMap,
     io::{Read, Write},
     vec::Vec,
+};
+use legogroth16::{
+    PreparedVerifyingKey as LegoPreparedVerifyingKey, VerifyingKey as LegoVerifyingKey,
+};
+use saver::prelude::{
+    ChunkedCommitmentGens, EncryptionGens, EncryptionKey, PreparedEncryptionGens,
+    PreparedEncryptionKey, PreparedVerifyingKey as SaverPreparedVerifyingKey,
+    VerifyingKey as SaverVerifyingKey,
 };
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +78,137 @@ where
             }
         }
         true
+    }
+
+    /// Derive commitment keys for Schnorr protocol from public params. This is done to avoid
+    /// creating them if the same public params are used in multiple statements.
+    pub fn derive_commitment_keys(
+        &self,
+    ) -> Result<
+        (
+            StatementDerivedParams<Vec<E::G1Affine>>,
+            StatementDerivedParams<Vec<E::G1Affine>>,
+            StatementDerivedParams<(Vec<E::G1Affine>, Vec<E::G1Affine>)>,
+        ),
+        ProofSystemError,
+    > {
+        let mut derived_bound_check_comm =
+            DerivedParamsTracker::<LegoVerifyingKey<E>, Vec<E::G1Affine>, E>::new();
+        let mut derived_ek_comm =
+            DerivedParamsTracker::<EncryptionKey<E>, Vec<E::G1Affine>, E>::new();
+        let mut derived_chunked_comm = DerivedParamsTracker::<
+            (&ChunkedCommitmentGens<E::G1Affine>, u8),
+            (Vec<E::G1Affine>, Vec<E::G1Affine>),
+            E,
+        >::new();
+
+        // To avoid creating variable with short lifetime
+        let mut tuple_map = BTreeMap::new();
+        for (s_idx, statement) in self.statements.0.iter().enumerate() {
+            match statement {
+                Statement::SaverProver(_) | Statement::SaverVerifier(_) => {
+                    let (comm_gens, chunk_bit_size) = match statement {
+                        Statement::SaverProver(s) => (
+                            s.get_chunked_commitment_gens(&self.setup_params, s_idx)?,
+                            s.chunk_bit_size,
+                        ),
+                        Statement::SaverVerifier(s) => (
+                            s.get_chunked_commitment_gens(&self.setup_params, s_idx)?,
+                            s.chunk_bit_size,
+                        ),
+                        _ => panic!("This should never happen"),
+                    };
+                    tuple_map.insert(s_idx, (comm_gens, chunk_bit_size));
+                }
+                _ => (),
+            }
+        }
+        for (s_idx, statement) in self.statements.0.iter().enumerate() {
+            match statement {
+                Statement::SaverProver(_) | Statement::SaverVerifier(_) => {
+                    let enc_key = match statement {
+                        Statement::SaverProver(s) => {
+                            s.get_encryption_key(&self.setup_params, s_idx)?
+                        }
+                        Statement::SaverVerifier(s) => {
+                            s.get_encryption_key(&self.setup_params, s_idx)?
+                        }
+                        _ => panic!("This should never happen"),
+                    };
+
+                    derived_ek_comm.update_for_orig(enc_key, s_idx);
+                    derived_chunked_comm.update_for_orig(tuple_map.get(&s_idx).unwrap(), s_idx);
+                }
+                Statement::BoundCheckLegoGroth16Prover(_)
+                | Statement::BoundCheckLegoGroth16Verifier(_) => {
+                    let verifying_key = match statement {
+                        Statement::BoundCheckLegoGroth16Prover(s) => {
+                            &s.get_proving_key(&self.setup_params, s_idx)?.vk
+                        }
+                        Statement::BoundCheckLegoGroth16Verifier(s) => {
+                            s.get_verifying_key(&self.setup_params, s_idx)?
+                        }
+                        _ => panic!("This should never happen"),
+                    };
+                    derived_bound_check_comm.update_for_orig(verifying_key, s_idx);
+                }
+                _ => (),
+            }
+        }
+        Ok((
+            derived_bound_check_comm.finish(),
+            derived_ek_comm.finish(),
+            derived_chunked_comm.finish(),
+        ))
+    }
+
+    /// Derive prepared keys for performing pairings. This is done to avoid preparing the same
+    /// parameters again.
+    pub fn derive_prepared_parameters(
+        &self,
+    ) -> Result<
+        (
+            StatementDerivedParams<LegoPreparedVerifyingKey<E>>,
+            StatementDerivedParams<PreparedEncryptionGens<E>>,
+            StatementDerivedParams<PreparedEncryptionKey<E>>,
+            StatementDerivedParams<SaverPreparedVerifyingKey<E>>,
+        ),
+        ProofSystemError,
+    > {
+        let mut derived_lego_vk =
+            DerivedParamsTracker::<LegoVerifyingKey<E>, LegoPreparedVerifyingKey<E>, E>::new();
+        let mut derived_gens =
+            DerivedParamsTracker::<EncryptionGens<E>, PreparedEncryptionGens<E>, E>::new();
+        let mut derived_ek =
+            DerivedParamsTracker::<EncryptionKey<E>, PreparedEncryptionKey<E>, E>::new();
+        let mut derived_saver_vk =
+            DerivedParamsTracker::<SaverVerifyingKey<E>, SaverPreparedVerifyingKey<E>, E>::new();
+
+        for (s_idx, statement) in self.statements.0.iter().enumerate() {
+            match statement {
+                Statement::SaverVerifier(s) => {
+                    let gens = s.get_encryption_gens(&self.setup_params, s_idx)?;
+                    derived_gens.update_for_orig(gens, s_idx);
+
+                    let enc_key = s.get_encryption_key(&self.setup_params, s_idx)?;
+                    derived_ek.update_for_orig(enc_key, s_idx);
+
+                    let verifying_key = s.get_snark_verifying_key(&self.setup_params, s_idx)?;
+                    derived_saver_vk.update_for_orig(verifying_key, s_idx);
+                }
+                Statement::BoundCheckLegoGroth16Verifier(s) => {
+                    let verifying_key = s.get_verifying_key(&self.setup_params, s_idx)?;
+                    derived_lego_vk.update_for_orig(verifying_key, s_idx);
+                }
+                _ => (),
+            }
+        }
+        Ok((
+            derived_lego_vk.finish(),
+            derived_gens.finish(),
+            derived_ek.finish(),
+            derived_saver_vk.finish(),
+        ))
     }
 }
 

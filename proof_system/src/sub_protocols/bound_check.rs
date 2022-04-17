@@ -3,8 +3,10 @@ use crate::statement_proof::{BoundCheckLegoGroth16Proof, StatementProof};
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_ff::{Field, PrimeField};
-use ark_r1cs_std::fields::fp::FpVar;
-use ark_r1cs_std::prelude::{AllocVar, AllocationMode};
+use ark_r1cs_std::{
+    fields::fp::FpVar,
+    prelude::{AllocVar, AllocationMode},
+};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
@@ -12,8 +14,8 @@ use ark_std::{
     cmp::Ordering, collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand,
 };
 use legogroth16::{
-    create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof, Proof,
-    ProvingKey, VerifyingKey,
+    create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof,
+    PreparedVerifyingKey, Proof, ProvingKey, VerifyingKey,
 };
 
 /// Runs the LegoGroth16 protocol for proving bounds of a witness and a Schnorr protocol for proving
@@ -21,8 +23,8 @@ use legogroth16::{
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoundCheckProtocol<'a, E: PairingEngine> {
     pub id: usize,
-    pub min: E::Fr,
-    pub max: E::Fr,
+    pub min: u64,
+    pub max: u64,
     pub proving_key: Option<&'a ProvingKey<E>>,
     pub verifying_key: Option<&'a VerifyingKey<E>>,
     pub snark_proof: Option<Proof<E>>,
@@ -30,12 +32,7 @@ pub struct BoundCheckProtocol<'a, E: PairingEngine> {
 }
 
 impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
-    pub fn new_for_prover(
-        id: usize,
-        min: E::Fr,
-        max: E::Fr,
-        proving_key: &'a ProvingKey<E>,
-    ) -> Self {
+    pub fn new_for_prover(id: usize, min: u64, max: u64, proving_key: &'a ProvingKey<E>) -> Self {
         Self {
             id,
             min,
@@ -49,8 +46,8 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
 
     pub fn new_for_verifier(
         id: usize,
-        min: E::Fr,
-        max: E::Fr,
+        min: u64,
+        max: u64,
         verifying_key: &'a VerifyingKey<E>,
     ) -> Self {
         Self {
@@ -80,8 +77,8 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
             .proving_key
             .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
         let circuit = BoundCheckCircuit {
-            min: Some(self.min),
-            max: Some(self.max),
+            min: Some(E::Fr::from(self.min)),
+            max: Some(E::Fr::from(self.max)),
             value: Some(message),
         };
         // blinding for the commitment in the snark proof
@@ -142,77 +139,63 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
     }
 
     /// Verify that the snark proof and the Schnorr proof are valid.
-    pub fn verify_proof_contribution<G: AffineCurve>(
+    pub fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E, G>,
+        proof: &BoundCheckLegoGroth16Proof<E>,
+        comm_key: &[E::G1Affine],
     ) -> Result<(), ProofSystemError> {
-        match proof {
-            StatementProof::BoundCheckLegoGroth16(proof) => {
-                let verifying_key = self
-                    .verifying_key
-                    .ok_or(ProofSystemError::LegoGroth16VerifyingKeyNotProvided)?;
-                let pvk = prepare_verifying_key(verifying_key);
-                verify_proof(&pvk, &proof.snark_proof, &[self.min, self.max])?;
+        let verifying_key = self
+            .verifying_key
+            .ok_or(ProofSystemError::LegoGroth16VerifyingKeyNotProvided)?;
+        let pvk = prepare_verifying_key(verifying_key);
+        self.verify_proof_contribution_using_prepared(challenge, proof, comm_key, &pvk)
+    }
 
-                let comm_key = vec![
-                    verifying_key.gamma_abc_g1[1 + 2],
-                    verifying_key.eta_gamma_inv_g1,
-                ];
+    pub fn verify_proof_contribution_using_prepared(
+        &self,
+        challenge: &E::Fr,
+        proof: &BoundCheckLegoGroth16Proof<E>,
+        comm_key: &[E::G1Affine],
+        pvk: &PreparedVerifyingKey<E>,
+    ) -> Result<(), ProofSystemError> {
+        verify_proof(
+            pvk,
+            &proof.snark_proof,
+            &[E::Fr::from(self.min), E::Fr::from(self.max)],
+        )?;
 
-                // NOTE: value of id is dummy
-                let sp = SchnorrProtocol::new(10000, &comm_key, proof.snark_proof.d);
+        // NOTE: value of id is dummy
+        let sp = SchnorrProtocol::new(10000, comm_key, proof.snark_proof.d);
 
-                sp.verify_proof_contribution_as_struct(challenge, &proof.sp)?;
-                Ok(())
-            }
-
-            _ => Err(ProofSystemError::ProofIncompatibleWithBoundCheckProtocol),
-        }
+        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)?;
+        Ok(())
     }
 
     pub fn compute_challenge_contribution<W: Write>(
-        verifying_key: &VerifyingKey<E>,
+        comm_key: &[E::G1Affine],
         proof: &BoundCheckLegoGroth16Proof<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
-        vec![
-            verifying_key.gamma_abc_g1[1 + 2],
-            verifying_key.eta_gamma_inv_g1,
-        ]
-        .serialize_unchecked(&mut writer)?;
+        comm_key.serialize_unchecked(&mut writer)?;
         proof.snark_proof.d.serialize_unchecked(&mut writer)?;
         proof.sp.t.serialize_unchecked(&mut writer)?;
         Ok(())
     }
 
-    pub fn validate_bounds(
-        min: E::Fr,
-        max: E::Fr,
-        vk: &VerifyingKey<E>,
-    ) -> Result<(), ProofSystemError> {
+    pub fn validate_bounds(min: u64, max: u64) -> Result<(), ProofSystemError> {
+        if max <= min {
+            return Err(ProofSystemError::BoundCheckMaxNotGreaterThanMin);
+        }
+        Ok(())
+    }
+
+    pub fn validate_verification_key(vk: &VerifyingKey<E>) -> Result<(), ProofSystemError> {
         if vk.gamma_abc_g1.len() < 4 {
             return Err(ProofSystemError::LegoGroth16Error(
                 legogroth16::error::Error::SynthesisError(SynthesisError::MalformedVerifyingKey),
             ));
         }
-
-        // For comparisons to be valid, both max must be <= (p-1)/2. This is enforced in the
-        // circuit as well.
-        let max_allowed = E::Fr::modulus_minus_one_div_two();
-        let max_big = max.into_repr();
-        match max_big.cmp(&max_allowed) {
-            Ordering::Greater => return Err(ProofSystemError::BoundCheckMaxGreaterThanAllowed),
-            _ => (),
-        }
-
-        // min must be < max
-        let min_big = min.into_repr();
-        match min_big.cmp(&max_big) {
-            Ordering::Less => (),
-            _ => return Err(ProofSystemError::BoundCheckMaxNotGreaterThanMin),
-        }
-
         Ok(())
     }
 
@@ -251,13 +234,14 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
             || self.min.ok_or(SynthesisError::AssignmentMissing),
             AllocationMode::Input,
         )?;
+
         let max = FpVar::new_variable(
             cs.clone(),
             || self.max.ok_or(SynthesisError::AssignmentMissing),
             AllocationMode::Input,
         )?;
 
-        // val strictly than or equal to max, i.e. val <= max
+        // val strictly less than or equal to max, i.e. val <= max
         val.enforce_cmp(&max, Ordering::Less, true)?;
         // val strictly greater than or equal to max, i.e. val >= min
         val.enforce_cmp(&min, Ordering::Greater, true)?;

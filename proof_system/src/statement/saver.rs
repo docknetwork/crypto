@@ -77,8 +77,8 @@ impl<E: PairingEngine> SaverProver<E> {
         chunked_commitment_gens: usize,
         encryption_key: usize,
         snark_proving_key: usize,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
-        Ok(Statement::SaverProver(Self {
+    ) -> Statement<E, G> {
+        Statement::SaverProver(Self {
             chunk_bit_size,
             encryption_gens: None,
             chunked_commitment_gens: None,
@@ -88,7 +88,7 @@ impl<E: PairingEngine> SaverProver<E> {
             chunked_commitment_gens_ref: Some(chunked_commitment_gens),
             encryption_key_ref: Some(encryption_key),
             snark_proving_key_ref: Some(snark_proving_key),
-        }))
+        })
     }
 
     pub fn get_encryption_gens<'a, G: AffineCurve>(
@@ -180,8 +180,8 @@ impl<E: PairingEngine> SaverVerifier<E> {
         chunked_commitment_gens: usize,
         encryption_key: usize,
         snark_verifying_key: usize,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
-        Ok(Statement::SaverVerifier(Self {
+    ) -> Statement<E, G> {
+        Statement::SaverVerifier(Self {
             chunk_bit_size,
             encryption_gens: None,
             chunked_commitment_gens: None,
@@ -191,7 +191,7 @@ impl<E: PairingEngine> SaverVerifier<E> {
             chunked_commitment_gens_ref: Some(chunked_commitment_gens),
             encryption_key_ref: Some(encryption_key),
             snark_verifying_key_ref: Some(snark_verifying_key),
-        }))
+        })
     }
 
     pub fn get_encryption_gens<'a, G: AffineCurve>(

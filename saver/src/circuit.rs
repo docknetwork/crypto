@@ -65,13 +65,16 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
         }
 
         // For each variable, ensure that only last `self.required_bit_size` _may_ be set, rest *must* be unset
-        let modulus_bits = ConstraintF::size_in_bits();
-        let zero_bits = modulus_bits - self.required_bit_size as usize;
         for v in vars {
-            let bits = v.to_bits_be()?;
-            for b in bits[..zero_bits].iter() {
-                b.enforce_equal(&Boolean::constant(false))?;
+            // Little endian to keep the least significant bits in the beginning. `to_non_unique_bits_le` is fine
+            // as except only a small number of least significant bits are to be ensured a 0
+            let bits = v.to_non_unique_bits_le()?;
+            // If all bits beyond `self.required_bit_size` are 0, then their OR must be 0 as well.
+            let mut or_result = Boolean::constant(false);
+            for b in bits[self.required_bit_size as usize..].iter() {
+                or_result = or_result.or(b)?;
             }
+            or_result.enforce_equal(&Boolean::constant(false))?;
         }
 
         Ok(())

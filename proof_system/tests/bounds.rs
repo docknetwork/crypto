@@ -1,9 +1,8 @@
-use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
-use ark_ec::{PairingEngine, ProjectiveCurve};
-use ark_ff::{One, PrimeField};
+use ark_bls12_381::{Bls12_381, G1Affine};
+use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
-use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
+use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
 use std::time::Instant;
 
 use proof_system::prelude::bound_check::generate_snark_srs_bound_check;
@@ -18,19 +17,20 @@ use proof_system::statement::{
 };
 use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 
-#[macro_use]
-mod utils;
-use utils::*;
+use test_utils::bbs_plus::*;
+use test_utils::{test_serialization, Fr, ProofG1};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_bounded_message() {
     // Prove knowledge of BBS+ signature and a specific message satisfies some bounds i.e. min <= message <= max.
     let mut rng = StdRng::seed_from_u64(0u64);
 
+    let min = 100;
+    let max = 200;
     let msg_count = 5;
     let msgs = (0..msg_count)
         .into_iter()
-        .map(|i| Fr::from(101u64 + i as u64))
+        .map(|i| Fr::from(min + 1 + i as u64))
         .collect::<Vec<_>>();
     let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
 
@@ -41,9 +41,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     // Following message's bounds will be checked
     let msg_idx = 1;
     let msg = msgs[msg_idx].clone();
-
-    let min = msg - Fr::from(35u64);
-    let max = msg + Fr::from(100u64);
 
     let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -162,7 +159,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         sig.clone(),
         msgs.clone().into_iter().enumerate().map(|t| t).collect(),
     ));
-    witnesses_wrong.add(Witness::BoundCheckLegoGroth16(min + Fr::one()));
+    witnesses_wrong.add(Witness::BoundCheckLegoGroth16(Fr::from(min)));
 
     let proof_spec_prover =
         ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
@@ -180,10 +177,12 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     // Here message set as min and them max
     let mut rng = StdRng::seed_from_u64(0u64);
 
+    let min = 100;
+    let max = 200;
     let msg_count = 5;
     let msgs = (0..msg_count)
         .into_iter()
-        .map(|i| Fr::from(101u64 + i as u64))
+        .map(|i| Fr::from(min + 1 + i as u64))
         .collect::<Vec<_>>();
     let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
 
@@ -194,8 +193,6 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     // Following message's bounds will be checked
     let msg_idx = 1;
     let msg = msgs[msg_idx].clone();
-    let min = msg - Fr::from(35u64);
-    let max = msg + Fr::from(100u64);
 
     // Message same as minimum
     let mut prover_statements = Statements::new();
@@ -204,8 +201,14 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    prover_statements
-        .add(BoundCheckProverStmt::new_statement_from_params(msg, max, snark_pk.clone()).unwrap());
+    prover_statements.add(
+        BoundCheckProverStmt::new_statement_from_params(
+            msg.into_repr().as_ref()[0],
+            max,
+            snark_pk.clone(),
+        )
+        .unwrap(),
+    );
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -237,7 +240,12 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         BTreeMap::new(),
     ));
     verifier_statements.add(
-        BoundCheckVerifierStmt::new_statement_from_params(msg, max, snark_pk.vk.clone()).unwrap(),
+        BoundCheckVerifierStmt::new_statement_from_params(
+            msg.into_repr().as_ref()[0],
+            max,
+            snark_pk.vk.clone(),
+        )
+        .unwrap(),
     );
     let proof_spec_verifier = ProofSpec::new(
         verifier_statements.clone(),
@@ -255,8 +263,14 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    prover_statements
-        .add(BoundCheckProverStmt::new_statement_from_params(min, msg, snark_pk.clone()).unwrap());
+    prover_statements.add(
+        BoundCheckProverStmt::new_statement_from_params(
+            min,
+            msg.into_repr().as_ref()[0],
+            snark_pk.clone(),
+        )
+        .unwrap(),
+    );
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
@@ -288,7 +302,12 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         BTreeMap::new(),
     ));
     verifier_statements.add(
-        BoundCheckVerifierStmt::new_statement_from_params(min, msg, snark_pk.vk.clone()).unwrap(),
+        BoundCheckVerifierStmt::new_statement_from_params(
+            min,
+            msg.into_repr().as_ref()[0],
+            snark_pk.vk.clone(),
+        )
+        .unwrap(),
     );
     let proof_spec_verifier = ProofSpec::new(
         verifier_statements.clone(),
@@ -303,143 +322,186 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
 #[test]
 fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
     // Prove knowledge of BBS+ signature and certain messages satisfy some bounds.
-    let mut rng = StdRng::seed_from_u64(0u64);
+    fn check(reuse_key: bool) {
+        let mut rng = StdRng::seed_from_u64(0u64);
 
-    let msg_count = 5;
-    let msgs = (0..msg_count)
-        .into_iter()
-        .map(|i| Fr::from(101u64 + i as u64))
-        .collect::<Vec<_>>();
-    let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
-
-    // Verifier sets up LegoGroth16 public parameters. Ideally this should be done only once per
-    // verifier and can be published by the verifier for any proofs submitted to him
-    let snark_pk = generate_snark_srs_bound_check::<Bls12_381, _>(&mut rng).unwrap();
-
-    // Following messages's bounds will be checked
-    let msg_idx_1 = 1;
-    let msg_idx_2 = 2;
-    let msg_idx_3 = 4;
-    let msg_1 = msgs[msg_idx_1].clone();
-    let msg_2 = msgs[msg_idx_2].clone();
-    let msg_3 = msgs[msg_idx_3].clone();
-
-    let min_1 = msg_1 - Fr::from(50u64);
-    let max_1 = msg_1 + Fr::from(100u64);
-
-    let min_2 = msg_2 - Fr::from(60u64);
-    let max_2 = msg_2 + Fr::from(200u64);
-
-    let min_3 = msg_3 - Fr::from(70u64);
-    let max_3 = msg_3 + Fr::from(180u64);
-
-    let mut prover_setup_params = vec![];
-    prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk.clone()));
-
-    test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, prover_setup_params);
-
-    let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
-        sig_keypair.public_key.clone(),
-        BTreeMap::new(),
-    ));
-    prover_statements.add(BoundCheckProverStmt::new_statement_from_params_ref(
-        min_1, max_1, 0,
-    ));
-    prover_statements.add(BoundCheckProverStmt::new_statement_from_params_ref(
-        min_2, max_2, 0,
-    ));
-    prover_statements.add(BoundCheckProverStmt::new_statement_from_params_ref(
-        min_3, max_3, 0,
-    ));
-
-    test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
-
-    let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-        vec![(0, msg_idx_1), (1, 0)]
+        let min_1 = 50;
+        let max_1 = 200;
+        let min_2 = 40;
+        let max_2 = 300;
+        let min_3 = 30;
+        let max_3 = 380;
+        let msg_count = 5;
+        let msgs = (0..msg_count)
             .into_iter()
-            .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-        vec![(0, msg_idx_2), (2, 0)]
-            .into_iter()
-            .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-        vec![(0, msg_idx_3), (3, 0)]
-            .into_iter()
-            .collect::<BTreeSet<WitnessRef>>(),
-    )));
+            .map(|i| Fr::from(101u64 + i as u64))
+            .collect::<Vec<_>>();
+        let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
 
-    let prover_proof_spec = ProofSpec::new(
-        prover_statements.clone(),
-        meta_statements.clone(),
-        prover_setup_params,
-        None,
-    );
-    assert!(prover_proof_spec.is_valid());
+        // Verifier sets up LegoGroth16 public parameters. Ideally this should be done only once per
+        // verifier and can be published by the verifier for any proofs submitted to him
+        let snark_pk = generate_snark_srs_bound_check::<Bls12_381, _>(&mut rng).unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
+        // Following messages' bounds will be checked
+        let msg_idx_1 = 1;
+        let msg_idx_2 = 2;
+        let msg_idx_3 = 4;
+        let msg_1 = msgs[msg_idx_1].clone();
+        let msg_2 = msgs[msg_idx_2].clone();
+        let msg_3 = msgs[msg_idx_3].clone();
 
-    let mut witnesses = Witnesses::new();
-    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
-    ));
-    witnesses.add(Witness::BoundCheckLegoGroth16(msg_1));
-    witnesses.add(Witness::BoundCheckLegoGroth16(msg_2));
-    witnesses.add(Witness::BoundCheckLegoGroth16(msg_3));
+        let mut prover_setup_params = vec![];
+        if reuse_key {
+            prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk.clone()));
+            test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, prover_setup_params);
+        }
 
-    let start = Instant::now();
-    let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
-    println!(
-        "Time taken to create proof of bound check of 3 messages in signature over {} messages {:?}",
-        msg_count,
-        start.elapsed()
-    );
+        let mut prover_statements = Statements::new();
+        prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+            sig_params.clone(),
+            sig_keypair.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        if reuse_key {
+            prover_statements
+                .add(BoundCheckProverStmt::new_statement_from_params_ref(min_1, max_1, 0).unwrap());
+            prover_statements
+                .add(BoundCheckProverStmt::new_statement_from_params_ref(min_2, max_2, 0).unwrap());
+            prover_statements
+                .add(BoundCheckProverStmt::new_statement_from_params_ref(min_3, max_3, 0).unwrap());
+        } else {
+            prover_statements.add(
+                BoundCheckProverStmt::new_statement_from_params(min_1, max_1, snark_pk.clone())
+                    .unwrap(),
+            );
+            prover_statements.add(
+                BoundCheckProverStmt::new_statement_from_params(min_2, max_2, snark_pk.clone())
+                    .unwrap(),
+            );
+            prover_statements.add(
+                BoundCheckProverStmt::new_statement_from_params(min_3, max_3, snark_pk.clone())
+                    .unwrap(),
+            );
+        }
 
-    test_serialization!(ProofG1, proof);
+        test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
 
-    let mut verifier_setup_params = vec![];
-    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk.clone()));
+        let mut meta_statements = MetaStatements::new();
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, msg_idx_1), (1, 0)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, msg_idx_2), (2, 0)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, msg_idx_3), (3, 0)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
 
-    test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, verifier_setup_params);
+        let prover_proof_spec = ProofSpec::new(
+            prover_statements.clone(),
+            meta_statements.clone(),
+            prover_setup_params,
+            None,
+        );
+        assert!(prover_proof_spec.is_valid());
 
-    let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
-        sig_keypair.public_key.clone(),
-        BTreeMap::new(),
-    ));
-    verifier_statements.add(BoundCheckVerifierStmt::new_statement_from_params_ref(
-        min_1, max_1, 0,
-    ));
-    verifier_statements.add(BoundCheckVerifierStmt::new_statement_from_params_ref(
-        min_2, max_2, 0,
-    ));
-    verifier_statements.add(BoundCheckVerifierStmt::new_statement_from_params_ref(
-        min_3, max_3, 0,
-    ));
+        test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
+        let mut witnesses = Witnesses::new();
+        witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig.clone(),
+            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        ));
+        witnesses.add(Witness::BoundCheckLegoGroth16(msg_1));
+        witnesses.add(Witness::BoundCheckLegoGroth16(msg_2));
+        witnesses.add(Witness::BoundCheckLegoGroth16(msg_3));
 
-    let verifier_proof_spec = ProofSpec::new(
-        verifier_statements.clone(),
-        meta_statements.clone(),
-        verifier_setup_params,
-        None,
-    );
-    assert!(verifier_proof_spec.is_valid());
+        let start = Instant::now();
+        let proof =
+            ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+        println!(
+            "Time taken to create proof of bound check of 3 messages in signature over {} messages: {:?}",
+            msg_count,
+            start.elapsed()
+        );
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
+        test_serialization!(ProofG1, proof);
 
-    let start = Instant::now();
-    proof.verify(verifier_proof_spec.clone(), None).unwrap();
-    println!(
-        "Time taken to verify proof of bound check of 3 messages in signature over {} messages {:?}",
-        msg_count,
-        start.elapsed()
-    );
+        let mut verifier_setup_params = vec![];
+        if reuse_key {
+            verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk.clone()));
+            test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, verifier_setup_params);
+        }
+
+        let mut verifier_statements = Statements::new();
+        verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+            sig_params.clone(),
+            sig_keypair.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        if reuse_key {
+            verifier_statements.add(
+                BoundCheckVerifierStmt::new_statement_from_params_ref(min_1, max_1, 0).unwrap(),
+            );
+            verifier_statements.add(
+                BoundCheckVerifierStmt::new_statement_from_params_ref(min_2, max_2, 0).unwrap(),
+            );
+            verifier_statements.add(
+                BoundCheckVerifierStmt::new_statement_from_params_ref(min_3, max_3, 0).unwrap(),
+            );
+        } else {
+            verifier_statements.add(
+                BoundCheckVerifierStmt::new_statement_from_params(
+                    min_1,
+                    max_1,
+                    snark_pk.vk.clone(),
+                )
+                .unwrap(),
+            );
+            verifier_statements.add(
+                BoundCheckVerifierStmt::new_statement_from_params(
+                    min_2,
+                    max_2,
+                    snark_pk.vk.clone(),
+                )
+                .unwrap(),
+            );
+            verifier_statements.add(
+                BoundCheckVerifierStmt::new_statement_from_params(
+                    min_3,
+                    max_3,
+                    snark_pk.vk.clone(),
+                )
+                .unwrap(),
+            );
+        }
+
+        test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
+
+        let verifier_proof_spec = ProofSpec::new(
+            verifier_statements.clone(),
+            meta_statements.clone(),
+            verifier_setup_params,
+            None,
+        );
+        assert!(verifier_proof_spec.is_valid());
+
+        test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
+
+        let start = Instant::now();
+        proof.verify(verifier_proof_spec.clone(), None).unwrap();
+        println!(
+            "Time taken to verify proof of bound check of 3 messages in signature over {} messages: {:?}",
+            msg_count,
+            start.elapsed()
+        );
+    }
+    check(false);
+    check(true);
 }

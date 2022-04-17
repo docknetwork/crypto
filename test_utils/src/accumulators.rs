@@ -1,5 +1,5 @@
+use crate::Fr;
 use ark_bls12_381::Bls12_381;
-use ark_ec::PairingEngine;
 use ark_std::rand::rngs::StdRng;
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -10,8 +10,6 @@ use vb_accumulator::{
     setup::{Keypair, SetupParams},
     universal::UniversalAccumulator,
 };
-
-type Fr = <Bls12_381 as PairingEngine>::Fr;
 
 // NOTE: THIS IS TEST CODE COPIED FROM ACCUMULATOR CRATE FOR BENCHMARKING
 

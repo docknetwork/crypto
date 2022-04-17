@@ -156,7 +156,7 @@ macro_rules! impl_dec_key_funcs {
 impl<E: PairingEngine> EncryptionKey<E> {
     impl_enc_key_funcs!();
 
-    pub fn prepare(&self) -> PreparedEncryptionKey<E> {
+    pub fn prepared(&self) -> PreparedEncryptionKey<E> {
         PreparedEncryptionKey {
             X_0: self.X_0,
             X: self.X.clone(),
@@ -179,7 +179,7 @@ impl<E: PairingEngine> PreparedEncryptionKey<E> {
 impl<E: PairingEngine> DecryptionKey<E> {
     impl_dec_key_funcs!();
 
-    pub fn prepare(&self) -> PreparedDecryptionKey<E> {
+    pub fn prepared(&self) -> PreparedDecryptionKey<E> {
         PreparedDecryptionKey {
             V_0: E::G2Prepared::from(self.V_0),
             V_1: self
@@ -201,7 +201,7 @@ impl<E: PairingEngine> DecryptionKey<E> {
         chunk_bit_size: u8,
         g_i: &[E::G1Affine],
     ) -> crate::Result<Vec<Vec<E::Fqk>>> {
-        let prepared_dk = self.prepare();
+        let prepared_dk = self.prepared();
         prepared_dk.pairing_powers(chunk_bit_size, g_i)
     }
 }
@@ -325,8 +325,8 @@ pub(crate) mod tests {
             let (sk, ek, dk) =
                 keygen(&mut rng, chunk_bit_size, &gens, &g_i, &g_delta, &g_gamma).unwrap();
 
-            let prepared_ek = ek.prepare();
-            let prepared_dk = dk.prepare();
+            let prepared_ek = ek.prepared();
+            let prepared_dk = dk.prepared();
 
             assert_eq!(ek.X.len(), chunk_count);
             assert_eq!(prepared_ek.X.len(), chunk_count);

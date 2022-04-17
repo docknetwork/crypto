@@ -400,7 +400,7 @@ impl<E: PairingEngine> Encryption<E> {
             c_0,
             c,
             commitment,
-            &ek.prepare(),
+            &ek.prepared(),
             &gens.prepared(),
         )
     }
@@ -448,7 +448,7 @@ impl<E: PairingEngine> Encryption<E> {
             c_0,
             c,
             nu,
-            &dk.prepare(),
+            &dk.prepared(),
             g_i,
             &gens.prepared(),
         )
@@ -541,7 +541,7 @@ impl<E: PairingEngine> Encryption<E> {
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
     ) -> crate::Result<(Vec<u8>, E::G1Affine)> {
-        Self::decrypt_to_chunks_given_prepared(c_0, c, sk, &dk.prepare(), g_i, chunk_bit_size)
+        Self::decrypt_to_chunks_given_prepared(c_0, c, sk, &dk.prepared(), g_i, chunk_bit_size)
     }
 
     /// Same as `Self::decrypt_to_chunks` but takes prepared decryption key
@@ -908,8 +908,8 @@ pub(crate) mod tests {
             let (gens, g_i, sk, ek, dk) = enc_setup(chunk_bit_size, &mut rng);
 
             let prepared_gens = gens.prepared();
-            let prepared_ek = ek.prepare();
-            let prepared_dk = dk.prepare();
+            let prepared_ek = ek.prepared();
+            let prepared_dk = dk.prepared();
 
             let start = Instant::now();
             let (ct, _) =
@@ -952,7 +952,7 @@ pub(crate) mod tests {
             );
 
             let start = Instant::now();
-            let (m_, nu) = Encryption::decrypt_to_chunks(
+            let (m_, _) = Encryption::decrypt_to_chunks(
                 &ct[0],
                 &ct[1..m.len() + 1],
                 &sk,
@@ -969,7 +969,7 @@ pub(crate) mod tests {
             assert_eq!(m_, m);
 
             let start = Instant::now();
-            let (m_, nu) = Encryption::decrypt_to_chunks_given_prepared(
+            let (m_, _) = Encryption::decrypt_to_chunks_given_prepared(
                 &ct[0],
                 &ct[1..m.len() + 1],
                 &sk,
@@ -1040,8 +1040,8 @@ pub(crate) mod tests {
         fn check(chunk_bit_size: u8, count: u8) {
             let mut rng = StdRng::seed_from_u64(0u64);
             let (gens, g_i, sk, ek, dk) = enc_setup(chunk_bit_size, &mut rng);
-            let prepared_ek = ek.prepare();
-            let prepared_dk = dk.prepare();
+            let prepared_ek = ek.prepared();
+            let prepared_dk = dk.prepared();
             let prepared_gens = gens.prepared();
             let pairing_powers = prepared_dk.pairing_powers(chunk_bit_size, &g_i).unwrap();
 

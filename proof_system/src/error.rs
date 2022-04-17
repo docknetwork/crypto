@@ -53,7 +53,6 @@ pub enum ProofSystemError {
     LegoGroth16InequalResponse,
     LegoGroth16ProvingKeyNotProvided,
     LegoGroth16VerifyingKeyNotProvided,
-    BoundCheckMaxGreaterThanAllowed,
     BoundCheckMaxNotGreaterThanMin,
 }
 

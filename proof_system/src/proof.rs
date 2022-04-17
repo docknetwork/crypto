@@ -29,8 +29,6 @@ use crate::sub_protocols::bound_check::BoundCheckProtocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
-use saver::keygen::EncryptionKey;
-use saver::setup::ChunkedCommitmentGens;
 use serde::{Deserialize, Serialize};
 
 /// Created by the prover and verified by the verifier
@@ -94,68 +92,7 @@ where
         }
 
         // Prepare commitment keys for running Schnorr protocol
-        let mut bound_check_vks = Vec::new();
-        let mut bound_check_comm_keys = BTreeMap::new();
-        let mut bound_check_statement_comm_key = BTreeMap::new();
-
-        let mut saver_eks = Vec::new();
-        let mut saver_ek_comm_keys = BTreeMap::new();
-        let mut saver_statement_ek_comm_key = BTreeMap::new();
-
-        let mut saver_chunked_comms = Vec::new();
-        let mut saver_chunked_comm_keys = BTreeMap::new();
-        let mut saver_statement_chunked_comm_key = BTreeMap::new();
-
-        for (s_idx, statement) in proof_spec.statements.0.iter().enumerate() {
-            match statement {
-                Statement::BoundCheckLegoGroth16Prover(s) => {
-                    let proving_key = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
-                    let k_idx = bound_check_vks
-                        .iter()
-                        .position(|v: &&legogroth16::VerifyingKey<E>| **v == proving_key.vk);
-                    if let Some(k) = k_idx {
-                        bound_check_statement_comm_key.insert(s_idx, k);
-                    } else {
-                        let comm_key = BoundCheckProtocol::schnorr_comm_key(&proving_key.vk);
-                        bound_check_comm_keys.insert(bound_check_vks.len(), comm_key);
-                        bound_check_statement_comm_key.insert(s_idx, bound_check_vks.len());
-                        bound_check_vks.push(&proving_key.vk);
-                    }
-                }
-                Statement::SaverProver(s) => {
-                    let enc_key = s.get_encryption_key(&proof_spec.setup_params, s_idx)?;
-                    let ek_idx = saver_eks
-                        .iter()
-                        .position(|e: &&EncryptionKey<E>| **e == *enc_key);
-                    if let Some(k) = ek_idx {
-                        saver_statement_ek_comm_key.insert(s_idx, k);
-                    } else {
-                        let comm_key = SaverProtocol::encryption_comm_key(enc_key);
-                        saver_ek_comm_keys.insert(saver_eks.len(), comm_key);
-                        saver_statement_ek_comm_key.insert(s_idx, saver_eks.len());
-                        saver_eks.push(enc_key);
-                    }
-
-                    let comm_gens =
-                        s.get_chunked_commitment_gens(&proof_spec.setup_params, s_idx)?;
-                    let g_idx = saver_chunked_comms.iter().position(
-                        |(b, g): &(u8, &ChunkedCommitmentGens<E::G1Affine>)| {
-                            *b == s.chunk_bit_size && **g == *comm_gens
-                        },
-                    );
-                    if let Some(k) = g_idx {
-                        saver_statement_chunked_comm_key.insert(s_idx, k);
-                    } else {
-                        let comm_keys =
-                            SaverProtocol::<E>::chunked_comm_keys(comm_gens, s.chunk_bit_size);
-                        saver_chunked_comm_keys.insert(saver_chunked_comms.len(), comm_keys);
-                        saver_statement_chunked_comm_key.insert(s_idx, saver_chunked_comms.len());
-                        saver_chunked_comms.push((s.chunk_bit_size, comm_gens));
-                    }
-                }
-                _ => (),
-            }
-        }
+        let (bound_check_comm, ek_comm, chunked_comm) = proof_spec.derive_commitment_keys()?;
 
         let mut sub_protocols =
             Vec::<SubProtocol<E, G>>::with_capacity(proof_spec.statements.0.len());
@@ -284,14 +221,10 @@ where
                             enc_key,
                             pk,
                         );
-                        let cc_keys = saver_chunked_comm_keys
-                            .get(saver_statement_chunked_comm_key.get(&s_idx).unwrap())
-                            .unwrap();
+                        let cc_keys = chunked_comm.get(s_idx).unwrap();
                         sp.init(
                             rng,
-                            saver_ek_comm_keys
-                                .get(saver_statement_ek_comm_key.get(&s_idx).unwrap())
-                                .unwrap(),
+                            ek_comm.get(s_idx).unwrap(),
                             &cc_keys.0,
                             &cc_keys.1,
                             w,
@@ -313,14 +246,7 @@ where
                         let proving_key = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
                         let mut sp =
                             BoundCheckProtocol::new_for_prover(s_idx, s.min, s.max, proving_key);
-                        sp.init(
-                            rng,
-                            bound_check_comm_keys
-                                .get(bound_check_statement_comm_key.get(&s_idx).unwrap())
-                                .unwrap(),
-                            w,
-                            blinding,
-                        )?;
+                        sp.init(rng, bound_check_comm.get(s_idx).unwrap(), w, blinding)?;
                         sub_protocols.push(SubProtocol::BoundCheckProtocol(sp));
                     }
                     _ => {
@@ -348,7 +274,9 @@ where
         if let Some(n) = nonce.as_ref() {
             challenge_bytes.extend_from_slice(n)
         }
-        challenge_bytes.append(&mut proof_spec.context.unwrap_or_else(Vec::new));
+        if let Some(ctx) = &proof_spec.context {
+            challenge_bytes.extend_from_slice(ctx);
+        }
         // Get each sub-protocol's challenge contribution
         for p in sub_protocols.iter() {
             p.challenge_contribution(&mut challenge_bytes)?;
@@ -384,6 +312,10 @@ where
             ));
         }
 
+        let (bound_check_comm, ek_comm, chunked_comm) = proof_spec.derive_commitment_keys()?;
+        let (derived_lego_vk, derived_gens, derived_ek, derived_saver_vk) =
+            proof_spec.derive_prepared_parameters()?;
+
         // All the distinct equalities in `ProofSpec`
         let mut witness_equalities = vec![];
 
@@ -404,7 +336,9 @@ where
         if let Some(n) = nonce.as_ref() {
             challenge_bytes.extend_from_slice(n)
         }
-        challenge_bytes.append(&mut proof_spec.context.unwrap_or_else(Vec::new));
+        if let Some(ctx) = &proof_spec.context {
+            challenge_bytes.extend_from_slice(ctx);
+        }
 
         // Get challenge contribution for each statement and check if response is equal for all witnesses.
         for (s_idx, (statement, proof)) in proof_spec
@@ -567,13 +501,12 @@ where
                                 )?;
                             }
                         }
-                        let comm_gens =
-                            s.get_chunked_commitment_gens(&proof_spec.setup_params, s_idx)?;
-                        let enc_key = s.get_encryption_key(&proof_spec.setup_params, s_idx)?;
+                        let ek_comm_key = ek_comm.get(s_idx).unwrap();
+                        let cc_keys = chunked_comm.get(s_idx).unwrap();
                         SaverProtocol::compute_challenge_contribution(
-                            s.chunk_bit_size,
-                            comm_gens,
-                            enc_key,
+                            ek_comm_key,
+                            &cc_keys.0,
+                            &cc_keys.1,
                             p,
                             &mut challenge_bytes,
                         )?;
@@ -601,9 +534,9 @@ where
                             }
                         }
 
-                        let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
+                        let comm_key = bound_check_comm.get(s_idx).unwrap();
                         BoundCheckProtocol::compute_challenge_contribution(
-                            verifying_key,
+                            comm_key,
                             &p,
                             &mut challenge_bytes,
                         )?;
@@ -642,7 +575,7 @@ where
         for (s_idx, (statement, proof)) in proof_spec
             .statements
             .0
-            .into_iter()
+            .iter()
             .zip(self.0.into_iter())
             .enumerate()
         {
@@ -726,7 +659,7 @@ where
                     }
                 },
                 Statement::SaverVerifier(s) => match proof {
-                    StatementProof::Saver(ref _p) => {
+                    StatementProof::Saver(ref saver_proof) => {
                         let enc_gens = s.get_encryption_gens(&proof_spec.setup_params, s_idx)?;
                         let comm_gens =
                             s.get_chunked_commitment_gens(&proof_spec.setup_params, s_idx)?;
@@ -740,7 +673,18 @@ where
                             enc_key,
                             vk,
                         );
-                        sp.verify_proof_contribution(&challenge, &proof)?
+                        let ek_comm_key = ek_comm.get(s_idx).unwrap();
+                        let cc_keys = chunked_comm.get(s_idx).unwrap();
+                        sp.verify_proof_contribution_using_prepared(
+                            &challenge,
+                            saver_proof,
+                            ek_comm_key,
+                            &cc_keys.0,
+                            &cc_keys.1,
+                            derived_saver_vk.get(s_idx).unwrap(),
+                            derived_gens.get(s_idx).unwrap(),
+                            derived_ek.get(s_idx).unwrap(),
+                        )?
                     }
                     _ => {
                         return Err(ProofSystemError::ProofIncompatibleWithStatement(
@@ -751,7 +695,7 @@ where
                     }
                 },
                 Statement::BoundCheckLegoGroth16Verifier(s) => match proof {
-                    StatementProof::BoundCheckLegoGroth16(ref _p) => {
+                    StatementProof::BoundCheckLegoGroth16(ref bc_proof) => {
                         let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
                         let sp = BoundCheckProtocol::new_for_verifier(
                             s_idx,
@@ -759,7 +703,13 @@ where
                             s.max,
                             verifying_key,
                         );
-                        sp.verify_proof_contribution(&challenge, &proof)?
+                        let comm_key = bound_check_comm.get(s_idx).unwrap();
+                        sp.verify_proof_contribution_using_prepared(
+                            &challenge,
+                            bc_proof,
+                            &comm_key,
+                            derived_lego_vk.get(s_idx).unwrap(),
+                        )?
                     }
                     _ => {
                         return Err(ProofSystemError::ProofIncompatibleWithStatement(

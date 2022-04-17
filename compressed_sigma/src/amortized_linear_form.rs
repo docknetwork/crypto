@@ -4,7 +4,7 @@ use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{cfg_into_iter, cfg_iter, vec, vec::Vec, UniformRand};
+use ark_std::{cfg_iter, vec::Vec, UniformRand};
 use ark_std::{
     io::{Read, Write},
     ops::Add,
@@ -267,6 +267,7 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::PairingEngine;
+    use ark_ff::Zero;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,

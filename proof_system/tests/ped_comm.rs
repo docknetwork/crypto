@@ -3,7 +3,7 @@ use ark_ec::msm::VariableBaseMSM;
 use ark_ec::ProjectiveCurve;
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::{BTreeMap, BTreeSet};
+use ark_std::collections::BTreeSet;
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
 use proof_system::prelude::{
     EqualWitnesses, MetaStatement, MetaStatements, Witness, WitnessRef, Witnesses,
@@ -11,11 +11,9 @@ use proof_system::prelude::{
 use proof_system::proof_spec::ProofSpec;
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::ped_comm::PedersenCommitment as PedersenCommitmentStmt;
-use proof_system::statement::{Statement, Statements};
+use proof_system::statement::Statements;
 
-#[macro_use]
-mod utils;
-use utils::*;
+use test_utils::{test_serialization, Fr, ProofG1};
 
 #[test]
 fn pok_of_knowledge_in_pedersen_commitment_and_equality() {

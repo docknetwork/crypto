@@ -4,9 +4,9 @@ use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
-use benches::accumulators::setup_universal_accum;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::time::Instant;
+use test_utils::accumulators::setup_universal_accum;
 use vb_accumulator::positive::Accumulator;
 
 type Fr = <Bls12_381 as PairingEngine>::Fr;

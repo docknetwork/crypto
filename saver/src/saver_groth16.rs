@@ -14,13 +14,14 @@ use ark_std::{
     UniformRand,
 };
 
+use dock_crypto_utils::impl_for_groth16_struct;
 use serde::de::{SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{serde_as, DeserializeAs, SerializeAs};
 
 use crate::encryption::Ciphertext;
 pub use ark_groth16::{
-    create_random_proof, generate_parameters, PreparedVerifyingKey, Proof,
+    create_random_proof, generate_parameters, prepare_verifying_key, PreparedVerifyingKey, Proof,
     ProvingKey as Groth16ProvingKey, VerifyingKey,
 };
 use ark_std::ops::AddAssign;
@@ -146,7 +147,6 @@ mod tests {
     use crate::keygen::keygen;
     use crate::utils::chunks_count;
     use ark_bls12_381::Bls12_381;
-    use ark_groth16::prepare_verifying_key;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
     use std::time::Instant;

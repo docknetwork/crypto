@@ -1,10 +1,7 @@
-use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
-use ark_ec::{PairingEngine, ProjectiveCurve};
-use ark_ff::PrimeField;
+use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
-use blake2::Blake2b;
 use proof_system::prelude::bound_check::generate_snark_srs_bound_check;
 use proof_system::prelude::{
     EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, StatementProof, Witness, WitnessRef,
@@ -23,9 +20,8 @@ use saver::prelude::VerifyingKey;
 use saver::setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens};
 use std::time::Instant;
 
-#[macro_use]
-mod utils;
-use utils::*;
+use test_utils::bbs_plus::*;
+use test_utils::{test_serialization, Fr, ProofG1};
 
 pub fn decrypt_and_verify(
     proof: &ProofG1,
@@ -68,8 +64,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
 
     // For transformed commitment to the message
-    let chunked_comm_gens =
-        ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(&mut rng);
+    let chunked_comm_gens = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
 
     let chunk_bit_size = 8;
 
@@ -245,360 +240,577 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
 
 #[test]
 fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
-    // Prove knowledge of BBS+ signature and a specific message is verifiably encrypted.
-    let mut rng = StdRng::seed_from_u64(0u64);
+    // Prove knowledge of BBS+ signature and a certain messages are verifiably encrypted.
+    fn check(reuse_setup_params: bool) {
+        let mut rng = StdRng::seed_from_u64(0u64);
 
-    let msg_count = 5;
-    let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
+        let msg_count = 5;
+        let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
 
-    // Decryptor creates public parameters
-    let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
+        // Decryptor creates public parameters
+        let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
 
-    // For transformed commitment to the message
-    let chunked_comm_gens =
-        ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(&mut rng);
+        // For transformed commitment to the message
+        let chunked_comm_gens = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
 
-    let chunk_bit_size = 8;
+        let chunk_bit_size = 8;
 
-    let (snark_pk, sk, ek, dk) = setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
+        let (snark_pk, sk, ek, dk) =
+            setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
 
-    // Message with following indices are verifiably encrypted
-    let enc_msg_indices = vec![0, 2, 3];
-    let enc_msgs = enc_msg_indices.iter().map(|i| msgs[*i]).collect::<Vec<_>>();
+        // Message with following indices are verifiably encrypted
+        let enc_msg_indices = vec![0, 2, 3];
+        let enc_msgs = enc_msg_indices.iter().map(|i| msgs[*i]).collect::<Vec<_>>();
 
-    let mut prover_setup_params = vec![];
-    prover_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens.clone()));
-    prover_setup_params.push(SetupParams::SaverCommitmentGens(chunked_comm_gens.clone()));
-    prover_setup_params.push(SetupParams::SaverEncryptionKey(ek.clone()));
-    prover_setup_params.push(SetupParams::SaverProvingKey(snark_pk.clone()));
+        let mut prover_setup_params = vec![];
+        if reuse_setup_params {
+            prover_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens.clone()));
+            prover_setup_params.push(SetupParams::SaverCommitmentGens(chunked_comm_gens.clone()));
+            prover_setup_params.push(SetupParams::SaverEncryptionKey(ek.clone()));
+            prover_setup_params.push(SetupParams::SaverProvingKey(snark_pk.clone()));
+            test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, prover_setup_params);
+        }
 
-    let mut prover_statements = Statements::new();
-    let mut meta_statements = MetaStatements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
-        sig_keypair.public_key.clone(),
-        BTreeMap::new(),
-    ));
-    for (i, j) in enc_msg_indices.iter().enumerate() {
-        prover_statements.add(
-            SaverProverStmt::new_statement_from_params_ref(chunk_bit_size, 0, 1, 2, 3).unwrap(),
+        let mut prover_statements = Statements::new();
+        let mut meta_statements = MetaStatements::new();
+        prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+            sig_params.clone(),
+            sig_keypair.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        for (i, j) in enc_msg_indices.iter().enumerate() {
+            if reuse_setup_params {
+                prover_statements.add(SaverProverStmt::new_statement_from_params_ref(
+                    chunk_bit_size,
+                    0,
+                    1,
+                    2,
+                    3,
+                ));
+            } else {
+                prover_statements.add(
+                    SaverProverStmt::new_statement_from_params(
+                        chunk_bit_size,
+                        enc_gens.clone(),
+                        chunked_comm_gens.clone(),
+                        ek.clone(),
+                        snark_pk.clone(),
+                    )
+                    .unwrap(),
+                );
+            }
+
+            meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+                vec![(0, *j), (1 + i, 0)]
+                    .into_iter()
+                    .collect::<BTreeSet<WitnessRef>>(),
+            )));
+        }
+
+        test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements, Instant);
+
+        let prover_proof_spec = ProofSpec::new(
+            prover_statements.clone(),
+            meta_statements.clone(),
+            prover_setup_params,
+            None,
         );
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-            vec![(0, *j), (1 + i, 0)]
-                .into_iter()
-                .collect::<BTreeSet<WitnessRef>>(),
-        )));
-    }
+        assert!(prover_proof_spec.is_valid());
+        test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements, Instant);
+        let mut witnesses = Witnesses::new();
+        witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig.clone(),
+            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        ));
+        for m in enc_msgs {
+            witnesses.add(Witness::Saver(m));
+        }
 
-    let prover_proof_spec = ProofSpec::new(
-        prover_statements.clone(),
-        meta_statements.clone(),
-        prover_setup_params,
-        None,
-    );
-    assert!(prover_proof_spec.is_valid());
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
+        let start = Instant::now();
+        let proof =
+            ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+        println!(
+            "Time taken to create proof of {} encrypted messages in signature over {} messages: {:?}",
+            enc_msg_indices.len(),
+            msg_count,
+            start.elapsed()
+        );
 
-    let mut witnesses = Witnesses::new();
-    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
-    ));
-    for m in enc_msgs {
-        witnesses.add(Witness::Saver(m));
-    }
+        let mut verifier_setup_params = vec![];
+        if reuse_setup_params {
+            verifier_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens.clone()));
+            verifier_setup_params.push(SetupParams::SaverCommitmentGens(chunked_comm_gens.clone()));
+            verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek.clone()));
+            verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk.pk.vk.clone()));
+            test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, verifier_setup_params);
+        }
 
-    let start = Instant::now();
-    let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
-    println!(
-        "Time taken to create proof of {} encrypted messages in signature over {} messages {:?}",
-        enc_msg_indices.len(),
-        msg_count,
-        start.elapsed()
-    );
+        let mut verifier_statements = Statements::new();
+        verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+            sig_params.clone(),
+            sig_keypair.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        for _ in 0..enc_msg_indices.len() {
+            if reuse_setup_params {
+                verifier_statements.add(SaverVerifierStmt::new_statement_from_params_ref(
+                    chunk_bit_size,
+                    0,
+                    1,
+                    2,
+                    3,
+                ));
+            } else {
+                verifier_statements.add(
+                    SaverVerifierStmt::new_statement_from_params(
+                        chunk_bit_size,
+                        enc_gens.clone(),
+                        chunked_comm_gens.clone(),
+                        ek.clone(),
+                        snark_pk.pk.vk.clone(),
+                    )
+                    .unwrap(),
+                );
+            }
+        }
+        test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements, Instant);
 
-    let mut verifier_setup_params = vec![];
-    verifier_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens.clone()));
-    verifier_setup_params.push(SetupParams::SaverCommitmentGens(chunked_comm_gens.clone()));
-    verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek.clone()));
-    verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk.pk.vk.clone()));
+        let verifier_proof_spec = ProofSpec::new(
+            verifier_statements.clone(),
+            meta_statements.clone(),
+            verifier_setup_params,
+            None,
+        );
+        assert!(verifier_proof_spec.is_valid());
+        test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
-    let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
-        sig_keypair.public_key.clone(),
-        BTreeMap::new(),
-    ));
-    for _ in 0..enc_msg_indices.len() {
-        verifier_statements.add(
-            SaverVerifierStmt::new_statement_from_params_ref(chunk_bit_size, 0, 1, 2, 3).unwrap(),
+        let start = Instant::now();
+        proof
+            .clone()
+            .verify(verifier_proof_spec.clone(), None)
+            .unwrap();
+        println!(
+            "Time taken to verify proof of {} encrypted messages in signature over {} messages: {:?}",
+            enc_msg_indices.len(),
+            msg_count,
+            start.elapsed()
+        );
+
+        let start = Instant::now();
+        for (i, j) in enc_msg_indices.iter().enumerate() {
+            decrypt_and_verify(
+                &proof,
+                i + 1,
+                &snark_pk.pk.vk,
+                msgs[*j].clone(),
+                &sk,
+                &dk,
+                &enc_gens,
+                chunk_bit_size,
+            );
+        }
+        println!(
+            "Time taken to decrypt and verify {} encrypted messages in signature over {} messages {:?}",
+            enc_msg_indices.len(),
+            msg_count,
+            start.elapsed()
         );
     }
-    test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements, Instant);
-
-    let verifier_proof_spec = ProofSpec::new(
-        verifier_statements.clone(),
-        meta_statements.clone(),
-        verifier_setup_params,
-        None,
-    );
-    assert!(verifier_proof_spec.is_valid());
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
-
-    let start = Instant::now();
-    proof
-        .clone()
-        .verify(verifier_proof_spec.clone(), None)
-        .unwrap();
-    println!(
-        "Time taken to verify proof of {} encrypted messages in signature over {} messages {:?}",
-        enc_msg_indices.len(),
-        msg_count,
-        start.elapsed()
-    );
-
-    let start = Instant::now();
-    for (i, j) in enc_msg_indices.iter().enumerate() {
-        decrypt_and_verify(
-            &proof,
-            i + 1,
-            &snark_pk.pk.vk,
-            msgs[*j].clone(),
-            &sk,
-            &dk,
-            &enc_gens,
-            chunk_bit_size,
-        );
-    }
-    println!(
-        "Time taken to decrypt and verify {} encrypted messages in signature over {} messages {:?}",
-        enc_msg_indices.len(),
-        msg_count,
-        start.elapsed()
-    );
+    check(true);
+    check(false);
 }
 
 #[test]
 fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
     // Prove knowledge of BBS+ signature and a certain messages are verifiably encrypted for 2 different decryptors
-    let mut rng = StdRng::seed_from_u64(0u64);
+    fn check(reuse_setup_params: bool) {
+        let mut rng = StdRng::seed_from_u64(0u64);
 
-    let msg_count = 5;
-    let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
+        let msg_count = 5;
+        let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
 
-    let chunk_bit_size = 8;
+        let chunk_bit_size = 8;
 
-    // 1st Decryptor setup
-    let enc_gens_1 = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
-    // For transformed commitment to the message
-    let chunked_comm_gens_1 =
-        ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(&mut rng);
-    // Snark setup and keygen
-    let (snark_pk_1, sk_1, ek_1, dk_1) =
-        setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens_1).unwrap();
+        // 1st Decryptor setup
+        let enc_gens_1 = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
+        // For transformed commitment to the message
+        let chunked_comm_gens_1 = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
+        // Snark setup and keygen
+        let (snark_pk_1, sk_1, ek_1, dk_1) =
+            setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens_1).unwrap();
 
-    // 2nd Decryptor setup
-    let enc_gens_2 = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
-    // For transformed commitment to the message
-    let chunked_comm_gens_2 =
-        ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(&mut rng);
-    // Snark setup and keygen
-    let (snark_pk_2, sk_2, ek_2, dk_2) =
-        setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens_2).unwrap();
+        // 2nd Decryptor setup
+        let enc_gens_2 = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
+        // For transformed commitment to the message
+        let chunked_comm_gens_2 = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
+        // Snark setup and keygen
+        let (snark_pk_2, sk_2, ek_2, dk_2) =
+            setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens_2).unwrap();
 
-    // Message with index `enc_msg_idx_1` is verifiably encrypted for both decryptors
-    let enc_msg_idx_1 = 1;
-    let enc_msg_1 = msgs[enc_msg_idx_1].clone();
+        // Message with index `enc_msg_idx_1` is verifiably encrypted for both decryptors
+        let enc_msg_idx_1 = 1;
+        let enc_msg_1 = msgs[enc_msg_idx_1].clone();
 
-    // Message with index `enc_msg_idx_2` is verifiably encrypted both 1st decryptor only
-    let enc_msg_idx_2 = 2;
-    let enc_msg_2 = msgs[enc_msg_idx_2].clone();
+        // Message with index `enc_msg_idx_2` is verifiably encrypted both 1st decryptor only
+        let enc_msg_idx_2 = 2;
+        let enc_msg_2 = msgs[enc_msg_idx_2].clone();
 
-    // Message with index `enc_msg_idx_3` is verifiably encrypted both 2nd decryptor only
-    let enc_msg_idx_3 = 3;
-    let enc_msg_3 = msgs[enc_msg_idx_3].clone();
+        // Message with index `enc_msg_idx_3` is verifiably encrypted both 2nd decryptor only
+        let enc_msg_idx_3 = 3;
+        let enc_msg_3 = msgs[enc_msg_idx_3].clone();
 
-    let mut prover_setup_params = vec![];
-    prover_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens_1.clone()));
-    prover_setup_params.push(SetupParams::SaverCommitmentGens(
-        chunked_comm_gens_1.clone(),
-    ));
-    prover_setup_params.push(SetupParams::SaverEncryptionKey(ek_1.clone()));
-    prover_setup_params.push(SetupParams::SaverProvingKey(snark_pk_1.clone()));
-    prover_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens_2.clone()));
-    prover_setup_params.push(SetupParams::SaverCommitmentGens(
-        chunked_comm_gens_2.clone(),
-    ));
-    prover_setup_params.push(SetupParams::SaverEncryptionKey(ek_2.clone()));
-    prover_setup_params.push(SetupParams::SaverProvingKey(snark_pk_2.clone()));
+        let mut prover_setup_params = vec![];
+        if reuse_setup_params {
+            prover_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens_1.clone()));
+            prover_setup_params.push(SetupParams::SaverCommitmentGens(
+                chunked_comm_gens_1.clone(),
+            ));
+            prover_setup_params.push(SetupParams::SaverEncryptionKey(ek_1.clone()));
+            prover_setup_params.push(SetupParams::SaverProvingKey(snark_pk_1.clone()));
+            prover_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens_2.clone()));
+            prover_setup_params.push(SetupParams::SaverCommitmentGens(
+                chunked_comm_gens_2.clone(),
+            ));
+            prover_setup_params.push(SetupParams::SaverEncryptionKey(ek_2.clone()));
+            prover_setup_params.push(SetupParams::SaverProvingKey(snark_pk_2.clone()));
+            test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, prover_setup_params);
+        }
 
-    let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
-        sig_keypair.public_key.clone(),
-        BTreeMap::new(),
-    ));
-    // For encrypting message at `enc_msg_idx_1` for 1st decryptor
-    prover_statements
-        .add(SaverProverStmt::new_statement_from_params_ref(chunk_bit_size, 0, 1, 2, 3).unwrap());
-    // For encrypting message at `enc_msg_idx_1` for 2nd decryptor
-    prover_statements
-        .add(SaverProverStmt::new_statement_from_params_ref(chunk_bit_size, 4, 5, 6, 7).unwrap());
-    // For encrypting message at `enc_msg_idx_2` for 1st decryptor
-    prover_statements
-        .add(SaverProverStmt::new_statement_from_params_ref(chunk_bit_size, 0, 1, 2, 3).unwrap());
-    // For encrypting message at `enc_msg_idx_3` for 2nd decryptor
-    prover_statements
-        .add(SaverProverStmt::new_statement_from_params_ref(chunk_bit_size, 4, 5, 6, 7).unwrap());
+        let mut prover_statements = Statements::new();
+        prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+            sig_params.clone(),
+            sig_keypair.public_key.clone(),
+            BTreeMap::new(),
+        ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
+        // For encrypting message at `enc_msg_idx_1` for 1st decryptor
+        if reuse_setup_params {
+            prover_statements.add(SaverProverStmt::new_statement_from_params_ref(
+                chunk_bit_size,
+                0,
+                1,
+                2,
+                3,
+            ));
+        } else {
+            prover_statements.add(
+                SaverProverStmt::new_statement_from_params(
+                    chunk_bit_size,
+                    enc_gens_1.clone(),
+                    chunked_comm_gens_1.clone(),
+                    ek_1.clone(),
+                    snark_pk_1.clone(),
+                )
+                .unwrap(),
+            );
+        }
+        // For encrypting message at `enc_msg_idx_1` for 2nd decryptor
+        if reuse_setup_params {
+            prover_statements.add(SaverProverStmt::new_statement_from_params_ref(
+                chunk_bit_size,
+                4,
+                5,
+                6,
+                7,
+            ));
+        } else {
+            prover_statements.add(
+                SaverProverStmt::new_statement_from_params(
+                    chunk_bit_size,
+                    enc_gens_2.clone(),
+                    chunked_comm_gens_2.clone(),
+                    ek_2.clone(),
+                    snark_pk_2.clone(),
+                )
+                .unwrap(),
+            );
+        }
+        // For encrypting message at `enc_msg_idx_2` for 1st decryptor
+        if reuse_setup_params {
+            prover_statements.add(SaverProverStmt::new_statement_from_params_ref(
+                chunk_bit_size,
+                0,
+                1,
+                2,
+                3,
+            ));
+        } else {
+            prover_statements.add(
+                SaverProverStmt::new_statement_from_params(
+                    chunk_bit_size,
+                    enc_gens_1.clone(),
+                    chunked_comm_gens_1.clone(),
+                    ek_1.clone(),
+                    snark_pk_1.clone(),
+                )
+                .unwrap(),
+            );
+        }
+        // For encrypting message at `enc_msg_idx_3` for 2nd decryptor
+        if reuse_setup_params {
+            prover_statements.add(SaverProverStmt::new_statement_from_params_ref(
+                chunk_bit_size,
+                4,
+                5,
+                6,
+                7,
+            ));
+        } else {
+            prover_statements.add(
+                SaverProverStmt::new_statement_from_params(
+                    chunk_bit_size,
+                    enc_gens_2.clone(),
+                    chunked_comm_gens_2.clone(),
+                    ek_2.clone(),
+                    snark_pk_2.clone(),
+                )
+                .unwrap(),
+            );
+        }
 
-    let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-        vec![(0, enc_msg_idx_1), (1, 0)]
-            .into_iter()
-            .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-        vec![(0, enc_msg_idx_1), (2, 0)]
-            .into_iter()
-            .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-        vec![(0, enc_msg_idx_2), (3, 0)]
-            .into_iter()
-            .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
-        vec![(0, enc_msg_idx_3), (4, 0)]
-            .into_iter()
-            .collect::<BTreeSet<WitnessRef>>(),
-    )));
+        test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
 
-    let prover_proof_spec = ProofSpec::new(
-        prover_statements.clone(),
-        meta_statements.clone(),
-        prover_setup_params,
-        None,
-    );
-    assert!(prover_proof_spec.is_valid());
+        let mut meta_statements = MetaStatements::new();
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, enc_msg_idx_1), (1, 0)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, enc_msg_idx_1), (2, 0)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, enc_msg_idx_2), (3, 0)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
+        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            vec![(0, enc_msg_idx_3), (4, 0)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+        )));
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
+        let prover_proof_spec = ProofSpec::new(
+            prover_statements.clone(),
+            meta_statements.clone(),
+            prover_setup_params,
+            None,
+        );
+        assert!(prover_proof_spec.is_valid());
 
-    let mut witnesses = Witnesses::new();
-    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
-    ));
-    witnesses.add(Witness::Saver(enc_msg_1));
-    witnesses.add(Witness::Saver(enc_msg_1));
-    witnesses.add(Witness::Saver(enc_msg_2));
-    witnesses.add(Witness::Saver(enc_msg_3));
+        test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
-    let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+        let mut witnesses = Witnesses::new();
+        witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+            sig.clone(),
+            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        ));
+        witnesses.add(Witness::Saver(enc_msg_1));
+        witnesses.add(Witness::Saver(enc_msg_1));
+        witnesses.add(Witness::Saver(enc_msg_2));
+        witnesses.add(Witness::Saver(enc_msg_3));
 
-    let mut verifier_setup_params = vec![];
-    verifier_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens_1.clone()));
-    verifier_setup_params.push(SetupParams::SaverCommitmentGens(
-        chunked_comm_gens_1.clone(),
-    ));
-    verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek_1.clone()));
-    verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk_1.pk.vk.clone()));
-    verifier_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens_2.clone()));
-    verifier_setup_params.push(SetupParams::SaverCommitmentGens(
-        chunked_comm_gens_2.clone(),
-    ));
-    verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek_2.clone()));
-    verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk_2.pk.vk.clone()));
+        let start = Instant::now();
+        let proof =
+            ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+        println!(
+            "Time taken to create proof of verifiable encryption of 4 messages in signature: {:?}",
+            start.elapsed()
+        );
 
-    let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
-        sig_keypair.public_key.clone(),
-        BTreeMap::new(),
-    ));
-    // For encrypting message at `enc_msg_idx_1` for 1st decryptor
-    verifier_statements
-        .add(SaverVerifierStmt::new_statement_from_params_ref(chunk_bit_size, 0, 1, 2, 3).unwrap());
-    // For encrypting message at `enc_msg_idx_1` for 2nd decryptor
-    verifier_statements
-        .add(SaverVerifierStmt::new_statement_from_params_ref(chunk_bit_size, 4, 5, 6, 7).unwrap());
-    // For encrypting message at `enc_msg_idx_2` for 1st decryptor
-    verifier_statements
-        .add(SaverVerifierStmt::new_statement_from_params_ref(chunk_bit_size, 0, 1, 2, 3).unwrap());
-    // For encrypting message at `enc_msg_idx_3` for 2nd decryptor
-    verifier_statements
-        .add(SaverVerifierStmt::new_statement_from_params_ref(chunk_bit_size, 4, 5, 6, 7).unwrap());
+        let mut verifier_setup_params = vec![];
+        if reuse_setup_params {
+            verifier_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens_1.clone()));
+            verifier_setup_params.push(SetupParams::SaverCommitmentGens(
+                chunked_comm_gens_1.clone(),
+            ));
+            verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek_1.clone()));
+            verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk_1.pk.vk.clone()));
+            verifier_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens_2.clone()));
+            verifier_setup_params.push(SetupParams::SaverCommitmentGens(
+                chunked_comm_gens_2.clone(),
+            ));
+            verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek_2.clone()));
+            verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk_2.pk.vk.clone()));
+            test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, verifier_setup_params);
+        }
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
+        let mut verifier_statements = Statements::new();
+        verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+            sig_params.clone(),
+            sig_keypair.public_key.clone(),
+            BTreeMap::new(),
+        ));
 
-    let verifier_proof_spec = ProofSpec::new(
-        verifier_statements.clone(),
-        meta_statements.clone(),
-        verifier_setup_params,
-        None,
-    );
-    assert!(verifier_proof_spec.is_valid());
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
+        // For encrypting message at `enc_msg_idx_1` for 1st decryptor
+        if reuse_setup_params {
+            verifier_statements.add(SaverVerifierStmt::new_statement_from_params_ref(
+                chunk_bit_size,
+                0,
+                1,
+                2,
+                3,
+            ));
+        } else {
+            verifier_statements.add(
+                SaverVerifierStmt::new_statement_from_params(
+                    chunk_bit_size,
+                    enc_gens_1.clone(),
+                    chunked_comm_gens_1.clone(),
+                    ek_1.clone(),
+                    snark_pk_1.pk.vk.clone(),
+                )
+                .unwrap(),
+            );
+        }
 
-    proof
-        .clone()
-        .verify(verifier_proof_spec.clone(), None)
-        .unwrap();
+        // For encrypting message at `enc_msg_idx_1` for 2nd decryptor
+        if reuse_setup_params {
+            verifier_statements.add(SaverVerifierStmt::new_statement_from_params_ref(
+                chunk_bit_size,
+                4,
+                5,
+                6,
+                7,
+            ));
+        } else {
+            verifier_statements.add(
+                SaverVerifierStmt::new_statement_from_params(
+                    chunk_bit_size,
+                    enc_gens_2.clone(),
+                    chunked_comm_gens_2.clone(),
+                    ek_2.clone(),
+                    snark_pk_2.pk.vk.clone(),
+                )
+                .unwrap(),
+            );
+        }
 
-    decrypt_and_verify(
-        &proof,
-        1,
-        &snark_pk_1.pk.vk,
-        msgs[enc_msg_idx_1].clone(),
-        &sk_1,
-        &dk_1,
-        &enc_gens_1,
-        chunk_bit_size,
-    );
-    decrypt_and_verify(
-        &proof,
-        2,
-        &snark_pk_2.pk.vk,
-        msgs[enc_msg_idx_1].clone(),
-        &sk_2,
-        &dk_2,
-        &enc_gens_2,
-        chunk_bit_size,
-    );
-    decrypt_and_verify(
-        &proof,
-        3,
-        &snark_pk_1.pk.vk,
-        msgs[enc_msg_idx_2].clone(),
-        &sk_1,
-        &dk_1,
-        &enc_gens_1,
-        chunk_bit_size,
-    );
-    decrypt_and_verify(
-        &proof,
-        4,
-        &snark_pk_2.pk.vk,
-        msgs[enc_msg_idx_3].clone(),
-        &sk_2,
-        &dk_2,
-        &enc_gens_2,
-        chunk_bit_size,
-    );
+        // For encrypting message at `enc_msg_idx_2` for 1st decryptor
+        if reuse_setup_params {
+            verifier_statements.add(SaverVerifierStmt::new_statement_from_params_ref(
+                chunk_bit_size,
+                0,
+                1,
+                2,
+                3,
+            ));
+        } else {
+            verifier_statements.add(
+                SaverVerifierStmt::new_statement_from_params(
+                    chunk_bit_size,
+                    enc_gens_1.clone(),
+                    chunked_comm_gens_1.clone(),
+                    ek_1.clone(),
+                    snark_pk_1.pk.vk.clone(),
+                )
+                .unwrap(),
+            );
+        }
+
+        // For encrypting message at `enc_msg_idx_3` for 2nd decryptor
+        if reuse_setup_params {
+            verifier_statements.add(SaverVerifierStmt::new_statement_from_params_ref(
+                chunk_bit_size,
+                4,
+                5,
+                6,
+                7,
+            ));
+        } else {
+            verifier_statements.add(
+                SaverVerifierStmt::new_statement_from_params(
+                    chunk_bit_size,
+                    enc_gens_2.clone(),
+                    chunked_comm_gens_2.clone(),
+                    ek_2.clone(),
+                    snark_pk_2.pk.vk.clone(),
+                )
+                .unwrap(),
+            );
+        }
+
+        test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
+
+        let verifier_proof_spec = ProofSpec::new(
+            verifier_statements.clone(),
+            meta_statements.clone(),
+            verifier_setup_params,
+            None,
+        );
+        assert!(verifier_proof_spec.is_valid());
+        test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
+
+        let start = Instant::now();
+        proof
+            .clone()
+            .verify(verifier_proof_spec.clone(), None)
+            .unwrap();
+        println!(
+            "Time taken to verify proof of verifiable encryption of 4 messages in signature: {:?}",
+            start.elapsed()
+        );
+
+        decrypt_and_verify(
+            &proof,
+            1,
+            &snark_pk_1.pk.vk,
+            msgs[enc_msg_idx_1].clone(),
+            &sk_1,
+            &dk_1,
+            &enc_gens_1,
+            chunk_bit_size,
+        );
+        decrypt_and_verify(
+            &proof,
+            2,
+            &snark_pk_2.pk.vk,
+            msgs[enc_msg_idx_1].clone(),
+            &sk_2,
+            &dk_2,
+            &enc_gens_2,
+            chunk_bit_size,
+        );
+        decrypt_and_verify(
+            &proof,
+            3,
+            &snark_pk_1.pk.vk,
+            msgs[enc_msg_idx_2].clone(),
+            &sk_1,
+            &dk_1,
+            &enc_gens_1,
+            chunk_bit_size,
+        );
+        decrypt_and_verify(
+            &proof,
+            4,
+            &snark_pk_2.pk.vk,
+            msgs[enc_msg_idx_3].clone(),
+            &sk_2,
+            &dk_2,
+            &enc_gens_2,
+            chunk_bit_size,
+        );
+    }
+    check(true);
+    check(false);
 }
 
 #[test]
 fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
-    // Prove knowledge of BBS+ signature and a specific message satisfies some bounds i.e. min <= message <= max.
+    // Prove knowledge of BBS+ signature and a certain messages satisfy some bounds i.e. min <= message <= max
+    // and a message is verifiably encrypted.
     let mut rng = StdRng::seed_from_u64(0u64);
 
+    let min = 100;
+    let max = 200;
     let msg_count = 5;
     let msgs = (0..msg_count)
         .into_iter()
-        .map(|i| Fr::from(101u64 + i as u64))
+        .map(|i| Fr::from(min + 1 + i as u64))
         .collect::<Vec<_>>();
     let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
 
@@ -610,8 +822,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
     let chunk_bit_size = 8;
     // For transformed commitment to the message
-    let chunked_comm_gens =
-        ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(&mut rng);
+    let chunked_comm_gens = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
     let (snark_pk, sk, ek, dk) = setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
 
     // Following message's bounds will be checked
@@ -622,9 +833,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     let enc_msg_idx = 3;
     let enc_msg = msgs[enc_msg_idx].clone();
 
-    let min = msg - Fr::from(50u64);
-    let max = msg + Fr::from(100u64);
-
     let mut prover_setup_params = vec![];
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(bound_snark_pk.clone()));
 
@@ -634,12 +842,10 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    prover_statements.add(BoundCheckProverStmt::new_statement_from_params_ref(
-        min, max, 0,
-    ));
-    prover_statements.add(BoundCheckProverStmt::new_statement_from_params_ref(
-        min, max, 0,
-    ));
+    prover_statements
+        .add(BoundCheckProverStmt::new_statement_from_params_ref(min, max, 0).unwrap());
+    prover_statements
+        .add(BoundCheckProverStmt::new_statement_from_params_ref(min, max, 0).unwrap());
     prover_statements.add(
         SaverProverStmt::new_statement_from_params(
             chunk_bit_size,
@@ -705,12 +911,10 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    verifier_statements.add(BoundCheckVerifierStmt::new_statement_from_params_ref(
-        min, max, 0,
-    ));
-    verifier_statements.add(BoundCheckVerifierStmt::new_statement_from_params_ref(
-        min, max, 0,
-    ));
+    verifier_statements
+        .add(BoundCheckVerifierStmt::new_statement_from_params_ref(min, max, 0).unwrap());
+    verifier_statements
+        .add(BoundCheckVerifierStmt::new_statement_from_params_ref(min, max, 0).unwrap());
     verifier_statements.add(
         SaverVerifierStmt::new_statement_from_params(
             chunk_bit_size,

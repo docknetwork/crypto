@@ -1,16 +1,17 @@
 use crate::error::ProofSystemError;
 use crate::prelude::schnorr::SchnorrProtocol;
-use crate::prelude::SaverProof;
-use crate::statement_proof::StatementProof;
+use crate::statement_proof::{SaverProof, StatementProof};
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::PrimeField;
-use ark_groth16::{prepare_verifying_key, VerifyingKey};
+use ark_groth16::{prepare_verifying_key, PreparedVerifyingKey, VerifyingKey};
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::RngCore;
 use ark_std::{collections::BTreeMap, io::Write, ops::Add, vec, vec::Vec, UniformRand};
 use saver::commitment::ChunkedCommitment;
 use saver::encryption::{Ciphertext, Encryption};
+use saver::keygen::PreparedEncryptionKey;
 use saver::prelude::{ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey};
+use saver::setup::PreparedEncryptionGens;
 use saver::utils::decompose;
 
 /// Apart from the SAVER protocol (encryption and snark proof), this also runs 3 Schnorr proof of knowledge protocols
@@ -240,97 +241,96 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
     /// Verify that the snark proof is valid, the commitment in the ciphertext is correct, the commitment
     /// to the chunks and the combined message are equal, the chunks committed in ciphertext are same
     /// as the ones committed in the chunked commitment and all the 3 Schnorr proofs are valid.
-    pub fn verify_proof_contribution<G: AffineCurve>(
+    pub fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E, G>,
+        proof: &SaverProof<E>,
+        ck_comm_ct: &[E::G1Affine],
+        ck_comm_chunks: &[E::G1Affine],
+        ck_comm_combined: &[E::G1Affine],
     ) -> Result<(), ProofSystemError> {
-        match proof {
-            StatementProof::Saver(proof) => {
-                // Both commitments, one to the chunks and the other to the combined message must be same
-                if proof.comm_chunks != proof.comm_combined {
-                    return Err(ProofSystemError::SaverInequalChunkedCommitment);
-                }
-
-                // Each chunk in the chunked commitment should be same as the chunk in ciphertext's
-                // commitment
-                if proof.sp_chunks.response.len() != proof.sp_ciphertext.response.len() {
-                    return Err(ProofSystemError::SaverInsufficientChunkedCommitmentResponses);
-                }
-                for i in 0..(proof.sp_chunks.response.len() - 1) {
-                    if proof.sp_chunks.response.get_response(i)?
-                        != proof.sp_ciphertext.response.get_response(i)?
-                    {
-                        return Err(ProofSystemError::SaverInequalChunkedCommitmentResponse);
-                    }
-                }
-
-                let snark_verifying_key = self
-                    .snark_verifying_key
-                    .ok_or(ProofSystemError::SaverSnarkVerifyingKeyNotProvided)?;
-
-                let pvk = prepare_verifying_key(snark_verifying_key);
-                let pek = self.encryption_key.prepare();
-                let pgens = self.encryption_gens.prepared();
-                proof
-                    .ciphertext
-                    .verify_commitment_and_proof_given_prepared(
-                        &proof.snark_proof,
-                        &pvk,
-                        &pek,
-                        &pgens,
-                    )?;
-
-                let ck_com_ct = self.encryption_key.commitment_key();
-                let ck_comm_chunks = ChunkedCommitment::<E::G1Affine>::commitment_key(
-                    &self.chunked_commitment_gens,
-                    self.chunk_bit_size,
-                );
-                let ck_comm_combined = vec![
-                    self.chunked_commitment_gens.G,
-                    self.chunked_commitment_gens.H,
-                ];
-                // NOTE: value of id is dummy
-                let sp_ciphertext =
-                    SchnorrProtocol::new(10000, &ck_com_ct, proof.ciphertext.commitment);
-                let sp_chunks = SchnorrProtocol::new(10000, &ck_comm_chunks, proof.comm_chunks);
-                let sp_combined =
-                    SchnorrProtocol::new(10000, &ck_comm_combined, proof.comm_combined);
-
-                sp_ciphertext
-                    .verify_proof_contribution_as_struct(challenge, &proof.sp_ciphertext)?;
-                sp_chunks.verify_proof_contribution_as_struct(challenge, &proof.sp_chunks)?;
-                sp_combined.verify_proof_contribution_as_struct(challenge, &proof.sp_combined)?;
-                Ok(())
-            }
-
-            _ => Err(ProofSystemError::ProofIncompatibleWithSaverProtocol),
+        // Both commitments, one to the chunks and the other to the combined message must be same
+        if proof.comm_chunks != proof.comm_combined {
+            return Err(ProofSystemError::SaverInequalChunkedCommitment);
         }
+
+        // Each chunk in the chunked commitment should be same as the chunk in ciphertext's
+        // commitment
+        if proof.sp_chunks.response.len() != proof.sp_ciphertext.response.len() {
+            return Err(ProofSystemError::SaverInsufficientChunkedCommitmentResponses);
+        }
+        for i in 0..(proof.sp_chunks.response.len() - 1) {
+            if proof.sp_chunks.response.get_response(i)?
+                != proof.sp_ciphertext.response.get_response(i)?
+            {
+                return Err(ProofSystemError::SaverInequalChunkedCommitmentResponse);
+            }
+        }
+
+        let snark_verifying_key = self
+            .snark_verifying_key
+            .ok_or(ProofSystemError::SaverSnarkVerifyingKeyNotProvided)?;
+
+        let pvk = prepare_verifying_key(snark_verifying_key);
+        let pek = self.encryption_key.prepared();
+        let pgens = self.encryption_gens.prepared();
+        self.verify_proof_contribution_using_prepared(
+            challenge,
+            proof,
+            ck_comm_ct,
+            ck_comm_chunks,
+            ck_comm_combined,
+            &pvk,
+            &pgens,
+            &pek,
+        )
+    }
+
+    pub fn verify_proof_contribution_using_prepared(
+        &self,
+        challenge: &E::Fr,
+        proof: &SaverProof<E>,
+        ck_comm_ct: &[E::G1Affine],
+        ck_comm_chunks: &[E::G1Affine],
+        ck_comm_combined: &[E::G1Affine],
+        pvk: &PreparedVerifyingKey<E>,
+        pgens: &PreparedEncryptionGens<E>,
+        pek: &PreparedEncryptionKey<E>,
+    ) -> Result<(), ProofSystemError> {
+        proof
+            .ciphertext
+            .verify_commitment_and_proof_given_prepared(&proof.snark_proof, &pvk, &pek, &pgens)?;
+
+        // NOTE: value of id is dummy
+        let sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, proof.ciphertext.commitment);
+        let sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, proof.comm_chunks);
+        let sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, proof.comm_combined);
+
+        sp_ciphertext.verify_proof_contribution_as_struct(challenge, &proof.sp_ciphertext)?;
+        sp_chunks.verify_proof_contribution_as_struct(challenge, &proof.sp_chunks)?;
+        sp_combined.verify_proof_contribution_as_struct(challenge, &proof.sp_combined)?;
+        Ok(())
     }
 
     pub fn compute_challenge_contribution<W: Write>(
-        chunk_bit_size: u8,
-        chunked_commitment_gens: &'a ChunkedCommitmentGens<E::G1Affine>,
-        encryption_key: &'a EncryptionKey<E>,
+        ck_comm_ct: &[E::G1Affine],
+        ck_comm_chunks: &[E::G1Affine],
+        ck_comm_combined: &[E::G1Affine],
         proof: &SaverProof<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
-        encryption_key
-            .commitment_key()
-            .serialize_unchecked(&mut writer)?;
+        ck_comm_ct.serialize_unchecked(&mut writer)?;
         proof
             .ciphertext
             .commitment
             .serialize_unchecked(&mut writer)?;
         proof.sp_ciphertext.t.serialize_unchecked(&mut writer)?;
 
-        ChunkedCommitment::<E::G1Affine>::commitment_key(chunked_commitment_gens, chunk_bit_size)
-            .serialize_unchecked(&mut writer)?;
+        ck_comm_chunks.serialize_unchecked(&mut writer)?;
         proof.comm_chunks.serialize_unchecked(&mut writer)?;
         proof.sp_chunks.t.serialize_unchecked(&mut writer)?;
 
-        vec![chunked_commitment_gens.G, chunked_commitment_gens.H]
-            .serialize_unchecked(&mut writer)?;
+        ck_comm_combined.serialize_unchecked(&mut writer)?;
         proof.comm_combined.serialize_unchecked(&mut writer)?;
         proof.sp_combined.t.serialize_unchecked(&mut writer)?;
         Ok(())

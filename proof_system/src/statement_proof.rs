@@ -97,6 +97,8 @@ mod serialization {
     use serde::{Deserializer, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
 
+    use dock_crypto_utils::impl_for_groth16_struct;
+
     impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for StatementProof<E, G> {
         impl_serialize!();
     }

@@ -125,8 +125,43 @@ pub(crate) mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
+    use blake2::Blake2b;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
+
+    #[test]
+    fn gens() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        let label = [1, 2, 3];
+        let enc_gens_1 = EncryptionGens::<Bls12_381>::new::<Blake2b>(&label);
+        let enc_gens_2 = EncryptionGens::<Bls12_381>::new::<Blake2b>(&label);
+        let enc_gens_3 = EncryptionGens::<Bls12_381>::new::<Blake2b>(&[1, 2]);
+        assert_eq!(enc_gens_1, enc_gens_2);
+        assert_ne!(enc_gens_2, enc_gens_3);
+        assert_ne!(
+            EncryptionGens::<Bls12_381>::new_using_rng(&mut rng),
+            EncryptionGens::<Bls12_381>::new_using_rng(&mut rng)
+        );
+
+        let comm_gens_1 =
+            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new::<Blake2b>(&label);
+        let comm_gens_2 =
+            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new::<Blake2b>(&label);
+        let comm_gens_3 = ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new::<
+            Blake2b,
+        >(&[1, 0]);
+        assert_eq!(comm_gens_1, comm_gens_2);
+        assert_ne!(comm_gens_2, comm_gens_3);
+        assert_ne!(
+            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
+                &mut rng
+            ),
+            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
+                &mut rng
+            )
+        )
+    }
 
     #[test]
     fn setup_for_groth16_works() {

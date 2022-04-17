@@ -4,10 +4,10 @@ use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
-use benches::accumulators::{setup_positive_accum, setup_universal_accum};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::collections::HashSet;
 use std::time::Instant;
+use test_utils::accumulators::{setup_positive_accum, setup_universal_accum};
 use vb_accumulator::batch_utils::Omega;
 use vb_accumulator::positive::Accumulator;
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};

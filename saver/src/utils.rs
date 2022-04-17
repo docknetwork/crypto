@@ -36,7 +36,9 @@ pub fn decompose<F: PrimeField>(message: &F, chunk_bit_size: u8) -> crate::Resul
 pub fn compose<F: PrimeField>(decomposed: &[u8], chunk_bit_size: u8) -> crate::Result<F> {
     match chunk_bit_size {
         4 => {
-            assert_eq!(decomposed.len() % 2, 0);
+            if (decomposed.len() % 2) == 1 {
+                return Err(SaverError::InvalidDecomposition);
+            }
             let mut bytes = vec![];
             for nibbles in decomposed.chunks(2) {
                 bytes.push(nibbles[0] * 16 + nibbles[1]);
@@ -46,57 +48,6 @@ pub fn compose<F: PrimeField>(decomposed: &[u8], chunk_bit_size: u8) -> crate::R
         8 => Ok(F::from_be_bytes_mod_order(&decomposed)),
         b => Err(SaverError::UnexpectedBase(b)),
     }
-}
-
-#[macro_export]
-macro_rules! impl_for_groth16_struct {
-    ($serializer_name: ident, $struct_name: ident, $error_msg: expr) => {
-        pub struct $serializer_name;
-
-        impl<E: PairingEngine> SerializeAs<$struct_name<E>> for $serializer_name {
-            fn serialize_as<S>(elem: &$struct_name<E>, serializer: S) -> Result<S::Ok, S::Error>
-            where
-                S: Serializer,
-            {
-                let mut bytes = vec![];
-                CanonicalSerialize::serialize(elem, &mut bytes)
-                    .map_err(serde::ser::Error::custom)?;
-                serializer.serialize_bytes(&bytes)
-            }
-        }
-
-        impl<'de, E: PairingEngine> DeserializeAs<'de, $struct_name<E>> for $serializer_name {
-            fn deserialize_as<D>(deserializer: D) -> Result<$struct_name<E>, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                struct PVisitor<E: PairingEngine>(PhantomData<E>);
-
-                impl<'a, E: PairingEngine> Visitor<'a> for PVisitor<E> {
-                    type Value = $struct_name<E>;
-
-                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                        formatter.write_str($error_msg)
-                    }
-
-                    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-                    where
-                        A: SeqAccess<'a>,
-                    {
-                        let mut bytes = Vec::<u8>::new();
-                        while let Some(b) = seq.next_element()? {
-                            bytes.push(b);
-                        }
-                        let p: $struct_name<E> =
-                            CanonicalDeserialize::deserialize(bytes.as_slice())
-                                .map_err(serde::de::Error::custom)?;
-                        Ok(p)
-                    }
-                }
-                deserializer.deserialize_seq(PVisitor::<E>(PhantomData))
-            }
-        }
-    };
 }
 
 #[cfg(test)]

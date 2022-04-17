@@ -39,6 +39,7 @@ default-features = false
 ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
 blake2 = { version = "0.9", default-features = false }
 serde_json = "1.0"
+test_utils = { version = "0.1.0", default-features = false, path = "../test_utils" }
 
 [features]
 default = [ "parallel" ]

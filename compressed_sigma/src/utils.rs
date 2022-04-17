@@ -1,10 +1,9 @@
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::AffineCurve;
 use ark_ff::PrimeField;
 use ark_std::{vec, vec::Vec};
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
-use crate::error::CompSigmaError;
 use crate::transforms::{Homomorphism, LinearForm};
 
 /// Pad given homomorphisms such that all have the same size after padding
