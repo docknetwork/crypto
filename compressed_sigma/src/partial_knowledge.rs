@@ -391,6 +391,11 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b;
+    // use core::slice::SlicePattern;
+    use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
+    use dock_crypto_utils::hashing_utils::{
+        field_elem_from_seed, ChallengeContributor, Transcript,
+    };
     use std::time::Instant;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
@@ -483,7 +488,10 @@ mod tests {
 
     #[test]
     fn partial_knowledge_single() {
-        fn check_partial_know_single(n: usize, known_indices: BTreeSet<usize>) {
+        fn check_partial_know_single<D>(n: usize, known_indices: BTreeSet<usize>)
+        where
+            D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+        {
             let mut rng = StdRng::seed_from_u64(0u64);
             let k = known_indices.len();
             let g = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
@@ -524,7 +532,13 @@ mod tests {
             let rand_comm =
                 RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
-            let challenge = Fr::rand(&mut rng);
+            let testing_bytes = vec![];
+            rand_comm.challenge_contribution(testing_bytes);
+            let maybe = Transcript {
+                transcript_bytes: testing_bytes,
+            };
+            let challenge = maybe.hash::<Fr, D>();
+            // let challenge = Fr::rand(&mut rng);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
                 .is_valid::<Blake2b, _>(

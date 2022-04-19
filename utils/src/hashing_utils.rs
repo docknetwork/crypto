@@ -1,12 +1,71 @@
 #![allow(non_snake_case)]
 
+// use core::slice::SlicePattern;
+
+use crate::serde_utils::ArkSerializationError;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{to_bytes, PrimeField};
-use ark_std::vec;
+use ark_serialize::SerializationError;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{
+    io::{Read, Write},
+    vec,
+    vec::Vec,
+};
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use hkdf::Hkdf;
+use serde::Serialize;
 
 const ZERO_AS_OCTET: [u8; 1] = [0u8];
+
+// #[derive(Debug, CanonicalSerialize)]
+// pub struct Transcript<G: AffineCurve> {
+//     elements: Vec<G>,
+//     transcript_bytes: Vec<u8>,
+// }
+
+#[derive(Debug, CanonicalSerialize)]
+pub struct Transcript {
+    transcript_bytes: Vec<u8>,
+}
+
+impl Transcript {
+    pub fn new() -> Transcript {
+        Transcript {
+            transcript_bytes: Vec::new(),
+        }
+    }
+
+    pub fn append_bytes(&mut self, new_bytes: &[u8]) {
+        self.transcript_bytes.append(&mut new_bytes.to_vec());
+    }
+
+    pub fn hash<F, D>(self) -> F
+    where
+        F: PrimeField,
+        D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    {
+        let result = field_elem_from_seed::<F, D>(self.transcript_bytes.as_slice(), &[]);
+        result
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub enum ChallengeError {
+    InvalidContribution,
+    #[serde(with = "ArkSerializationError")]
+    Serialization(SerializationError),
+}
+
+impl From<SerializationError> for ChallengeError {
+    fn from(e: SerializationError) -> Self {
+        Self::Serialization(e)
+    }
+}
+
+pub trait ChallengeContributor {
+    fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ChallengeError>;
+}
 
 /// Deterministically generate a field element from given seed similar to the procedure defined
 /// here https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-04#section-2.3
@@ -81,3 +140,25 @@ pub fn field_elem_from_try_and_incr<F: PrimeField, D: Digest>(bytes: &[u8]) -> F
     }
     f.unwrap()
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::hashing_utils::Transcript;
+//     use ark_bls12_381::Bls12_381;
+//     use ark_ec::{bls12::Bls12, PairingEngine};
+//     use ark_std::{
+//         rand::{rngs::StdRng, SeedableRng},
+//         UniformRand,
+//     };
+
+//     type Fr = <Bls12_381 as PairingEngine>::Fr;
+
+//     #[test]
+//     fn transcript() {
+//         let mut trans = Transcript::<G: AffineCurve>::new();
+//         let mut rng = StdRng::seed_from_u64(0u64);
+//         let num = Fr::rand(&mut rng);
+//         let elemen = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+//     }
+// }

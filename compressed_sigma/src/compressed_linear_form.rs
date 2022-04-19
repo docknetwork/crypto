@@ -18,7 +18,7 @@ use digest::Digest;
 use crate::error::CompSigmaError;
 use crate::transforms::LinearForm;
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
-use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
+use dock_crypto_utils::hashing_utils::*;
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
 use dock_crypto_utils::msm::WindowTable;
@@ -31,6 +31,22 @@ pub struct RandomCommitment<G: AffineCurve> {
     pub rho: G::ScalarField,
     pub A_hat: G,
     pub t: G::ScalarField,
+}
+
+impl<G> ChallengeContributor for RandomCommitment<G>
+where
+    G: AffineCurve,
+{
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ChallengeError> {
+        for i in 0..self.r.len() {
+            self.r[i].serialize_unchecked(&mut writer).unwrap();
+        }
+        self.rho.serialize_unchecked(&mut writer).unwrap();
+        self.A_hat.serialize_unchecked(&mut writer).unwrap();
+        self.t
+            .serialize_unchecked(&mut writer)
+            .map_err(|e| e.into())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]

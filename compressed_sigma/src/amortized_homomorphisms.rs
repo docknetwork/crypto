@@ -17,7 +17,7 @@ use digest::Digest;
 use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 
-use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
+use dock_crypto_utils::hashing_utils::*;
 
 use crate::compressed_homomorphism;
 use crate::utils::get_n_powers;
@@ -32,6 +32,21 @@ pub struct RandomCommitment<G: AffineCurve> {
     pub A: G,
     /// t = f(\vec{r})
     pub t: G,
+}
+
+impl<G> ChallengeContributor for RandomCommitment<G>
+where
+    G: AffineCurve,
+{
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ChallengeError> {
+        for i in 0..self.r.len() {
+            self.r[i].serialize_unchecked(&mut writer).unwrap();
+        }
+        self.A.serialize_unchecked(&mut writer).unwrap();
+        self.t
+            .serialize_unchecked(&mut writer)
+            .map_err(|e| e.into())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]

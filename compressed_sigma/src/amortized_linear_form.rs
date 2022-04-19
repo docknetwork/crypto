@@ -12,7 +12,7 @@ use ark_std::{
 };
 use digest::Digest;
 
-use dock_crypto_utils::ff::inner_product;
+use dock_crypto_utils::{ff::inner_product, hashing_utils::*};
 
 use crate::compressed_linear_form;
 use crate::error::CompSigmaError;
@@ -31,6 +31,22 @@ pub struct RandomCommitment<G: AffineCurve> {
     pub rho: G::ScalarField,
     pub A: G,
     pub t: G::ScalarField,
+}
+
+impl<G> ChallengeContributor for RandomCommitment<G>
+where
+    G: AffineCurve,
+{
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ChallengeError> {
+        for i in 0..self.r.len() {
+            self.r[i].serialize_unchecked(&mut writer).unwrap();
+        }
+        self.rho.serialize_unchecked(&mut writer).unwrap();
+        self.A.serialize_unchecked(&mut writer).unwrap();
+        self.t
+            .serialize_unchecked(&mut writer)
+            .map_err(|e| e.into())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
