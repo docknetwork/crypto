@@ -81,7 +81,8 @@ where
     }
 
     /// Derive commitment keys for Schnorr protocol from public params. This is done to avoid
-    /// creating them if the same public params are used in multiple statements.
+    /// creating them if the same public params are used in multiple statements and is effectively a
+    /// pre-processing step done for optimization.
     pub fn derive_commitment_keys(
         &self,
     ) -> Result<
@@ -136,8 +137,9 @@ where
                         _ => panic!("This should never happen"),
                     };
 
-                    derived_ek_comm.update_for_orig(enc_key, s_idx);
-                    derived_chunked_comm.update_for_orig(tuple_map.get(&s_idx).unwrap(), s_idx);
+                    derived_ek_comm.on_new_statement_idx(enc_key, s_idx);
+                    derived_chunked_comm
+                        .on_new_statement_idx(tuple_map.get(&s_idx).unwrap(), s_idx);
                 }
                 Statement::BoundCheckLegoGroth16Prover(_)
                 | Statement::BoundCheckLegoGroth16Verifier(_) => {
@@ -150,7 +152,7 @@ where
                         }
                         _ => panic!("This should never happen"),
                     };
-                    derived_bound_check_comm.update_for_orig(verifying_key, s_idx);
+                    derived_bound_check_comm.on_new_statement_idx(verifying_key, s_idx);
                 }
                 _ => (),
             }
@@ -163,7 +165,7 @@ where
     }
 
     /// Derive prepared keys for performing pairings. This is done to avoid preparing the same
-    /// parameters again.
+    /// parameters again and is effectively a pre-processing step done for optimization.
     pub fn derive_prepared_parameters(
         &self,
     ) -> Result<
@@ -188,17 +190,17 @@ where
             match statement {
                 Statement::SaverVerifier(s) => {
                     let gens = s.get_encryption_gens(&self.setup_params, s_idx)?;
-                    derived_gens.update_for_orig(gens, s_idx);
+                    derived_gens.on_new_statement_idx(gens, s_idx);
 
                     let enc_key = s.get_encryption_key(&self.setup_params, s_idx)?;
-                    derived_ek.update_for_orig(enc_key, s_idx);
+                    derived_ek.on_new_statement_idx(enc_key, s_idx);
 
                     let verifying_key = s.get_snark_verifying_key(&self.setup_params, s_idx)?;
-                    derived_saver_vk.update_for_orig(verifying_key, s_idx);
+                    derived_saver_vk.on_new_statement_idx(verifying_key, s_idx);
                 }
                 Statement::BoundCheckLegoGroth16Verifier(s) => {
                     let verifying_key = s.get_verifying_key(&self.setup_params, s_idx)?;
-                    derived_lego_vk.update_for_orig(verifying_key, s_idx);
+                    derived_lego_vk.on_new_statement_idx(verifying_key, s_idx);
                 }
                 _ => (),
             }

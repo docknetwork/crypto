@@ -25,7 +25,7 @@ use crate::sub_protocols::accumulator::{
     AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol,
 };
 use crate::sub_protocols::bbs_plus::PoKBBSSigG1SubProtocol;
-use crate::sub_protocols::bound_check::BoundCheckProtocol;
+use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
@@ -91,7 +91,7 @@ where
             }
         }
 
-        // Prepare commitment keys for running Schnorr protocol
+        // Prepare commitment keys for running Schnorr protocols of all statements.
         let (bound_check_comm, ek_comm, chunked_comm) = proof_spec.derive_commitment_keys()?;
 
         let mut sub_protocols =
@@ -277,6 +277,7 @@ where
         if let Some(ctx) = &proof_spec.context {
             challenge_bytes.extend_from_slice(ctx);
         }
+
         // Get each sub-protocol's challenge contribution
         for p in sub_protocols.iter() {
             p.challenge_contribution(&mut challenge_bytes)?;
@@ -312,7 +313,9 @@ where
             ));
         }
 
+        // Prepare commitment keys for running Schnorr protocols of all statements.
         let (bound_check_comm, ek_comm, chunked_comm) = proof_spec.derive_commitment_keys()?;
+        // Prepared required parameters for pairings
         let (derived_lego_vk, derived_gens, derived_ek, derived_saver_vk) =
             proof_spec.derive_prepared_parameters()?;
 

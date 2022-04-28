@@ -25,13 +25,16 @@ pub struct BoundCheckProtocol<'a, E: PairingEngine> {
     pub id: usize,
     pub min: u64,
     pub max: u64,
+    /// The SNARK proving key, will be `None` if invoked by verifier.
     pub proving_key: Option<&'a ProvingKey<E>>,
+    /// The SNARK verifying key, will be `None` if invoked by prover.
     pub verifying_key: Option<&'a VerifyingKey<E>>,
     pub snark_proof: Option<Proof<E>>,
     pub sp: Option<SchnorrProtocol<'a, E::G1Affine>>,
 }
 
 impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
+    /// Create an instance of this protocol for the prover.
     pub fn new_for_prover(id: usize, min: u64, max: u64, proving_key: &'a ProvingKey<E>) -> Self {
         Self {
             id,
@@ -44,6 +47,7 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         }
     }
 
+    /// Create an instance of this protocol for the verifier.
     pub fn new_for_verifier(
         id: usize,
         min: u64,
@@ -262,4 +266,57 @@ where
         value: None,
     };
     generate_random_parameters::<E, _, R>(circuit, 1, rng).map_err(|e| e.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_bls12_381::Bls12_381;
+    use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
+
+    type Fr = <Bls12_381 as PairingEngine>::Fr;
+
+    #[test]
+    fn valid_bounds() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let proving_key = generate_snark_srs_bound_check::<Bls12_381, _>(&mut rng).unwrap();
+        let pvk = prepare_verifying_key(&proving_key.vk);
+
+        for (min, max, value) in [
+            (100, 200, 100),
+            (100, 200, 200),
+            (100, 200, 101),
+            (100, 200, 199),
+            (100, 200, 150),
+        ] {
+            let circuit = BoundCheckCircuit {
+                min: Some(Fr::from(min)),
+                max: Some(Fr::from(max)),
+                value: Some(Fr::from(value)),
+            };
+            let v = Fr::rand(&mut rng);
+            let proof = create_random_proof(circuit, v, &proving_key, &mut rng).unwrap();
+            verify_proof(&pvk, &proof, &[Fr::from(min), Fr::from(max)]).unwrap();
+        }
+
+        let circuit = BoundCheckCircuit {
+            min: Some(Fr::from(100)),
+            max: Some(Fr::from(200)),
+            value: Some(Fr::from(99)),
+        };
+        let v = Fr::rand(&mut rng);
+        assert!(create_random_proof(circuit, v, &proving_key, &mut rng).is_err());
+
+        for (min, max, value) in [(100, 200, 99), (100, 200, 201)] {
+            // To create valid proof
+            let circuit = BoundCheckCircuit {
+                min: Some(Fr::from(1)),
+                max: Some(Fr::from(1000)),
+                value: Some(Fr::from(value)),
+            };
+            let v = Fr::rand(&mut rng);
+            let proof = create_random_proof(circuit, v, &proving_key, &mut rng).unwrap();
+            assert!(verify_proof(&pvk, &proof, &[Fr::from(min), Fr::from(max)],).is_err());
+        }
+    }
 }

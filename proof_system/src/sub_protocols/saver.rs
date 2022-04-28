@@ -1,6 +1,6 @@
 use crate::error::ProofSystemError;
-use crate::prelude::schnorr::SchnorrProtocol;
 use crate::statement_proof::{SaverProof, StatementProof};
+use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::PrimeField;
 use ark_groth16::{prepare_verifying_key, PreparedVerifyingKey, VerifyingKey};
@@ -22,16 +22,14 @@ pub struct SaverProtocol<'a, E: PairingEngine> {
     pub encryption_gens: &'a EncryptionGens<E>,
     pub chunked_commitment_gens: &'a ChunkedCommitmentGens<E::G1Affine>,
     pub encryption_key: &'a EncryptionKey<E>,
+    /// The SNARK proving key, will be `None` if invoked by verifier.
     pub snark_proving_key: Option<&'a ProvingKey<E>>,
+    /// The SNARK verifying key, will be `None` if invoked by prover.
     pub snark_verifying_key: Option<&'a VerifyingKey<E>>,
     pub ciphertext: Option<Ciphertext<E>>,
     /// Randomness used in encryption
     pub randomness_enc: Option<E::Fr>,
     pub snark_proof: Option<saver::saver_groth16::Proof<E>>,
-    /// Commitment to the same chunks (decomposition of the message) as done during encryption
-    pub comm_chunks: Option<E::G1Affine>,
-    /// Commitment to the message before breaking into chunks. Its value should be same as `comm_chunks`
-    pub comm_combined: Option<E::G1Affine>,
     /// Schnorr protocol for proving knowledge of message chunks in ciphertext's commitment
     pub sp_ciphertext: Option<SchnorrProtocol<'a, E::G1Affine>>,
     /// Schnorr protocol for proving knowledge of message chunks in the chunked commitment
@@ -41,6 +39,7 @@ pub struct SaverProtocol<'a, E: PairingEngine> {
 }
 
 impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
+    /// Create an instance of this protocol for the prover.
     pub fn new_for_prover(
         id: usize,
         chunk_bit_size: u8,
@@ -60,14 +59,13 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
             ciphertext: None,
             randomness_enc: None,
             snark_proof: None,
-            comm_chunks: None,
-            comm_combined: None,
             sp_ciphertext: None,
             sp_chunks: None,
             sp_combined: None,
         }
     }
 
+    /// Create an instance of this protocol for the verifier.
     pub fn new_for_verifier(
         id: usize,
         chunk_bit_size: u8,
@@ -87,8 +85,6 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
             ciphertext: None,
             randomness_enc: None,
             snark_proof: None,
-            comm_chunks: None,
-            comm_combined: None,
             sp_ciphertext: None,
             sp_chunks: None,
             sp_combined: None,
@@ -176,8 +172,6 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         self.ciphertext = Some(ciphertext);
         self.randomness_enc = Some(randomness_enc);
         self.snark_proof = Some(proof);
-        self.comm_chunks = Some(comm_chunks);
-        self.comm_combined = Some(comm_combined);
         self.sp_ciphertext = Some(sp_ciphertext);
         self.sp_chunks = Some(sp_chunks);
         self.sp_combined = Some(sp_combined);
@@ -215,26 +209,20 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
                 self.id,
             ));
         }
+        let mut sp_chunks = self.sp_chunks.take().unwrap();
+        let mut sp_combined = self.sp_combined.take().unwrap();
         Ok(StatementProof::Saver(SaverProof {
             ciphertext: self.ciphertext.take().unwrap(),
             snark_proof: self.snark_proof.take().unwrap(),
-            comm_chunks: self.comm_chunks.take().unwrap(),
-            comm_combined: self.comm_combined.take().unwrap(),
+            comm_chunks: sp_chunks.commitment,
+            comm_combined: sp_combined.commitment,
             sp_ciphertext: self
                 .sp_ciphertext
                 .take()
                 .unwrap()
                 .gen_proof_contribution_as_struct(challenge)?,
-            sp_chunks: self
-                .sp_chunks
-                .take()
-                .unwrap()
-                .gen_proof_contribution_as_struct(challenge)?,
-            sp_combined: self
-                .sp_combined
-                .take()
-                .unwrap()
-                .gen_proof_contribution_as_struct(challenge)?,
+            sp_chunks: sp_chunks.gen_proof_contribution_as_struct(challenge)?,
+            sp_combined: sp_combined.gen_proof_contribution_as_struct(challenge)?,
         }))
     }
 
@@ -354,10 +342,12 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         }
     }
 
+    /// Commitment key for the commitment in ciphertext
     pub fn encryption_comm_key(encryption_key: &EncryptionKey<E>) -> Vec<E::G1Affine> {
         encryption_key.commitment_key()
     }
 
+    /// Commitment key for chunked commitment
     pub fn chunked_comm_keys(
         chunked_commitment_gens: &ChunkedCommitmentGens<E::G1Affine>,
         chunk_bit_size: u8,

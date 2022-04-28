@@ -1,5 +1,5 @@
 //! Proof of knowledge of the signature and corresponding messages as per section 4.5 of the paper
-//! https://eprint.iacr.org/2016/663.pdf
+//! <https://eprint.iacr.org/2016/663.pdf>
 //! # Examples
 //!
 //! Creating proof of knowledge of signature and verifying it:

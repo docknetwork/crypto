@@ -1,5 +1,7 @@
-//! Parameters derived from parameters during proof generation and verification. Used to prevent repeatedly creating these parameters.
-use crate::prelude::bound_check::BoundCheckProtocol;
+//! Parameters derived from other parameters during proof generation and verification. Used to prevent repeatedly
+//! creating these parameters.
+
+use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use ark_ec::PairingEngine;
 use ark_std::{collections::BTreeMap, marker::PhantomData, vec, vec::Vec};
@@ -14,17 +16,23 @@ use saver::saver_groth16::{
     PreparedVerifyingKey as SaverPreparedVerifyingKey, VerifyingKey as SaverVerifyingKey,
 };
 
+/// Allows creating a new derived parameter from reference to original parameter
 pub trait DerivedParams<'a, Ref, DP> {
     fn new_derived(orig: &Ref) -> DP;
 }
 
 pub struct DerivedParamsTracker<'a, Ref: PartialEq, DP, E> {
+    /// References to the original parameter to which the derivation is applied
     origs_ref: Vec<&'a Ref>,
+    /// The newly created derived param. The key in the map is reference to the original parameter and serves
+    /// as a unique identifier for the derived param.
     derived_params: BTreeMap<usize, DP>,
+    /// Maps a statement identifier to a derived parameter identifier.
     derived_params_for_statement: BTreeMap<usize, usize>,
     phantom: PhantomData<E>,
 }
 
+/// Maps statement identifiers to derived params
 pub struct StatementDerivedParams<DP> {
     derived_params: BTreeMap<usize, DP>,
     derived_params_for_statement: BTreeMap<usize, usize>,
@@ -42,11 +50,14 @@ where
             phantom: PhantomData,
         }
     }
+
     pub fn find(&self, orig: &Ref) -> Option<usize> {
         self.origs_ref.iter().position(|v: &&Ref| **v == *orig)
     }
 
-    pub fn update_for_orig(&mut self, orig: &'a Ref, s_idx: usize) {
+    /// Creates a new derived param for the statement index if need be else store the reference to
+    /// old parameter.
+    pub fn on_new_statement_idx(&mut self, orig: &'a Ref, s_idx: usize) {
         if let Some(k) = self.find(orig) {
             self.derived_params_for_statement.insert(s_idx, k);
         } else {
@@ -58,6 +69,7 @@ where
         }
     }
 
+    /// Finished tracking derived params, return map of statement to derived params
     pub fn finish(self) -> StatementDerivedParams<DP> {
         StatementDerivedParams {
             derived_params: self.derived_params,

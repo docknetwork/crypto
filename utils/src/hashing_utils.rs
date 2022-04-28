@@ -9,7 +9,7 @@ use hkdf::Hkdf;
 const ZERO_AS_OCTET: [u8; 1] = [0u8];
 
 /// Deterministically generate a field element from given seed similar to the procedure defined
-/// here https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-04#section-2.3
+/// here <https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-04#section-2.3>
 /// This process can be used to create secret keys from limited entropy source (the seed) without
 /// using any other source of randomness.
 /// `ikm` is the seed, `salt` is for domain separation. The above spec mentions `key_info` but is

@@ -2,7 +2,7 @@ use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
-use proof_system::prelude::bound_check::generate_snark_srs_bound_check;
+use proof_system::prelude::generate_snark_srs_bound_check;
 use proof_system::prelude::{
     EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, StatementProof, Witness, WitnessRef,
     Witnesses,
@@ -66,7 +66,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     // For transformed commitment to the message
     let chunked_comm_gens = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
 
-    let chunk_bit_size = 8;
+    let chunk_bit_size = 16;
 
     let (snark_pk, sk, ek, dk) = setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
 
@@ -253,7 +253,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
         // For transformed commitment to the message
         let chunked_comm_gens = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
 
-        let chunk_bit_size = 8;
+        let chunk_bit_size = 16;
 
         let (snark_pk, sk, ek, dk) =
             setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
@@ -430,7 +430,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         let msg_count = 5;
         let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
 
-        let chunk_bit_size = 8;
+        let chunk_bit_size = 16;
 
         // 1st Decryptor setup
         let enc_gens_1 = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
@@ -820,7 +820,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
 
     // Decryptor creates public parameters
     let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
-    let chunk_bit_size = 8;
+    let chunk_bit_size = 16;
     // For transformed commitment to the message
     let chunked_comm_gens = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
     let (snark_pk, sk, ek, dk) = setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();

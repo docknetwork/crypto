@@ -60,6 +60,7 @@ impl<E: PairingEngine> EncryptionGens<E> {
     }
 }
 
+/// Generators used to create commitment key of the chunked commitment
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -195,5 +196,6 @@ pub(crate) mod tests {
 
         check(4);
         check(8);
+        check(16);
     }
 }

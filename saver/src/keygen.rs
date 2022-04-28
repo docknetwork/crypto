@@ -366,5 +366,6 @@ pub(crate) mod tests {
 
         check_keygen(4);
         check_keygen(8);
+        check_keygen(16);
     }
 }

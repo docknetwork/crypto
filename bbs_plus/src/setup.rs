@@ -110,15 +110,16 @@ macro_rules! impl_sig_params {
             /// Generate params by hashing a known string. The hash function is vulnerable to timing
             /// attack but since all this is public knowledge, it is fine.
             /// This is useful if people need to be convinced that the discrete log of group elements wrt each other is not known.
-            pub fn new<D: Digest>(label: &[u8], n: usize) -> Self {
-                // Need n+2 elements of signature group and 1 element of other group
-                let mut sig_group_elems = Vec::with_capacity(n + 2);
+            pub fn new<D: Digest>(label: &[u8], message_count: usize) -> Self {
+                assert_ne!(message_count, 0);
+                // Need message_count+2 elements of signature group and 1 element of other group
+                let mut sig_group_elems = Vec::with_capacity(message_count + 2);
                 // Group element by hashing `label`||`g1` as string.
                 let g1 = projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
                     &to_bytes![label, " : g1".as_bytes()].unwrap(),
                 );
-                // h_0 and h[i] for i in 1 to n
-                let mut h = cfg_into_iter!((0..=n))
+                // h_0 and h[i] for i in 1 to message_count
+                let mut h = cfg_into_iter!((0..=message_count))
                     .map(|i| {
                         projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
                             &to_bytes![label, " : h_".as_bytes(), i as u64].unwrap(),
@@ -148,11 +149,12 @@ macro_rules! impl_sig_params {
             }
 
             /// Generate params using a random number generator
-            pub fn generate_using_rng<R>(rng: &mut R, n: usize) -> Self
+            pub fn generate_using_rng<R>(rng: &mut R, message_count: usize) -> Self
             where
                 R: RngCore,
             {
-                let h = (0..n)
+                assert_ne!(message_count, 0);
+                let h = (0..message_count)
                     .into_iter()
                     .map(|_| E::$group_projective::rand(rng))
                     .collect::<Vec<E::$group_projective>>();

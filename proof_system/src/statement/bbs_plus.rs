@@ -23,13 +23,18 @@ pub struct PoKBBSSignatureG1<E: PairingEngine> {
     /// Messages being revealed.
     #[serde_as(as = "BTreeMap<Same, FieldBytes>")]
     pub revealed_messages: BTreeMap<usize, E::Fr>,
+    /// If the statement was created by passing the signature params directly, then it will not be None
     pub signature_params: Option<SignatureParamsG1<E>>,
+    /// If the statement was created by passing the public key params directly, then it will not be None
     pub public_key: Option<PublicKeyG2<E>>,
+    /// If the statement was created by passing the index of signature params in `SetupParams`, then it will not be None
     pub signature_params_ref: Option<usize>,
+    /// If the statement was created by passing the index of public key in `SetupParams`, then it will not be None
     pub public_key_ref: Option<usize>,
 }
 
 impl<E: PairingEngine> PoKBBSSignatureG1<E> {
+    /// Create a statement by passing the signature parameters and public key directly.
     pub fn new_statement_from_params<G: AffineCurve>(
         signature_params: SignatureParamsG1<E>,
         public_key: PublicKeyG2<E>,
@@ -44,6 +49,7 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
         })
     }
 
+    /// Create a statement by passing the indices of signature parameters and public key in `SetupParams`.
     pub fn new_statement_from_params_ref<G: AffineCurve>(
         signature_params_ref: usize,
         public_key_ref: usize,
@@ -58,6 +64,7 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
         })
     }
 
+    /// Get signature params for the statement index `s_idx` either from `self` or from given `setup_params`.
     pub fn get_sig_params<'a, G: AffineCurve>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
@@ -73,6 +80,7 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
         )
     }
 
+    /// Get public key for the statement index `s_idx` either from `self` or from given `setup_params`.
     pub fn get_public_key<'a, G: AffineCurve>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],

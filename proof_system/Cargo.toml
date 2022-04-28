@@ -32,7 +32,7 @@ ark-relations = { version = "^0.3.0", default-features = false }
 [dependencies.legogroth16]
 git = "https://github.com/lovesh/legogro16"
 #branch = "comm-wit"
-rev = '00dfaf6e75464b8a246db7912eeb48070d10e067'
+rev = '5bc5e4af466c1bb84a636e18002dcffeeb0d1899'
 default-features = false
 
 [dev-dependencies]

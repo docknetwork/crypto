@@ -1,6 +1,6 @@
 pub mod accumulator;
 pub mod bbs_plus;
-pub mod bound_check;
+pub mod bound_check_legogroth16;
 pub mod saver;
 pub mod schnorr;
 
@@ -9,7 +9,7 @@ use ark_ec::{AffineCurve, PairingEngine};
 use ark_std::io::Write;
 
 use crate::statement_proof::StatementProof;
-use crate::sub_protocols::bound_check::BoundCheckProtocol;
+use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
 use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol};
 
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to

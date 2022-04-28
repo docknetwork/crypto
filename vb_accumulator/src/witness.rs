@@ -797,10 +797,10 @@ mod tests {
 
     use crate::persistence::State;
     use crate::positive::{tests::setup_positive_accum, Accumulator, PositiveAccumulator};
-    use crate::prelude::UniversalAccumulator;
     use crate::setup::{Keypair, SetupParams};
     use crate::test_serialization;
     use crate::universal::tests::setup_universal_accum;
+    use crate::universal::UniversalAccumulator;
 
     use super::*;
 

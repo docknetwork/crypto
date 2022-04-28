@@ -14,7 +14,7 @@ pub mod saver;
 
 pub use serialization::*;
 
-/// Type of proof and the public values for the proof
+/// Type of relation being proved and the public values for the relation
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub enum Statement<E: PairingEngine, G: AffineCurve> {
@@ -30,9 +30,9 @@ pub enum Statement<E: PairingEngine, G: AffineCurve> {
     SaverProver(saver::SaverProver<E>),
     /// Used by verifier to verify proof of verifiable encryption using SAVER
     SaverVerifier(saver::SaverVerifier<E>),
-    /// Used by prover to create proof that witness satisfies publicly known bounds inclusively (<=, >=)
+    /// Used by prover to create proof that witness satisfies publicly known bounds inclusively (<=, >=) using LegoGroth16
     BoundCheckLegoGroth16Prover(bound_check_legogroth16::BoundCheckLegoGroth16Prover<E>),
-    /// Used by verifier to verify proof that witness satisfies publicly known bounds inclusively (<=, >=)
+    /// Used by verifier to verify proof that witness satisfies publicly known bounds inclusively (<=, >=) using LegoGroth16
     BoundCheckLegoGroth16Verifier(bound_check_legogroth16::BoundCheckLegoGroth16Verifier<E>),
 }
 

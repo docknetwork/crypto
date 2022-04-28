@@ -1,4 +1,5 @@
 use ark_bls12_381::Bls12_381;
+use ark_ec::msm::VariableBaseMSM;
 use ark_ec::PairingEngine;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::PrimeField;
@@ -8,12 +9,13 @@ use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use dock_crypto_utils::serde_utils::*;
 use schnorr_pok::{
     error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrCommitment,
 };
-
-use ark_ec::msm::VariableBaseMSM;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 type Fr = <Bls12_381 as PairingEngine>::Fr;
 

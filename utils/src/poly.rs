@@ -39,7 +39,7 @@ pub fn multiply_many_polys<F: PrimeField>(polys: Vec<DensePolynomial<F>>) -> Den
     r
 }
 
-/// Given a vector of polynomials `polys` and scalars `coeffs`, return their inner product polys[0] * coeffs[0] + polys[1] * coeffs[1] + ...
+/// Given a vector of polynomials `polys` and scalars `coeffs`, return their inner product `polys[0] * coeffs[0] + polys[1] * coeffs[1] + ...`
 pub fn inner_product_poly<F: PrimeField>(
     polys: Vec<DensePolynomial<F>>,
     coeffs: Vec<F>,

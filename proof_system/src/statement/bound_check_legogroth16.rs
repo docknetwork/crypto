@@ -9,11 +9,11 @@ pub use legogroth16::{PreparedVerifyingKey, ProvingKey, VerifyingKey};
 use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
 use crate::statement::Statement;
-use crate::sub_protocols::bound_check::BoundCheckProtocol;
+use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
 
 pub use serialization::*;
 
-/// Proving knowledge of message that satisfies given bounds, i.e. min <= message <= max
+/// Proving knowledge of message that satisfies given bounds, i.e. `min <= message <= max` using LegoGroth16.
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -27,7 +27,7 @@ pub struct BoundCheckLegoGroth16Prover<E: PairingEngine> {
     pub snark_proving_key_ref: Option<usize>,
 }
 
-/// Proving knowledge of message that satisfies given bounds, i.e. min <= message <= max
+/// Proving knowledge of message that satisfies given bounds, i.e. `min <= message <= max` using LegoGroth16
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -156,7 +156,7 @@ mod serialization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sub_protocols::bound_check::generate_snark_srs_bound_check;
+    use crate::sub_protocols::bound_check_legogroth16::generate_snark_srs_bound_check;
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
 

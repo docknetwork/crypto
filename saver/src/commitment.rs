@@ -1,31 +1,3 @@
-//! Getting a commitment to the message as a single field element from commitment to its b-ary decomposition.
-//!
-//! Commitment created during encryption
-//! `
-//! psi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
-//! `
-//!
-//! To get a commitment to the message `m`, `m*G + r'*H` from `psi`, create a "chunked" commitment `J` as:
-//!
-//! ` J = m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H `
-//!
-//! where `G_i = {b^{n-i}}*G` so `G_1 = {b^{n-1}}*G`, and so on.
-//!
-//! Now prove the equality of openings of the commitments `psi` and `J`. Note that `J` is same as `m*G + r'*H` because
-//! `
-//! m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H
-//!   = m_1*{b^{n-1}}*G + m_2*{b^{n-2}}*G + ... + m_n*G + r'*H
-//!   = ( m_1*{b^{n-1}} + m_2*{b^{n-2}} + ... + m_n ) * G + r'*H
-//!   = m*G + r'*H
-//! `
-//!
-//! Since `b`, `n` and `G` are public, it can be ensured that `G_i`s are correctly created.
-//!
-//! CAVEAT: Since the same blinding `r'` is used for `H` in both the chunked commitment `J` and the commitment
-//! to the full message, they can be divided to get a value that is unique to the message and thus can
-//! be used to link 2 different proofs created for the same message. One solution to this is to generate a
-//! different `G` for each proof by hashing an agreed upon string appended with a counter.
-
 use crate::setup::ChunkedCommitmentGens;
 use crate::utils::{chunks_count, decompose};
 use ark_ec::msm::VariableBaseMSM;
@@ -43,7 +15,35 @@ use serde_with::serde_as;
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 use dock_crypto_utils::serde_utils::*;
 
-/// Generators used to create commitment key of the chunked commitment
+/// Getting a commitment to the message as a single field element from commitment to its b-ary decomposition.
+///
+/// Commitment created during encryption
+/// ```text
+/// psi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
+/// ```
+///
+/// To get a commitment to the message `m`, `m*G + r'*H` from `psi`, create a "chunked" commitment `J` as:
+///
+/// ```text
+/// J = m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H
+/// ```
+///
+/// where `G_i = {b^{n-i}}*G` so `G_1 = {b^{n-1}}*G`, and so on.
+///
+/// Now prove the equality of openings of the commitments `psi` and `J`. Note that `J` is same as `m*G + r'*H` because
+/// ```text
+/// m_1*G_1 + m_2*G_2 + ... + m_n*G_n + r'*H
+///   = m_1*{b^{n-1}}*G + m_2*{b^{n-2}}*G + ... + m_n*G + r'*H
+///   = ( m_1*{b^{n-1}} + m_2*{b^{n-2}} + ... + m_n ) * G + r'*H
+///   = m*G + r'*H
+/// ```
+///
+/// Since `b`, `n` and `G` are public, it can be ensured that `G_i`s are correctly created.
+///
+/// CAVEAT: Since the same blinding `r'` is used for `H` in both the chunked commitment `J` and the commitment
+/// to the full message, they can be divided to get a value that is unique to the message and thus can
+/// be used to link 2 different proofs created for the same message. One solution to this is to generate a
+/// different `G` for each proof by hashing an agreed upon string appended with a counter.
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -86,7 +86,7 @@ impl<G: AffineCurve> ChunkedCommitment<G> {
     /// Commitment key (vector of all `g`s and `h`) for the chunked commitment
     /// Given a group element `g`, create `chunks_count` multiples of `g` as `g_n, g_{n-1}, ..., g_2, g_1` where each `g_i = {radix^i} * g` and `radix = 2^chunk_bit_ize`
     pub fn commitment_key(gens: &ChunkedCommitmentGens<G>, chunk_bit_size: u8) -> Vec<G> {
-        let radix = (1 << chunk_bit_size) as u16;
+        let radix = (1 << chunk_bit_size) as u64;
         let chunks = chunks_count::<G::ScalarField>(chunk_bit_size);
         let mut gs = if radix.is_power_of_two() {
             Self::commitment_key_for_radix_power_of_2(gens.G.into_projective(), chunks, radix)
@@ -115,7 +115,7 @@ impl<G: AffineCurve> ChunkedCommitment<G> {
     fn commitment_key_for_radix_power_of_2(
         g: G::Projective,
         chunks_count: u8,
-        radix: u16,
+        radix: u64,
     ) -> Vec<G::Projective> {
         let mut gs = vec![g];
         // log2 doublings are equivalent to multiplication by radix
@@ -135,9 +135,9 @@ impl<G: AffineCurve> ChunkedCommitment<G> {
     fn commitment_key_for_radix_non_power_of_2(
         g: G::Projective,
         chunks_count: u8,
-        radix: u16,
+        radix: u64,
     ) -> Vec<G::Projective> {
-        let radix = G::ScalarField::from(radix as u64);
+        let radix = G::ScalarField::from(radix);
         // factors = [radix^{chunks_count - 1}, radix^{chunks_count - 2}, ..., 1]
         let mut factors = vec![];
         for i in 1..chunks_count {
@@ -174,26 +174,30 @@ mod tests {
 
     #[test]
     fn commitment_key_creation() {
-        let mut rng = StdRng::seed_from_u64(0u64);
-        let g = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng);
-        let chunks_count = 32;
-        let chunk_bit_size = 8u8;
+        fn check(chunk_bit_size: u8) {
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let g = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng);
+            let chunks_count = chunks_count::<Fr>(chunk_bit_size);
 
-        let start = Instant::now();
-        let gs_1 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key_for_radix_power_of_2(g, chunks_count, 1 << chunk_bit_size);
-        println!(
-            "commitment_key_for_radix_power_of_2 time {:?}",
-            start.elapsed()
-        );
+            let start = Instant::now();
+            let gs_1 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key_for_radix_power_of_2(g, chunks_count, 1 << chunk_bit_size);
+            println!(
+                "commitment_key_for_radix_power_of_2 time {:?}",
+                start.elapsed()
+            );
 
-        let start = Instant::now();
-        let gs_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key_for_radix_non_power_of_2(g, chunks_count, 1 << chunk_bit_size);
-        println!(
-            "commitment_key_for_radix_non_power_of_2 time {:?}",
-            start.elapsed()
-        );
+            let start = Instant::now();
+            let gs_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key_for_radix_non_power_of_2(g, chunks_count, 1 << chunk_bit_size);
+            println!(
+                "commitment_key_for_radix_non_power_of_2 time {:?}",
+                start.elapsed()
+            );
 
-        assert_eq!(gs_1, gs_2);
+            assert_eq!(gs_1, gs_2);
+        }
+        check(4);
+        check(8);
+        check(16);
     }
 
     #[test]
@@ -298,5 +302,6 @@ mod tests {
         }
         check(4);
         check(8);
+        check(16);
     }
 }

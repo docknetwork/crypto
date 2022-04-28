@@ -1,3 +1,10 @@
+//! Represents (public) setup parameters of different protocols. Setup parameters (enum variants here) can
+//! be either directly passed to the `Statement` or can be wrapped in this enum `SetupParams` and then a reference
+//! to this enum is passed to the `Statement`. This enum is helpful when the same setup parameter needs to
+//! be passed to several `Statement`s as it avoids the need of having several copies of the setup param. This
+//! becomes more important when interacting with the WASM bindings of this crate as the overhead of repeated
+//! serialization and de-serialization can be avoided.
+
 use crate::statement::bound_check_legogroth16::{LegoProvingKeyBytes, LegoVerifyingKeyBytes};
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_std::vec::Vec;
@@ -19,6 +26,7 @@ use dock_crypto_utils::serde_utils::AffineGroupBytes;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+/// Holds (public) setup parameters of different protocols.
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]

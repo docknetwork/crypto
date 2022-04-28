@@ -48,6 +48,7 @@ pub struct AccumulatorNonMembership<E: PairingEngine> {
 }
 
 impl<E: PairingEngine> AccumulatorMembership<E> {
+    /// Create a statement by passing the accumulator params, public key and proving key directly.
     pub fn new_statement_from_params<G: AffineCurve>(
         params: AccumParams<E>,
         public_key: PublicKey<E::G2Affine>,
@@ -65,6 +66,7 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
         })
     }
 
+    /// Create a statement by passing the indices of accumulator params, public key and proving key in `SetupParams`.
     pub fn new_statement_from_params_ref<G: AffineCurve>(
         params_ref: usize,
         public_key_ref: usize,
@@ -82,6 +84,7 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
         })
     }
 
+    /// Get accumulator params for the statement index `s_idx` either from `self` or from given `setup_params`
     pub fn get_params<'a, G: AffineCurve>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
@@ -97,6 +100,7 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
         )
     }
 
+    /// Get publci key for the statement index `s_idx` either from `self` or from given `setup_params`
     pub fn get_public_key<'a, G: AffineCurve>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
@@ -112,6 +116,7 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
         )
     }
 
+    /// Get membership proving key for the statement index `s_idx` either from `self` or from given `setup_params`
     pub fn get_proving_key<'a, G: AffineCurve>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],

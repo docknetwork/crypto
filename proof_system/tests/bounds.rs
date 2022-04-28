@@ -5,7 +5,6 @@ use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
 use std::time::Instant;
 
-use proof_system::prelude::bound_check::generate_snark_srs_bound_check;
 use proof_system::prelude::{
     EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
 };
@@ -15,6 +14,7 @@ use proof_system::statement::{
     bound_check_legogroth16::BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
     bound_check_legogroth16::BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt, Statements,
 };
+use proof_system::sub_protocols::bound_check_legogroth16::generate_snark_srs_bound_check;
 use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 
 use test_utils::bbs_plus::*;

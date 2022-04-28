@@ -26,9 +26,11 @@ use ark_std::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+use crate::utils::CHUNK_TYPE;
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 use dock_crypto_utils::serde_utils::*;
 
+/// Ciphertext used with Groth16
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -42,6 +44,8 @@ pub struct Ciphertext<E: PairingEngine> {
     pub commitment: E::G1Affine,
 }
 
+/// Ciphertext used with LegoGroth16 and the slightly modified SAVER protocol. See `saver_legogroth16::protocol_2` for more
+/// details.
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CiphertextAlt<E: PairingEngine> {
     pub X_r: E::G1Affine,
@@ -435,7 +439,7 @@ impl<E: PairingEngine> Encryption<E> {
 
     /// Verify that ciphertext can be correctly decrypted to the given message chunks. This is "Verify_Dec" from algorithm 2 in the paper.
     pub fn verify_decryption(
-        messages: &[u8],
+        messages: &[CHUNK_TYPE],
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
         nu: &E::G1Affine,
@@ -457,7 +461,7 @@ impl<E: PairingEngine> Encryption<E> {
     /// Same as `Self::verify_decryption` but takes prepared decryption key and prepared
     /// generators for faster verification
     pub fn verify_decryption_given_prepared(
-        messages: &[u8],
+        messages: &[CHUNK_TYPE],
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
         nu: &E::G1Affine,
@@ -506,7 +510,7 @@ impl<E: PairingEngine> Encryption<E> {
 
     /// Same as `Self::verify_decryption` but takes Groth16's verification key instead of the generators used for Elgamal encryption
     pub fn verify_decryption_given_groth16_vk(
-        messages: &[u8],
+        messages: &[CHUNK_TYPE],
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
         nu: &E::G1Affine,
@@ -520,7 +524,7 @@ impl<E: PairingEngine> Encryption<E> {
 
     /// Same as `Self::verify_decryption` but takes LegoGroth16's verification key instead of the generators used for Elgamal encryption
     pub fn verify_decryption_given_legogroth16_vk(
-        messages: &[u8],
+        messages: &[CHUNK_TYPE],
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
         nu: &E::G1Affine,
@@ -540,7 +544,7 @@ impl<E: PairingEngine> Encryption<E> {
         dk: &DecryptionKey<E>,
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
-    ) -> crate::Result<(Vec<u8>, E::G1Affine)> {
+    ) -> crate::Result<(Vec<CHUNK_TYPE>, E::G1Affine)> {
         Self::decrypt_to_chunks_given_prepared(c_0, c, sk, &dk.prepared(), g_i, chunk_bit_size)
     }
 
@@ -552,7 +556,7 @@ impl<E: PairingEngine> Encryption<E> {
         dk: &PreparedDecryptionKey<E>,
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
-    ) -> crate::Result<(Vec<u8>, E::G1Affine)> {
+    ) -> crate::Result<(Vec<CHUNK_TYPE>, E::G1Affine)> {
         Self::decrypt_to_chunks_given_prepared_and_pairing_powers(
             c_0,
             c,
@@ -574,7 +578,7 @@ impl<E: PairingEngine> Encryption<E> {
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
         pairing_powers: &[Vec<E::Fqk>],
-    ) -> crate::Result<(Vec<u8>, E::G1Affine)> {
+    ) -> crate::Result<(Vec<CHUNK_TYPE>, E::G1Affine)> {
         Self::decrypt_to_chunks_given_prepared_and_pairing_powers(
             c_0,
             c,
@@ -595,7 +599,7 @@ impl<E: PairingEngine> Encryption<E> {
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
         pairing_powers: Option<&[Vec<E::Fqk>]>,
-    ) -> crate::Result<(Vec<u8>, E::G1Affine)> {
+    ) -> crate::Result<(Vec<CHUNK_TYPE>, E::G1Affine)> {
         let n = c.len();
         if n != dk.supported_chunks_count()? as usize {
             return Err(SaverError::IncompatibleDecryptionKey(
@@ -610,7 +614,7 @@ impl<E: PairingEngine> Encryption<E> {
         let c_0_rho = c_0.mul((-sk.0).into_repr());
         let c_0_rho_prepared = E::G1Prepared::from(c_0_rho.into_affine());
         let mut decrypted_chunks = vec![];
-        let chunk_max_val: u16 = (1 << chunk_bit_size) - 1;
+        let chunk_max_val: u32 = (1 << chunk_bit_size) - 1;
         let pairing_powers = if let Some(p) = pairing_powers { p } else { &[] };
         for i in 0..n {
             let p = E::product_of_pairings(&[
@@ -628,11 +632,15 @@ impl<E: PairingEngine> Encryption<E> {
                     E::G1Prepared::from(g_i[i]),
                     dk.V_2[i].clone(),
                 )));
-                decrypted_chunks.push(Self::solve_discrete_log(chunk_max_val as u8, g_i_v_i, p)?);
+                decrypted_chunks.push(Self::solve_discrete_log(
+                    chunk_max_val as CHUNK_TYPE,
+                    g_i_v_i,
+                    p,
+                )?);
             } else {
                 decrypted_chunks.push(Self::solve_discrete_log_using_pairing_powers(
                     i,
-                    chunk_max_val as u8,
+                    chunk_max_val as CHUNK_TYPE,
                     p,
                     pairing_powers,
                 )?);
@@ -644,7 +652,7 @@ impl<E: PairingEngine> Encryption<E> {
     /// Encrypt once the message has been broken into chunks
     pub fn encrypt_decomposed_message<R: RngCore>(
         rng: &mut R,
-        message_chunks: Vec<u8>,
+        message_chunks: Vec<CHUNK_TYPE>,
         ek: &EncryptionKey<E>,
         g_i: &[E::G1Affine],
     ) -> crate::Result<(Vec<E::G1Affine>, E::Fr)> {
@@ -681,7 +689,11 @@ impl<E: PairingEngine> Encryption<E> {
     }
 
     /// Does not use precomputation
-    fn solve_discrete_log(chunk_max_val: u8, g_i_v_i: E::Fqk, p: E::Fqk) -> crate::Result<u8> {
+    fn solve_discrete_log(
+        chunk_max_val: CHUNK_TYPE,
+        g_i_v_i: E::Fqk,
+        p: E::Fqk,
+    ) -> crate::Result<CHUNK_TYPE> {
         if p == g_i_v_i {
             return Ok(1);
         }
@@ -689,7 +701,7 @@ impl<E: PairingEngine> Encryption<E> {
         for j in 2..=chunk_max_val {
             cur = cur * g_i_v_i;
             if cur == p {
-                return Ok(j as u8);
+                return Ok(j);
             }
         }
         Err(SaverError::CouldNotFindDiscreteLog)
@@ -698,10 +710,10 @@ impl<E: PairingEngine> Encryption<E> {
     /// Relies on precomputation
     fn solve_discrete_log_using_pairing_powers(
         chunk_index: usize,
-        chunk_max_val: u8,
+        chunk_max_val: CHUNK_TYPE,
         p: E::Fqk,
         pairing_powers: &[Vec<E::Fqk>],
-    ) -> crate::Result<u8> {
+    ) -> crate::Result<CHUNK_TYPE> {
         if pairing_powers.len() < chunk_index {
             return Err(SaverError::InvalidPairingPowers);
         }
@@ -711,7 +723,7 @@ impl<E: PairingEngine> Encryption<E> {
                 return Err(SaverError::InvalidPairingPowers);
             }
             if pairing_powers[chunk_index][j] == p {
-                return Ok(j as u8 + 1);
+                return Ok(j as CHUNK_TYPE + 1);
             }
         }
         Err(SaverError::CouldNotFindDiscreteLog)
@@ -896,15 +908,23 @@ pub(crate) mod tests {
         (gens, g_i, sk, ek, dk)
     }
 
+    pub fn gen_messages<R: RngCore>(
+        rng: &mut R,
+        count: usize,
+        chunk_bit_size: u8,
+    ) -> Vec<CHUNK_TYPE> {
+        (0..count)
+            .map(|_| (u32::rand(rng) & ((1 << chunk_bit_size) - 1)) as CHUNK_TYPE)
+            .collect()
+    }
+
     #[test]
     fn encrypt_decrypt() {
         fn check(chunk_bit_size: u8) {
             let mut rng = StdRng::seed_from_u64(0u64);
             let n = chunks_count::<Fr>(chunk_bit_size) as usize;
             // Get random numbers that are of chunk_bit_size at most
-            let m = (0..n)
-                .map(|_| (u16::rand(&mut rng) & ((1 << chunk_bit_size) - 1)) as u8)
-                .collect::<Vec<u8>>();
+            let m = gen_messages(&mut rng, n, chunk_bit_size);
             let (gens, g_i, sk, ek, dk) = enc_setup(chunk_bit_size, &mut rng);
 
             let prepared_gens = gens.prepared();
@@ -1033,6 +1053,7 @@ pub(crate) mod tests {
 
         check(4);
         check(8);
+        check(16);
     }
 
     #[test]
@@ -1153,5 +1174,6 @@ pub(crate) mod tests {
         }
         check(4, 10);
         check(8, 10);
+        check(16, 10);
     }
 }

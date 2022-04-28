@@ -1,3 +1,5 @@
+//! Used to express relation between `Statement`s
+
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     collections::BTreeSet,

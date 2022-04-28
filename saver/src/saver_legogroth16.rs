@@ -182,7 +182,7 @@ mod tests {
     use std::time::Instant;
 
     use crate::circuit::BitsizeCheckCircuit;
-    use crate::encryption::{Ciphertext, CiphertextAlt, Encryption};
+    use crate::encryption::{tests::gen_messages, Ciphertext, CiphertextAlt, Encryption};
     use crate::keygen::keygen;
     use crate::utils::chunks_count;
     use ark_bls12_381::Bls12_381;
@@ -196,128 +196,139 @@ mod tests {
 
     #[test]
     fn encrypt_and_snark_verification() {
-        let mut rng = StdRng::seed_from_u64(0u64);
-        let chunk_bit_size = 8;
-        let n = chunks_count::<Fr>(chunk_bit_size);
-        let gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
+        fn check(chunk_bit_size: u8) {
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let n = chunks_count::<Fr>(chunk_bit_size);
+            let gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
 
-        let msgs = (0..n).map(|_| u8::rand(&mut rng)).collect::<Vec<_>>();
-        let msgs_as_field_elems = msgs.iter().map(|m| Fr::from(*m as u64)).collect::<Vec<_>>();
+            // Get random numbers that are of chunk_bit_size at most
+            let msgs = gen_messages(&mut rng, n as usize, chunk_bit_size);
+            let msgs_as_field_elems = msgs.iter().map(|m| Fr::from(*m as u64)).collect::<Vec<_>>();
 
-        let circuit = BitsizeCheckCircuit::new(chunk_bit_size, Some(n), None, false);
-        let snark_srs = generate_srs::<Bls12_381, _, _>(circuit, &gens, n, &mut rng).unwrap();
+            let circuit = BitsizeCheckCircuit::new(chunk_bit_size, Some(n), None, false);
+            let snark_srs = generate_srs::<Bls12_381, _, _>(circuit, &gens, n, &mut rng).unwrap();
 
-        let g_i = &get_gs_for_encryption(&snark_srs.pk.vk);
-        let (sk, ek, dk) = keygen(
-            &mut rng,
-            chunk_bit_size,
-            &gens,
-            g_i,
-            &snark_srs.pk.common.delta_g1,
-            &snark_srs.gamma_g1,
-        )
-        .unwrap();
+            let g_i = &get_gs_for_encryption(&snark_srs.pk.vk);
+            let (sk, ek, dk) = keygen(
+                &mut rng,
+                chunk_bit_size,
+                &gens,
+                g_i,
+                &snark_srs.pk.common.delta_g1,
+                &snark_srs.gamma_g1,
+            )
+            .unwrap();
 
-        // Using the version of encrypt that outputs the sum X_i^r as well
-        let (ct, r) =
-            Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i).unwrap();
-        let x_r_sum =
-            ek.X.iter()
-                .fold(<Bls12_381 as PairingEngine>::G1Affine::zero(), |a, &b| {
-                    a.add(b)
-                })
-                .mul(r)
-                .into_affine();
+            // Using the version of encrypt that outputs the sum X_i^r as well
+            let (ct, r) =
+                Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i).unwrap();
+            let x_r_sum =
+                ek.X.iter()
+                    .fold(<Bls12_381 as PairingEngine>::G1Affine::zero(), |a, &b| {
+                        a.add(b)
+                    })
+                    .mul(r)
+                    .into_affine();
 
-        let (m_, _) = Encryption::decrypt_to_chunks(
-            &ct[0],
-            &ct[1..n as usize + 1],
-            &sk,
-            &dk,
-            &g_i,
-            chunk_bit_size,
-        )
-        .unwrap();
+            let (m_, _) = Encryption::decrypt_to_chunks(
+                &ct[0],
+                &ct[1..n as usize + 1],
+                &sk,
+                &dk,
+                &g_i,
+                chunk_bit_size,
+            )
+            .unwrap();
 
-        assert_eq!(m_, msgs);
+            assert_eq!(m_, msgs);
 
-        // Create commitment randomness
-        let v = Fr::rand(&mut rng);
+            // Create commitment randomness
+            let v = Fr::rand(&mut rng);
 
-        let circuit = BitsizeCheckCircuit::new(
-            chunk_bit_size,
-            Some(n),
-            Some(msgs_as_field_elems.clone()),
-            false,
-        );
+            let circuit = BitsizeCheckCircuit::new(
+                chunk_bit_size,
+                Some(n),
+                Some(msgs_as_field_elems.clone()),
+                false,
+            );
 
-        let start = Instant::now();
-        let proof_2 = protocol_2::create_proof(
-            circuit.clone(),
-            v.clone(),
-            r.clone(),
-            &snark_srs,
-            &ek,
-            &mut rng,
-        )
-        .unwrap();
-        println!(
-            "Time taken to create LegoGroth16 proof as per protocol 2 {:?}",
-            start.elapsed()
-        );
+            let start = Instant::now();
+            let proof_2 = protocol_2::create_proof(
+                circuit.clone(),
+                v.clone(),
+                r.clone(),
+                &snark_srs,
+                &ek,
+                &mut rng,
+            )
+            .unwrap();
+            println!(
+                "Time taken to create LegoGroth16 proof with chunk_bit_size {} as per protocol 2 {:?}",
+                chunk_bit_size,
+                start.elapsed()
+            );
 
-        let start = Instant::now();
-        let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
-        Encryption::verify_ciphertext_commitment(
-            &ct[0],
-            &ct[1..n as usize + 1],
-            &ct[n as usize + 1],
-            &ek,
-            &gens,
-        )
-        .unwrap();
-        let ct2 = CiphertextAlt {
-            X_r: ct[0].clone(),
-            enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
-            commitment: ct[n as usize + 1].clone(),
-            X_r_sum: x_r_sum,
-        };
-        protocol_2::verify_proof(&pvk, &proof_2, &ct2).unwrap();
-        println!(
-            "Time taken to verify LegoGroth16 proof as per protocol 2 {:?}",
-            start.elapsed()
-        );
+            let start = Instant::now();
+            let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
+            Encryption::verify_ciphertext_commitment(
+                &ct[0],
+                &ct[1..n as usize + 1],
+                &ct[n as usize + 1],
+                &ek,
+                &gens,
+            )
+            .unwrap();
+            let ct2 = CiphertextAlt {
+                X_r: ct[0].clone(),
+                enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
+                commitment: ct[n as usize + 1].clone(),
+                X_r_sum: x_r_sum,
+            };
+            protocol_2::verify_proof(&pvk, &proof_2, &ct2).unwrap();
+            println!(
+                "Time taken to verify LegoGroth16 proof with chunk_bit_size {} as per protocol 2 {:?}",
+                chunk_bit_size,
+                start.elapsed()
+            );
 
-        verify_witness_commitment(&pvk.vk, &proof_2, 0, &msgs_as_field_elems, &v).unwrap();
+            verify_witness_commitment(&pvk.vk, &proof_2, 0, &msgs_as_field_elems, &v).unwrap();
 
-        let start = Instant::now();
-        let proof_1 = protocol_1::create_proof(circuit, v, r, &snark_srs, &ek, &mut rng).unwrap();
-        println!(
-            "Time taken to create LegoGroth16 proof as per protocol 1 {:?}",
-            start.elapsed()
-        );
+            let start = Instant::now();
+            let proof_1 =
+                protocol_1::create_proof(circuit, v, r, &snark_srs, &ek, &mut rng).unwrap();
+            println!(
+                "Time taken to create LegoGroth16 proof with chunk_bit_size {} as per protocol 1 {:?}",
+                chunk_bit_size,
+                start.elapsed()
+            );
 
-        let start = Instant::now();
-        let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
-        Encryption::verify_ciphertext_commitment(
-            &ct[0],
-            &ct[1..n as usize + 1],
-            &ct[n as usize + 1],
-            &ek,
-            &gens,
-        )
-        .unwrap();
-        let ct1 = Ciphertext {
-            X_r: ct[0].clone(),
-            enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
-            commitment: ct[n as usize + 1].clone(),
-        };
-        protocol_1::verify_proof(&pvk, &proof_1, &ct1).unwrap();
-        println!(
-            "Time taken to verify LegoGroth16 proof as per protocol 1 {:?}",
-            start.elapsed()
-        );
+            let start = Instant::now();
+            let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
+            Encryption::verify_ciphertext_commitment(
+                &ct[0],
+                &ct[1..n as usize + 1],
+                &ct[n as usize + 1],
+                &ek,
+                &gens,
+            )
+            .unwrap();
+            let ct1 = Ciphertext {
+                X_r: ct[0].clone(),
+                enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
+                commitment: ct[n as usize + 1].clone(),
+            };
+            protocol_1::verify_proof(&pvk, &proof_1, &ct1).unwrap();
+            println!(
+                "Time taken to verify LegoGroth16 proof with chunk_bit_size {} as per protocol 1 {:?}",
+                chunk_bit_size,
+                start.elapsed()
+            );
 
-        verify_witness_commitment(&pvk.vk, &proof_1.proof, 0, &msgs_as_field_elems, &v).unwrap();
+            verify_witness_commitment(&pvk.vk, &proof_1.proof, 0, &msgs_as_field_elems, &v)
+                .unwrap();
+        }
+        check(4);
+        check(8);
+        check(16);
     }
 }
