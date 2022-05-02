@@ -12,7 +12,7 @@ The SNARK (Groth16) is used for prove that each chunk is of at most `b` bits, th
 
 The encryption outputs a commitment in addition to the ciphertext. For an encryption of message `m`, the commitment `psi` is of the following form:
 
-```rust
+```
 psi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
 ```
 

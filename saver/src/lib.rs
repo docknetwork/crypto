@@ -14,7 +14,7 @@
 //!
 //! The encryption outputs a commitment in addition to the ciphertext. For an encryption of message `m`, the commitment `psi` is of the following form:
 //!
-//! ```
+//! ```text
 //! psi = m_1*Y_1 + m_2*Y_2 + ... + m_n*Y_n + r*P_2
 //! ```
 //!
