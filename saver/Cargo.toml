@@ -17,14 +17,15 @@ ark-relations = { version = "^0.3.0", default-features = false }
 ark-groth16 = { version = "^0.3.0", default-features = false }
 digest = "0.9"
 rayon = { version = "1", optional = true }
-dock_crypto_utils = { version = "0.5.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.4.0", default-features = false, path = "../utils" }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
 
 [dependencies.legogroth16]
 git = "https://github.com/lovesh/legogro16"
 #branch = "comm-wit"
-rev = '5bc5e4af466c1bb84a636e18002dcffeeb0d1899'
+#rev = '5bc5e4af466c1bb84a636e18002dcffeeb0d1899'
+version = "0.2.0"
 default-features = false
 
 [dev-dependencies]
