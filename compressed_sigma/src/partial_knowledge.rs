@@ -532,12 +532,12 @@ mod tests {
             let rand_comm =
                 RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
-            let testing_bytes = vec![];
-            rand_comm.challenge_contribution(testing_bytes);
-            let maybe = Transcript {
+            let mut testing_bytes = vec![];
+            rand_comm.challenge_contribution(&mut testing_bytes);
+            let transcript = Transcript {
                 transcript_bytes: testing_bytes,
             };
-            let challenge = maybe.hash::<Fr, D>();
+            let challenge = transcript.hash::<Fr, D>();
             // let challenge = Fr::rand(&mut rng);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
@@ -568,14 +568,23 @@ mod tests {
         check_partial_know_single::<Blake2b>(5, vec![2].into_iter().collect::<BTreeSet<_>>());
         check_partial_know_single::<Blake2b>(5, vec![0, 1].into_iter().collect::<BTreeSet<_>>());
         check_partial_know_single::<Blake2b>(5, vec![0, 1, 2].into_iter().collect::<BTreeSet<_>>());
-        check_partial_know_single::<Blake2b>(5, vec![0, 1, 2, 3].into_iter().collect::<BTreeSet<_>>());
+        check_partial_know_single::<Blake2b>(
+            5,
+            vec![0, 1, 2, 3].into_iter().collect::<BTreeSet<_>>(),
+        );
         check_partial_know_single::<Blake2b>(5, vec![0, 3].into_iter().collect::<BTreeSet<_>>());
         check_partial_know_single::<Blake2b>(5, vec![1, 4].into_iter().collect::<BTreeSet<_>>());
         check_partial_know_single::<Blake2b>(6, vec![1, 3].into_iter().collect::<BTreeSet<_>>());
         check_partial_know_single::<Blake2b>(6, vec![2, 5].into_iter().collect::<BTreeSet<_>>());
         check_partial_know_single::<Blake2b>(6, vec![2, 4, 5].into_iter().collect::<BTreeSet<_>>());
-        check_partial_know_single::<Blake2b>(6, vec![1, 2, 4, 5].into_iter().collect::<BTreeSet<_>>());
-        check_partial_know_single::<Blake2b>(6, vec![1, 2, 3, 4, 5].into_iter().collect::<BTreeSet<_>>());
+        check_partial_know_single::<Blake2b>(
+            6,
+            vec![1, 2, 4, 5].into_iter().collect::<BTreeSet<_>>(),
+        );
+        check_partial_know_single::<Blake2b>(
+            6,
+            vec![1, 2, 3, 4, 5].into_iter().collect::<BTreeSet<_>>(),
+        );
     }
 
     #[test]

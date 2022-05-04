@@ -18,15 +18,10 @@ use serde::Serialize;
 
 const ZERO_AS_OCTET: [u8; 1] = [0u8];
 
-// #[derive(Debug, CanonicalSerialize)]
-// pub struct Transcript<G: AffineCurve> {
-//     elements: Vec<G>,
-//     transcript_bytes: Vec<u8>,
-// }
-
+/// Struct to carry the bytes representing the transcript
 #[derive(Debug, CanonicalSerialize)]
 pub struct Transcript {
-    transcript_bytes: Vec<u8>,
+    pub transcript_bytes: Vec<u8>,
 }
 
 impl Transcript {
@@ -40,12 +35,12 @@ impl Transcript {
         self.transcript_bytes.append(&mut new_bytes.to_vec());
     }
 
-    pub fn hash<F, D>(self) -> F
+    pub fn hash<F, D>(&self) -> F
     where
         F: PrimeField,
         D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     {
-        let result = field_elem_from_seed::<F, D>(self.transcript_bytes.as_slice(), &[]);
+        let result = field_elem_from_seed::<F, D>(self.transcript_bytes.clone().as_slice(), &[]);
         result
     }
 }
