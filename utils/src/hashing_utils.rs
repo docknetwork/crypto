@@ -18,6 +18,9 @@ use serde::Serialize;
 
 const ZERO_AS_OCTET: [u8; 1] = [0u8];
 
+// TODO: Move Transcript to separate module
+// TODO: Implement Write trait for transcript such that it can be passed to various `challenge_contribution` functions
+
 /// Struct to carry the bytes representing the transcript
 #[derive(Debug, CanonicalSerialize)]
 pub struct Transcript {
@@ -40,7 +43,7 @@ impl Transcript {
         F: PrimeField,
         D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     {
-        let result = field_elem_from_seed::<F, D>(self.transcript_bytes.clone().as_slice(), &[]);
+        let result = field_elem_from_seed::<F, D>(self.transcript_bytes.as_slice(), &[]);
         result
     }
 }

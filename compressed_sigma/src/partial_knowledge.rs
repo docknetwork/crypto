@@ -532,11 +532,8 @@ mod tests {
             let rand_comm =
                 RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
-            let mut testing_bytes = vec![];
-            rand_comm.challenge_contribution(&mut testing_bytes);
-            let transcript = Transcript {
-                transcript_bytes: testing_bytes,
-            };
+            let mut transcript = Transcript::new();
+            rand_comm.challenge_contribution(&mut transcript.transcript_bytes).unwrap();
             let challenge = transcript.hash::<Fr, D>();
             // let challenge = Fr::rand(&mut rng);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
