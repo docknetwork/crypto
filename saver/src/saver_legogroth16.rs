@@ -79,6 +79,7 @@ mod protocol_1 {
     }
 
     /// `r` is the randomness used during the encryption
+    #[allow(dead_code)]
     pub fn create_proof<E, C, R>(
         circuit: C,
         v: E::Fr,
@@ -106,6 +107,7 @@ mod protocol_1 {
         Ok(proof)
     }
 
+    #[allow(dead_code)]
     pub fn verify_proof<E: PairingEngine>(
         pvk: &PreparedVerifyingKey<E>,
         proof: &Proof<E>,
@@ -138,6 +140,7 @@ mod protocol_2 {
     use crate::encryption::CiphertextAlt;
 
     /// `r` is the randomness used during the encryption
+    #[allow(dead_code)]
     pub fn create_proof<E, C, R>(
         circuit: C,
         v: E::Fr,
@@ -161,6 +164,7 @@ mod protocol_2 {
         Ok(proof)
     }
 
+    #[allow(dead_code)]
     pub fn verify_proof<E: PairingEngine>(
         pvk: &PreparedVerifyingKey<E>,
         proof: &Proof<E>,
