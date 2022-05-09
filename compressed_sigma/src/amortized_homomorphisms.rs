@@ -18,6 +18,7 @@ use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 
 use dock_crypto_utils::hashing_utils::*;
+use dock_crypto_utils::transcript::{ChallengeContributor, ChallengeError};
 
 use crate::compressed_homomorphism;
 use crate::utils::get_n_powers;

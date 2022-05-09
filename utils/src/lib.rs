@@ -7,3 +7,4 @@ pub mod msm;
 pub mod poly;
 // TODO: Feature gate this
 pub mod serde_utils;
+pub mod transcript;

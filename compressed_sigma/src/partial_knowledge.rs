@@ -393,9 +393,8 @@ mod tests {
     use blake2::Blake2b;
     // use core::slice::SlicePattern;
     use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
-    use dock_crypto_utils::hashing_utils::{
-        field_elem_from_seed, ChallengeContributor, Transcript,
-    };
+    use dock_crypto_utils::hashing_utils::field_elem_from_seed;
+    use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
     use std::time::Instant;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
@@ -533,7 +532,9 @@ mod tests {
                 RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
             let mut transcript = Transcript::new();
-            rand_comm.challenge_contribution(&mut transcript.transcript_bytes).unwrap();
+            rand_comm
+                .challenge_contribution(&mut transcript.transcript_bytes)
+                .unwrap();
             let challenge = transcript.hash::<Fr, D>();
             // let challenge = Fr::rand(&mut rng);
             let response = rand_comm.response(&new_y, &challenge).unwrap();

@@ -12,7 +12,8 @@ use ark_std::{
 };
 use digest::Digest;
 
-use dock_crypto_utils::{ff::inner_product, hashing_utils::*};
+use dock_crypto_utils::ff::inner_product;
+use dock_crypto_utils::transcript::{ChallengeContributor, ChallengeError};
 
 use crate::compressed_linear_form;
 use crate::error::CompSigmaError;
