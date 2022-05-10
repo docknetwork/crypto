@@ -393,7 +393,6 @@ mod tests {
     use blake2::Blake2b;
     // use core::slice::SlicePattern;
     use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
-    use dock_crypto_utils::hashing_utils::field_elem_from_seed;
     use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
     use std::time::Instant;
 

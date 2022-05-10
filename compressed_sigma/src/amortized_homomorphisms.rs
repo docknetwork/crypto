@@ -41,9 +41,9 @@ where
 {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
         for i in 0..self.r.len() {
-            self.r[i].serialize_unchecked(&mut writer).unwrap();
+            self.r[i].serialize_unchecked(&mut writer)?;
         }
-        self.A.serialize_unchecked(&mut writer).unwrap();
+        self.A.serialize_unchecked(&mut writer)?;
         self.t
             .serialize_unchecked(&mut writer)
             .map_err(|e| e.into())
