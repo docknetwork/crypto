@@ -37,17 +37,8 @@ impl Transcript {
 
 impl Write for Transcript {
     fn write(&mut self, buf: &[u8]) -> Result<usize, ark_std::io::Error> {
-        let mut bytes_pushed = 0;
-        for i in 0..buf.len() {
-            // Should anything be added here to deal with the possibility of this `push()` failing? Although it is a
-            // vector we are pushing to and I don't know if one can make that fail
-            self.transcript_bytes.push(buf[i]);
-            bytes_pushed += 1;
-        }
-        if bytes_pushed == 0 {
-            return Err(Error::new(ErrorKind::WriteZero, "No bytes copied"));
-        }
-        Ok(bytes_pushed)
+        self.transcript_bytes.extend_from_slice(buf);
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> Result<(), ark_std::io::Error> {
@@ -55,19 +46,6 @@ impl Write for Transcript {
     }
 }
 
-#[derive(Debug, Serialize)]
-pub enum ChallengeError {
-    InvalidContribution,
-    #[serde(with = "ArkSerializationError")]
-    Serialization(SerializationError),
-}
-
-impl From<SerializationError> for ChallengeError {
-    fn from(e: SerializationError) -> Self {
-        Self::Serialization(e)
-    }
-}
-
 pub trait ChallengeContributor {
-    fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ChallengeError>;
+    fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SerializationError>;
 }

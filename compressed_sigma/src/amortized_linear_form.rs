@@ -13,7 +13,7 @@ use ark_std::{
 use digest::Digest;
 
 use dock_crypto_utils::ff::inner_product;
-use dock_crypto_utils::transcript::{ChallengeContributor, ChallengeError};
+use dock_crypto_utils::transcript::ChallengeContributor;
 
 use crate::compressed_linear_form;
 use crate::error::CompSigmaError;
@@ -38,7 +38,7 @@ impl<G> ChallengeContributor for RandomCommitment<G>
 where
     G: AffineCurve,
 {
-    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ChallengeError> {
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
         for i in 0..self.r.len() {
             self.r[i].serialize_unchecked(&mut writer).unwrap();
         }
