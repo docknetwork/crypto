@@ -94,6 +94,7 @@ where
 {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
         // Is max_size something we should add to the transcript? It's not really a part of the transcript, but it is somewhat related
+        // Fixme: Avoid unwrap here
         self.r
             .iter()
             .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
@@ -168,6 +169,7 @@ where
         f: &F,
         transcript: Option<&mut Transcript>,
     ) -> compressed_homomorphism::Response<G> {
+        // Fixme: Why the match? Why not pass `transcript` as it is?
         match transcript {
             Some(t) => {
                 return compressed_homomorphism::RandomCommitment::compressed_response::<D, F>(

@@ -58,6 +58,7 @@ pub struct Response<G: AffineCurve> {
     pub B: Vec<G>,
 }
 
+// Fixme: Why does response contribute towards the challenge? Response itself depends on the challenge.
 impl<G> ChallengeContributor for Response<G>
 where
     G: AffineCurve,
@@ -152,6 +153,7 @@ where
         let (g_hat, L_tilde) =
             prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
 
+        // Fixme: Why the match? Why not pass `transcript` as it is?
         match transcript {
             Some(t) => {
                 return Ok(Self::compressed_response::<D, L>(

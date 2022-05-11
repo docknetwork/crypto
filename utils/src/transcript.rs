@@ -38,6 +38,9 @@ impl Transcript {
         F: PrimeField,
         D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     {
+        // Fixme: clones are not needed
+        // Rather than assuming salts on our own, it seems better to accept a label that acts as a salt like here https://github.com/dalek-cryptography/merlin/blob/master/src/transcript.rs#L175.
+        // This allows us to call `hash` twice, thrice, or however many times with different labels thus making this function `hash_twice` redundant
         let result1 = field_elem_from_seed::<F, D>(self.transcript_bytes.clone().as_slice(), &[0]);
         let result2 = field_elem_from_seed::<F, D>(self.transcript_bytes.clone().as_slice(), &[1]);
         (result1, result2)

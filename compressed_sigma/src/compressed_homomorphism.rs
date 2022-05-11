@@ -105,6 +105,7 @@ where
             .map(|(x_, r)| *x_ * challenge + r)
             .collect::<Vec<_>>();
 
+        // Fixme: Why the match? Why not pass `transcript` as it is?
         match transcript {
             Some(t) => {
                 return Ok(Self::compressed_response::<D, F>(
@@ -192,6 +193,7 @@ where
             a: as_,
             b: bs,
         };
+        // Fixme: This seems wrong! Why is response added to transcript?
         if let Some(t) = transcript {
             response.challenge_contribution(t);
         }
@@ -205,6 +207,7 @@ where
     G: AffineCurve,
 {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        // Fixme: Avoid unwrap here
         self.r
             .iter()
             .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
@@ -215,6 +218,7 @@ where
     }
 }
 
+// Fixme: Why does response contribute towards the challenge? Response itself depends on the challenge.
 impl<G> ChallengeContributor for Response<G>
 where
     G: AffineCurve,

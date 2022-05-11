@@ -56,6 +56,7 @@ pub struct Response<G: AffineCurve> {
     pub phi: G::ScalarField,
 }
 
+// Fixme: Why does response contribute towards the challenge? Response itself depends on the challenge.
 impl<G> ChallengeContributor for Response<G>
 where
     G: AffineCurve,
@@ -203,6 +204,7 @@ where
 
         let mut z_hat = self.z_tilde;
         z_hat.push(self.phi);
+        // Fixme: Why the match? Why not pass `transcript` as it is?
         match transcript {
             Some(t) => {
                 return compressed_linear_form::RandomCommitment::compressed_response::<D, L>(
