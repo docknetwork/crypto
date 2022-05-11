@@ -531,11 +531,8 @@ mod tests {
                 RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
             let mut transcript = Transcript::new();
-            rand_comm
-                .challenge_contribution(&mut transcript.transcript_bytes)
-                .unwrap();
-            let challenge = transcript.hash::<Fr, D>();
-            // let challenge = Fr::rand(&mut rng);
+            rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
+            let challenge = transcript.hash::<Fr, Blake2b>();
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
                 .is_valid::<Blake2b, _>(
@@ -660,7 +657,9 @@ mod tests {
             let rand_comm =
                 RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
-            let challenge = Fr::rand(&mut rng);
+            let mut transcript = Transcript::new();
+            rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
+            let challenge = transcript.hash::<Fr, Blake2b>();
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
                 .is_valid::<Blake2b, _>(
@@ -832,7 +831,9 @@ mod tests {
 
         let rand_comm =
             RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None).unwrap();
-        let challenge = Fr::rand(&mut rng);
+        let mut transcript = Transcript::new();
+        rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
+        let challenge = transcript.hash::<Fr, Blake2b>();
         let response = rand_comm.response(&new_y, &challenge).unwrap();
         response
             .is_valid::<Blake2b, _>(

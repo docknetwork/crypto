@@ -11,5 +11,4 @@ pub mod compressed_linear_form;
 pub mod error;
 #[macro_use]
 pub mod partial_knowledge;
-pub mod sponge;
 pub mod transforms;

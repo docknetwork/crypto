@@ -14,6 +14,7 @@ use ark_std::{
     UniformRand,
 };
 use digest::Digest;
+use dock_crypto_utils::transcript::{self, ChallengeContributor, Transcript};
 
 use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
@@ -82,6 +83,7 @@ where
         f: &F,
         x: &[G::ScalarField],
         challenge: &G::ScalarField,
+        transcript: Option<&mut Transcript>,
     ) -> Result<Response<G>, CompSigmaError> {
         if !g.len().is_power_of_two() {
             return Err(CompSigmaError::UncompressedNotPowerOf2);
@@ -103,13 +105,31 @@ where
             .map(|(x_, r)| *x_ * challenge + r)
             .collect::<Vec<_>>();
 
-        Ok(Self::compressed_response::<D, F>(z, g.to_vec(), f.clone()))
+        match transcript {
+            Some(t) => {
+                return Ok(Self::compressed_response::<D, F>(
+                    z,
+                    g.to_vec(),
+                    f.clone(),
+                    Some(t),
+                ))
+            }
+            None => {
+                return Ok(Self::compressed_response::<D, F>(
+                    z,
+                    g.to_vec(),
+                    f.clone(),
+                    None,
+                ))
+            }
+        }
     }
 
     pub fn compressed_response<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
         mut z: Vec<G::ScalarField>,
         mut g: Vec<G>,
         mut f: F,
+        mut transcript: Option<&mut Transcript>,
     ) -> Response<G> {
         let mut bytes = vec![];
 
@@ -164,14 +184,60 @@ where
             bs.push(b);
         }
 
-        Response {
+        let response = Response {
             z_prime_0: z[0],
             z_prime_1: z[1],
             A: batch_normalize_projective_into_affine(As),
             B: batch_normalize_projective_into_affine(Bs),
             a: as_,
             b: bs,
+        };
+        if let Some(t) = transcript {
+            response.challenge_contribution(t);
         }
+
+        response
+    }
+}
+
+impl<G> ChallengeContributor for RandomCommitment<G>
+where
+    G: AffineCurve,
+{
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        self.r
+            .iter()
+            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
+        self.A_hat.serialize_unchecked(&mut writer)?;
+        self.t
+            .serialize_unchecked(&mut writer)
+            .map_err(|e| e.into())
+    }
+}
+
+impl<G> ChallengeContributor for Response<G>
+where
+    G: AffineCurve,
+{
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        self.z_prime_0.serialize_unchecked(&mut writer)?;
+        self.z_prime_1.serialize_unchecked(&mut writer)?;
+        self.A
+            .iter()
+            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
+        self.B
+            .iter()
+            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
+        self.a
+            .iter()
+            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
+        let b_len = self.b.len();
+        self.b[0..b_len - 1]
+            .iter()
+            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
+        self.b[b_len - 1]
+            .serialize_unchecked(&mut writer)
+            .map_err(|e| e.into())
     }
 }
 
@@ -461,11 +527,12 @@ mod tests {
             let y = homomorphism.eval(&x).unwrap();
 
             let rand_comm = RandomCommitment::new(&mut rng, &g, &homomorphism, None).unwrap();
-
-            let challenge = Fr::rand(&mut rng);
+            let mut transcript = Transcript::new();
+            rand_comm.challenge_contribution(&mut transcript);
+            let challenge = transcript.hash::<Fr, Blake2b>();
 
             let response = rand_comm
-                .response::<Blake2b, _>(&g, &homomorphism, &x, &challenge)
+                .response::<Blake2b, _>(&g, &homomorphism, &x, &challenge, Some(&mut transcript))
                 .unwrap();
 
             let start = Instant::now();

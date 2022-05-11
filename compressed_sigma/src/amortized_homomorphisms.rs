@@ -205,6 +205,7 @@ where
             self.z,
             g.to_vec(),
             f_rho,
+            None,
         )
     }
 
@@ -243,7 +244,10 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b;
-    use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
+    use dock_crypto_utils::{
+        ec::batch_normalize_projective_into_affine,
+        transcript::{self, Transcript},
+    };
     use std::time::Instant;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
@@ -292,7 +296,9 @@ mod tests {
         let ys = fs.iter().map(|f| f.eval(&x).unwrap()).collect::<Vec<_>>();
         let rand_comm =
             RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
-        let challenge = Fr::rand(&mut rng);
+        let mut transcript = Transcript::new();
+        rand_comm.challenge_contribution(&mut transcript);
+        let challenge = transcript.hash::<Fr, Blake2b>();
         let response = rand_comm.response(&x, &challenge).unwrap();
         response
             .is_valid::<Blake2b, _>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
@@ -325,7 +331,9 @@ mod tests {
         let ys = fs.iter().map(|f| f.eval(&x).unwrap()).collect::<Vec<_>>();
         let rand_comm =
             RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
-        let challenge = Fr::rand(&mut rng);
+        let mut transcript = Transcript::new();
+        rand_comm.challenge_contribution(&mut transcript);
+        let challenge = transcript.hash::<Fr, Blake2b>();
         let response = rand_comm.response(&x, &challenge).unwrap();
 
         let start = Instant::now();
@@ -407,9 +415,11 @@ mod tests {
 
         let rand_comm =
             compressed_homomorphism::RandomCommitment::new(&mut rng, &g, &f_rho, None).unwrap();
-        let challenge = Fr::rand(&mut rng);
+        let mut transcript = Transcript::new();
+        rand_comm.challenge_contribution(&mut transcript);
+        let challenge = transcript.hash::<Fr, Blake2b>();
         let response = rand_comm
-            .response::<Blake2b, _>(&g, &f_rho, &x, &challenge)
+            .response::<Blake2b, _>(&g, &f_rho, &x, &challenge, Some(&mut transcript))
             .unwrap();
         response
             .is_valid::<Blake2b, _>(

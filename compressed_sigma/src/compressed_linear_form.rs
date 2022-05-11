@@ -18,8 +18,8 @@ use digest::Digest;
 use crate::error::CompSigmaError;
 use crate::transforms::LinearForm;
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
-use dock_crypto_utils::hashing_utils::*;
-use dock_crypto_utils::transcript::ChallengeContributor;
+use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
+use dock_crypto_utils::{hashing_utils::*, transcript};
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
 use dock_crypto_utils::msm::WindowTable;
@@ -56,6 +56,26 @@ pub struct Response<G: AffineCurve> {
     pub z_prime_1: G::ScalarField,
     pub A: Vec<G>,
     pub B: Vec<G>,
+}
+
+impl<G> ChallengeContributor for Response<G>
+where
+    G: AffineCurve,
+{
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        self.z_prime_0.serialize_unchecked(&mut writer)?;
+        self.z_prime_1.serialize_unchecked(&mut writer)?;
+        self.A
+            .iter()
+            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
+        let B_len = self.B.len();
+        self.B[0..B_len - 1]
+            .iter()
+            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
+        self.B[B_len - 1]
+            .serialize_unchecked(&mut writer)
+            .map_err(|e| e.into())
+    }
 }
 
 impl<G> RandomCommitment<G>
@@ -103,6 +123,7 @@ where
         gamma: &G::ScalarField,
         c_0: &G::ScalarField,
         c_1: &G::ScalarField,
+        mut transcript: Option<&mut Transcript>,
     ) -> Result<Response<G>, CompSigmaError> {
         if !(g.len() + 1).is_power_of_two() {
             return Err(CompSigmaError::UncompressedNotPowerOf2);
@@ -131,7 +152,22 @@ where
         let (g_hat, L_tilde) =
             prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
 
-        Ok(Self::compressed_response::<D, L>(z_hat, g_hat, k, L_tilde))
+        match transcript {
+            Some(t) => {
+                return Ok(Self::compressed_response::<D, L>(
+                    z_hat,
+                    g_hat,
+                    k,
+                    L_tilde,
+                    Some(t),
+                ))
+            }
+            None => {
+                return Ok(Self::compressed_response::<D, L>(
+                    z_hat, g_hat, k, L_tilde, None,
+                ))
+            }
+        }
     }
 
     /// Run the compressed (non-zero) proof of knowledge of the response vector as described in the
@@ -142,6 +178,7 @@ where
         mut g_hat: Vec<G>,
         k: &G,
         mut L_tilde: L,
+        mut transcript: Option<&mut Transcript>,
     ) -> Response<G> {
         let mut bytes = vec![];
 
@@ -197,12 +234,17 @@ where
             Bs.push(B);
         }
 
-        Response {
+        let response = Response {
             z_prime_0: z_hat[0],
             z_prime_1: z_hat[1],
             A: batch_normalize_projective_into_affine(As),
             B: batch_normalize_projective_into_affine(Bs),
+        };
+        if let Some(t) = transcript {
+            response.challenge_contribution(t);
         }
+
+        response
     }
 }
 
@@ -483,12 +525,22 @@ mod tests {
             let y = linear_form.eval(&x);
 
             let rand_comm = RandomCommitment::new(&mut rng, &g, &h, &linear_form, None).unwrap();
-
-            let c_0 = Fr::rand(&mut rng);
-            let c_1 = Fr::rand(&mut rng);
+            let mut transcript = Transcript::new();
+            rand_comm.challenge_contribution(&mut transcript);
+            let (c_0, c_1) = transcript.hash_twice::<Fr, Blake2b>();
 
             let response = rand_comm
-                .response::<Blake2b, _>(&g, &h, &k, &linear_form, &x, &gamma, &c_0, &c_1)
+                .response::<Blake2b, _>(
+                    &g,
+                    &h,
+                    &k,
+                    &linear_form,
+                    &x,
+                    &gamma,
+                    &c_0,
+                    &c_1,
+                    Some(&mut transcript),
+                )
                 .unwrap();
 
             let start = Instant::now();
