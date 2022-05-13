@@ -12,7 +12,7 @@ use ark_std::{
     rand::RngCore,
 };
 use digest::Digest;
-use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
+use dock_crypto_utils::transcript::{self, ChallengeContributor, Transcript};
 
 use crate::compressed_homomorphism;
 use crate::error::CompSigmaError;
@@ -94,10 +94,9 @@ where
 {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
         // Is max_size something we should add to the transcript? It's not really a part of the transcript, but it is somewhat related
-        // Fixme: Avoid unwrap here
-        self.r
-            .iter()
-            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
+        for i in 0..self.r.len() {
+            self.r[i].serialize_unchecked(&mut writer)?;
+        }
         self.A.serialize_unchecked(&mut writer)?;
         self.t
             .serialize_unchecked(&mut writer)
@@ -167,27 +166,12 @@ where
         self,
         g: &[G],
         f: &F,
-        transcript: Option<&mut Transcript>,
     ) -> compressed_homomorphism::Response<G> {
-        // Fixme: Why the match? Why not pass `transcript` as it is?
-        match transcript {
-            Some(t) => {
-                return compressed_homomorphism::RandomCommitment::compressed_response::<D, F>(
-                    self.z_tilde,
-                    g.to_vec(),
-                    f.clone(),
-                    Some(t),
-                )
-            }
-            None => {
-                return compressed_homomorphism::RandomCommitment::compressed_response::<D, F>(
-                    self.z_tilde,
-                    g.to_vec(),
-                    f.clone(),
-                    None,
-                )
-            }
-        }
+        compressed_homomorphism::RandomCommitment::compressed_response::<D, F>(
+            self.z_tilde,
+            g.to_vec(),
+            f.clone(),
+        )
     }
 
     /// Check if a compressed response is valid.
@@ -307,7 +291,7 @@ mod tests {
             assert_eq!(rand_comm.r.len(), max_size);
             let mut transcript = Transcript::new();
             rand_comm.challenge_contribution(&mut transcript);
-            let challenge = transcript.hash::<Fr, D>();
+            let challenge = transcript.hash::<Fr, D>(None);
             let response = rand_comm.response(vec![&x1, &x2, &x3], &challenge);
             assert_eq!(response.z_tilde.len(), max_size);
             response
@@ -383,7 +367,7 @@ mod tests {
         assert_eq!(rand_comm.r.len(), max_size);
         let mut transcript = Transcript::new();
         rand_comm.challenge_contribution(&mut transcript);
-        let challenge = transcript.hash::<Fr, Blake2b>();
+        let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(vec![&x1, &x2, &x3], &challenge);
         assert_eq!(response.z_tilde.len(), max_size);
 
@@ -408,7 +392,7 @@ mod tests {
         );
 
         let start = Instant::now();
-        let comp_resp = response.compress::<Blake2b, _>(&g, &homomorphism, Some(&mut transcript));
+        let comp_resp = response.compress::<Blake2b, _>(&g, &homomorphism);
         println!(
             "Compressing response of {} commitments, with max size {} takes: {:?}",
             comms.len(),

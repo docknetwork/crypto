@@ -58,27 +58,6 @@ pub struct Response<G: AffineCurve> {
     pub B: Vec<G>,
 }
 
-// Fixme: Why does response contribute towards the challenge? Response itself depends on the challenge.
-impl<G> ChallengeContributor for Response<G>
-where
-    G: AffineCurve,
-{
-    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-        self.z_prime_0.serialize_unchecked(&mut writer)?;
-        self.z_prime_1.serialize_unchecked(&mut writer)?;
-        self.A
-            .iter()
-            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
-        let B_len = self.B.len();
-        self.B[0..B_len - 1]
-            .iter()
-            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
-        self.B[B_len - 1]
-            .serialize_unchecked(&mut writer)
-            .map_err(|e| e.into())
-    }
-}
-
 impl<G> RandomCommitment<G>
 where
     G: AffineCurve,
@@ -124,7 +103,6 @@ where
         gamma: &G::ScalarField,
         c_0: &G::ScalarField,
         c_1: &G::ScalarField,
-        mut transcript: Option<&mut Transcript>,
     ) -> Result<Response<G>, CompSigmaError> {
         if !(g.len() + 1).is_power_of_two() {
             return Err(CompSigmaError::UncompressedNotPowerOf2);
@@ -153,23 +131,7 @@ where
         let (g_hat, L_tilde) =
             prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
 
-        // Fixme: Why the match? Why not pass `transcript` as it is?
-        match transcript {
-            Some(t) => {
-                return Ok(Self::compressed_response::<D, L>(
-                    z_hat,
-                    g_hat,
-                    k,
-                    L_tilde,
-                    Some(t),
-                ))
-            }
-            None => {
-                return Ok(Self::compressed_response::<D, L>(
-                    z_hat, g_hat, k, L_tilde, None,
-                ))
-            }
-        }
+        Ok(Self::compressed_response::<D, L>(z_hat, g_hat, k, L_tilde))
     }
 
     /// Run the compressed (non-zero) proof of knowledge of the response vector as described in the
@@ -180,7 +142,6 @@ where
         mut g_hat: Vec<G>,
         k: &G,
         mut L_tilde: L,
-        mut transcript: Option<&mut Transcript>,
     ) -> Response<G> {
         let mut bytes = vec![];
 
@@ -242,9 +203,6 @@ where
             A: batch_normalize_projective_into_affine(As),
             B: batch_normalize_projective_into_affine(Bs),
         };
-        if let Some(t) = transcript {
-            response.challenge_contribution(t);
-        }
 
         response
     }
@@ -529,20 +487,11 @@ mod tests {
             let rand_comm = RandomCommitment::new(&mut rng, &g, &h, &linear_form, None).unwrap();
             let mut transcript = Transcript::new();
             rand_comm.challenge_contribution(&mut transcript);
-            let (c_0, c_1) = transcript.hash_twice::<Fr, Blake2b>();
+            let c_0 = transcript.hash::<Fr, Blake2b>(Some(b"c_0"));
+            let c_1 = transcript.hash::<Fr, Blake2b>(Some(b"c_1"));
 
             let response = rand_comm
-                .response::<Blake2b, _>(
-                    &g,
-                    &h,
-                    &k,
-                    &linear_form,
-                    &x,
-                    &gamma,
-                    &c_0,
-                    &c_1,
-                    Some(&mut transcript),
-                )
+                .response::<Blake2b, _>(&g, &h, &k, &linear_form, &x, &gamma, &c_0, &c_1)
                 .unwrap();
 
             let start = Instant::now();

@@ -18,7 +18,7 @@ use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 
 use dock_crypto_utils::hashing_utils::*;
-use dock_crypto_utils::transcript::ChallengeContributor;
+use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
 
 use crate::compressed_homomorphism;
 use crate::utils::get_n_powers;
@@ -205,7 +205,6 @@ where
             self.z,
             g.to_vec(),
             f_rho,
-            None,
         )
     }
 
@@ -298,7 +297,7 @@ mod tests {
             RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let mut transcript = Transcript::new();
         rand_comm.challenge_contribution(&mut transcript);
-        let challenge = transcript.hash::<Fr, Blake2b>();
+        let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(&x, &challenge).unwrap();
         response
             .is_valid::<Blake2b, _>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
@@ -333,7 +332,7 @@ mod tests {
             RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let mut transcript = Transcript::new();
         rand_comm.challenge_contribution(&mut transcript);
-        let challenge = transcript.hash::<Fr, Blake2b>();
+        let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(&x, &challenge).unwrap();
 
         let start = Instant::now();
@@ -417,9 +416,9 @@ mod tests {
             compressed_homomorphism::RandomCommitment::new(&mut rng, &g, &f_rho, None).unwrap();
         let mut transcript = Transcript::new();
         rand_comm.challenge_contribution(&mut transcript);
-        let challenge = transcript.hash::<Fr, Blake2b>();
+        let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm
-            .response::<Blake2b, _>(&g, &f_rho, &x, &challenge, Some(&mut transcript))
+            .response::<Blake2b, _>(&g, &f_rho, &x, &challenge)
             .unwrap();
         response
             .is_valid::<Blake2b, _>(

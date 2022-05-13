@@ -56,21 +56,6 @@ pub struct Response<G: AffineCurve> {
     pub phi: G::ScalarField,
 }
 
-// Fixme: Why does response contribute towards the challenge? Response itself depends on the challenge.
-impl<G> ChallengeContributor for Response<G>
-where
-    G: AffineCurve,
-{
-    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-        self.z_tilde
-            .iter()
-            .for_each(|e| e.serialize_unchecked(&mut writer).unwrap());
-        self.phi
-            .serialize_unchecked(&mut writer)
-            .map_err(|e| e.into())
-    }
-}
-
 impl<G> RandomCommitment<G>
 where
     G: AffineCurve,
@@ -192,7 +177,6 @@ where
         k: &G,
         linear_form: &L,
         new_challenge: &G::ScalarField,
-        mut transcript: Option<&mut Transcript>,
     ) -> compressed_linear_form::Response<G> {
         let (g_hat, L_tilde) =
             compressed_linear_form::prepare_generators_and_linear_form_for_compression(
@@ -204,23 +188,10 @@ where
 
         let mut z_hat = self.z_tilde;
         z_hat.push(self.phi);
-        // Fixme: Why the match? Why not pass `transcript` as it is?
-        match transcript {
-            Some(t) => {
-                return compressed_linear_form::RandomCommitment::compressed_response::<D, L>(
-                    z_hat,
-                    g_hat,
-                    &k,
-                    L_tilde,
-                    Some(t),
-                )
-            }
-            None => {
-                return compressed_linear_form::RandomCommitment::compressed_response::<D, L>(
-                    z_hat, g_hat, &k, L_tilde, None,
-                )
-            }
-        }
+
+        compressed_linear_form::RandomCommitment::compressed_response::<D, L>(
+            z_hat, g_hat, &k, L_tilde,
+        )
     }
 
     pub fn is_valid_compressed<D: Digest, L: LinearForm<G::ScalarField>>(
@@ -415,7 +386,7 @@ mod tests {
             assert_eq!(rand_comm.r.len(), max_size);
             let mut transcript = Transcript::new();
             rand_comm.challenge_contribution(&mut transcript);
-            let challenge = transcript.hash::<Fr, Blake2b>();
+            let challenge = transcript.hash::<Fr, Blake2b>(None);
             let response = rand_comm
                 .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
                 .unwrap();
@@ -439,7 +410,7 @@ mod tests {
             assert_eq!(rand_comm.r.len(), max_size);
             let mut transcript = Transcript::new();
             rand_comm.challenge_contribution(&mut transcript);
-            let challenge = transcript.hash::<Fr, Blake2b>();
+            let challenge = transcript.hash::<Fr, Blake2b>(None);
             let response = rand_comm
                 .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
                 .unwrap();
@@ -523,7 +494,7 @@ mod tests {
         assert_eq!(rand_comm.r.len(), max_size);
         let mut transcript = Transcript::new();
         rand_comm.challenge_contribution(&mut transcript);
-        let c_0 = transcript.hash::<Fr, Blake2b>();
+        let c_0 = transcript.hash::<Fr, Blake2b>(Some(b"c_0"));
         let response = rand_comm
             .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &c_0)
             .unwrap();
@@ -541,11 +512,9 @@ mod tests {
                 &c_0,
             )
             .unwrap();
-        response.challenge_contribution(&mut transcript);
-        let c_1 = transcript.hash::<Fr, Blake2b>();
+        let c_1 = transcript.hash::<Fr, Blake2b>(Some(b"c_1"));
 
-        let comp_resp =
-            response.compress::<Blake2b, _>(&g, &h, &k, &linear_form, &c_1, Some(&mut transcript));
+        let comp_resp = response.compress::<Blake2b, _>(&g, &h, &k, &linear_form, &c_1);
         Response::is_valid_compressed::<Blake2b, _>(
             &g,
             &h,

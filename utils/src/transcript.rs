@@ -5,8 +5,6 @@ use ark_serialize::SerializationError;
 use ark_std::{io::Write, vec::Vec};
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 
-// TODO: remove commented out lines (usually just a challenge from rng) from tests (left in to help adjust tests correctly)
-
 /// Struct to carry the bytes representing the transcript
 #[derive(Debug, CanonicalSerialize, Clone)]
 pub struct Transcript {
@@ -24,26 +22,15 @@ impl Transcript {
         self.transcript_bytes.append(&mut new_bytes.to_vec());
     }
 
-    pub fn hash<F, D>(&self) -> F
+    pub fn hash<F, D>(&mut self, label: Option<&[u8]>) -> F
     where
         F: PrimeField,
         D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     {
-        let result = field_elem_from_seed::<F, D>(self.transcript_bytes.as_slice(), &[]);
-        result
-    }
-
-    pub fn hash_twice<F, D>(&self) -> (F, F)
-    where
-        F: PrimeField,
-        D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
-    {
-        // Fixme: clones are not needed
-        // Rather than assuming salts on our own, it seems better to accept a label that acts as a salt like here https://github.com/dalek-cryptography/merlin/blob/master/src/transcript.rs#L175.
-        // This allows us to call `hash` twice, thrice, or however many times with different labels thus making this function `hash_twice` redundant
-        let result1 = field_elem_from_seed::<F, D>(self.transcript_bytes.clone().as_slice(), &[0]);
-        let result2 = field_elem_from_seed::<F, D>(self.transcript_bytes.clone().as_slice(), &[1]);
-        (result1, result2)
+        match label {
+            Some(l) => field_elem_from_seed::<F, D>(self.transcript_bytes.as_slice(), l),
+            None => field_elem_from_seed::<F, D>(self.transcript_bytes.as_slice(), &[]),
+        }
     }
 }
 
