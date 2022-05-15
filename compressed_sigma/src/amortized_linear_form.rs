@@ -10,7 +10,7 @@ use ark_std::{
     ops::Add,
     rand::RngCore,
 };
-use digest::Digest;
+use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 
 use dock_crypto_utils::ff::inner_product;
 use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
@@ -170,13 +170,18 @@ where
         Ok(())
     }
 
-    pub fn compress<D: Digest, L: LinearForm<G::ScalarField>>(
+    pub fn compress<
+        D: Digest,
+        L: LinearForm<G::ScalarField>,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         self,
         g: &[G],
         h: &G,
         k: &G,
         linear_form: &L,
         new_challenge: &G::ScalarField,
+        mut transcript: Option<&mut Transcript>,
     ) -> compressed_linear_form::Response<G> {
         let (g_hat, L_tilde) =
             compressed_linear_form::prepare_generators_and_linear_form_for_compression(
@@ -189,12 +194,16 @@ where
         let mut z_hat = self.z_tilde;
         z_hat.push(self.phi);
 
-        compressed_linear_form::RandomCommitment::compressed_response::<D, L>(
-            z_hat, g_hat, &k, L_tilde,
+        compressed_linear_form::RandomCommitment::compressed_response::<D, L, H>(
+            z_hat, g_hat, &k, L_tilde, transcript,
         )
     }
 
-    pub fn is_valid_compressed<D: Digest, L: LinearForm<G::ScalarField>>(
+    pub fn is_valid_compressed<
+        D: Digest,
+        L: LinearForm<G::ScalarField>,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         g: &[G],
         h: &G,
         k: &G,
@@ -206,6 +215,7 @@ where
         challenge: &G::ScalarField,
         new_challenge: &G::ScalarField,
         compressed_resp: &compressed_linear_form::Response<G>,
+        transcript: Option<&Transcript>,
     ) -> Result<(), CompSigmaError> {
         let (g_hat, L_tilde) =
             compressed_linear_form::prepare_generators_and_linear_form_for_compression(
@@ -215,7 +225,7 @@ where
                 new_challenge,
             );
         let Q = calculate_Q(k, Ps, ys, A, t, challenge, new_challenge);
-        compressed_resp.validate_compressed::<D, L>(Q, g_hat, L_tilde, &k)
+        compressed_resp.validate_compressed::<D, L, H>(Q, g_hat, L_tilde, &k, transcript)
     }
 }
 
@@ -514,8 +524,15 @@ mod tests {
             .unwrap();
         let c_1 = transcript.hash::<Fr, Blake2b>(Some(b"c_1"));
 
-        let comp_resp = response.compress::<Blake2b, _>(&g, &h, &k, &linear_form, &c_1);
-        Response::is_valid_compressed::<Blake2b, _>(
+        let comp_resp = response.compress::<Blake2b, _, Blake2b>(
+            &g,
+            &h,
+            &k,
+            &linear_form,
+            &c_1,
+            Some(&mut transcript),
+        );
+        Response::is_valid_compressed::<Blake2b, _, Blake2b>(
             &g,
             &h,
             &k,
@@ -527,6 +544,7 @@ mod tests {
             &c_0,
             &c_1,
             &comp_resp,
+            Some(&transcript),
         )
         .unwrap();
     }

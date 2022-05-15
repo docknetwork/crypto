@@ -11,7 +11,7 @@ use ark_std::{
     io::{Read, Write},
     rand::RngCore,
 };
-use digest::Digest;
+use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use dock_crypto_utils::transcript::{self, ChallengeContributor, Transcript};
 
 use crate::compressed_homomorphism;
@@ -162,20 +162,30 @@ where
     }
 
     /// Compress a response to reduce its size to lg(n)
-    pub fn compress<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+    pub fn compress<
+        D: Digest,
+        F: Homomorphism<G::ScalarField, Output = G> + Clone,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         self,
         g: &[G],
         f: &F,
+        mut transcript: Option<&mut Transcript>,
     ) -> compressed_homomorphism::Response<G> {
-        compressed_homomorphism::RandomCommitment::compressed_response::<D, F>(
+        compressed_homomorphism::RandomCommitment::compressed_response::<D, F, H>(
             self.z_tilde,
             g.to_vec(),
             f.clone(),
+            transcript,
         )
     }
 
     /// Check if a compressed response is valid.
-    pub fn is_valid_compressed<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+    pub fn is_valid_compressed<
+        D: Digest,
+        F: Homomorphism<G::ScalarField, Output = G> + Clone,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         g: &[G],
         f: &F,
         Ps: &[G],
@@ -184,9 +194,10 @@ where
         t: &G,
         challenge: &G::ScalarField,
         compressed_resp: &compressed_homomorphism::Response<G>,
+        transcript: Option<&Transcript>,
     ) -> Result<(), CompSigmaError> {
         let (Q, Y) = calculate_Q_and_Y::<G>(Ps, ys, A, t, challenge);
-        compressed_resp.validate_compressed::<D, F>(Q, Y, g.to_vec(), f.clone())
+        compressed_resp.validate_compressed::<D, F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 }
 
@@ -222,7 +233,7 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b;
-    use digest::{BlockInput, FixedOutput, Reset, Update};
+    use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
     use dock_crypto_utils::{ec::batch_normalize_projective_into_affine, transcript};
     use std::time::Instant;
 
@@ -392,7 +403,8 @@ mod tests {
         );
 
         let start = Instant::now();
-        let comp_resp = response.compress::<Blake2b, _>(&g, &homomorphism);
+        let comp_resp =
+            response.compress::<Blake2b, _, Blake2b>(&g, &homomorphism, Some(&mut transcript));
         println!(
             "Compressing response of {} commitments, with max size {} takes: {:?}",
             comms.len(),
@@ -401,7 +413,7 @@ mod tests {
         );
 
         let start = Instant::now();
-        Response::is_valid_compressed::<Blake2b, _>(
+        Response::is_valid_compressed::<Blake2b, _, Blake2b>(
             &g,
             &homomorphism,
             &comms,
@@ -410,6 +422,7 @@ mod tests {
             &rand_comm.t,
             &challenge,
             &comp_resp,
+            Some(&transcript),
         )
         .unwrap();
         println!(

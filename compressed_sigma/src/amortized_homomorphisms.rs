@@ -12,7 +12,7 @@ use ark_std::{
     ops::Add,
     rand::RngCore,
 };
-use digest::Digest;
+use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 
 use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
@@ -192,23 +192,33 @@ where
         Ok(())
     }
 
-    pub fn compress<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+    pub fn compress<
+        D: Digest,
+        F: Homomorphism<G::ScalarField, Output = G> + Clone,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         self,
         g: &[G],
         P: &G,
         ys: &[G],
         fs: &[F],
+        mut transcript: Option<&mut Transcript>,
     ) -> compressed_homomorphism::Response<G> {
         let rho_powers = create_rho_powers::<D, _>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
-        compressed_homomorphism::RandomCommitment::compressed_response::<D, F>(
+        compressed_homomorphism::RandomCommitment::compressed_response::<D, F, H>(
             self.z,
             g.to_vec(),
             f_rho,
+            transcript,
         )
     }
 
-    pub fn is_valid_compressed<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+    pub fn is_valid_compressed<
+        D: Digest,
+        F: Homomorphism<G::ScalarField, Output = G> + Clone,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         g: &[G],
         fs: &[F],
         P: &G,
@@ -217,6 +227,7 @@ where
         t: &G,
         challenge: &G::ScalarField,
         compressed_resp: &compressed_homomorphism::Response<G>,
+        transcript: Option<&Transcript>,
     ) -> Result<(), CompSigmaError> {
         let rho_powers = create_rho_powers::<D, _>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
@@ -228,7 +239,7 @@ where
             t,
             challenge,
         );
-        compressed_resp.validate_compressed::<D, F>(Q, Y, g.to_vec(), f_rho)
+        compressed_resp.validate_compressed::<D, F, H>(Q, Y, g.to_vec(), f_rho, transcript)
     }
 }
 
@@ -347,7 +358,8 @@ mod tests {
         );
 
         let start = Instant::now();
-        let comp_resp = response.compress::<Blake2b, _>(&g, &comm, &ys, &fs);
+        let comp_resp =
+            response.compress::<Blake2b, _, Blake2b>(&g, &comm, &ys, &fs, Some(&mut transcript));
         println!(
             "Compressing response of {} homomorphisms, each of size {} takes: {:?}",
             homs.len(),
@@ -356,7 +368,7 @@ mod tests {
         );
 
         let start = Instant::now();
-        Response::is_valid_compressed::<Blake2b, _>(
+        Response::is_valid_compressed::<Blake2b, _, Blake2b>(
             &g,
             &fs,
             &comm,
@@ -365,6 +377,7 @@ mod tests {
             &rand_comm.t,
             &challenge,
             &comp_resp,
+            Some(&transcript),
         )
         .unwrap();
         println!(
@@ -418,10 +431,10 @@ mod tests {
         rand_comm.challenge_contribution(&mut transcript);
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm
-            .response::<Blake2b, _>(&g, &f_rho, &x, &challenge)
+            .response::<Blake2b, _, Blake2b>(&g, &f_rho, &x, &challenge, Some(&mut transcript))
             .unwrap();
         response
-            .is_valid::<Blake2b, _>(
+            .is_valid::<Blake2b, _, Blake2b>(
                 &g,
                 &comm,
                 &y_rho,
@@ -429,6 +442,7 @@ mod tests {
                 &rand_comm.A_hat,
                 &rand_comm.t,
                 &challenge,
+                Some(&transcript),
             )
             .unwrap();
     }

@@ -847,8 +847,9 @@ mod tests {
             )
             .unwrap();
 
-        let comp_resp = response.compress::<Blake2b, _>(&new_gs, &P, &Ps, &fs);
-        Response::is_valid_compressed::<Blake2b, _>(
+        let comp_resp =
+            response.compress::<Blake2b, _, Blake2b>(&new_gs, &P, &Ps, &fs, Some(&mut transcript));
+        Response::is_valid_compressed::<Blake2b, _, Blake2b>(
             &new_gs,
             &fs,
             &P,
@@ -857,6 +858,7 @@ mod tests {
             &rand_comm.t,
             &challenge,
             &comp_resp,
+            Some(&transcript),
         )
         .unwrap();
     }
