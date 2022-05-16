@@ -78,7 +78,6 @@ where
     }
 
     pub fn response<
-        D: Digest,
         F: Homomorphism<G::ScalarField, Output = G> + Clone,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -109,7 +108,7 @@ where
             .map(|(x_, r)| *x_ * challenge + r)
             .collect::<Vec<_>>();
 
-        Ok(Self::compressed_response::<D, F, H>(
+        Ok(Self::compressed_response::<F, H>(
             z,
             g.to_vec(),
             f.clone(),
@@ -118,7 +117,6 @@ where
     }
 
     pub fn compressed_response<
-        D: Digest,
         F: Homomorphism<G::ScalarField, Output = G> + Clone,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -127,19 +125,16 @@ where
         mut f: F,
         mut transcript: Option<&mut Transcript>,
     ) -> Response<G> {
-        let mut bytes = vec![];
-        let mut indicator = false;
-        let mut t = Transcript::new();
+        let mut bytes = Transcript::new();
         if let Some(contents) = transcript {
-            indicator = true;
-            t = contents.clone();
+            bytes = contents.clone();
         };
 
         let mut As = vec![];
         let mut Bs = vec![];
         let mut as_ = vec![];
         let mut bs = vec![];
-        let mut c = z[0];
+        let mut c = G::ScalarField::zero();
         let mut c_repr = c.into_repr();
 
         while z.len() > 2 {
@@ -162,28 +157,12 @@ where
             let a = f_r.eval(&z).unwrap();
             let b = f_l.eval(&z_r).unwrap();
 
-            if indicator {
-                A.serialize(&mut t).unwrap();
-                B.serialize(&mut t).unwrap();
-                a.serialize(&mut t).unwrap();
-                b.serialize(&mut t).unwrap();
-                c = t.hash::<_, H>(None);
-                c_repr = c.into_repr();
-            } else {
-                A.serialize(&mut bytes).unwrap();
-                B.serialize(&mut bytes).unwrap();
-                a.serialize(&mut bytes).unwrap();
-                b.serialize(&mut bytes).unwrap();
-                c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-                c_repr = c.into_repr();
-            }
-
-            // A.serialize(&mut bytes).unwrap();
-            // B.serialize(&mut bytes).unwrap();
-            // a.serialize(&mut bytes).unwrap();
-            // b.serialize(&mut bytes).unwrap();
-            // let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-            // let c_repr = c.into_repr();
+            A.serialize(&mut bytes).unwrap();
+            B.serialize(&mut bytes).unwrap();
+            a.serialize(&mut bytes).unwrap();
+            b.serialize(&mut bytes).unwrap();
+            c = bytes.hash::<_, H>(None);
+            c_repr = c.into_repr();
 
             // Set `g` as g' in the paper
             g = g
@@ -236,7 +215,6 @@ where
 {
     /// Check if response is valid. A naive and thus slower implementation than `is_valid`
     pub fn is_valid_recursive<
-        D: Digest,
         F: Homomorphism<G::ScalarField, Output = G> + Clone,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -270,13 +248,12 @@ where
         }
 
         let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
-        self.recursively_validate_compressed::<D, F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
+        self.recursively_validate_compressed::<F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 
     /// This will delay scalar multiplications till the end similar to whats described in the Bulletproofs
     /// paper, thus is faster than the naive version above
     pub fn is_valid<
-        D: Digest,
         F: Homomorphism<G::ScalarField, Output = G> + Clone,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -298,11 +275,10 @@ where
         assert!(f.size().is_power_of_two());
 
         let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
-        self.validate_compressed::<D, F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
+        self.validate_compressed::<F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 
     pub fn recursively_validate_compressed<
-        D: Digest,
         F: Homomorphism<G::ScalarField, Output = G> + Clone,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -313,12 +289,9 @@ where
         mut f: F,
         transcript: Option<&Transcript>,
     ) -> Result<(), CompSigmaError> {
-        let mut bytes = vec![];
-        let mut indicator = false;
-        let mut t = Transcript::new();
+        let mut bytes = Transcript::new();
         if let Some(contents) = transcript {
-            indicator = true;
-            t = contents.clone();
+            bytes = contents.clone();
         };
         let mut c = G::ScalarField::zero();
         let mut c_repr = c.into_repr();
@@ -329,21 +302,12 @@ where
             let a = &self.a[i];
             let b = &self.b[i];
 
-            if indicator {
-                A.serialize(&mut t).unwrap();
-                B.serialize(&mut t).unwrap();
-                a.serialize(&mut t).unwrap();
-                b.serialize(&mut t).unwrap();
-                c = t.hash::<_, H>(None);
-                c_repr = c.into_repr();
-            } else {
-                A.serialize(&mut bytes).unwrap();
-                B.serialize(&mut bytes).unwrap();
-                a.serialize(&mut bytes).unwrap();
-                b.serialize(&mut bytes).unwrap();
-                c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-                c_repr = c.into_repr();
-            }
+            A.serialize(&mut bytes).unwrap();
+            B.serialize(&mut bytes).unwrap();
+            a.serialize(&mut bytes).unwrap();
+            b.serialize(&mut bytes).unwrap();
+            c = bytes.hash::<_, H>(None);
+            c_repr = c.into_repr();
 
             let m = g.len();
             let g_r = g.split_off(m / 2);
@@ -385,7 +349,6 @@ where
     }
 
     pub fn validate_compressed<
-        D: Digest,
         F: Homomorphism<G::ScalarField, Output = G> + Clone,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -401,12 +364,9 @@ where
         // Holds squares of challenge of each round
         let mut challenge_squares = vec![];
 
-        let mut bytes = vec![];
-        let mut indicator = false;
-        let mut t = Transcript::new();
+        let mut bytes = Transcript::new();
         if let Some(contents) = transcript {
-            indicator = true;
-            t = contents.clone();
+            bytes = contents.clone();
         };
         let mut c = G::ScalarField::zero();
 
@@ -416,19 +376,11 @@ where
             let a = &self.a[i];
             let b = &self.b[i];
 
-            if indicator {
-                A.serialize(&mut t).unwrap();
-                B.serialize(&mut t).unwrap();
-                a.serialize(&mut t).unwrap();
-                b.serialize(&mut t).unwrap();
-                c = t.hash::<_, H>(None);
-            } else {
-                A.serialize(&mut bytes).unwrap();
-                B.serialize(&mut bytes).unwrap();
-                a.serialize(&mut bytes).unwrap();
-                b.serialize(&mut bytes).unwrap();
-                c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-            }
+            A.serialize(&mut bytes).unwrap();
+            B.serialize(&mut bytes).unwrap();
+            a.serialize(&mut bytes).unwrap();
+            b.serialize(&mut bytes).unwrap();
+            c = bytes.hash::<_, H>(None);
 
             challenge_squares.push(c.square());
             challenges.push(c);
@@ -572,18 +524,12 @@ mod tests {
             let challenge = transcript.hash::<Fr, Blake2b>(None);
 
             let response = rand_comm
-                .response::<Blake2b, _, Blake2b>(
-                    &g,
-                    &homomorphism,
-                    &x,
-                    &challenge,
-                    Some(&mut transcript),
-                )
+                .response::<_, Blake2b>(&g, &homomorphism, &x, &challenge, Some(&mut transcript))
                 .unwrap();
 
             let start = Instant::now();
             response
-                .is_valid_recursive::<Blake2b, _, Blake2b>(
+                .is_valid_recursive::<_, Blake2b>(
                     &g,
                     &P,
                     &y,
@@ -602,7 +548,7 @@ mod tests {
 
             let start = Instant::now();
             response
-                .is_valid::<Blake2b, _, Blake2b>(
+                .is_valid::<_, Blake2b>(
                     &g,
                     &P,
                     &y,

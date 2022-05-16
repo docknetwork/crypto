@@ -528,14 +528,14 @@ mod tests {
             new_y.push(gamma);
 
             let rand_comm =
-                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
+                RandomCommitment::new::<_, _, Blake2b>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
             let mut transcript = Transcript::new();
             rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
             let challenge = transcript.hash::<Fr, Blake2b>(None);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
-                .is_valid::<Blake2b, _>(
+                .is_valid::<_, Blake2b>(
                     &new_gs,
                     &P,
                     &Ps,
@@ -655,14 +655,14 @@ mod tests {
             new_y.push(gamma);
 
             let rand_comm =
-                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None)
+                RandomCommitment::new::<_, _, Blake2b>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
             let mut transcript = Transcript::new();
             rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
             let challenge = transcript.hash::<Fr, Blake2b>(None);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
-                .is_valid::<Blake2b, _>(
+                .is_valid::<_, Blake2b>(
                     &new_gs,
                     &P,
                     &Ps,
@@ -830,13 +830,13 @@ mod tests {
         }
 
         let rand_comm =
-            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &P, &Ps, &fs, None).unwrap();
+            RandomCommitment::new::<_, _, Blake2b>(&mut rng, &new_gs, &P, &Ps, &fs, None).unwrap();
         let mut transcript = Transcript::new();
         rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(&new_y, &challenge).unwrap();
         response
-            .is_valid::<Blake2b, _>(
+            .is_valid::<_, Blake2b>(
                 &new_gs,
                 &P,
                 &Ps,
@@ -848,7 +848,7 @@ mod tests {
             .unwrap();
 
         let comp_resp =
-            response.compress::<Blake2b, _, Blake2b>(&new_gs, &P, &Ps, &fs, Some(&mut transcript));
+            response.compress::<_, Blake2b>(&new_gs, &P, &Ps, &fs, Some(&mut transcript));
         Response::is_valid_compressed::<Blake2b, _, Blake2b>(
             &new_gs,
             &fs,

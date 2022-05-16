@@ -172,7 +172,7 @@ where
         f: &F,
         mut transcript: Option<&mut Transcript>,
     ) -> compressed_homomorphism::Response<G> {
-        compressed_homomorphism::RandomCommitment::compressed_response::<D, F, H>(
+        compressed_homomorphism::RandomCommitment::compressed_response::<F, H>(
             self.z_tilde,
             g.to_vec(),
             f.clone(),
@@ -182,7 +182,6 @@ where
 
     /// Check if a compressed response is valid.
     pub fn is_valid_compressed<
-        D: Digest,
         F: Homomorphism<G::ScalarField, Output = G> + Clone,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -197,7 +196,7 @@ where
         transcript: Option<&Transcript>,
     ) -> Result<(), CompSigmaError> {
         let (Q, Y) = calculate_Q_and_Y::<G>(Ps, ys, A, t, challenge);
-        compressed_resp.validate_compressed::<D, F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
+        compressed_resp.validate_compressed::<F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 }
 
@@ -413,7 +412,7 @@ mod tests {
         );
 
         let start = Instant::now();
-        Response::is_valid_compressed::<Blake2b, _, Blake2b>(
+        Response::is_valid_compressed::<_, Blake2b>(
             &g,
             &homomorphism,
             &comms,

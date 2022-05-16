@@ -17,7 +17,6 @@ use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 
-use dock_crypto_utils::hashing_utils::*;
 use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
 
 use crate::compressed_homomorphism;
@@ -58,12 +57,15 @@ pub struct Response<G: AffineCurve> {
 
 /// Create a random challenge `rho` and returns its `n` powers as `[1, rho, rho^2, ..., rho^{n-1}]`
 /// `rho` is created by hashing the publicly known values, in this case `P`, vectors `g` and `ys`,
-pub fn create_rho_powers<D: Digest, G: AffineCurve>(
+pub fn create_rho_powers<
+    G: AffineCurve,
+    H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+>(
     g: &[G],
     P: &G,
     ys: &[G],
 ) -> Vec<G::ScalarField> {
-    let mut bytes = vec![];
+    let mut bytes = Transcript::new();
     P.serialize(&mut bytes).unwrap();
     for g_ in g.iter() {
         g_.serialize(&mut bytes).unwrap();
@@ -71,8 +73,7 @@ pub fn create_rho_powers<D: Digest, G: AffineCurve>(
     for y in ys.iter() {
         y.serialize(&mut bytes).unwrap();
     }
-
-    let rho = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
+    let rho = bytes.hash::<_, H>(None);
     // rho_powers = [1, rho, rho^2, rho^3, ..., rho^{ys.len()-1}]
     let mut rho_powers = get_n_powers(rho, ys.len() - 1);
     rho_powers.insert(0, G::ScalarField::one());
@@ -105,7 +106,11 @@ impl<G> RandomCommitment<G>
 where
     G: AffineCurve,
 {
-    pub fn new<R: RngCore, D: Digest, F: Homomorphism<G::ScalarField, Output = G>>(
+    pub fn new<
+        R: RngCore,
+        F: Homomorphism<G::ScalarField, Output = G>,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         rng: &mut R,
         g: &[G],
         P: &G,
@@ -117,7 +122,7 @@ where
             return Err(CompSigmaError::VectorLenMismatch);
         }
 
-        let rho_powers = create_rho_powers::<D, _>(g, P, ys);
+        let rho_powers = create_rho_powers::<_, H>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
 
         let r = if let Some(blindings) = blindings {
@@ -162,7 +167,10 @@ impl<G> Response<G>
 where
     G: AffineCurve,
 {
-    pub fn is_valid<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
+    pub fn is_valid<
+        F: Homomorphism<G::ScalarField, Output = G> + Clone,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         &self,
         g: &[G],
         P: &G,
@@ -183,7 +191,7 @@ where
             return Err(CompSigmaError::InvalidResponse);
         }
 
-        let rho_powers = create_rho_powers::<D, _>(g, P, ys);
+        let rho_powers = create_rho_powers::<_, H>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
         let y_rho = combine_y(ys, &rho_powers);
         if f_rho.eval(&self.z).unwrap() != y_rho.mul(challenge_repr).add_mixed(t).into_affine() {
@@ -193,7 +201,6 @@ where
     }
 
     pub fn compress<
-        D: Digest,
         F: Homomorphism<G::ScalarField, Output = G> + Clone,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -204,9 +211,9 @@ where
         fs: &[F],
         mut transcript: Option<&mut Transcript>,
     ) -> compressed_homomorphism::Response<G> {
-        let rho_powers = create_rho_powers::<D, _>(g, P, ys);
+        let rho_powers = create_rho_powers::<_, H>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
-        compressed_homomorphism::RandomCommitment::compressed_response::<D, F, H>(
+        compressed_homomorphism::RandomCommitment::compressed_response::<F, H>(
             self.z,
             g.to_vec(),
             f_rho,
@@ -229,7 +236,7 @@ where
         compressed_resp: &compressed_homomorphism::Response<G>,
         transcript: Option<&Transcript>,
     ) -> Result<(), CompSigmaError> {
-        let rho_powers = create_rho_powers::<D, _>(g, P, ys);
+        let rho_powers = create_rho_powers::<_, H>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
         let y_rho = combine_y(ys, &rho_powers);
         let (Q, Y) = compressed_homomorphism::calculate_Q_and_Y::<G>(
@@ -239,7 +246,7 @@ where
             t,
             challenge,
         );
-        compressed_resp.validate_compressed::<D, F, H>(Q, Y, g.to_vec(), f_rho, transcript)
+        compressed_resp.validate_compressed::<F, H>(Q, Y, g.to_vec(), f_rho, transcript)
     }
 }
 
@@ -305,13 +312,13 @@ mod tests {
         let fs = pad_homomorphisms_to_have_same_size(&homs);
         let ys = fs.iter().map(|f| f.eval(&x).unwrap()).collect::<Vec<_>>();
         let rand_comm =
-            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
+            RandomCommitment::new::<_, _, Blake2b>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let mut transcript = Transcript::new();
         rand_comm.challenge_contribution(&mut transcript);
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(&x, &challenge).unwrap();
         response
-            .is_valid::<Blake2b, _>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
+            .is_valid::<_, Blake2b>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
             .unwrap();
     }
 
@@ -340,7 +347,7 @@ mod tests {
         let fs = pad_homomorphisms_to_have_same_size(&homs);
         let ys = fs.iter().map(|f| f.eval(&x).unwrap()).collect::<Vec<_>>();
         let rand_comm =
-            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
+            RandomCommitment::new::<_, _, Blake2b>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let mut transcript = Transcript::new();
         rand_comm.challenge_contribution(&mut transcript);
         let challenge = transcript.hash::<Fr, Blake2b>(None);
@@ -348,7 +355,7 @@ mod tests {
 
         let start = Instant::now();
         response
-            .is_valid::<Blake2b, _>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
+            .is_valid::<_, Blake2b>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
             .unwrap();
         println!(
             "Verification of uncompressed response of {} homomorphisms, each of size {} takes: {:?}",
@@ -358,8 +365,7 @@ mod tests {
         );
 
         let start = Instant::now();
-        let comp_resp =
-            response.compress::<Blake2b, _, Blake2b>(&g, &comm, &ys, &fs, Some(&mut transcript));
+        let comp_resp = response.compress::<_, Blake2b>(&g, &comm, &ys, &fs, Some(&mut transcript));
         println!(
             "Compressing response of {} homomorphisms, each of size {} takes: {:?}",
             homs.len(),
@@ -415,7 +421,7 @@ mod tests {
 
         // Amortize before the protocol is started
         let start = Instant::now();
-        let rho_powers = create_rho_powers::<Blake2b, _>(&g, &comm, &ys);
+        let rho_powers = create_rho_powers::<_, Blake2b>(&g, &comm, &ys);
         let f_rho = combine_f(&fs, &rho_powers);
         let y_rho = combine_y(&ys, &rho_powers).into_affine();
         println!(
@@ -431,10 +437,10 @@ mod tests {
         rand_comm.challenge_contribution(&mut transcript);
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm
-            .response::<Blake2b, _, Blake2b>(&g, &f_rho, &x, &challenge, Some(&mut transcript))
+            .response::<_, Blake2b>(&g, &f_rho, &x, &challenge, Some(&mut transcript))
             .unwrap();
         response
-            .is_valid::<Blake2b, _, Blake2b>(
+            .is_valid::<_, Blake2b>(
                 &g,
                 &comm,
                 &y_rho,
