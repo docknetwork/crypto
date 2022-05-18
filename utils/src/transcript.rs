@@ -5,7 +5,7 @@ use ark_serialize::SerializationError;
 use ark_std::{io::Write, vec::Vec};
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 
-/// Struct to carry the bytes representing the transcript
+/// Struct to carry the bytes representing the transcript allowing hashing to create challenges easily
 #[derive(Debug, CanonicalSerialize, Clone)]
 pub struct Transcript {
     pub transcript_bytes: Vec<u8>,

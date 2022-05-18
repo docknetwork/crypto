@@ -209,7 +209,7 @@ where
         P: &G,
         ys: &[G],
         fs: &[F],
-        mut transcript: Option<&mut Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> compressed_homomorphism::Response<G> {
         let rho_powers = create_rho_powers::<_, H>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
@@ -234,7 +234,7 @@ where
         t: &G,
         challenge: &G::ScalarField,
         compressed_resp: &compressed_homomorphism::Response<G>,
-        transcript: Option<&Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
         let rho_powers = create_rho_powers::<_, H>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
@@ -244,7 +244,7 @@ where
             &y_rho.into_affine(),
             A,
             t,
-            challenge,
+            &challenge,
         );
         compressed_resp.validate_compressed::<F, H>(Q, Y, g.to_vec(), f_rho, transcript)
     }
@@ -317,8 +317,22 @@ mod tests {
         rand_comm.challenge_contribution(&mut transcript);
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(&x, &challenge).unwrap();
+
+        let mut verifier_transcript = Transcript::new();
+        rand_comm
+            .challenge_contribution(&mut verifier_transcript)
+            .unwrap();
+        let verifier_challenge = verifier_transcript.hash::<Fr, Blake2b>(None);
         response
-            .is_valid::<_, Blake2b>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
+            .is_valid::<_, Blake2b>(
+                &g,
+                &comm,
+                &ys,
+                &fs,
+                &rand_comm.A,
+                &rand_comm.t,
+                &verifier_challenge,
+            )
             .unwrap();
     }
 
@@ -354,8 +368,21 @@ mod tests {
         let response = rand_comm.response(&x, &challenge).unwrap();
 
         let start = Instant::now();
+        let mut verifier_transcript = Transcript::new();
+        rand_comm
+            .challenge_contribution(&mut verifier_transcript)
+            .unwrap();
+        let verifier_challenge = verifier_transcript.hash::<Fr, Blake2b>(None);
         response
-            .is_valid::<_, Blake2b>(&g, &comm, &ys, &fs, &rand_comm.A, &rand_comm.t, &challenge)
+            .is_valid::<_, Blake2b>(
+                &g,
+                &comm,
+                &ys,
+                &fs,
+                &rand_comm.A,
+                &rand_comm.t,
+                &verifier_challenge,
+            )
             .unwrap();
         println!(
             "Verification of uncompressed response of {} homomorphisms, each of size {} takes: {:?}",
@@ -383,7 +410,7 @@ mod tests {
             &rand_comm.t,
             &challenge,
             &comp_resp,
-            Some(&transcript),
+            Some(&mut verifier_transcript),
         )
         .unwrap();
         println!(
@@ -439,6 +466,12 @@ mod tests {
         let response = rand_comm
             .response::<_, Blake2b>(&g, &f_rho, &x, &challenge, Some(&mut transcript))
             .unwrap();
+
+        let mut verifier_transcript = Transcript::new();
+        rand_comm
+            .challenge_contribution(&mut verifier_transcript)
+            .unwrap();
+        let verifier_challenge = verifier_transcript.hash::<Fr, Blake2b>(None);
         response
             .is_valid::<_, Blake2b>(
                 &g,
@@ -447,8 +480,8 @@ mod tests {
                 &f_rho,
                 &rand_comm.A_hat,
                 &rand_comm.t,
-                &challenge,
-                Some(&transcript),
+                &verifier_challenge,
+                Some(&mut verifier_transcript),
             )
             .unwrap();
     }

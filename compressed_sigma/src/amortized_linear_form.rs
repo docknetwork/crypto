@@ -13,7 +13,7 @@ use ark_std::{
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 
 use dock_crypto_utils::ff::inner_product;
-use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
+use dock_crypto_utils::transcript::{self, ChallengeContributor, Transcript};
 
 use crate::compressed_linear_form;
 use crate::error::CompSigmaError;
@@ -119,7 +119,10 @@ impl<G> Response<G>
 where
     G: AffineCurve,
 {
-    pub fn is_valid<L: LinearForm<G::ScalarField>>(
+    pub fn is_valid<
+        L: LinearForm<G::ScalarField>,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         &self,
         g: &[G],
         h: &G,
@@ -171,7 +174,6 @@ where
     }
 
     pub fn compress<
-        D: Digest,
         L: LinearForm<G::ScalarField>,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -181,7 +183,7 @@ where
         k: &G,
         linear_form: &L,
         new_challenge: &G::ScalarField,
-        mut transcript: Option<&mut Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> compressed_linear_form::Response<G> {
         let (g_hat, L_tilde) =
             compressed_linear_form::prepare_generators_and_linear_form_for_compression(
@@ -194,13 +196,12 @@ where
         let mut z_hat = self.z_tilde;
         z_hat.push(self.phi);
 
-        compressed_linear_form::RandomCommitment::compressed_response::<D, L, H>(
+        compressed_linear_form::RandomCommitment::compressed_response::<L, H>(
             z_hat, g_hat, &k, L_tilde, transcript,
         )
     }
 
     pub fn is_valid_compressed<
-        D: Digest,
         L: LinearForm<G::ScalarField>,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -212,20 +213,20 @@ where
         ys: &[G::ScalarField],
         A: &G,
         t: &G::ScalarField,
-        challenge: &G::ScalarField,
-        new_challenge: &G::ScalarField,
+        c_0: &G::ScalarField,
+        c_1: &G::ScalarField,
         compressed_resp: &compressed_linear_form::Response<G>,
-        transcript: Option<&Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
         let (g_hat, L_tilde) =
             compressed_linear_form::prepare_generators_and_linear_form_for_compression(
                 g,
                 h,
                 linear_form,
-                new_challenge,
+                &c_1,
             );
-        let Q = calculate_Q(k, Ps, ys, A, t, challenge, new_challenge);
-        compressed_resp.validate_compressed::<D, L, H>(Q, g_hat, L_tilde, &k, transcript)
+        let Q = calculate_Q(k, Ps, ys, A, t, &c_0, &c_1);
+        compressed_resp.validate_compressed::<L, H>(Q, g_hat, L_tilde, &k, transcript)
     }
 }
 
@@ -401,8 +402,14 @@ mod tests {
                 .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
                 .unwrap();
             assert_eq!(response.z_tilde.len(), max_size);
+
+            let mut verifier_transcript = Transcript::new();
+            rand_comm
+                .challenge_contribution(&mut verifier_transcript)
+                .unwrap();
+            let verifier_challenge = verifier_transcript.hash::<Fr, Blake2b>(None);
             response
-                .is_valid(
+                .is_valid::<TestLinearForm1, Blake2b>(
                     &g,
                     &h,
                     max_size,
@@ -411,22 +418,28 @@ mod tests {
                     &linear_form_1,
                     &rand_comm.A,
                     &rand_comm.t,
-                    &challenge,
+                    &verifier_challenge,
                 )
                 .unwrap();
 
             let rand_comm =
                 RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form_2, None).unwrap();
             assert_eq!(rand_comm.r.len(), max_size);
-            let mut transcript = Transcript::new();
-            rand_comm.challenge_contribution(&mut transcript);
-            let challenge = transcript.hash::<Fr, Blake2b>(None);
+            let mut transcript_2 = Transcript::new();
+            rand_comm.challenge_contribution(&mut transcript_2);
+            let challenge = transcript_2.hash::<Fr, Blake2b>(None);
             let response = rand_comm
                 .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
                 .unwrap();
             assert_eq!(response.z_tilde.len(), max_size);
+
+            let mut verifier_transcript_2 = Transcript::new();
+            rand_comm
+                .challenge_contribution(&mut verifier_transcript_2)
+                .unwrap();
+            let verifier_challenge_2 = verifier_transcript_2.hash::<Fr, Blake2b>(None);
             response
-                .is_valid(
+                .is_valid::<TestLinearForm2, Blake2b>(
                     &g,
                     &h,
                     max_size,
@@ -435,7 +448,7 @@ mod tests {
                     &linear_form_2,
                     &rand_comm.A,
                     &rand_comm.t,
-                    &challenge,
+                    &verifier_challenge_2,
                 )
                 .unwrap();
         }
@@ -509,8 +522,14 @@ mod tests {
             .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &c_0)
             .unwrap();
         assert_eq!(response.z_tilde.len(), max_size);
+
+        let mut verifier_transcript = Transcript::new();
+        rand_comm
+            .challenge_contribution(&mut verifier_transcript)
+            .unwrap();
+        let verifier_c_0 = verifier_transcript.hash::<Fr, Blake2b>(Some(b"c_0"));
         response
-            .is_valid(
+            .is_valid::<TestLinearForm2, Blake2b>(
                 &g,
                 &h,
                 max_size,
@@ -519,20 +538,15 @@ mod tests {
                 &linear_form,
                 &rand_comm.A,
                 &rand_comm.t,
-                &c_0,
+                &verifier_c_0,
             )
             .unwrap();
         let c_1 = transcript.hash::<Fr, Blake2b>(Some(b"c_1"));
 
-        let comp_resp = response.compress::<Blake2b, _, Blake2b>(
-            &g,
-            &h,
-            &k,
-            &linear_form,
-            &c_1,
-            Some(&mut transcript),
-        );
-        Response::is_valid_compressed::<Blake2b, _, Blake2b>(
+        let comp_resp =
+            response.compress::<_, Blake2b>(&g, &h, &k, &linear_form, &c_1, Some(&mut transcript));
+        let verifier_c_1 = verifier_transcript.hash::<Fr, Blake2b>(Some(b"c_1"));
+        Response::is_valid_compressed::<_, Blake2b>(
             &g,
             &h,
             &k,
@@ -541,10 +555,10 @@ mod tests {
             &evals,
             &rand_comm.A,
             &rand_comm.t,
-            &c_0,
-            &c_1,
+            &verifier_c_0,
+            &verifier_c_1,
             &comp_resp,
-            Some(&transcript),
+            Some(&mut verifier_transcript),
         )
         .unwrap();
     }

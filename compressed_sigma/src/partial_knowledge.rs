@@ -534,6 +534,12 @@ mod tests {
             rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
             let challenge = transcript.hash::<Fr, Blake2b>(None);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
+
+            let mut verifier_transcript = Transcript::new();
+            rand_comm
+                .challenge_contribution(&mut verifier_transcript)
+                .unwrap();
+            let verifier_challenge = verifier_transcript.hash::<Fr, Blake2b>(None);
             response
                 .is_valid::<_, Blake2b>(
                     &new_gs,
@@ -542,7 +548,7 @@ mod tests {
                     &fs,
                     &rand_comm.A,
                     &rand_comm.t,
-                    &challenge,
+                    &verifier_challenge,
                 )
                 .unwrap();
             println!(
@@ -661,6 +667,12 @@ mod tests {
             rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
             let challenge = transcript.hash::<Fr, Blake2b>(None);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
+
+            let mut verifier_transcript = Transcript::new();
+            rand_comm
+                .challenge_contribution(&mut verifier_transcript)
+                .unwrap();
+            let verifier_challenge = verifier_transcript.hash::<Fr, Blake2b>(None);
             response
                 .is_valid::<_, Blake2b>(
                     &new_gs,
@@ -669,7 +681,7 @@ mod tests {
                     &fs,
                     &rand_comm.A,
                     &rand_comm.t,
-                    &challenge,
+                    &verifier_challenge,
                 )
                 .unwrap();
         }
@@ -835,6 +847,12 @@ mod tests {
         rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(&new_y, &challenge).unwrap();
+
+        let mut verifier_transcript = Transcript::new();
+        rand_comm
+            .challenge_contribution(&mut verifier_transcript)
+            .unwrap();
+        let verifier_challenge = verifier_transcript.hash::<Fr, Blake2b>(None);
         response
             .is_valid::<_, Blake2b>(
                 &new_gs,
@@ -843,12 +861,17 @@ mod tests {
                 &fs,
                 &rand_comm.A,
                 &rand_comm.t,
-                &challenge,
+                &verifier_challenge,
             )
             .unwrap();
 
         let comp_resp =
             response.compress::<_, Blake2b>(&new_gs, &P, &Ps, &fs, Some(&mut transcript));
+        let mut verifier_transcript_2 = Transcript::new();
+        rand_comm
+            .challenge_contribution(&mut verifier_transcript_2)
+            .unwrap();
+        let verifier_challenge_2 = verifier_transcript_2.hash::<Fr, Blake2b>(None);
         Response::is_valid_compressed::<Blake2b, _, Blake2b>(
             &new_gs,
             &fs,
@@ -856,9 +879,9 @@ mod tests {
             &Ps,
             &rand_comm.A,
             &rand_comm.t,
-            &challenge,
+            &verifier_challenge_2,
             &comp_resp,
-            Some(&transcript),
+            Some(&mut verifier_transcript_2),
         )
         .unwrap();
     }

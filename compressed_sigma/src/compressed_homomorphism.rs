@@ -18,7 +18,6 @@ use dock_crypto_utils::transcript::{self, ChallengeContributor, Transcript};
 
 use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
-use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
@@ -86,7 +85,7 @@ where
         f: &F,
         x: &[G::ScalarField],
         challenge: &G::ScalarField,
-        mut transcript: Option<&mut Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<Response<G>, CompSigmaError> {
         if !g.len().is_power_of_two() {
             return Err(CompSigmaError::UncompressedNotPowerOf2);
@@ -126,7 +125,7 @@ where
         transcript: Option<&mut Transcript>,
     ) -> Response<G> {
         let mut temp_transcript = Transcript::new();
-        let mut serialize_to = match transcript {
+        let mut serialise_to = match transcript {
             Some(t) => t,
             None => &mut temp_transcript,
         };
@@ -158,11 +157,11 @@ where
             let a = f_r.eval(&z).unwrap();
             let b = f_l.eval(&z_r).unwrap();
 
-            A.serialize(&mut serialize_to).unwrap();
-            B.serialize(&mut serialize_to).unwrap();
-            a.serialize(&mut serialize_to).unwrap();
-            b.serialize(&mut serialize_to).unwrap();
-            c = serialize_to.hash::<_, H>(None);
+            A.serialize(&mut serialise_to).unwrap();
+            B.serialize(&mut serialise_to).unwrap();
+            a.serialize(&mut serialise_to).unwrap();
+            b.serialize(&mut serialise_to).unwrap();
+            c = serialise_to.hash::<_, H>(None);
             c_repr = c.into_repr();
 
             // Set `g` as g' in the paper
@@ -248,7 +247,7 @@ where
             return Err(CompSigmaError::UncompressedNotPowerOf2);
         }
 
-        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
+        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, &challenge);
         self.recursively_validate_compressed::<F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 
@@ -266,7 +265,7 @@ where
         A_hat: &G,
         t: &G,
         challenge: &G::ScalarField,
-        transcript: Option<&Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
         assert!(g.len().is_power_of_two());
         assert_eq!(self.A.len(), self.B.len());
@@ -275,7 +274,7 @@ where
         assert_eq!(g.len(), 1 << (self.A.len() + 1));
         assert!(f.size().is_power_of_two());
 
-        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
+        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, &challenge);
         self.validate_compressed::<F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 
@@ -291,7 +290,7 @@ where
         transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
         let mut temp_transcript = Transcript::new();
-        let mut serialize_to = match transcript {
+        let mut serialise_to = match transcript {
             Some(t) => t,
             None => &mut temp_transcript,
         };
@@ -305,11 +304,11 @@ where
             let a = &self.a[i];
             let b = &self.b[i];
 
-            A.serialize(&mut serialize_to).unwrap();
-            B.serialize(&mut serialize_to).unwrap();
-            a.serialize(&mut serialize_to).unwrap();
-            b.serialize(&mut serialize_to).unwrap();
-            c = serialize_to.hash::<_, H>(None);
+            A.serialize(&mut serialise_to).unwrap();
+            B.serialize(&mut serialise_to).unwrap();
+            a.serialize(&mut serialise_to).unwrap();
+            b.serialize(&mut serialise_to).unwrap();
+            c = serialise_to.hash::<_, H>(None);
             c_repr = c.into_repr();
 
             let m = g.len();
@@ -360,16 +359,17 @@ where
         mut Y: G::Projective,
         g: Vec<G>,
         f: F,
-        transcript: Option<&Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
         // Create challenges for each round and store in `challenges`
         let mut challenges = vec![];
         // Holds squares of challenge of each round
         let mut challenge_squares = vec![];
 
-        let mut bytes = Transcript::new();
-        if let Some(contents) = transcript {
-            bytes = contents.clone();
+        let mut temp_transcript = Transcript::new();
+        let mut serialise_to = match transcript {
+            Some(t) => t,
+            None => &mut temp_transcript,
         };
         let mut c = G::ScalarField::zero();
 
@@ -379,11 +379,11 @@ where
             let a = &self.a[i];
             let b = &self.b[i];
 
-            A.serialize(&mut bytes).unwrap();
-            B.serialize(&mut bytes).unwrap();
-            a.serialize(&mut bytes).unwrap();
-            b.serialize(&mut bytes).unwrap();
-            c = bytes.hash::<_, H>(None);
+            A.serialize(&mut serialise_to).unwrap();
+            B.serialize(&mut serialise_to).unwrap();
+            a.serialize(&mut serialise_to).unwrap();
+            b.serialize(&mut serialise_to).unwrap();
+            c = serialise_to.hash::<_, H>(None);
 
             challenge_squares.push(c.square());
             challenges.push(c);
@@ -543,6 +543,7 @@ mod tests {
             rand_comm
                 .challenge_contribution(&mut verifier_transcript_1)
                 .unwrap();
+            let verifier_challenge = verifier_transcript_1.hash::<Fr, Blake2b>(None);
             response
                 .is_valid_recursive::<_, Blake2b>(
                     &g,
@@ -551,7 +552,7 @@ mod tests {
                     &homomorphism,
                     &rand_comm.A_hat,
                     &rand_comm.t,
-                    &challenge,
+                    &verifier_challenge,
                     Some(&mut verifier_transcript_1),
                 )
                 .unwrap();
@@ -566,6 +567,7 @@ mod tests {
             rand_comm
                 .challenge_contribution(&mut verifier_transcript_2)
                 .unwrap();
+            let verifier_challenge = verifier_transcript_2.hash::<Fr, Blake2b>(None);
             response
                 .is_valid::<_, Blake2b>(
                     &g,
@@ -574,7 +576,7 @@ mod tests {
                     &homomorphism,
                     &rand_comm.A_hat,
                     &rand_comm.t,
-                    &challenge,
+                    &verifier_challenge,
                     Some(&mut verifier_transcript_2),
                 )
                 .unwrap();

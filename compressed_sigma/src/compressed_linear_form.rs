@@ -18,7 +18,6 @@ use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use crate::error::CompSigmaError;
 use crate::transforms::LinearForm;
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
-use dock_crypto_utils::hashing_utils::*;
 use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
@@ -94,7 +93,6 @@ where
     }
 
     pub fn response<
-        D: Digest,
         L: LinearForm<G::ScalarField>,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -107,7 +105,7 @@ where
         gamma: &G::ScalarField,
         c_0: &G::ScalarField,
         c_1: &G::ScalarField,
-        mut transcript: Option<&mut Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<Response<G>, CompSigmaError> {
         if !(g.len() + 1).is_power_of_two() {
             return Err(CompSigmaError::UncompressedNotPowerOf2);
@@ -136,7 +134,7 @@ where
         let (g_hat, L_tilde) =
             prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
 
-        Ok(Self::compressed_response::<D, L, H>(
+        Ok(Self::compressed_response::<L, H>(
             z_hat, g_hat, k, L_tilde, transcript,
         ))
     }
@@ -145,7 +143,6 @@ where
     /// Protocol 4 in the paper. The relation in this proof is Q = g_hat * z_hat + k * L_tilde(z_hat)
     /// and knowledge of z_hat needs to be proven but the proof is not zero-knowledge
     pub fn compressed_response<
-        D: Digest,
         L: LinearForm<G::ScalarField>,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -153,14 +150,12 @@ where
         mut g_hat: Vec<G>,
         k: &G,
         mut L_tilde: L,
-        mut transcript: Option<&mut Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Response<G> {
-        let mut bytes = vec![];
-        let mut indicator = false;
-        let mut t = Transcript::new();
-        if let Some(contents) = transcript {
-            indicator = true;
-            t = contents.clone();
+        let mut temp_transcript = Transcript::new();
+        let mut serialise_to = match transcript {
+            Some(t) => t,
+            None => &mut temp_transcript,
         };
 
         let mut As = vec![];
@@ -194,17 +189,10 @@ where
                 &z_hat_r.iter().map(|z| z.into_repr()).collect::<Vec<_>>(),
             ) + k_table.multiply(&L_tilde_l.eval(&z_hat_r));
 
-            if indicator {
-                A.serialize(&mut t).unwrap();
-                B.serialize(&mut t).unwrap();
-                c = t.hash::<_, H>(None);
-                c_repr = c.into_repr();
-            } else {
-                A.serialize(&mut bytes).unwrap();
-                B.serialize(&mut bytes).unwrap();
-                c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-                c_repr = c.into_repr();
-            }
+            A.serialize(&mut serialise_to).unwrap();
+            B.serialize(&mut serialise_to).unwrap();
+            c = serialise_to.hash::<_, H>(None);
+            c_repr = c.into_repr();
 
             // Set `g_hat` as g' in the paper
             g_hat = g_hat
@@ -243,7 +231,6 @@ where
     /// vectors is reduced to half in each iteration. This execution is similar to the prover's.
     /// A naive and thus slower implementation than `is_valid`
     pub fn is_valid_recursive<
-        D: Digest,
         L: LinearForm<G::ScalarField>,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -258,7 +245,7 @@ where
         t: &G::ScalarField,
         c_0: &G::ScalarField,
         c_1: &G::ScalarField,
-        transcript: Option<&Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
         if !(g.len() + 1).is_power_of_two() {
             return Err(CompSigmaError::UncompressedNotPowerOf2);
@@ -274,9 +261,9 @@ where
         }
 
         let (g_hat, L_tilde) =
-            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
-        let Q = calculate_Q(k, P, y, A_hat, t, c_0, c_1);
-        self.recursively_validate_compressed::<D, L, H>(Q, g_hat, L_tilde, k, transcript)
+            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, &c_1);
+        let Q = calculate_Q(k, P, y, A_hat, t, &c_0, &c_1);
+        self.recursively_validate_compressed::<L, H>(Q, g_hat, L_tilde, k, transcript)
     }
 
     /// Validate the proof of knowledge in the non-recursive manner. This will delay scalar multiplications
@@ -285,7 +272,6 @@ where
     /// all the immediate challenges `c` also at the start. Thus the verifier can create the final g' and Q
     /// in a single multi-scalar multiplication
     pub fn is_valid<
-        D: Digest,
         L: LinearForm<G::ScalarField>,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -300,7 +286,7 @@ where
         t: &G::ScalarField,
         c_0: &G::ScalarField,
         c_1: &G::ScalarField,
-        transcript: Option<&Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
         assert!((g.len() + 1).is_power_of_two());
         assert_eq!(self.A.len(), self.B.len());
@@ -308,13 +294,12 @@ where
         assert!(linear_form.size().is_power_of_two());
 
         let (g_hat, L_tilde) =
-            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
-        let Q = calculate_Q(k, P, y, A_hat, t, c_0, c_1);
-        self.validate_compressed::<D, L, H>(Q, g_hat, L_tilde, k, transcript)
+            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, &c_1);
+        let Q = calculate_Q(k, P, y, A_hat, t, &c_0, &c_1);
+        self.validate_compressed::<L, H>(Q, g_hat, L_tilde, k, transcript)
     }
 
     pub fn recursively_validate_compressed<
-        D: Digest,
         L: LinearForm<G::ScalarField>,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -323,30 +308,22 @@ where
         mut g_hat: Vec<G>,
         mut L_tilde: L,
         k: &G,
-        transcript: Option<&Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
-        let mut bytes = vec![];
-        let mut indicator = false;
-        let mut t = Transcript::new();
-        if let Some(contents) = transcript {
-            indicator = true;
-            t = contents.clone();
+        let mut temp_transcript = Transcript::new();
+        let mut serialise_to = match transcript {
+            Some(t) => t,
+            None => &mut temp_transcript,
         };
+
         let mut c = G::ScalarField::zero();
         let mut c_repr = c.into_repr();
 
         for (A, B) in self.A.iter().zip(self.B.iter()) {
-            if indicator {
-                A.serialize(&mut t).unwrap();
-                B.serialize(&mut t).unwrap();
-                c = t.hash::<_, H>(None);
-                c_repr = c.into_repr();
-            } else {
-                A.serialize(&mut bytes).unwrap();
-                B.serialize(&mut bytes).unwrap();
-                c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-                c_repr = c.into_repr();
-            }
+            A.serialize(&mut serialise_to).unwrap();
+            B.serialize(&mut serialise_to).unwrap();
+            c = serialise_to.hash::<_, H>(None);
+            c_repr = c.into_repr();
 
             let m = g_hat.len();
             let g_hat_r = g_hat.split_off(m / 2);
@@ -380,7 +357,6 @@ where
     }
 
     pub fn validate_compressed<
-        D: Digest,
         L: LinearForm<G::ScalarField>,
         H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     >(
@@ -389,31 +365,25 @@ where
         mut g_hat: Vec<G>,
         mut L_tilde: L,
         k: &G,
-        transcript: Option<&Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
         // Create challenges for each round and store in `challenges`
         let mut challenges = vec![];
         // Holds squares of challenge of each round
         let mut challenge_squares = vec![];
-        let mut bytes = vec![];
-        let mut indicator = false;
-        let mut t = Transcript::new();
-        if let Some(contents) = transcript {
-            indicator = true;
-            t = contents.clone();
+
+        let mut temp_transcript = Transcript::new();
+        let mut serialise_to = match transcript {
+            Some(t) => t,
+            None => &mut temp_transcript,
         };
+
         let mut c = G::ScalarField::zero();
 
         for (A, B) in self.A.iter().zip(self.B.iter()) {
-            if indicator {
-                A.serialize(&mut t).unwrap();
-                B.serialize(&mut t).unwrap();
-                c = t.hash::<_, H>(None);
-            } else {
-                A.serialize(&mut bytes).unwrap();
-                B.serialize(&mut bytes).unwrap();
-                c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-            }
+            A.serialize(&mut serialise_to).unwrap();
+            B.serialize(&mut serialise_to).unwrap();
+            c = serialise_to.hash::<_, H>(None);
 
             let (L_tilde_l, L_tilde_r) = L_tilde.split_in_half();
             L_tilde = L_tilde_l.scale(&c).add(&L_tilde_r);
@@ -568,7 +538,7 @@ mod tests {
             let c_1 = transcript.hash::<Fr, Blake2b>(Some(b"c_1"));
 
             let response = rand_comm
-                .response::<Blake2b, _, Blake2b>(
+                .response::<_, Blake2b>(
                     &g,
                     &h,
                     &k,
@@ -582,8 +552,14 @@ mod tests {
                 .unwrap();
 
             let start = Instant::now();
+            let mut verifier_transcript = Transcript::new();
+            rand_comm
+                .challenge_contribution(&mut verifier_transcript)
+                .unwrap();
+            let verifier_c_0 = verifier_transcript.hash::<Fr, Blake2b>(Some(b"c_0"));
+            let verifier_c_1 = verifier_transcript.hash::<Fr, Blake2b>(Some(b"c_1"));
             response
-                .is_valid_recursive::<Blake2b, _, Blake2b>(
+                .is_valid_recursive::<_, Blake2b>(
                     &g,
                     &h,
                     &k,
@@ -592,9 +568,9 @@ mod tests {
                     &linear_form,
                     &rand_comm.A_hat,
                     &rand_comm.t,
-                    &c_0,
-                    &c_1,
-                    Some(&transcript),
+                    &verifier_c_0,
+                    &verifier_c_1,
+                    Some(&mut verifier_transcript),
                 )
                 .unwrap();
             println!(
@@ -604,8 +580,14 @@ mod tests {
             );
 
             let start = Instant::now();
+            let mut verifier_transcript_2 = Transcript::new();
+            rand_comm
+                .challenge_contribution(&mut verifier_transcript_2)
+                .unwrap();
+            let verifier_2_c_0 = verifier_transcript_2.hash::<Fr, Blake2b>(Some(b"c_0"));
+            let verifier_2_c_1 = verifier_transcript_2.hash::<Fr, Blake2b>(Some(b"c_1"));
             response
-                .is_valid::<Blake2b, _, Blake2b>(
+                .is_valid::<_, Blake2b>(
                     &g,
                     &h,
                     &k,
@@ -614,9 +596,9 @@ mod tests {
                     &linear_form,
                     &rand_comm.A_hat,
                     &rand_comm.t,
-                    &c_0,
-                    &c_1,
-                    Some(&transcript),
+                    &verifier_2_c_0,
+                    &verifier_2_c_1,
+                    Some(&mut verifier_transcript_2),
                 )
                 .unwrap();
             println!(

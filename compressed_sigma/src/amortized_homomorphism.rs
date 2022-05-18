@@ -108,7 +108,10 @@ impl<G> Response<G>
 where
     G: AffineCurve,
 {
-    pub fn is_valid<F: Homomorphism<G::ScalarField, Output = G>>(
+    pub fn is_valid<
+        F: Homomorphism<G::ScalarField, Output = G>,
+        H: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
+    >(
         &self,
         g: &[G],
         max_size: usize,
@@ -170,7 +173,7 @@ where
         self,
         g: &[G],
         f: &F,
-        mut transcript: Option<&mut Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> compressed_homomorphism::Response<G> {
         compressed_homomorphism::RandomCommitment::compressed_response::<F, H>(
             self.z_tilde,
@@ -193,9 +196,9 @@ where
         t: &G,
         challenge: &G::ScalarField,
         compressed_resp: &compressed_homomorphism::Response<G>,
-        transcript: Option<&Transcript>,
+        transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
-        let (Q, Y) = calculate_Q_and_Y::<G>(Ps, ys, A, t, challenge);
+        let (Q, Y) = calculate_Q_and_Y::<G>(Ps, ys, A, t, &challenge);
         compressed_resp.validate_compressed::<F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 }
@@ -305,7 +308,7 @@ mod tests {
             let response = rand_comm.response(vec![&x1, &x2, &x3], &challenge);
             assert_eq!(response.z_tilde.len(), max_size);
             response
-                .is_valid(
+                .is_valid::<_, Blake2b>(
                     &g,
                     max_size,
                     &[comm1, comm2, comm3],
@@ -382,8 +385,13 @@ mod tests {
         assert_eq!(response.z_tilde.len(), max_size);
 
         let start = Instant::now();
+        let mut verifier_transcript = Transcript::new();
+        rand_comm
+            .challenge_contribution(&mut verifier_transcript)
+            .unwrap();
+        let verifier_challenge = verifier_transcript.hash::<Fr, Blake2b>(None);
         response
-            .is_valid(
+            .is_valid::<_, Blake2b>(
                 &g,
                 max_size,
                 &comms,
@@ -391,7 +399,7 @@ mod tests {
                 &homomorphism,
                 &rand_comm.A,
                 &rand_comm.t,
-                &challenge,
+                &verifier_challenge,
             )
             .unwrap();
         println!(
@@ -419,9 +427,9 @@ mod tests {
             &evals,
             &rand_comm.A,
             &rand_comm.t,
-            &challenge,
+            &verifier_challenge,
             &comp_resp,
-            Some(&transcript),
+            Some(&mut verifier_transcript),
         )
         .unwrap();
         println!(
