@@ -531,7 +531,7 @@ mod tests {
                 RandomCommitment::new::<_, _, Blake2b>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
             let mut transcript = Transcript::new();
-            rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
+            rand_comm.challenge_contribution(&mut transcript).unwrap();
             let challenge = transcript.hash::<Fr, Blake2b>(None);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
 
@@ -664,7 +664,7 @@ mod tests {
                 RandomCommitment::new::<_, _, Blake2b>(&mut rng, &new_gs, &P, &Ps, &fs, None)
                     .unwrap();
             let mut transcript = Transcript::new();
-            rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
+            rand_comm.challenge_contribution(&mut transcript).unwrap();
             let challenge = transcript.hash::<Fr, Blake2b>(None);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
 
@@ -844,7 +844,7 @@ mod tests {
         let rand_comm =
             RandomCommitment::new::<_, _, Blake2b>(&mut rng, &new_gs, &P, &Ps, &fs, None).unwrap();
         let mut transcript = Transcript::new();
-        rand_comm.challenge_contribution(&mut transcript.transcript_bytes);
+        rand_comm.challenge_contribution(&mut transcript).unwrap();
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(&new_y, &challenge).unwrap();
 

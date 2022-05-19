@@ -247,7 +247,7 @@ where
             return Err(CompSigmaError::UncompressedNotPowerOf2);
         }
 
-        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, &challenge);
+        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
         self.recursively_validate_compressed::<F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 
@@ -274,7 +274,7 @@ where
         assert_eq!(g.len(), 1 << (self.A.len() + 1));
         assert!(f.size().is_power_of_two());
 
-        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, &challenge);
+        let (Q, Y) = calculate_Q_and_Y(P, y, A_hat, t, challenge);
         self.validate_compressed::<F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 

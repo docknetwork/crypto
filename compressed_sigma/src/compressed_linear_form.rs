@@ -261,8 +261,8 @@ where
         }
 
         let (g_hat, L_tilde) =
-            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, &c_1);
-        let Q = calculate_Q(k, P, y, A_hat, t, &c_0, &c_1);
+            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
+        let Q = calculate_Q(k, P, y, A_hat, t, c_0, c_1);
         self.recursively_validate_compressed::<L, H>(Q, g_hat, L_tilde, k, transcript)
     }
 
@@ -294,8 +294,8 @@ where
         assert!(linear_form.size().is_power_of_two());
 
         let (g_hat, L_tilde) =
-            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, &c_1);
-        let Q = calculate_Q(k, P, y, A_hat, t, &c_0, &c_1);
+            prepare_generators_and_linear_form_for_compression::<G, L>(g, h, linear_form, c_1);
+        let Q = calculate_Q(k, P, y, A_hat, t, c_0, c_1);
         self.validate_compressed::<L, H>(Q, g_hat, L_tilde, k, transcript)
     }
 
@@ -533,7 +533,7 @@ mod tests {
 
             let rand_comm = RandomCommitment::new(&mut rng, &g, &h, &linear_form, None).unwrap();
             let mut transcript = Transcript::new();
-            rand_comm.challenge_contribution(&mut transcript);
+            rand_comm.challenge_contribution(&mut transcript).unwrap();
             let c_0 = transcript.hash::<Fr, Blake2b>(Some(b"c_0"));
             let c_1 = transcript.hash::<Fr, Blake2b>(Some(b"c_1"));
 

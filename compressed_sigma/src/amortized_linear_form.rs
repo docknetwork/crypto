@@ -197,7 +197,7 @@ where
         z_hat.push(self.phi);
 
         compressed_linear_form::RandomCommitment::compressed_response::<L, H>(
-            z_hat, g_hat, &k, L_tilde, transcript,
+            z_hat, g_hat, k, L_tilde, transcript,
         )
     }
 
@@ -225,8 +225,8 @@ where
                 linear_form,
                 &c_1,
             );
-        let Q = calculate_Q(k, Ps, ys, A, t, &c_0, &c_1);
-        compressed_resp.validate_compressed::<L, H>(Q, g_hat, L_tilde, &k, transcript)
+        let Q = calculate_Q(k, Ps, ys, A, t, c_0, c_1);
+        compressed_resp.validate_compressed::<L, H>(Q, g_hat, L_tilde, k, transcript)
     }
 }
 
@@ -396,7 +396,7 @@ mod tests {
                 RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form_1, None).unwrap();
             assert_eq!(rand_comm.r.len(), max_size);
             let mut transcript = Transcript::new();
-            rand_comm.challenge_contribution(&mut transcript);
+            rand_comm.challenge_contribution(&mut transcript).unwrap();
             let challenge = transcript.hash::<Fr, Blake2b>(None);
             let response = rand_comm
                 .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
@@ -426,7 +426,7 @@ mod tests {
                 RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form_2, None).unwrap();
             assert_eq!(rand_comm.r.len(), max_size);
             let mut transcript_2 = Transcript::new();
-            rand_comm.challenge_contribution(&mut transcript_2);
+            rand_comm.challenge_contribution(&mut transcript_2).unwrap();
             let challenge = transcript_2.hash::<Fr, Blake2b>(None);
             let response = rand_comm
                 .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
@@ -516,7 +516,7 @@ mod tests {
             RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form, None).unwrap();
         assert_eq!(rand_comm.r.len(), max_size);
         let mut transcript = Transcript::new();
-        rand_comm.challenge_contribution(&mut transcript);
+        rand_comm.challenge_contribution(&mut transcript).unwrap();
         let c_0 = transcript.hash::<Fr, Blake2b>(Some(b"c_0"));
         let response = rand_comm
             .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &c_0)

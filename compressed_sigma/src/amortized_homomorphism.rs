@@ -12,7 +12,7 @@ use ark_std::{
     rand::RngCore,
 };
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
-use dock_crypto_utils::transcript::{self, ChallengeContributor, Transcript};
+use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
 
 use crate::compressed_homomorphism;
 use crate::error::CompSigmaError;
@@ -198,7 +198,7 @@ where
         compressed_resp: &compressed_homomorphism::Response<G>,
         transcript: Option<&mut Transcript>,
     ) -> Result<(), CompSigmaError> {
-        let (Q, Y) = calculate_Q_and_Y::<G>(Ps, ys, A, t, &challenge);
+        let (Q, Y) = calculate_Q_and_Y::<G>(Ps, ys, A, t, challenge);
         compressed_resp.validate_compressed::<F, H>(Q, Y, g.to_vec(), f.clone(), transcript)
     }
 }
@@ -303,7 +303,7 @@ mod tests {
                 RandomCommitment::new(&mut rng, &g, max_size, &homomorphism, None).unwrap();
             assert_eq!(rand_comm.r.len(), max_size);
             let mut transcript = Transcript::new();
-            rand_comm.challenge_contribution(&mut transcript);
+            rand_comm.challenge_contribution(&mut transcript).unwrap();
             let challenge = transcript.hash::<Fr, D>(None);
             let response = rand_comm.response(vec![&x1, &x2, &x3], &challenge);
             assert_eq!(response.z_tilde.len(), max_size);
@@ -379,7 +379,7 @@ mod tests {
         let rand_comm = RandomCommitment::new(&mut rng, &g, max_size, &homomorphism, None).unwrap();
         assert_eq!(rand_comm.r.len(), max_size);
         let mut transcript = Transcript::new();
-        rand_comm.challenge_contribution(&mut transcript);
+        rand_comm.challenge_contribution(&mut transcript).unwrap();
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(vec![&x1, &x2, &x3], &challenge);
         assert_eq!(response.z_tilde.len(), max_size);

@@ -244,7 +244,7 @@ where
             &y_rho.into_affine(),
             A,
             t,
-            &challenge,
+            challenge,
         );
         compressed_resp.validate_compressed::<F, H>(Q, Y, g.to_vec(), f_rho, transcript)
     }
@@ -314,7 +314,7 @@ mod tests {
         let rand_comm =
             RandomCommitment::new::<_, _, Blake2b>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let mut transcript = Transcript::new();
-        rand_comm.challenge_contribution(&mut transcript);
+        rand_comm.challenge_contribution(&mut transcript).unwrap();
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(&x, &challenge).unwrap();
 
@@ -363,7 +363,7 @@ mod tests {
         let rand_comm =
             RandomCommitment::new::<_, _, Blake2b>(&mut rng, &g, &comm, &ys, &fs, None).unwrap();
         let mut transcript = Transcript::new();
-        rand_comm.challenge_contribution(&mut transcript);
+        rand_comm.challenge_contribution(&mut transcript).unwrap();
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm.response(&x, &challenge).unwrap();
 
@@ -461,7 +461,7 @@ mod tests {
         let rand_comm =
             compressed_homomorphism::RandomCommitment::new(&mut rng, &g, &f_rho, None).unwrap();
         let mut transcript = Transcript::new();
-        rand_comm.challenge_contribution(&mut transcript);
+        rand_comm.challenge_contribution(&mut transcript).unwrap();
         let challenge = transcript.hash::<Fr, Blake2b>(None);
         let response = rand_comm
             .response::<_, Blake2b>(&g, &f_rho, &x, &challenge, Some(&mut transcript))
