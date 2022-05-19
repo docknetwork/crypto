@@ -8,18 +8,18 @@ use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 /// Struct to carry the bytes representing the transcript allowing hashing to create challenges easily
 #[derive(Debug, CanonicalSerialize, Clone)]
 pub struct Transcript {
-    pub transcript_bytes: Vec<u8>,
+    pub bytes: Vec<u8>,
 }
 
 impl Transcript {
     pub fn new() -> Transcript {
         Transcript {
-            transcript_bytes: Vec::new(),
+            bytes: Vec::new(),
         }
     }
 
     pub fn append_bytes(&mut self, new_bytes: &[u8]) {
-        self.transcript_bytes.append(&mut new_bytes.to_vec());
+        self.bytes.extend_from_slice(new_bytes);
     }
 
     pub fn hash<F, D>(&mut self, label: Option<&[u8]>) -> F
@@ -27,16 +27,14 @@ impl Transcript {
         F: PrimeField,
         D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
     {
-        match label {
-            Some(l) => field_elem_from_seed::<F, D>(self.transcript_bytes.as_slice(), l),
-            None => field_elem_from_seed::<F, D>(self.transcript_bytes.as_slice(), &[]),
-        }
+        let salt = label.unwrap_or(&[]);
+        field_elem_from_seed::<F, D>(self.bytes.as_slice(), salt)
     }
 }
 
 impl Write for Transcript {
     fn write(&mut self, buf: &[u8]) -> Result<usize, ark_std::io::Error> {
-        self.transcript_bytes.extend_from_slice(buf);
+        self.append_bytes(buf);
         Ok(buf.len())
     }
 

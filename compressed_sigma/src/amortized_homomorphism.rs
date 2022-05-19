@@ -62,7 +62,7 @@ where
         } else {
             (0..max_size).map(|_| G::ScalarField::rand(rng)).collect()
         };
-        let t = f.eval(&r).unwrap();
+        let t = f.eval(&r)?;
         let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
         let A = VariableBaseMSM::multi_scalar_mul(g, &scalars);
         Ok(Self {
@@ -158,7 +158,7 @@ where
 
         // Check \sum_{i}(y_i * c^i) + t == f(z_tilde)
         let c_y = VariableBaseMSM::multi_scalar_mul(y, &challenge_powers_repr);
-        if c_y.add_mixed(t).into_affine() != f.eval(&self.z_tilde).unwrap() {
+        if c_y.add_mixed(t).into_affine() != f.eval(&self.z_tilde)? {
             return Err(CompSigmaError::InvalidResponse);
         }
         Ok(())
@@ -227,16 +227,15 @@ pub fn calculate_Q_and_Y<G: AffineCurve>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, FrParameters};
+    use ark_bls12_381::Bls12_381;
     use ark_ec::PairingEngine;
-    use ark_ff::Fp256;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
     use blake2::Blake2b;
     use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
-    use dock_crypto_utils::{ec::batch_normalize_projective_into_affine, transcript};
+    use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
     use std::time::Instant;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;

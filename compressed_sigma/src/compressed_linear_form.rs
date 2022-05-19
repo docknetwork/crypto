@@ -160,8 +160,6 @@ where
 
         let mut As = vec![];
         let mut Bs = vec![];
-        let mut c = G::ScalarField::zero();
-        let mut c_repr = c.into_repr();
 
         // There are many multiplications done with `k`, so creating a table for it
         let lg2 = z_hat.len() & (z_hat.len() - 1);
@@ -191,8 +189,8 @@ where
 
             A.serialize(&mut serialise_to).unwrap();
             B.serialize(&mut serialise_to).unwrap();
-            c = serialise_to.hash::<_, H>(None);
-            c_repr = c.into_repr();
+            let c = serialise_to.hash::<G::ScalarField, H>(None);
+            let c_repr = c.into_repr();
 
             // Set `g_hat` as g' in the paper
             g_hat = g_hat
@@ -316,14 +314,11 @@ where
             None => &mut temp_transcript,
         };
 
-        let mut c = G::ScalarField::zero();
-        let mut c_repr = c.into_repr();
-
         for (A, B) in self.A.iter().zip(self.B.iter()) {
             A.serialize(&mut serialise_to).unwrap();
             B.serialize(&mut serialise_to).unwrap();
-            c = serialise_to.hash::<_, H>(None);
-            c_repr = c.into_repr();
+            let c = serialise_to.hash::<G::ScalarField, H>(None);
+            let c_repr = c.into_repr();
 
             let m = g_hat.len();
             let g_hat_r = g_hat.split_off(m / 2);
@@ -378,12 +373,10 @@ where
             None => &mut temp_transcript,
         };
 
-        let mut c = G::ScalarField::zero();
-
         for (A, B) in self.A.iter().zip(self.B.iter()) {
             A.serialize(&mut serialise_to).unwrap();
             B.serialize(&mut serialise_to).unwrap();
-            c = serialise_to.hash::<_, H>(None);
+            let c = serialise_to.hash::<G::ScalarField, H>(None);
 
             let (L_tilde_l, L_tilde_r) = L_tilde.split_in_half();
             L_tilde = L_tilde_l.scale(&c).add(&L_tilde_r);

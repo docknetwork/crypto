@@ -13,7 +13,7 @@ use ark_std::{
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 
 use dock_crypto_utils::ff::inner_product;
-use dock_crypto_utils::transcript::{self, ChallengeContributor, Transcript};
+use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
 
 use crate::compressed_linear_form;
 use crate::error::CompSigmaError;

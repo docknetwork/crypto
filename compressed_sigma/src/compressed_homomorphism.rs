@@ -14,7 +14,7 @@ use ark_std::{
     UniformRand,
 };
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
-use dock_crypto_utils::transcript::{self, ChallengeContributor, Transcript};
+use dock_crypto_utils::transcript::{ChallengeContributor, Transcript};
 
 use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
@@ -65,7 +65,7 @@ where
         } else {
             (0..g.len()).map(|_| G::ScalarField::rand(rng)).collect()
         };
-        let t = homomorphism.eval(&r).unwrap();
+        let t = homomorphism.eval(&r)?;
         let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
 
         let A_hat = VariableBaseMSM::multi_scalar_mul(g, &scalars);
@@ -134,8 +134,6 @@ where
         let mut Bs = vec![];
         let mut as_ = vec![];
         let mut bs = vec![];
-        let mut c = G::ScalarField::zero();
-        let mut c_repr = c.into_repr();
 
         while z.len() > 2 {
             let m = g.len();
@@ -161,8 +159,8 @@ where
             B.serialize(&mut serialise_to).unwrap();
             a.serialize(&mut serialise_to).unwrap();
             b.serialize(&mut serialise_to).unwrap();
-            c = serialise_to.hash::<_, H>(None);
-            c_repr = c.into_repr();
+            let c = serialise_to.hash::<G::ScalarField, H>(None);
+            let c_repr = c.into_repr();
 
             // Set `g` as g' in the paper
             g = g
@@ -295,9 +293,6 @@ where
             None => &mut temp_transcript,
         };
 
-        let mut c = G::ScalarField::zero();
-        let mut c_repr = c.into_repr();
-
         for i in 0..self.A.len() {
             let A = &self.A[i];
             let B = &self.B[i];
@@ -308,8 +303,8 @@ where
             B.serialize(&mut serialise_to).unwrap();
             a.serialize(&mut serialise_to).unwrap();
             b.serialize(&mut serialise_to).unwrap();
-            c = serialise_to.hash::<_, H>(None);
-            c_repr = c.into_repr();
+            let c = serialise_to.hash::<G::ScalarField, H>(None);
+            let c_repr = c.into_repr();
 
             let m = g.len();
             let g_r = g.split_off(m / 2);
@@ -321,7 +316,7 @@ where
                 .collect::<Vec<_>>();
 
             let (f_l, f_r) = f.split_in_half();
-            f = f_l.scale(&c).add(&f_r).unwrap();
+            f = f_l.scale(&c).add(&f_r)?;
 
             let c_sq = c.square().into_repr();
             Q = A.into_projective() + Q.mul(c_repr) + B.mul(c_sq);
@@ -339,10 +334,7 @@ where
         {
             return Err(CompSigmaError::InvalidResponse);
         }
-        let f_prime_z_prime = f
-            .eval(&[self.z_prime_0, self.z_prime_1])
-            .unwrap()
-            .into_projective();
+        let f_prime_z_prime = f.eval(&[self.z_prime_0, self.z_prime_1])?.into_projective();
 
         if Y != f_prime_z_prime {
             return Err(CompSigmaError::InvalidResponse);
@@ -371,7 +363,6 @@ where
             Some(t) => t,
             None => &mut temp_transcript,
         };
-        let mut c = G::ScalarField::zero();
 
         for i in 0..self.A.len() {
             let A = &self.A[i];
@@ -383,7 +374,7 @@ where
             B.serialize(&mut serialise_to).unwrap();
             a.serialize(&mut serialise_to).unwrap();
             b.serialize(&mut serialise_to).unwrap();
-            c = serialise_to.hash::<_, H>(None);
+            let c = serialise_to.hash::<G::ScalarField, H>(None);
 
             challenge_squares.push(c.square());
             challenges.push(c);
@@ -451,7 +442,7 @@ where
         let Y_prime = VariableBaseMSM::multi_scalar_mul(&self.a, &challenges_repr)
             + VariableBaseMSM::multi_scalar_mul(&self.b, &B_multiples)
             + Y;
-        let f_prime_z_prime = f.eval(&g_multiples).unwrap().into_projective();
+        let f_prime_z_prime = f.eval(&g_multiples)?.into_projective();
         if Y_prime != f_prime_z_prime {
             return Err(CompSigmaError::InvalidResponse);
         }

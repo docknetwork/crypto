@@ -133,7 +133,7 @@ where
         } else {
             (0..g.len()).map(|_| G::ScalarField::rand(rng)).collect()
         };
-        let t = f_rho.eval(&r).unwrap();
+        let t = f_rho.eval(&r)?;
         let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
 
         let A = VariableBaseMSM::multi_scalar_mul(g, &scalars);
@@ -194,7 +194,7 @@ where
         let rho_powers = create_rho_powers::<_, H>(g, P, ys);
         let f_rho = combine_f(fs, &rho_powers);
         let y_rho = combine_y(ys, &rho_powers);
-        if f_rho.eval(&self.z).unwrap() != y_rho.mul(challenge_repr).add_mixed(t).into_affine() {
+        if f_rho.eval(&self.z)? != y_rho.mul(challenge_repr).add_mixed(t).into_affine() {
             return Err(CompSigmaError::InvalidResponse);
         }
         Ok(())
@@ -261,10 +261,7 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b;
-    use dock_crypto_utils::{
-        ec::batch_normalize_projective_into_affine,
-        transcript::{self, Transcript},
-    };
+    use dock_crypto_utils::{ec::batch_normalize_projective_into_affine, transcript::Transcript};
     use std::time::Instant;
 
     type Fr = <Bls12_381 as PairingEngine>::Fr;
