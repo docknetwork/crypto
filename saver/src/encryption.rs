@@ -224,7 +224,7 @@ impl<E: PairingEngine> Encryption<E> {
             .collect::<Vec<_>>();
         let circuit =
             BitsizeCheckCircuit::new(chunk_bit_size, None, Some(decomposed_message.clone()), true);
-        let proof = saver_groth16::create_proof(circuit, r, snark_pk, &ek, rng).unwrap();
+        let proof = saver_groth16::create_proof(circuit, &r, snark_pk, &ek, rng).unwrap();
         Ok((ct, r, proof))
     }
 

@@ -198,7 +198,7 @@ fn bbs_plus_verifiably_encrypt_message() {
         println!("Time taken to verify proof {:?}", start.elapsed());
 
         let start = Instant::now();
-        let proof = create_proof(circuit, r, &snark_srs, &ek, &mut rng).unwrap();
+        let proof = create_proof(circuit, &r, &snark_srs, &ek, &mut rng).unwrap();
         println!("Time taken to create Groth16 proof {:?}", start.elapsed());
 
         let start = Instant::now();
@@ -863,8 +863,8 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         println!("Time taken to verify proof {:?}", start.elapsed());
 
         let start = Instant::now();
-        let proof_1 = create_proof(circuit_1, r_1, &snark_srs, &ek, &mut rng).unwrap();
-        let proof_2 = create_proof(circuit_2, r_2, &snark_srs, &ek, &mut rng).unwrap();
+        let proof_1 = create_proof(circuit_1, &r_1, &snark_srs, &ek, &mut rng).unwrap();
+        let proof_2 = create_proof(circuit_2, &r_2, &snark_srs, &ek, &mut rng).unwrap();
         println!(
             "Time taken to create 2 Groth16 proofs {:?}",
             start.elapsed()

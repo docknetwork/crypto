@@ -27,8 +27,6 @@ pub struct SaverProtocol<'a, E: PairingEngine> {
     /// The SNARK verifying key, will be `None` if invoked by prover.
     pub snark_verifying_key: Option<&'a VerifyingKey<E>>,
     pub ciphertext: Option<Ciphertext<E>>,
-    /// Randomness used in encryption
-    pub randomness_enc: Option<E::Fr>,
     pub snark_proof: Option<saver::saver_groth16::Proof<E>>,
     /// Schnorr protocol for proving knowledge of message chunks in ciphertext's commitment
     pub sp_ciphertext: Option<SchnorrProtocol<'a, E::G1Affine>>,
@@ -57,7 +55,6 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
             snark_proving_key: Some(snark_proving_key),
             snark_verifying_key: None,
             ciphertext: None,
-            randomness_enc: None,
             snark_proof: None,
             sp_ciphertext: None,
             sp_chunks: None,
@@ -83,7 +80,6 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
             snark_proving_key: None,
             snark_verifying_key: Some(snark_verifying_key),
             ciphertext: None,
-            randomness_enc: None,
             snark_proof: None,
             sp_ciphertext: None,
             sp_chunks: None,
@@ -170,7 +166,6 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         sp_combined.init(rng, blinding, vec![message, h_blinding])?;
 
         self.ciphertext = Some(ciphertext);
-        self.randomness_enc = Some(randomness_enc);
         self.snark_proof = Some(proof);
         self.sp_ciphertext = Some(sp_ciphertext);
         self.sp_chunks = Some(sp_chunks);

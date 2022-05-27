@@ -38,6 +38,7 @@ impl<F: PrimeField> BitsizeCheckCircuit<F> {
     }
 }
 
+/// Number of constraints is 7920
 impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
     for BitsizeCheckCircuit<ConstraintF>
 {

@@ -10,6 +10,7 @@ use ark_std::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use zeroize::Zeroize;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -26,9 +27,23 @@ use dock_crypto_utils::{
 /// Used to decrypt
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+    Zeroize,
 )]
 pub struct SecretKey<F: PrimeField + SquareRootField>(#[serde_as(as = "FieldBytes")] pub F);
+
+impl<F: PrimeField + SquareRootField> Drop for SecretKey<F> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
 
 /// Used to encrypt, rerandomize and verify the encryption. Called "PK" in the paper.
 #[serde_as]
@@ -362,6 +377,8 @@ pub(crate) mod tests {
             test_serialization!(EncryptionKey<Bls12_381>, ek);
             test_serialization!(DecryptionKey<Bls12_381>, dk);
             test_serialization!(SecretKey<Fr>, sk);
+
+            drop(sk);
         }
 
         check_keygen(4);

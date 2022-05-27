@@ -94,7 +94,7 @@ pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
 /// `r` is the randomness used during the encryption
 pub fn create_proof<E, C, R>(
     circuit: C,
-    r: E::Fr,
+    r: &E::Fr,
     pk: &ProvingKey<E>,
     encryption_key: &EncryptionKey<E>,
     rng: &mut R,
@@ -210,7 +210,7 @@ mod tests {
             );
 
             let start = Instant::now();
-            let proof = create_proof(circuit, r, &snark_srs, &ek, &mut rng).unwrap();
+            let proof = create_proof(circuit, &r, &snark_srs, &ek, &mut rng).unwrap();
             println!(
                 "Time taken to create Groth16 proof with chunk_bit_size {}: {:?}",
                 chunk_bit_size,

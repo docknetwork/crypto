@@ -17,6 +17,7 @@
 //!
 //! let params = SetupParams::<Bls12_381>::generate_using_rng(&mut rng);
 //! let keypair = Keypair::<Bls12_381>::generate(&mut rng, &params);
+//! let public_key = &keypair.public_key;
 //!
 //! let accumulator = PositiveAccumulator::initialize(&params);
 //!
@@ -57,13 +58,19 @@
 //!
 //! let proof = protocol.gen_proof(&challenge);
 //!
+//! // Verifiers should check that the parameters and public key are valid before verifying
+//! // any witness. This just needs to be done once when the verifier fetches/receives them.
+//!
+//! assert!(params.is_valid());
+//! assert!(public_key.is_valid());
+//!
 //! // Verifier should independently generate the `challenge`
 //!
 //! // `challenge_bytes` is the stream where the proof's challenge contribution will be written
 //! proof
 //!                 .challenge_contribution(
 //!                     accumulator.value(),
-//!                     &keypair.public_key,
+//!                     public_key,
 //!                     &params,
 //!                     &prk,
 //!                     &mut chal_bytes_verifier,
@@ -75,7 +82,7 @@
 //!                 .verify(
 //!                     &accumulator.value(),
 //!                     &challenge,
-//!                     &keypair.public_key,
+//!                     public_key,
 //!                     &params,
 //!                     &prk,
 //!                 )
@@ -102,6 +109,7 @@ use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
 use dock_crypto_utils::serde_utils::*;
 use schnorr_pok::error::SchnorrError;
 use schnorr_pok::SchnorrChallengeContributor;
+use zeroize::Zeroize;
 
 use dock_crypto_utils::msm::WindowTable;
 use serde::{Deserialize, Serialize};
@@ -247,7 +255,15 @@ pub struct RandomizedWitness<G: AffineCurve> {
 /// Common elements of the blindings (Schnorr protocol) between membership and non-membership witness
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+    Zeroize,
 )]
 pub struct Blindings<F: PrimeField + SquareRootField> {
     #[serde_as(as = "FieldBytes")]
@@ -321,7 +337,15 @@ pub struct MembershipRandomizedWitness<G: AffineCurve>(
 /// Blindings used during membership proof protocol
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+    Zeroize,
 )]
 pub struct MembershipBlindings<F: PrimeField + SquareRootField>(
     #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
@@ -409,7 +433,15 @@ pub struct NonMembershipRandomizedWitness<G: AffineCurve> {
 /// Blindings used during non-membership proof protocol
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+    Zeroize,
 )]
 pub struct NonMembershipBlindings<F: PrimeField + SquareRootField> {
     #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
@@ -572,6 +604,31 @@ where
     }
 }
 
+impl<G: AffineCurve> SchnorrChallengeContributor for ProvingKey<G> {
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
+        self.X.serialize_unchecked(&mut writer)?;
+        self.Y.serialize_unchecked(&mut writer)?;
+        self.Z
+            .serialize_unchecked(&mut writer)
+            .map_err(|e| e.into())
+    }
+}
+
+impl<G: AffineCurve> SchnorrChallengeContributor for MembershipProvingKey<G> {
+    fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
+        self.0.challenge_contribution(writer)
+    }
+}
+
+impl<G: AffineCurve> SchnorrChallengeContributor for NonMembershipProvingKey<G> {
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
+        self.XYZ.challenge_contribution(&mut writer)?;
+        self.K
+            .serialize_unchecked(&mut writer)
+            .map_err(|e| e.into())
+    }
+}
+
 impl<F: PrimeField + SquareRootField> SchnorrResponse<F> {
     pub fn get_response_for_element(&self) -> &F {
         &self.s_y
@@ -619,7 +676,7 @@ impl<F: PrimeField + SquareRootField> SchnorrResponse<F> {
 ///  be satisfied is
 ///   `e(E_c, P_tilde)^y * e(Z, P_tilde)^{-delta_sigma - delta_rho} * e(Z, Q_tilde)^{-sigma - rho} = e(V, P_tilde) / (e(E_c, Q_tilde)`
 ///   Note that there is no `E_d` or `E_{d^-1}` and thus relations proving knowledge of them are omitted
-trait ProofProtocol<E: PairingEngine> {
+pub(crate) trait ProofProtocol<E: PairingEngine> {
     /// Randomize the witness and compute commitments for step 1 of the Schnorr protocol.
     /// `element` is the accumulator (non)member about which the proof is being created.
     /// `element_blinding` is the randomness used for `element` in the Schnorr protocol and is useful
@@ -765,18 +822,17 @@ trait ProofProtocol<E: PairingEngine> {
         accumulator_value: &E::G1Affine,
         pk: &PublicKey<E::G2Affine>,
         params: &SetupParams<E>,
-        prk: &ProvingKey<E::G1Affine>,
+        prk: &impl SchnorrChallengeContributor,
         mut writer: W,
     ) -> Result<(), VBAccumulatorError> {
         randomized_witness.challenge_contribution(&mut writer)?;
         schnorr_commit.challenge_contribution(&mut writer)?;
         accumulator_value.serialize_unchecked(&mut writer)?;
-        pk.0.serialize_unchecked(&mut writer)?;
-        params.P.serialize_unchecked(&mut writer)?;
-        params.P_tilde.serialize_unchecked(&mut writer)?;
-        prk.X.serialize_unchecked(&mut writer)?;
-        prk.Y.serialize_unchecked(&mut writer)?;
-        prk.Z.serialize_unchecked(&mut writer).map_err(|e| e.into())
+        pk.serialize_unchecked(&mut writer)?;
+        params.serialize_unchecked(&mut writer)?;
+        params.serialize_unchecked(&mut writer)?;
+        prk.challenge_contribution(&mut writer)
+            .map_err(|e| e.into())
     }
 
     /// Compute responses for the Schnorr protocols
@@ -1033,10 +1089,24 @@ where
     pub fn gen_proof(self, challenge: &E::Fr) -> MembershipProof<E> {
         let resp = Self::compute_responses(&self.element, &self.schnorr_blindings.0, challenge);
         MembershipProof {
-            randomized_witness: self.randomized_witness,
-            schnorr_commit: self.schnorr_commit,
+            randomized_witness: self.randomized_witness.clone(),
+            schnorr_commit: self.schnorr_commit.clone(),
             schnorr_response: MembershipSchnorrResponse(resp),
         }
+    }
+}
+
+impl<E: PairingEngine> Zeroize for MembershipProofProtocol<E> {
+    fn zeroize(&mut self) {
+        // Other members of `self` are public anyway
+        self.element.zeroize();
+        self.schnorr_blindings.zeroize();
+    }
+}
+
+impl<E: PairingEngine> Drop for MembershipProofProtocol<E> {
+    fn drop(&mut self) {
+        self.zeroize();
     }
 }
 
@@ -1152,8 +1222,7 @@ where
             params,
             &prk.XYZ,
             &mut writer,
-        )?;
-        prk.K.serialize_unchecked(&mut writer).map_err(|e| e.into())
+        )
     }
 
     /// Create membership proof once the overall challenge is ready. Computes the response for `witness.d`
@@ -1170,8 +1239,8 @@ where
         let resp = Self::compute_responses(&self.element, &self.schnorr_blindings.C, challenge);
 
         NonMembershipProof {
-            randomized_witness: self.randomized_witness,
-            schnorr_commit: self.schnorr_commit,
+            randomized_witness: self.randomized_witness.clone(),
+            schnorr_commit: self.schnorr_commit.clone(),
             schnorr_response: NonMembershipSchnorrResponse {
                 C: resp,
                 s_u,
@@ -1179,6 +1248,21 @@ where
                 s_w,
             },
         }
+    }
+}
+
+impl<E: PairingEngine> Zeroize for NonMembershipProofProtocol<E> {
+    fn zeroize(&mut self) {
+        // Other members of `self` are public anyway
+        self.element.zeroize();
+        self.d.zeroize();
+        self.schnorr_blindings.zeroize();
+    }
+}
+
+impl<E: PairingEngine> Drop for NonMembershipProofProtocol<E> {
+    fn drop(&mut self) {
+        self.zeroize();
     }
 }
 
@@ -1258,8 +1342,7 @@ where
             params,
             &prk.XYZ,
             &mut writer,
-        )?;
-        prk.K.serialize_unchecked(&mut writer).map_err(|e| e.into())
+        )
     }
 
     /// Verify this proof. Verify the responses for the relation `witness.d != 0` and then delegates

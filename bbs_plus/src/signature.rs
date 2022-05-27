@@ -16,13 +16,24 @@
 //! let keypair_g2 = KeypairG2::<Bls12_381>::generate(&mut rng, &params_g1);
 //! let keypair_g1 = KeypairG1::<Bls12_381>::generate(&mut rng, &params_g2);
 //!
+//! let pk_g2 = &keypair_g2.public_key;
+//! let pk_g1 = &keypair_g1.public_key;
+//!
 //! // `messages` contains elements of the scalar field
 //!
+//! // Verifiers should check that the signature parameters and public key are valid before verifying
+//! // any signatures. This just needs to be done once when the verifier fetches/receives them.
+//!
+//! assert!(params_g1.is_valid());
+//! assert!(params_g2.is_valid());
+//! assert!(pk_g2.is_valid());
+//! assert!(pk_g1.is_valid());
+//!
 //! let sig_g1 = SignatureG1::<Bls12_381>::new(&mut rng, &messages, &keypair_g2.secret_key, &params_g1).unwrap();
-//! sig_g1.verify(&messages, &keypair_g2.public_key, &params_g1).unwrap();
+//! sig_g1.verify(&messages, pk_g2, &params_g1).unwrap();
 //!
 //! let sig_g2 = SignatureG2::<Bls12_381>::new(&mut rng, &messages, &keypair_g1.secret_key, &params_g2).unwrap();
-//! sig_g2.verify(&messages, &keypair_g1.public_key, &params_g2).unwrap();
+//! sig_g2.verify(&messages, pk_g1, &params_g2).unwrap();
 //!
 //! // Requesting a partially blind signature from the signer, i.e. where signer does not know all the messages
 //! // Requester creates a Pedersen commitment over the messages he wants to hide from the signer.
@@ -87,8 +98,7 @@ use ark_std::collections::BTreeMap;
 use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-
-// TODO: Zeroize secret key and other cloned/copied elements
+use zeroize::Zeroize;
 
 macro_rules! impl_signature_struct {
     ( $name:ident, $group:ident ) => {
@@ -111,6 +121,20 @@ macro_rules! impl_signature_struct {
             pub e: E::Fr,
             #[serde_as(as = "FieldBytes")]
             pub s: E::Fr,
+        }
+
+        impl<E: PairingEngine> Zeroize for $name<E> {
+            fn zeroize(&mut self) {
+                self.A.zeroize();
+                self.e.zeroize();
+                self.s.zeroize();
+            }
+        }
+
+        impl<E: PairingEngine> Drop for $name<E> {
+            fn drop(&mut self) {
+                self.zeroize();
+            }
         }
     };
 }
@@ -232,7 +256,8 @@ macro_rules! impl_signature_alg {
                 }
             }
 
-            /// Verify the validity of the signature.
+            /// Verify the validity of the signature. Assumes that the public key and parameters
+            /// have been validated already.
             pub fn verify(
                 &self,
                 messages: &[E::Fr],
@@ -296,7 +321,7 @@ mod tests {
     use super::*;
     use crate::setup::{KeypairG1, KeypairG2};
     use crate::test_serialization;
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, G1Affine, G2Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -307,9 +332,10 @@ mod tests {
     type Fr = <Bls12_381 as PairingEngine>::Fr;
 
     macro_rules! test_sig_verif {
-        ($keypair:ident, $params:ident, $sig:ident, $rng:ident, $message_count: ident, $messages: ident) => {
+        ($keypair:ident, $params:ident, $sig:ident, $rng:ident, $message_count: ident, $messages: ident, $group: ident) => {
             let params = $params::<Bls12_381>::generate_using_rng(&mut $rng, $message_count);
             let keypair = $keypair::<Bls12_381>::generate_using_rng(&mut $rng, &params);
+            let public_key = &keypair.public_key;
             let start = Instant::now();
             // All messages are known to signer
             let sig = $sig::<Bls12_381>::new(&mut $rng, &$messages, &keypair.secret_key, &params)
@@ -320,14 +346,23 @@ mod tests {
                 start.elapsed()
             );
 
+            // Verifier first checks that public parameters are valid
+            assert!(params.is_valid());
+            assert!(public_key.is_valid());
+
+            let mut zero_sig = sig.clone();
+            zero_sig.A = $group::zero();
+            assert!(zero_sig.verify(&$messages, public_key, &params).is_err());
+
             let start = Instant::now();
-            sig.verify(&$messages, &keypair.public_key, &params)
-                .unwrap();
+            sig.verify(&$messages, public_key, &params).unwrap();
             println!(
                 "Time to verify signature over multi-message of size {} is {:?}",
                 $message_count,
                 start.elapsed()
             );
+
+            drop(sig);
 
             // 4 messages are not known to signer but are given in a commitment
             let blinding = Fr::rand(&mut $rng);
@@ -363,16 +398,15 @@ mod tests {
             )
             .unwrap();
             // First test should fail since the signature is blinded
-            assert!(blinded_sig
-                .verify(&$messages, &keypair.public_key, &params)
-                .is_err());
+            assert!(blinded_sig.verify(&$messages, public_key, &params).is_err());
 
             let sig = blinded_sig.unblind(&blinding);
-            sig.verify(&$messages, &keypair.public_key, &params)
-                .unwrap();
+            sig.verify(&$messages, public_key, &params).unwrap();
 
             // sig and blinded_sig have same struct so just checking serialization on sig
             test_serialization!($sig<Bls12_381>, sig);
+
+            drop(sig);
         };
     }
 
@@ -393,7 +427,8 @@ mod tests {
                 SignatureG1,
                 rng,
                 message_count,
-                messages
+                messages,
+                G1Affine
             );
         }
 
@@ -404,7 +439,8 @@ mod tests {
                 SignatureG2,
                 rng,
                 message_count,
-                messages
+                messages,
+                G2Affine
             );
         }
     }

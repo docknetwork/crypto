@@ -9,7 +9,7 @@
 //! as those protocols require prover and verifier to use different public parameters. An example is Groth16
 //! based SNARK protocols where the prover needs to have a proving key and the verifier needs to
 //! have a verifying key. Both the prover and verifier can know both the proving and verifying key but
-//! they don't need to thus for such protocols, there are different [`Statement`]s for prover and verifier,
+//! they don't need to. Thus for such protocols, there are different [`Statement`]s for prover and verifier,
 //! like [`SaverProver`] and [`SaverVerifier`] are statements for prover and verifier respectively,
 //! executing SAVER protocol.
 //! Several [`Statement`]s might need same public parameters like proving knowledge of several BBS+

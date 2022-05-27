@@ -1,5 +1,4 @@
 //! Proof of knowledge of the signature and corresponding messages as per section 4.5 of the paper
-//! <https://eprint.iacr.org/2016/663.pdf>
 //! # Examples
 //!
 //! Creating proof of knowledge of signature and verifying it:
@@ -14,12 +13,23 @@
 //! let params_g1 = SignatureParamsG1::<Bls12_381>::generate_using_rng(&mut rng, 5);
 //! let keypair_g2 = KeypairG2::<Bls12_381>::generate(&mut rng, &params_g1);
 //!
+//! let pk_g2 = &keypair_g2.public_key;
+//!
+//! // Verifiers should check that the signature parameters and public key are valid before verifying
+//! // any signatures. This just needs to be done once when the verifier fetches/receives them.
+//!
+//! assert!(params_g1.is_valid());
+//! assert!(pk_g2.is_valid());
+//!
 //! // `messages` contains elements of the scalar field
 //! let sig_g1 = SignatureG1::<Bls12_381>::new(&mut rng, &messages, &keypair_g2.secret_key, &params_g1).unwrap();
+//!
 //! let mut blindings = BTreeMap::new();
 //! let mut revealed_indices = BTreeSet::new();
-//! // Populate blindings with message index and corresponding blinding
-//! // Populate revealed_indices with 0-based indices of revealed messages
+//!
+//! // Populate `blindings` with message index and corresponding blinding
+//! // Populate `revealed_indices` with 0-based indices of revealed messages
+//!
 //! let pok = PoKOfSignatureG1Protocol::init(
 //!             &mut rng,
 //!             &sig_g1,
@@ -38,7 +48,7 @@
 //!             .verify(
 //!                 &revealed_msgs,
 //!                 &challenge,
-//!                 &keypair_g2.public_key,
+//!                 pk_g2,
 //!                 &params_g1,
 //!             )
 //!             .unwrap();
@@ -67,6 +77,7 @@ use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 pub use serialization::*;
+use zeroize::Zeroize;
 
 /// Proof of knowledge of BBS+ signature in group G1
 /// The BBS+ signature proves validity of a set of messages {m_i}, i in I. This stateful protocol proves knowledge of such
@@ -334,11 +345,28 @@ where
     }
 }
 
+impl<E: PairingEngine> Zeroize for PoKOfSignatureG1Protocol<E> {
+    fn zeroize(&mut self) {
+        // Other members of `self` are public anyway
+        self.sc_comm_1.zeroize();
+        self.sc_wits_1.zeroize();
+        self.sc_comm_2.zeroize();
+        self.sc_wits_2.zeroize();
+    }
+}
+
+impl<E: PairingEngine> Drop for PoKOfSignatureG1Protocol<E> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 impl<E> PoKOfSignatureG1Proof<E>
 where
     E: PairingEngine,
 {
-    /// Verify if the proof is valid
+    /// Verify if the proof is valid. Assumes that the public key and parameters have been
+    /// validated already.
     pub fn verify(
         &self,
         revealed_msgs: &BTreeMap<usize, E::Fr>,
@@ -675,6 +703,10 @@ mod tests {
         let proof = pok.gen_proof(&challenge_prover).unwrap();
         proof_create_duration += start.elapsed();
 
+        let public_key = &keypair.public_key;
+        assert!(params.is_valid());
+        assert!(public_key.is_valid());
+
         let mut chal_bytes_verifier = vec![];
         proof
             .challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_verifier)
@@ -682,15 +714,12 @@ mod tests {
         let challenge_verifier =
             compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_verifier);
 
+        assert_eq!(chal_bytes_prover, chal_bytes_verifier);
+
         let mut proof_verif_duration = Duration::default();
         let start = Instant::now();
         proof
-            .verify(
-                &revealed_msgs,
-                &challenge_verifier,
-                &keypair.public_key,
-                &params,
-            )
+            .verify(&revealed_msgs, &challenge_verifier, public_key, &params)
             .unwrap();
         proof_verif_duration += start.elapsed();
 

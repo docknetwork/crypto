@@ -108,8 +108,8 @@ use ark_std::{
     io::{Read, Write},
     vec::Vec,
 };
-
 use dock_crypto_utils::{ec::batch_normalize_projective_into_affine, serde_utils::*};
+use zeroize::Zeroize;
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -461,20 +461,48 @@ pub trait Witness<G: AffineCurve> {
 /// Witness to check membership
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+    Zeroize,
 )]
 pub struct MembershipWitness<G: AffineCurve>(#[serde_as(as = "AffineGroupBytes")] pub G);
 
 /// Witness to check non-membership
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+    Zeroize,
 )]
 pub struct NonMembershipWitness<G: AffineCurve> {
     #[serde_as(as = "FieldBytes")]
     pub d: G::ScalarField,
     #[serde_as(as = "AffineGroupBytes")]
     pub C: G,
+}
+
+impl<G: AffineCurve> Drop for MembershipWitness<G> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl<G: AffineCurve> Drop for NonMembershipWitness<G> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
 }
 
 impl<G> Witness<G> for MembershipWitness<G> where G: AffineCurve {}

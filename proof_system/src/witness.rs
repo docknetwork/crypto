@@ -11,6 +11,7 @@ use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
+use zeroize::Zeroize;
 
 pub use serialization::*;
 
@@ -49,6 +50,21 @@ pub struct PoKBBSSignatureG1<E: PairingEngine> {
     pub unrevealed_messages: BTreeMap<usize, E::Fr>,
 }
 
+impl<E: PairingEngine> Zeroize for PoKBBSSignatureG1<E> {
+    fn zeroize(&mut self) {
+        self.signature.zeroize();
+        self.unrevealed_messages
+            .values_mut()
+            .for_each(|v| v.zeroize());
+    }
+}
+
+impl<E: PairingEngine> Drop for PoKBBSSignatureG1<E> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 /// Secret data when proving accumulator membership
 #[serde_as]
 #[derive(
@@ -61,6 +77,19 @@ pub struct Membership<E: PairingEngine> {
     pub witness: MembershipWitness<E::G1Affine>,
 }
 
+impl<E: PairingEngine> Zeroize for Membership<E> {
+    fn zeroize(&mut self) {
+        self.element.zeroize();
+        self.witness.zeroize();
+    }
+}
+
+impl<E: PairingEngine> Drop for Membership<E> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 /// Secret data when proving accumulator non-membership
 #[serde_as]
 #[derive(
@@ -71,6 +100,19 @@ pub struct NonMembership<E: PairingEngine> {
     #[serde_as(as = "FieldBytes")]
     pub element: E::Fr,
     pub witness: NonMembershipWitness<E::G1Affine>,
+}
+
+impl<E: PairingEngine> Zeroize for NonMembership<E> {
+    fn zeroize(&mut self) {
+        self.element.zeroize();
+        self.witness.zeroize();
+    }
+}
+
+impl<E: PairingEngine> Drop for NonMembership<E> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
 }
 
 impl<E> Witnesses<E>

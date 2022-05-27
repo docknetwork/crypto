@@ -11,7 +11,7 @@ Library providing privacy enhancing cryptographic primitives.
 1. [Schnorr proof of knowledge protocol](./schnorr_pok) to prove knowledge of discrete log. [This](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) is a good reference. 
 2. [BBS+ signature](./bbs_plus) for anonymous credentials. Based on the paper [Anonymous Attestation Using the Strong Diffie Hellman Assumption Revisited](https://eprint.iacr.org/2016/663)
 3. [Dynamic accumulators, both positive and universal](./vb_accumulator). Based on the paper [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
-4. [Proof system](./proof_system) that combines above primitives for use cases like prove knowledge of a BBS+ signature and the corresponding messages and the (non)membership of a certain message in the accumulator.
+4. [Composite proof system](./proof_system) that combines above primitives for use cases like prove knowledge of a BBS+ signature and the corresponding messages and the (non)membership of a certain message(s) in the accumulator. Also numeric bounds (min, max) on the messages can be proved in zero-knowledge and verifiable encryption of messages is also supported.
 5. [Verifiable encryption](./saver) using [SAVER](https://eprint.iacr.org/2019/1270).
 6. [Compression and amortization of Sigma protocols](./compressed_sigma). This is PoC implementation.
 

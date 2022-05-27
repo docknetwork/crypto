@@ -488,7 +488,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let mut all_setup_params = vec![];
     all_setup_params.push(SetupParams::VbAccumulatorParams(uni_accum_params));
     all_setup_params.push(SetupParams::VbAccumulatorPublicKey(
-        uni_accum_keypair.public_key,
+        uni_accum_keypair.public_key.clone(),
     ));
     all_setup_params.push(SetupParams::VbAccumulatorMemProvingKey(derived_mem_prk));
     all_setup_params.push(SetupParams::VbAccumulatorNonMemProvingKey(non_mem_prk));

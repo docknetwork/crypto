@@ -44,6 +44,7 @@ use ark_std::{
 };
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+use zeroize::Zeroize;
 
 use dock_crypto_utils::hashing_utils::{
     field_elem_from_seed, projective_group_elem_from_try_and_incr,
@@ -58,9 +59,23 @@ use serde_with::serde_as;
 /// Secret key used by the signer to sign messages
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+    Zeroize,
 )]
 pub struct SecretKey<F: PrimeField + SquareRootField>(#[serde_as(as = "FieldBytes")] pub F);
+
+impl<F: PrimeField + SquareRootField> Drop for SecretKey<F> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
 
 // TODO: Add "prepared" version of public key
 
@@ -166,7 +181,9 @@ macro_rules! impl_sig_params {
                 }
             }
 
-            /// Check that all group elements are non-zero (returns false if any element is zero)
+            /// Check that all group elements are non-zero (returns false if any element is zero).
+            /// A verifier on receiving these parameters must first check that they are valid and only
+            /// then use them for any signature or proof of knowledge of signature verification.
             pub fn is_valid(&self) -> bool {
                 !(self.g1.is_zero()
                     || self.g2.is_zero()
@@ -274,7 +291,8 @@ macro_rules! impl_public_key {
                 Self(params.g2.mul(secret_key.0.into_repr()).into())
             }
 
-            /// Public key shouldn't be 0
+            /// Public key shouldn't be 0. A verifier on receiving this must first check that its
+            /// valid and only then use it for any signature or proof of knowledge of signature verification.
             pub fn is_valid(&self) -> bool {
                 !self.0.is_zero()
             }
@@ -298,6 +316,18 @@ macro_rules! impl_keypair {
         pub struct $name<E: PairingEngine> {
             pub secret_key: SecretKey<E::Fr>,
             pub public_key: $pk<E>,
+        }
+
+        impl<E: PairingEngine> Zeroize for $name<E> {
+            fn zeroize(&mut self) {
+                self.secret_key.zeroize();
+            }
+        }
+
+        impl<E: PairingEngine> Drop for $name<E> {
+            fn drop(&mut self) {
+                self.zeroize();
+            }
         }
 
         /// Create a secret key and corresponding public key
@@ -366,8 +396,8 @@ mod tests {
             let keypair = $keypair::<Bls12_381>::generate_using_rng(&mut $rng, &params);
             test_serialization!($keypair<Bls12_381>, keypair);
 
-            let pk = keypair.public_key;
-            let sk = keypair.secret_key;
+            let pk = keypair.public_key.clone();
+            let sk = keypair.secret_key.clone();
             test_serialization!($public_key<Bls12_381>, pk);
             test_serialization!(SecretKey<<Bls12_381 as PairingEngine>::Fr>, sk);
         };
@@ -405,10 +435,12 @@ mod tests {
             assert_eq!(
                 keypair,
                 $keypair {
-                    secret_key: sk,
+                    secret_key: sk.clone(),
                     public_key: pk
                 }
             );
+            drop(sk);
+            drop(keypair);
         };
     }
 

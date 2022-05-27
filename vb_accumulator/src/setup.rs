@@ -37,6 +37,7 @@ use ark_std::{
     rand::RngCore,
     UniformRand,
 };
+use zeroize::Zeroize;
 
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
@@ -52,9 +53,23 @@ use serde_with::serde_as;
 /// Secret key for accumulator manager
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+    Zeroize,
 )]
 pub struct SecretKey<F: PrimeField + SquareRootField>(#[serde_as(as = "FieldBytes")] pub F);
+
+impl<F: PrimeField + SquareRootField> Drop for SecretKey<F> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
 
 /// Public key for accumulator manager
 #[serde_as]
@@ -165,6 +180,18 @@ where
     }
 }
 
+impl<E: PairingEngine> Zeroize for Keypair<E> {
+    fn zeroize(&mut self) {
+        self.secret_key.zeroize();
+    }
+}
+
+impl<E: PairingEngine> Drop for Keypair<E> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 impl<G: AffineCurve> PublicKey<G> {
     // TODO: Doesn't work. I need to convert PairingEngine's affine curve type to AffineCurve
     /*/// Generate public key from given secret key and signature parameters
@@ -224,10 +251,12 @@ mod tests {
         assert_eq!(
             keypair,
             Keypair {
-                secret_key: sk,
+                secret_key: sk.clone(),
                 public_key: pk
             }
         );
+        drop(sk);
+        drop(keypair);
     }
 
     #[test]

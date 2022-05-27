@@ -1,8 +1,7 @@
 use ark_ff::PrimeField;
-use ark_std::cfg_into_iter;
 
 #[cfg(feature = "parallel")]
-use rayon::prelude::*;
+use {ark_std::cfg_into_iter, rayon::prelude::*};
 
 /// Inner product of 2 vectors `a` and `b`
 pub fn inner_product<F: PrimeField>(a: &[F], b: &[F]) -> F {

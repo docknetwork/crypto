@@ -89,6 +89,7 @@ use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use zeroize::Zeroize;
 
 /// Accumulator supporting both membership and non-membership proofs. Is capped at a size defined
 /// at setup to avoid non-membership witness forgery attack described in section 6 of the paper.
@@ -286,8 +287,9 @@ where
         elements: &[E::Fr],
         sk: &SecretKey<E::Fr>,
     ) -> (E::Fr, E::G1Affine) {
-        let (d_alpha, V) = self._compute_new_post_add_batch(elements, sk);
+        let (mut d_alpha, V) = self._compute_new_post_add_batch(elements, sk);
         let f_V = d_alpha * self.f_V;
+        d_alpha.zeroize();
         (f_V, V)
     }
 
@@ -307,8 +309,9 @@ where
                 return Err(VBAccumulatorError::ProhibitedElement);
             }
         }
-        let (d_alpha, V) = self._add_batch(elements, sk, state)?;
+        let (mut d_alpha, V) = self._add_batch(elements, sk, state)?;
         let f_V = d_alpha * self.f_V;
+        d_alpha.zeroize();
         Ok(self.get_updated(f_V, V))
     }
 
@@ -318,8 +321,9 @@ where
         element: &E::Fr,
         sk: &SecretKey<E::Fr>,
     ) -> (E::Fr, E::G1Affine) {
-        let (y_plus_alpha_inv, V) = self._compute_new_post_remove(element, sk);
+        let (mut y_plus_alpha_inv, V) = self._compute_new_post_remove(element, sk);
         let f_V = y_plus_alpha_inv * self.f_V;
+        y_plus_alpha_inv.zeroize();
         (f_V, V)
     }
 
@@ -337,8 +341,9 @@ where
 
         // TODO: Check if its more efficient to always have a window table of setup parameter `P` and
         // multiply `P` by `f_V` rather than multiplying `y_plus_alpha_inv` by `V`. Use `windowed_mul` from FixedBase
-        let (y_plus_alpha_inv, V) = self._remove(element, sk, state)?;
+        let (mut y_plus_alpha_inv, V) = self._remove(element, sk, state)?;
         let f_V = y_plus_alpha_inv * self.f_V;
+        y_plus_alpha_inv.zeroize();
         Ok(self.get_updated(f_V, V))
     }
 
@@ -348,8 +353,9 @@ where
         elements: &[E::Fr],
         sk: &SecretKey<E::Fr>,
     ) -> (E::Fr, E::G1Affine) {
-        let (d_alpha_inv, V) = self._compute_new_post_remove_batch(elements, sk);
+        let (mut d_alpha_inv, V) = self._compute_new_post_remove_batch(elements, sk);
         let f_V = d_alpha_inv * self.f_V;
+        d_alpha_inv.zeroize();
         (f_V, V)
     }
 
@@ -366,8 +372,9 @@ where
                 return Err(VBAccumulatorError::ProhibitedElement);
             }
         }
-        let (d_alpha_inv, V) = self._remove_batch(elements, sk, state)?;
+        let (mut d_alpha_inv, V) = self._remove_batch(elements, sk, state)?;
         let f_V = d_alpha_inv * self.f_V;
+        d_alpha_inv.zeroize();
         Ok(self.get_updated(f_V, V))
     }
 
@@ -378,8 +385,9 @@ where
         removals: &[E::Fr],
         sk: &SecretKey<E::Fr>,
     ) -> (E::Fr, E::G1Affine) {
-        let (d_alpha, V) = self._compute_new_post_batch_updates(additions, removals, sk);
+        let (mut d_alpha, V) = self._compute_new_post_batch_updates(additions, removals, sk);
         let f_V = d_alpha * self.f_V;
+        d_alpha.zeroize();
         (f_V, V)
     }
 
@@ -401,8 +409,9 @@ where
             }
         }
 
-        let (d_alpha, V) = self._batch_updates(additions, removals, sk, state)?;
+        let (mut d_alpha, V) = self._batch_updates(additions, removals, sk, state)?;
         let f_V = d_alpha * self.f_V;
+        d_alpha.zeroize();
         Ok(self.get_updated(f_V, V))
     }
 
@@ -433,9 +442,10 @@ where
         if d.is_zero() {
             return Err(VBAccumulatorError::CannotBeZero);
         }
-        let y_plus_alpha_inv = (*non_member + sk.0).inverse().unwrap();
+        let mut y_plus_alpha_inv = (*non_member + sk.0).inverse().unwrap();
         let mut C = params.P.into_projective();
         C *= (self.f_V - d) * y_plus_alpha_inv;
+        y_plus_alpha_inv.zeroize();
         Ok(NonMembershipWitness {
             d,
             C: C.into_affine(),
@@ -518,11 +528,14 @@ where
             .collect::<Vec<_>>();
 
         // The same group element (self.V) has to be multiplied by each element in P_multiple, so we create a window table
-        let wits = multiply_field_elems_with_same_group_elem(
+        let mut wits = multiply_field_elems_with_same_group_elem(
             params.P.into_projective(),
             P_multiple.as_slice(),
         );
         let wits_affine = E::G1Projective::batch_normalization_into_affine(&wits);
+        y_plus_alpha_inv.iter_mut().for_each(|y| y.zeroize());
+        wits.iter_mut().for_each(|w| w.zeroize());
+
         Ok(cfg_into_iter!(wits_affine)
             .zip(cfg_into_iter!(d))
             .map(|(C, d)| NonMembershipWitness { C, d })

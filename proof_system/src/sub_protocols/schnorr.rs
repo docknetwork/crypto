@@ -4,6 +4,7 @@ use ark_std::rand::RngCore;
 use ark_std::UniformRand;
 use ark_std::{collections::BTreeMap, io::Write, vec::Vec};
 use schnorr_pok::{SchnorrChallengeContributor, SchnorrCommitment};
+use zeroize::Zeroize;
 
 use crate::error::ProofSystemError;
 use crate::statement_proof::{PedersenCommitmentProof, StatementProof};
@@ -123,5 +124,20 @@ impl<'a, G: AffineCurve> SchnorrProtocol<'a, G> {
         y.serialize_unchecked(&mut writer)?;
         t.serialize_unchecked(writer)?;
         Ok(())
+    }
+}
+
+impl<'a, G: AffineCurve> Zeroize for SchnorrProtocol<'a, G> {
+    fn zeroize(&mut self) {
+        self.commitment_to_randomness.as_mut().map(|c| c.zeroize());
+        self.witnesses
+            .as_mut()
+            .map(|w| w.iter_mut().for_each(|v| v.zeroize()));
+    }
+}
+
+impl<'a, G: AffineCurve> Drop for SchnorrProtocol<'a, G> {
+    fn drop(&mut self) {
+        self.zeroize();
     }
 }

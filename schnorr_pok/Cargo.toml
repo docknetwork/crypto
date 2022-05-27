@@ -1,6 +1,6 @@
 [package]
 name = "schnorr_pok"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 authors = ["Dock.io"]
 license = "Apache-2.0"
@@ -21,6 +21,7 @@ digest = "0.9"
 dock_crypto_utils = { version = "0.4.0", default-features = false, path = "../utils" }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
+zeroize = { version = "1.5.5", features = ["derive"] }
 
 [dev-dependencies]
 blake2 = { version = "0.9", default-features = false }

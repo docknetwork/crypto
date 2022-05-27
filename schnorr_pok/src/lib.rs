@@ -37,6 +37,7 @@ use ark_std::{
     vec::Vec,
 };
 use digest::Digest;
+use zeroize::Zeroize;
 
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
@@ -103,6 +104,19 @@ where
     }
 }
 
+impl<G: AffineCurve> Zeroize for SchnorrCommitment<G> {
+    fn zeroize(&mut self) {
+        // Not zeroizing `self.t` as its public
+        self.blindings.zeroize();
+    }
+}
+
+impl<G: AffineCurve> Drop for SchnorrCommitment<G> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 impl<G> SchnorrChallengeContributor for SchnorrCommitment<G>
 where
     G: AffineCurve,
@@ -130,7 +144,7 @@ where
     G: AffineCurve,
 {
     /// Check if response is valid and thus validity of Schnorr proof
-    /// bases[0]*responses[0] + bases[0]*responses[0] + ... + bases[i]*responses[i] - y*challenge == t
+    /// `bases[0]*responses[0] + bases[0]*responses[0] + ... + bases[i]*responses[i] - y*challenge == t`
     pub fn is_valid(
         &self,
         bases: &[G],
@@ -256,6 +270,20 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
             }
         }
 
+        impl<G: AffineCurve> Zeroize for $protocol_name<G> {
+            fn zeroize(&mut self) {
+                // Not zeroizing `self.t` as its public
+                self.blinding.zeroize();
+                self.witness.zeroize();
+            }
+        }
+
+        impl<G: AffineCurve> Drop for $protocol_name<G> {
+            fn drop(&mut self) {
+                self.zeroize();
+            }
+        }
+
         impl<G> $proof_name<G>
         where
             G: AffineCurve,
@@ -362,6 +390,8 @@ mod tests {
             let resp = comm.response(&witnesses, &challenge).unwrap();
 
             resp.is_valid(&bases, &y, &comm.t, &challenge).unwrap();
+
+            drop(comm);
 
             test_serialization!(
                 SchnorrResponse<<Bls12_381 as PairingEngine>::$group_element_affine>,

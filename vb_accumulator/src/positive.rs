@@ -12,6 +12,7 @@
 //!
 //! let params = SetupParams::<Bls12_381>::generate_using_rng(&mut rng);
 //! let keypair = Keypair::<Bls12_381>::generate(&mut rng, &params);
+//! let public_key = &keypair.public_key;
 //!
 //! let accumulator = PositiveAccumulator::initialize(&params);
 //!
@@ -29,8 +30,14 @@
 //!                 .get_membership_witness(&elem, &keypair.secret_key, &state)
 //!                 .unwrap();
 //!
+//! // Verifiers should check that the parameters and public key are valid before verifying
+//! // any witness. This just needs to be done once when the verifier fetches/receives them.
+//!
+//! assert!(params.is_valid());
+//! assert!(public_key.is_valid());
+//!
 //! // Verify membership witness
-//! new_accumulator.verify_membership(&elem, &m_wit, &keypair.public_key, &params);
+//! new_accumulator.verify_membership(&elem, &m_wit, public_key, &params);
 //!
 //! // Or create a new new accumulator for verification and verify
 //! let verification_accumulator = PositiveAccumulator::from_accumulated(new_accumulator.value().clone());
@@ -96,6 +103,7 @@ use dock_crypto_utils::serde_utils::*;
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use zeroize::Zeroize;
 
 use crate::batch_utils::Poly_d;
 use crate::error::VBAccumulatorError;
@@ -226,9 +234,11 @@ pub trait Accumulator<E: PairingEngine> {
         element: &E::Fr,
         sk: &SecretKey<E::Fr>,
     ) -> (E::Fr, E::G1Affine) {
+        let mut y_plus_alpha = *element + sk.0;
         // 1/(element + sk) * self.V
-        let y_plus_alpha_inv = (*element + sk.0).inverse().unwrap(); // Unwrap is fine as element has to equal secret key for it to panic
+        let y_plus_alpha_inv = y_plus_alpha.inverse().unwrap(); // Unwrap is fine as element has to equal secret key for it to panic
         let newV = self.value().mul(y_plus_alpha_inv.into_repr()).into_affine();
+        y_plus_alpha.zeroize();
         (y_plus_alpha_inv, newV)
     }
 
@@ -253,9 +263,10 @@ pub trait Accumulator<E: PairingEngine> {
         sk: &SecretKey<E::Fr>,
     ) -> (E::Fr, E::G1Affine) {
         // 1/d_D(-alpha) * self.V
-        let d_alpha = Poly_d::<E::Fr>::eval_direct(elements, &-sk.0);
+        let mut d_alpha = Poly_d::<E::Fr>::eval_direct(elements, &-sk.0);
         let d_alpha_inv = d_alpha.inverse().unwrap(); // Unwrap is fine as 1 or more elements has to equal secret key for it to panic
         let newV = self.value().mul(d_alpha_inv.into_repr()).into_affine();
+        d_alpha.zeroize();
         (d_alpha_inv, newV)
     }
 
@@ -329,8 +340,9 @@ pub trait Accumulator<E: PairingEngine> {
         sk: &SecretKey<E::Fr>,
     ) -> MembershipWitness<E::G1Affine> {
         // 1/(element + sk) * self.V
-        let y_plus_alpha_inv = (*member + sk.0).inverse().unwrap();
+        let mut y_plus_alpha_inv = (*member + sk.0).inverse().unwrap();
         let witness = self.value().mul(y_plus_alpha_inv.into_repr());
+        y_plus_alpha_inv.zeroize();
         MembershipWitness(witness.into_affine())
     }
 
@@ -356,12 +368,12 @@ pub trait Accumulator<E: PairingEngine> {
         // For each element in `elements`, compute 1/(element + sk)
         let mut y_sk: Vec<E::Fr> = cfg_iter!(members).map(|e| *e + sk.0).collect();
         batch_inversion(&mut y_sk);
-        MembershipWitness::projective_points_to_membership_witnesses(
-            multiply_field_elems_with_same_group_elem(
-                self.value().into_projective(),
-                y_sk.as_slice(),
-            ),
-        )
+        let wits = multiply_field_elems_with_same_group_elem(
+            self.value().into_projective(),
+            y_sk.as_slice(),
+        );
+        y_sk.iter_mut().for_each(|y| y.zeroize());
+        MembershipWitness::projective_points_to_membership_witnesses(wits)
     }
 
     /// Get membership witnesses for multiple elements present in accumulator. Returns witnesses in the
