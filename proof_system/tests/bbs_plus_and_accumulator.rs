@@ -975,7 +975,7 @@ fn verifier_local_linkability() {
     // This is done by making the prover go through a one-time registration process with the verifier by creating a
     // Pedersen commitment to some value in the signature(s) which the verifier persists, lets call it registration commitment.
     // At each subsequent proof, the prover resends the commitment with the proof that commitment contains message
-    // from the prover's signature (prover had persisted commitment and randomness) and the verifier checks that the
+    // from the the signature (prover had persisted commitment and randomness) and the verifier checks that the
     // commitment is same as the one during registration. The registration commitment serves as an identifier.
 
     // Following shows a prover interacting with 2 different verifiers and creating and using 2 different registration commitments, 1 at each verifier

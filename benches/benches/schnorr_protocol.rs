@@ -16,6 +16,7 @@ use schnorr_pok::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use zeroize::Zeroize;
 
 type Fr = <Bls12_381 as PairingEngine>::Fr;
 

@@ -40,7 +40,7 @@ pub enum ProofSystemError {
     InvalidWitnessEqualities(Vec<(usize, usize)>),
     /// The proof did not satisfy all the witness equalities
     UnsatisfiedWitnessEqualities(Vec<BTreeSet<(usize, usize)>>),
-    /// `StatementProof`s were missing for some `Statement`s
+    /// `Statement`s were missing for some `StatementProof`s
     UnsatisfiedStatements(usize, usize),
     InvalidStatementProofIndex(usize),
     SaverError(SaverError),

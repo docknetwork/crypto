@@ -17,6 +17,7 @@ ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "cu
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
 dock_crypto_utils = { default-features = false, path = "../utils" }
+zeroize = { version = "1.5.5", features = ["derive"] }
 
 [dev-dependencies]
 criterion = "0.3"
