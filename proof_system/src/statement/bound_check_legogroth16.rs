@@ -10,8 +10,7 @@ use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
 use crate::statement::Statement;
 use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
-
-pub use serialization::*;
+use crate::util::{LegoProvingKeyBytes, LegoVerifyingKeyBytes};
 
 /// Proving knowledge of message that satisfies given bounds, i.e. `min <= message <= max` using LegoGroth16.
 #[serde_as]
@@ -133,24 +132,6 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Verifier<E> {
             st_idx
         )
     }
-}
-
-mod serialization {
-    use super::*;
-    use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
-    use serde::de::{SeqAccess, Visitor};
-    use serde::{Deserializer, Serializer};
-    use serde_with::{DeserializeAs, SerializeAs};
-
-    use dock_crypto_utils::impl_for_groth16_struct;
-
-    impl_for_groth16_struct!(LegoProvingKeyBytes, ProvingKey, "expected LegoProvingKey");
-
-    impl_for_groth16_struct!(
-        LegoVerifyingKeyBytes,
-        VerifyingKey,
-        "expected LegoVerifyingKey"
-    );
 }
 
 #[cfg(test)]

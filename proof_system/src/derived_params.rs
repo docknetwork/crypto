@@ -1,7 +1,6 @@
 //! Parameters derived from other parameters during proof generation and verification. Used to prevent repeatedly
 //! creating these parameters.
 
-use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use ark_ec::PairingEngine;
 use ark_std::{collections::BTreeMap, marker::PhantomData, vec, vec::Vec};
@@ -89,7 +88,7 @@ impl<'a, E: PairingEngine> DerivedParams<'a, LegoVerifyingKey<E>, Vec<E::G1Affin
     for DerivedParamsTracker<'a, LegoVerifyingKey<E>, Vec<E::G1Affine>, E>
 {
     fn new_derived(vk: &LegoVerifyingKey<E>) -> Vec<E::G1Affine> {
-        BoundCheckProtocol::schnorr_comm_key(vk)
+        vk.get_commitment_key_for_witnesses()
     }
 }
 

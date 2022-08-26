@@ -1,6 +1,7 @@
 use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeSet, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::error::BBSPlusError;
+use legogroth16::circom::CircomError;
 use legogroth16::error::Error as LegoGroth16Error;
 use saver::error::SaverError;
 use schnorr_pok::error::SchnorrError;
@@ -54,6 +55,9 @@ pub enum ProofSystemError {
     LegoGroth16ProvingKeyNotProvided,
     LegoGroth16VerifyingKeyNotProvided,
     BoundCheckMaxNotGreaterThanMin,
+    IncompatibleR1CSSetupParamAtIndex(usize),
+    CircomError(CircomError),
+    R1CSInsufficientPrivateInputs(usize, usize),
 }
 
 impl From<SchnorrError> for ProofSystemError {
@@ -89,5 +93,11 @@ impl From<LegoGroth16Error> for ProofSystemError {
 impl From<SerializationError> for ProofSystemError {
     fn from(e: SerializationError) -> Self {
         Self::Serialization(e)
+    }
+}
+
+impl From<CircomError> for ProofSystemError {
+    fn from(e: CircomError) -> Self {
+        Self::CircomError(e)
     }
 }

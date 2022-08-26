@@ -5,10 +5,10 @@
 //! becomes more important when interacting with the WASM bindings of this crate as the overhead of repeated
 //! serialization and de-serialization can be avoided.
 
-use crate::statement::bound_check_legogroth16::{LegoProvingKeyBytes, LegoVerifyingKeyBytes};
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_std::vec::Vec;
 use bbs_plus::prelude::{PublicKeyG2 as BBSPublicKeyG2, SignatureParamsG1 as BBSSignatureParamsG1};
+use legogroth16::circom::R1CS;
 use legogroth16::data_structures::{
     ProvingKey as LegoSnarkProvingKey, VerifyingKey as LegoSnarkVerifyingKey,
 };
@@ -22,9 +22,11 @@ use vb_accumulator::prelude::{
     SetupParams as AccumParams,
 };
 
-use dock_crypto_utils::serde_utils::AffineGroupBytes;
+use dock_crypto_utils::serde_utils::{AffineGroupBytes, FieldBytes};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+
+use crate::util::{LegoProvingKeyBytes, LegoVerifyingKeyBytes, R1CSBytes};
 
 /// Holds (public) setup parameters of different protocols.
 #[serde_as]
@@ -45,6 +47,9 @@ pub enum SetupParams<E: PairingEngine, G: AffineCurve> {
     SaverVerifyingKey(#[serde_as(as = "Groth16VerifyingKeyBytes")] SaverSnarkVerifyingKey<E>),
     LegoSnarkProvingKey(#[serde_as(as = "LegoProvingKeyBytes")] LegoSnarkProvingKey<E>),
     LegoSnarkVerifyingKey(#[serde_as(as = "LegoVerifyingKeyBytes")] LegoSnarkVerifyingKey<E>),
+    R1CS(#[serde_as(as = "R1CSBytes")] R1CS<E>),
+    Bytes(Vec<u8>),
+    PublicInputs(#[serde_as(as = "Vec<FieldBytes>")] Vec<E::Fr>),
 }
 
 macro_rules! extract_param {
@@ -131,6 +136,18 @@ mod serialization {
                     CanonicalSerialize::serialize(&13u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
+                Self::R1CS(s) => {
+                    CanonicalSerialize::serialize(&14u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
+                }
+                Self::Bytes(s) => {
+                    CanonicalSerialize::serialize(&15u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
+                }
+                Self::PublicInputs(s) => {
+                    CanonicalSerialize::serialize(&16u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
+                }
             }
         }
 
@@ -152,6 +169,9 @@ mod serialization {
                 Self::SaverVerifyingKey(s) => 11u8.serialized_size() + s.serialized_size(),
                 Self::LegoSnarkProvingKey(s) => 12u8.serialized_size() + s.serialized_size(),
                 Self::LegoSnarkVerifyingKey(s) => 13u8.serialized_size() + s.serialized_size(),
+                Self::R1CS(s) => 14u8.serialized_size() + s.serialized_size(),
+                Self::Bytes(s) => 15u8.serialized_size() + s.serialized_size(),
+                Self::PublicInputs(s) => 16u8.serialized_size() + s.serialized_size(),
             }
         }
 
@@ -216,6 +236,18 @@ mod serialization {
                     CanonicalSerialize::serialize_uncompressed(&13u8, &mut writer)?;
                     CanonicalSerialize::serialize_uncompressed(s, &mut writer)
                 }
+                Self::R1CS(s) => {
+                    CanonicalSerialize::serialize_uncompressed(&14u8, &mut writer)?;
+                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
+                }
+                Self::Bytes(s) => {
+                    CanonicalSerialize::serialize_uncompressed(&15u8, &mut writer)?;
+                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
+                }
+                Self::PublicInputs(s) => {
+                    CanonicalSerialize::serialize_uncompressed(&16u8, &mut writer)?;
+                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
+                }
             }
         }
 
@@ -277,6 +309,18 @@ mod serialization {
                     CanonicalSerialize::serialize_unchecked(&13u8, &mut writer)?;
                     CanonicalSerialize::serialize_unchecked(s, &mut writer)
                 }
+                Self::R1CS(s) => {
+                    CanonicalSerialize::serialize_unchecked(&14u8, &mut writer)?;
+                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
+                }
+                Self::Bytes(s) => {
+                    CanonicalSerialize::serialize_unchecked(&15u8, &mut writer)?;
+                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
+                }
+                Self::PublicInputs(s) => {
+                    CanonicalSerialize::serialize_unchecked(&16u8, &mut writer)?;
+                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
+                }
             }
         }
 
@@ -300,6 +344,9 @@ mod serialization {
                 Self::SaverVerifyingKey(s) => 11u8.uncompressed_size() + s.uncompressed_size(),
                 Self::LegoSnarkProvingKey(s) => 12u8.uncompressed_size() + s.uncompressed_size(),
                 Self::LegoSnarkVerifyingKey(s) => 13u8.uncompressed_size() + s.uncompressed_size(),
+                Self::R1CS(s) => 14u8.uncompressed_size() + s.uncompressed_size(),
+                Self::Bytes(s) => 15u8.uncompressed_size() + s.uncompressed_size(),
+                Self::PublicInputs(s) => 16u8.uncompressed_size() + s.uncompressed_size(),
             }
         }
     }
@@ -350,6 +397,11 @@ mod serialization {
                 13u8 => Ok(Self::LegoSnarkVerifyingKey(
                     CanonicalDeserialize::deserialize(&mut reader)?,
                 )),
+                14u8 => Ok(Self::R1CS(CanonicalDeserialize::deserialize(&mut reader)?)),
+                15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize(&mut reader)?)),
+                16u8 => Ok(Self::PublicInputs(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -398,6 +450,15 @@ mod serialization {
                 13u8 => Ok(Self::LegoSnarkVerifyingKey(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
+                14u8 => Ok(Self::R1CS(CanonicalDeserialize::deserialize_uncompressed(
+                    &mut reader,
+                )?)),
+                15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize_uncompressed(
+                    &mut reader,
+                )?)),
+                16u8 => Ok(Self::PublicInputs(
+                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                )),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -444,6 +505,15 @@ mod serialization {
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
                 13u8 => Ok(Self::LegoSnarkVerifyingKey(
+                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+                )),
+                14u8 => Ok(Self::R1CS(CanonicalDeserialize::deserialize_unchecked(
+                    &mut reader,
+                )?)),
+                15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize_unchecked(
+                    &mut reader,
+                )?)),
+                16u8 => Ok(Self::PublicInputs(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),

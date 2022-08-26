@@ -90,6 +90,7 @@ where
             StatementDerivedParams<Vec<E::G1Affine>>,
             StatementDerivedParams<Vec<E::G1Affine>>,
             StatementDerivedParams<(Vec<E::G1Affine>, Vec<E::G1Affine>)>,
+            StatementDerivedParams<Vec<E::G1Affine>>,
         ),
         ProofSystemError,
     > {
@@ -102,6 +103,8 @@ where
             (Vec<E::G1Affine>, Vec<E::G1Affine>),
             E,
         >::new();
+        let mut derived_r1cs_comm =
+            DerivedParamsTracker::<LegoVerifyingKey<E>, Vec<E::G1Affine>, E>::new();
 
         // To avoid creating variable with short lifetime
         let mut tuple_map = BTreeMap::new();
@@ -141,6 +144,7 @@ where
                     derived_chunked_comm
                         .on_new_statement_idx(tuple_map.get(&s_idx).unwrap(), s_idx);
                 }
+
                 Statement::BoundCheckLegoGroth16Prover(_)
                 | Statement::BoundCheckLegoGroth16Verifier(_) => {
                     let verifying_key = match statement {
@@ -154,6 +158,19 @@ where
                     };
                     derived_bound_check_comm.on_new_statement_idx(verifying_key, s_idx);
                 }
+
+                Statement::R1CSCircomProver(_) | Statement::R1CSCircomVerifier(_) => {
+                    let verifying_key = match statement {
+                        Statement::R1CSCircomProver(s) => {
+                            &s.get_proving_key(&self.setup_params, s_idx)?.vk
+                        }
+                        Statement::R1CSCircomVerifier(s) => {
+                            s.get_verifying_key(&self.setup_params, s_idx)?
+                        }
+                        _ => panic!("This should never happen"),
+                    };
+                    derived_r1cs_comm.on_new_statement_idx(verifying_key, s_idx);
+                }
                 _ => (),
             }
         }
@@ -161,6 +178,7 @@ where
             derived_bound_check_comm.finish(),
             derived_ek_comm.finish(),
             derived_chunked_comm.finish(),
+            derived_r1cs_comm.finish(),
         ))
     }
 
@@ -199,6 +217,10 @@ where
                     derived_saver_vk.on_new_statement_idx(verifying_key, s_idx);
                 }
                 Statement::BoundCheckLegoGroth16Verifier(s) => {
+                    let verifying_key = s.get_verifying_key(&self.setup_params, s_idx)?;
+                    derived_lego_vk.on_new_statement_idx(verifying_key, s_idx);
+                }
+                Statement::R1CSCircomVerifier(s) => {
                     let verifying_key = s.get_verifying_key(&self.setup_params, s_idx)?;
                     derived_lego_vk.on_new_statement_idx(verifying_key, s_idx);
                 }

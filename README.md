@@ -15,6 +15,10 @@ Library providing privacy enhancing cryptographic primitives.
 5. [Verifiable encryption](./saver) using [SAVER](https://eprint.iacr.org/2019/1270).
 6. [Compression and amortization of Sigma protocols](./compressed_sigma). This is PoC implementation.
 
+## Composite proof system
+
+The [proof system](./proof_system) that uses above-mentioned primitives. 
+
 ## Build
 
 `cargo build` or `cargo build --release`

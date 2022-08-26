@@ -17,3 +17,10 @@ lto = true
 
 [profile.bench]
 lto = true
+
+[profile.production]
+inherits = "release"
+# https://doc.rust-lang.org/rustc/linker-plugin-lto.html
+lto = "fat"
+# https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
+codegen-units = 1
