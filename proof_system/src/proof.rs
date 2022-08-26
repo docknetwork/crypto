@@ -26,6 +26,7 @@ use crate::sub_protocols::accumulator::{
 };
 use crate::sub_protocols::bbs_plus::PoKBBSSigG1SubProtocol;
 use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
+use crate::sub_protocols::r1cs_legogorth16::R1CSLegogroth16Protocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
@@ -92,7 +93,8 @@ where
         }
 
         // Prepare commitment keys for running Schnorr protocols of all statements.
-        let (bound_check_comm, ek_comm, chunked_comm) = proof_spec.derive_commitment_keys()?;
+        let (bound_check_comm, ek_comm, chunked_comm, r1cs_comm_keys) =
+            proof_spec.derive_commitment_keys()?;
 
         let mut sub_protocols =
             Vec::<SubProtocol<E, G>>::with_capacity(proof_spec.statements.0.len());
@@ -257,6 +259,37 @@ where
                         ))
                     }
                 },
+                Statement::R1CSCircomProver(s) => match witness {
+                    Witness::R1CSLegoGroth16(w) => {
+                        let proving_key = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        let mut blindings_map = BTreeMap::new();
+                        for i in 0..proving_key.vk.commit_witness_count {
+                            match blindings.remove(&(s_idx, i)) {
+                                Some(b) => blindings_map.insert(i, b),
+                                None => None,
+                            };
+                        }
+                        let r1cs = s.get_r1cs(&proof_spec.setup_params, s_idx)?;
+                        let wasm_bytes = s.get_wasm_bytes(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = R1CSLegogroth16Protocol::new_for_prover(s_idx, proving_key);
+                        sp.init(
+                            rng,
+                            r1cs.clone(),
+                            wasm_bytes,
+                            &r1cs_comm_keys.get(s_idx).unwrap(),
+                            w,
+                            blindings_map,
+                        )?;
+                        sub_protocols.push(SubProtocol::R1CSLegogroth16Protocol(sp));
+                    }
+                    _ => {
+                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", witness),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -314,7 +347,9 @@ where
         }
 
         // Prepare commitment keys for running Schnorr protocols of all statements.
-        let (bound_check_comm, ek_comm, chunked_comm) = proof_spec.derive_commitment_keys()?;
+        let (bound_check_comm, ek_comm, chunked_comm, r1cs_comm_keys) =
+            proof_spec.derive_commitment_keys()?;
+
         // Prepared required parameters for pairings
         let (derived_lego_vk, derived_gens, derived_ek, derived_saver_vk) =
             proof_spec.derive_prepared_parameters()?;
@@ -552,6 +587,38 @@ where
                         ))
                     }
                 },
+                Statement::R1CSCircomVerifier(s) => match proof {
+                    StatementProof::R1CSLegoGroth16(p) => {
+                        let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
+                        for i in 0..witness_equalities.len() {
+                            for j in 0..verifying_key.commit_witness_count {
+                                if witness_equalities[i].contains(&(s_idx, j)) {
+                                    let resp = p.get_schnorr_response_for_message(j)?;
+                                    Self::check_response_for_equality(
+                                        s_idx,
+                                        j,
+                                        i,
+                                        &mut responses_for_equalities,
+                                        resp,
+                                    )?;
+                                }
+                            }
+                        }
+
+                        R1CSLegogroth16Protocol::compute_challenge_contribution(
+                            r1cs_comm_keys.get(s_idx).unwrap(),
+                            &p,
+                            &mut challenge_bytes,
+                        )?;
+                    }
+                    _ => {
+                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", proof),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -711,6 +778,26 @@ where
                             &challenge,
                             bc_proof,
                             &comm_key,
+                            derived_lego_vk.get(s_idx).unwrap(),
+                        )?
+                    }
+                    _ => {
+                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", proof),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
+                Statement::R1CSCircomVerifier(s) => match proof {
+                    StatementProof::R1CSLegoGroth16(ref r1cs_proof) => {
+                        let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = R1CSLegogroth16Protocol::new_for_verifier(s_idx, verifying_key);
+                        sp.verify_proof_contribution_using_prepared(
+                            &challenge,
+                            s.get_public_inputs(&proof_spec.setup_params, s_idx)?,
+                            r1cs_proof,
+                            r1cs_comm_keys.get(s_idx).unwrap(),
                             derived_lego_vk.get(s_idx).unwrap(),
                         )?
                     }

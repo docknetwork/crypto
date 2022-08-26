@@ -1,6 +1,7 @@
 pub mod accumulator;
 pub mod bbs_plus;
 pub mod bound_check_legogroth16;
+pub mod r1cs_legogorth16;
 pub mod saver;
 pub mod schnorr;
 
@@ -10,6 +11,7 @@ use ark_std::io::Write;
 
 use crate::statement_proof::StatementProof;
 use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
+use crate::sub_protocols::r1cs_legogorth16::R1CSLegogroth16Protocol;
 use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol};
 
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to
@@ -24,6 +26,7 @@ pub enum SubProtocol<'a, E: PairingEngine, G: AffineCurve> {
     Saver(self::saver::SaverProtocol<'a, E>),
     /// For range proof using LegoGroth16
     BoundCheckProtocol(BoundCheckProtocol<'a, E>),
+    R1CSLegogroth16Protocol(R1CSLegogroth16Protocol<'a, E>),
 }
 
 pub trait ProofSubProtocol<E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> {
@@ -43,6 +46,7 @@ impl<'a, E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> SubProtocol<'a, 
             SubProtocol::PoKDiscreteLogs(s) => s.challenge_contribution(writer),
             SubProtocol::Saver(s) => s.challenge_contribution(writer),
             SubProtocol::BoundCheckProtocol(s) => s.challenge_contribution(writer),
+            SubProtocol::R1CSLegogroth16Protocol(s) => s.challenge_contribution(writer),
         }
     }
 
@@ -57,6 +61,7 @@ impl<'a, E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> SubProtocol<'a, 
             SubProtocol::PoKDiscreteLogs(s) => s.gen_proof_contribution(challenge),
             SubProtocol::Saver(s) => s.gen_proof_contribution(challenge),
             SubProtocol::BoundCheckProtocol(s) => s.gen_proof_contribution(challenge),
+            SubProtocol::R1CSLegogroth16Protocol(s) => s.gen_proof_contribution(challenge),
         }
     }
 }

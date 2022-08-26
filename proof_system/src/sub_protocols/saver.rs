@@ -291,8 +291,7 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
 
         sp_ciphertext.verify_proof_contribution_as_struct(challenge, &proof.sp_ciphertext)?;
         sp_chunks.verify_proof_contribution_as_struct(challenge, &proof.sp_chunks)?;
-        sp_combined.verify_proof_contribution_as_struct(challenge, &proof.sp_combined)?;
-        Ok(())
+        sp_combined.verify_proof_contribution_as_struct(challenge, &proof.sp_combined)
     }
 
     pub fn compute_challenge_contribution<W: Write>(

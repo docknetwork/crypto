@@ -1,9 +1,11 @@
 use ark_ec::PairingEngine;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    collections::BTreeMap,
+    cmp,
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     io::{Read, Write},
+    string::String,
     vec::Vec,
 };
 use bbs_plus::signature::SignatureG1 as BBSSignatureG1;
@@ -13,6 +15,7 @@ use serde_with::{serde_as, Same};
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
 use zeroize::Zeroize;
 
+use crate::error::ProofSystemError;
 pub use serialization::*;
 
 /// Secret data that the prover will prove knowledge of, this data is known only to the prover
@@ -28,6 +31,7 @@ pub enum Witness<E: PairingEngine> {
     Saver(#[serde_as(as = "FieldBytes")] E::Fr),
     /// Message whose bounds are checked
     BoundCheckLegoGroth16(#[serde_as(as = "FieldBytes")] E::Fr),
+    R1CSLegoGroth16(R1CSCircomWitness<E>),
 }
 
 #[derive(
@@ -115,6 +119,35 @@ impl<E: PairingEngine> Drop for NonMembership<E> {
     }
 }
 
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct R1CSCircomWitness<E: PairingEngine> {
+    #[serde_as(as = "BTreeMap<Same, Vec<FieldBytes>>")]
+    pub inputs: BTreeMap<String, Vec<E::Fr>>,
+    #[serde_as(as = "BTreeSet<Same>")]
+    pub public: BTreeSet<String>,
+    #[serde_as(as = "BTreeSet<Same>")]
+    pub private: BTreeSet<String>,
+    pub public_count: usize,
+    pub private_count: usize,
+    pub total_count: usize,
+}
+
+impl<E: PairingEngine> Zeroize for R1CSCircomWitness<E> {
+    fn zeroize(&mut self) {
+        self.inputs.values_mut().for_each(|v| v.zeroize());
+    }
+}
+
+impl<E: PairingEngine> Drop for R1CSCircomWitness<E> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 impl<E> Witnesses<E>
 where
     E: PairingEngine,
@@ -164,6 +197,52 @@ impl<E: PairingEngine> NonMembership<E> {
         witness: NonMembershipWitness<E::G1Affine>,
     ) -> Witness<E> {
         Witness::AccumulatorNonMembership(NonMembership { element, witness })
+    }
+}
+
+impl<E: PairingEngine> R1CSCircomWitness<E> {
+    pub fn new() -> Self {
+        Self {
+            inputs: BTreeMap::new(),
+            public: BTreeSet::new(),
+            private: BTreeSet::new(),
+            public_count: 0,
+            private_count: 0,
+            total_count: 0,
+        }
+    }
+
+    pub fn set_public(&mut self, name: String, value: Vec<E::Fr>) {
+        self.total_count += value.len();
+        self.public_count += value.len();
+        self.public.insert(name.clone());
+        self.inputs.insert(name, value);
+    }
+
+    pub fn set_private(&mut self, name: String, value: Vec<E::Fr>) {
+        self.total_count += value.len();
+        self.private_count += value.len();
+        self.private.insert(name.clone());
+        self.inputs.insert(name, value);
+    }
+
+    pub fn get_private_inputs(&self, count: usize) -> Result<Vec<E::Fr>, ProofSystemError> {
+        if self.private_count < count {
+            return Err(ProofSystemError::R1CSInsufficientPrivateInputs(
+                self.private_count,
+                count,
+            ));
+        }
+        let mut inputs = Vec::with_capacity(count);
+        for name in self.private.iter() {
+            if count == inputs.len() {
+                break;
+            }
+            let vals = self.inputs.get(name).unwrap();
+            let m = cmp::min(count - inputs.len(), vals.len());
+            inputs.extend_from_slice(&vals[0..m]);
+        }
+        Ok(inputs)
     }
 }
 

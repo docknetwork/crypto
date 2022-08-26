@@ -10,6 +10,7 @@ pub mod accumulator;
 pub mod bbs_plus;
 pub mod bound_check_legogroth16;
 pub mod ped_comm;
+pub mod r1cs_legogroth16;
 pub mod saver;
 
 pub use serialization::*;
@@ -34,6 +35,8 @@ pub enum Statement<E: PairingEngine, G: AffineCurve> {
     BoundCheckLegoGroth16Prover(bound_check_legogroth16::BoundCheckLegoGroth16Prover<E>),
     /// Used by verifier to verify proof that witness satisfies publicly known bounds inclusively (<=, >=) using LegoGroth16
     BoundCheckLegoGroth16Verifier(bound_check_legogroth16::BoundCheckLegoGroth16Verifier<E>),
+    R1CSCircomProver(r1cs_legogroth16::R1CSCircomProver<E>),
+    R1CSCircomVerifier(r1cs_legogroth16::R1CSCircomVerifier<E>),
 }
 
 /// A collection of statements
@@ -107,6 +110,14 @@ mod serialization {
                     CanonicalSerialize::serialize(&7u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
+                Self::R1CSCircomProver(s) => {
+                    CanonicalSerialize::serialize(&8u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
+                }
+                Self::R1CSCircomVerifier(s) => {
+                    CanonicalSerialize::serialize(&9u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
+                }
             }
         }
 
@@ -122,6 +133,8 @@ mod serialization {
                 Self::BoundCheckLegoGroth16Verifier(s) => {
                     7u8.serialized_size() + s.serialized_size()
                 }
+                Self::R1CSCircomProver(s) => 8u8.serialized_size() + s.serialized_size(),
+                Self::R1CSCircomVerifier(s) => 97u8.serialized_size() + s.serialized_size(),
             }
         }
 
@@ -162,6 +175,14 @@ mod serialization {
                     7u8.serialize_uncompressed(&mut writer)?;
                     s.serialize_uncompressed(&mut writer)
                 }
+                Self::R1CSCircomProver(s) => {
+                    8u8.serialize_uncompressed(&mut writer)?;
+                    s.serialize_uncompressed(&mut writer)
+                }
+                Self::R1CSCircomVerifier(s) => {
+                    9u8.serialize_uncompressed(&mut writer)?;
+                    s.serialize_uncompressed(&mut writer)
+                }
             }
         }
 
@@ -199,6 +220,14 @@ mod serialization {
                     7u8.serialize_unchecked(&mut writer)?;
                     s.serialize_unchecked(&mut writer)
                 }
+                Self::R1CSCircomProver(s) => {
+                    8u8.serialize_unchecked(&mut writer)?;
+                    s.serialize_unchecked(&mut writer)
+                }
+                Self::R1CSCircomVerifier(s) => {
+                    9u8.serialize_unchecked(&mut writer)?;
+                    s.serialize_unchecked(&mut writer)
+                }
             }
         }
 
@@ -218,6 +247,8 @@ mod serialization {
                 Self::BoundCheckLegoGroth16Verifier(s) => {
                     7u8.uncompressed_size() + s.uncompressed_size()
                 }
+                Self::R1CSCircomProver(s) => 8u8.uncompressed_size() + s.uncompressed_size(),
+                Self::R1CSCircomVerifier(s) => 9u8.uncompressed_size() + s.uncompressed_size(),
             }
         }
     }
@@ -250,6 +281,12 @@ mod serialization {
                 7u8 => Ok(Self::BoundCheckLegoGroth16Verifier(
                     CanonicalDeserialize::deserialize(&mut reader)?,
                 )),
+                8u8 => Ok(Self::R1CSCircomProver(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
+                9u8 => Ok(Self::R1CSCircomVerifier(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -280,6 +317,12 @@ mod serialization {
                 7u8 => Ok(Self::BoundCheckLegoGroth16Verifier(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
+                8u8 => Ok(Self::R1CSCircomProver(
+                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                )),
+                9u8 => Ok(Self::R1CSCircomVerifier(
+                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                )),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -308,6 +351,12 @@ mod serialization {
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
                 7u8 => Ok(Self::BoundCheckLegoGroth16Verifier(
+                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+                )),
+                8u8 => Ok(Self::R1CSCircomProver(
+                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+                )),
+                9u8 => Ok(Self::R1CSCircomVerifier(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),

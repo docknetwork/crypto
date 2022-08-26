@@ -172,8 +172,7 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.snark_proof.d);
 
-        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)?;
-        Ok(())
+        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
     }
 
     pub fn compute_challenge_contribution<W: Write>(

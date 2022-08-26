@@ -27,6 +27,10 @@ macro_rules! impl_serialize {
                     CanonicalSerialize::serialize(&5u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
+                Self::R1CSLegoGroth16(s) => {
+                    CanonicalSerialize::serialize(&6u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
+                }
             }
         }
 
@@ -38,6 +42,7 @@ macro_rules! impl_serialize {
                 Self::PedersenCommitment(s) => 3u8.serialized_size() + s.serialized_size(),
                 Self::Saver(s) => 4u8.serialized_size() + s.serialized_size(),
                 Self::BoundCheckLegoGroth16(s) => 5u8.serialized_size() + s.serialized_size(),
+                Self::R1CSLegoGroth16(s) => 6u8.serialized_size() + s.serialized_size(),
             }
         }
 
@@ -70,6 +75,10 @@ macro_rules! impl_serialize {
                     5u8.serialize_uncompressed(&mut writer)?;
                     s.serialize_uncompressed(&mut writer)
                 }
+                Self::R1CSLegoGroth16(s) => {
+                    6u8.serialize_uncompressed(&mut writer)?;
+                    s.serialize_uncompressed(&mut writer)
+                }
             }
         }
 
@@ -99,6 +108,10 @@ macro_rules! impl_serialize {
                     5u8.serialize_unchecked(&mut writer)?;
                     s.serialize_unchecked(&mut writer)
                 }
+                Self::R1CSLegoGroth16(s) => {
+                    6u8.serialize_unchecked(&mut writer)?;
+                    s.serialize_unchecked(&mut writer)
+                }
             }
         }
 
@@ -112,6 +125,7 @@ macro_rules! impl_serialize {
                 Self::PedersenCommitment(s) => 3u8.uncompressed_size() + s.uncompressed_size(),
                 Self::Saver(s) => 4u8.uncompressed_size() + s.uncompressed_size(),
                 Self::BoundCheckLegoGroth16(s) => 5u8.uncompressed_size() + s.uncompressed_size(),
+                Self::R1CSLegoGroth16(s) => 6u8.uncompressed_size() + s.uncompressed_size(),
             }
         }
     };
@@ -139,6 +153,9 @@ macro_rules! impl_deserialize {
                 5u8 => Ok(Self::BoundCheckLegoGroth16(
                     CanonicalDeserialize::deserialize(&mut reader)?,
                 )),
+                6u8 => Ok(Self::R1CSLegoGroth16(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
                 _ => Err(SerializationError::InvalidData),
             }
         }
@@ -161,6 +178,9 @@ macro_rules! impl_deserialize {
                     &mut reader,
                 )?)),
                 5u8 => Ok(Self::BoundCheckLegoGroth16(
+                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                )),
+                6u8 => Ok(Self::R1CSLegoGroth16(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
@@ -187,8 +207,35 @@ macro_rules! impl_deserialize {
                 5u8 => Ok(Self::BoundCheckLegoGroth16(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
+                6u8 => Ok(Self::R1CSLegoGroth16(
+                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+                )),
                 _ => Err(SerializationError::InvalidData),
             }
         }
     };
 }
+
+use ark_ec::PairingEngine;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
+use legogroth16::{circom::R1CS, Proof as LegoProof, ProvingKey, VerifyingKey};
+use saver::saver_groth16::Proof;
+use serde::de::{SeqAccess, Visitor};
+use serde::{Deserializer, Serializer};
+use serde_with::{DeserializeAs, SerializeAs};
+
+use dock_crypto_utils::impl_for_groth16_struct;
+
+impl_for_groth16_struct!(LegoProvingKeyBytes, ProvingKey, "expected LegoProvingKey");
+
+impl_for_groth16_struct!(
+    LegoVerifyingKeyBytes,
+    VerifyingKey,
+    "expected LegoVerifyingKey"
+);
+
+impl_for_groth16_struct!(ProofBytes, Proof, "expected Proof");
+impl_for_groth16_struct!(LegoProofBytes, LegoProof, "expected LegoProofBytes");
+
+impl_for_groth16_struct!(R1CSBytes, R1CS, "expected R1CS");

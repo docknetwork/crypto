@@ -10,6 +10,7 @@ use serde_with::serde_as;
 use vb_accumulator::prelude::{MembershipProof, NonMembershipProof};
 
 use crate::error::ProofSystemError;
+use crate::util::{LegoProofBytes, ProofBytes};
 pub use serialization::*;
 
 /// Proof corresponding to one `Statement`
@@ -22,6 +23,7 @@ pub enum StatementProof<E: PairingEngine, G: AffineCurve> {
     PedersenCommitment(PedersenCommitmentProof<G>),
     Saver(SaverProof<E>),
     BoundCheckLegoGroth16(BoundCheckLegoGroth16Proof<E>),
+    R1CSLegoGroth16(R1CSLegoGroth16Proof<E>),
 }
 
 #[serde_as]
@@ -85,19 +87,31 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Proof<E> {
     }
 }
 
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct R1CSLegoGroth16Proof<E: PairingEngine> {
+    #[serde_as(as = "LegoProofBytes")]
+    pub snark_proof: legogroth16::Proof<E>,
+    pub sp: PedersenCommitmentProof<E::G1Affine>,
+}
+
+impl<E: PairingEngine> R1CSLegoGroth16Proof<E> {
+    pub fn get_schnorr_response_for_message(
+        &self,
+        index: usize,
+    ) -> Result<&E::Fr, ProofSystemError> {
+        self.sp.response.get_response(index).map_err(|e| e.into())
+    }
+}
+
 mod serialization {
     use super::{
         AffineCurve, CanonicalDeserialize, CanonicalSerialize, PairingEngine, Read,
         SerializationError, StatementProof, Write,
     };
-    use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
-    use legogroth16::Proof as LegoProof;
-    use saver::saver_groth16::Proof;
-    use serde::de::{SeqAccess, Visitor};
-    use serde::{Deserializer, Serializer};
-    use serde_with::{DeserializeAs, SerializeAs};
-
-    use dock_crypto_utils::impl_for_groth16_struct;
 
     impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for StatementProof<E, G> {
         impl_serialize!();
@@ -106,7 +120,4 @@ mod serialization {
     impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for StatementProof<E, G> {
         impl_deserialize!();
     }
-
-    impl_for_groth16_struct!(ProofBytes, Proof, "expected Proof");
-    impl_for_groth16_struct!(LegoProofBytes, LegoProof, "expected LegoProofBytes");
 }
