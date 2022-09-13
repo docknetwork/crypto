@@ -4,8 +4,7 @@ use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
 use proof_system::prelude::generate_snark_srs_bound_check;
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, StatementProof, Witness, WitnessRef,
-    Witnesses,
+    EqualWitnesses, MetaStatements, ProofSpec, StatementProof, Witness, WitnessRef, Witnesses,
 };
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::{
@@ -92,11 +91,11 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     );
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, enc_msg_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements, Instant);
     test_serialization!(MetaStatements, meta_statements);
@@ -194,11 +193,11 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
 
     // Correct message verifiably encrypted but meta statement is specifying equality with another message
     let mut meta_statements_wrong = MetaStatements::new();
-    meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements_wrong.add_witness_equality(EqualWitnesses(
         vec![(0, 0), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
     let prover_proof_spec = ProofSpec::new(
         prover_statements.clone(),
         meta_statements_wrong.clone(),
@@ -300,11 +299,11 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
                 );
             }
 
-            meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+            meta_statements.add_witness_equality(EqualWitnesses(
                 vec![(0, *j), (1 + i, 0)]
                     .into_iter()
                     .collect::<BTreeSet<WitnessRef>>(),
-            )));
+            ));
         }
 
         test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements, Instant);
@@ -572,26 +571,26 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
 
         let mut meta_statements = MetaStatements::new();
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(0, enc_msg_idx_1), (1, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        ));
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(0, enc_msg_idx_1), (2, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        ));
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(0, enc_msg_idx_2), (3, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        ));
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(0, enc_msg_idx_3), (4, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
+        ));
 
         let prover_proof_spec = ProofSpec::new(
             prover_statements.clone(),
@@ -858,21 +857,21 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     );
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, msg_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, enc_msg_idx), (2, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, enc_msg_idx), (3, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
     test_serialization!(MetaStatements, meta_statements);

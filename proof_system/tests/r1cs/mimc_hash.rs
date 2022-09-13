@@ -5,8 +5,8 @@ use ark_std::rand::SeedableRng;
 use ark_std::UniformRand;
 use legogroth16::circom::{CircomCircuit, R1CS};
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, R1CSCircomWitness, Statements,
-    Witness, WitnessRef, Witnesses,
+    EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, Statements, Witness, WitnessRef,
+    Witnesses,
 };
 use proof_system::statement::{
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
@@ -84,11 +84,11 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_attribute_hash_preimage() {
     );
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, msg_count - 1), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     let proof_spec_prover = ProofSpec::new(
         prover_statements.clone(),

@@ -34,7 +34,7 @@ zeroize = { version = "1.5.5", features = ["derive"] }
 git = "https://github.com/lovesh/legogro16"
 branch = "circom"
 #rev = '5bc5e4af466c1bb84a636e18002dcffeeb0d1899'
-#version = "0.3.0"
+version = "0.3.0"
 default-features = false
 features = ["circom"]
 
@@ -46,6 +46,8 @@ test_utils = { version = "0.1.0", default-features = false, path = "../test_util
 
 [features]
 default = [ "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "legogroth16/circom" ]
 print-trace = [ "ark-std/print-trace", "schnorr_pok/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace", "dock_crypto_utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel", "legogroth16/parallel", "ark-r1cs-std/parallel", "dock_crypto_utils/parallel" ]
+wasmer-js = ["legogroth16/wasmer-js"]
+wasmer-sys = ["legogroth16/wasmer-sys"]

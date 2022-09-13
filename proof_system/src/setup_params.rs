@@ -49,7 +49,7 @@ pub enum SetupParams<E: PairingEngine, G: AffineCurve> {
     LegoSnarkVerifyingKey(#[serde_as(as = "LegoVerifyingKeyBytes")] LegoSnarkVerifyingKey<E>),
     R1CS(#[serde_as(as = "R1CSBytes")] R1CS<E>),
     Bytes(Vec<u8>),
-    PublicInputs(#[serde_as(as = "Vec<FieldBytes>")] Vec<E::Fr>),
+    FieldElemVec(#[serde_as(as = "Vec<FieldBytes>")] Vec<E::Fr>),
 }
 
 macro_rules! extract_param {
@@ -144,7 +144,7 @@ mod serialization {
                     CanonicalSerialize::serialize(&15u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
-                Self::PublicInputs(s) => {
+                Self::FieldElemVec(s) => {
                     CanonicalSerialize::serialize(&16u8, &mut writer)?;
                     CanonicalSerialize::serialize(s, &mut writer)
                 }
@@ -171,7 +171,7 @@ mod serialization {
                 Self::LegoSnarkVerifyingKey(s) => 13u8.serialized_size() + s.serialized_size(),
                 Self::R1CS(s) => 14u8.serialized_size() + s.serialized_size(),
                 Self::Bytes(s) => 15u8.serialized_size() + s.serialized_size(),
-                Self::PublicInputs(s) => 16u8.serialized_size() + s.serialized_size(),
+                Self::FieldElemVec(s) => 16u8.serialized_size() + s.serialized_size(),
             }
         }
 
@@ -244,7 +244,7 @@ mod serialization {
                     CanonicalSerialize::serialize_uncompressed(&15u8, &mut writer)?;
                     CanonicalSerialize::serialize_uncompressed(s, &mut writer)
                 }
-                Self::PublicInputs(s) => {
+                Self::FieldElemVec(s) => {
                     CanonicalSerialize::serialize_uncompressed(&16u8, &mut writer)?;
                     CanonicalSerialize::serialize_uncompressed(s, &mut writer)
                 }
@@ -317,7 +317,7 @@ mod serialization {
                     CanonicalSerialize::serialize_unchecked(&15u8, &mut writer)?;
                     CanonicalSerialize::serialize_unchecked(s, &mut writer)
                 }
-                Self::PublicInputs(s) => {
+                Self::FieldElemVec(s) => {
                     CanonicalSerialize::serialize_unchecked(&16u8, &mut writer)?;
                     CanonicalSerialize::serialize_unchecked(s, &mut writer)
                 }
@@ -346,7 +346,7 @@ mod serialization {
                 Self::LegoSnarkVerifyingKey(s) => 13u8.uncompressed_size() + s.uncompressed_size(),
                 Self::R1CS(s) => 14u8.uncompressed_size() + s.uncompressed_size(),
                 Self::Bytes(s) => 15u8.uncompressed_size() + s.uncompressed_size(),
-                Self::PublicInputs(s) => 16u8.uncompressed_size() + s.uncompressed_size(),
+                Self::FieldElemVec(s) => 16u8.uncompressed_size() + s.uncompressed_size(),
             }
         }
     }
@@ -399,7 +399,7 @@ mod serialization {
                 )),
                 14u8 => Ok(Self::R1CS(CanonicalDeserialize::deserialize(&mut reader)?)),
                 15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize(&mut reader)?)),
-                16u8 => Ok(Self::PublicInputs(CanonicalDeserialize::deserialize(
+                16u8 => Ok(Self::FieldElemVec(CanonicalDeserialize::deserialize(
                     &mut reader,
                 )?)),
                 _ => Err(SerializationError::InvalidData),
@@ -456,7 +456,7 @@ mod serialization {
                 15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize_uncompressed(
                     &mut reader,
                 )?)),
-                16u8 => Ok(Self::PublicInputs(
+                16u8 => Ok(Self::FieldElemVec(
                     CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
@@ -513,7 +513,7 @@ mod serialization {
                 15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize_unchecked(
                     &mut reader,
                 )?)),
-                16u8 => Ok(Self::PublicInputs(
+                16u8 => Ok(Self::FieldElemVec(
                     CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
                 )),
                 _ => Err(SerializationError::InvalidData),

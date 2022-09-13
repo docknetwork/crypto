@@ -1,6 +1,7 @@
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::io::{Read, Write};
+use ark_std::vec::Vec;
 use dock_crypto_utils::serde_utils::FieldBytes;
 pub use legogroth16::{circom::R1CS, PreparedVerifyingKey, ProvingKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
@@ -152,7 +153,7 @@ impl<E: PairingEngine> R1CSCircomVerifier<E> {
             setup_params,
             &self.public_inputs,
             self.public_inputs_ref,
-            PublicInputs,
+            FieldElemVec,
             IncompatibleR1CSSetupParamAtIndex,
             st_idx
         )

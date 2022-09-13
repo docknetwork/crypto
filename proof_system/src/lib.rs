@@ -2,6 +2,7 @@
 
 //! The goal of this crate is to allow creating and combining zero knowledge proofs by executing several
 //! protocols as sub-protocols.
+//!
 //! The idea is to represent each relation to be proved as a [`Statement`], and any relations between
 //! [`Statement`]s as a [`MetaStatement`]. Both of these types contain public (known to both prover
 //! and verifier) information and are contained in a [`ProofSpec`] whose goal is to unambiguously
@@ -12,6 +13,7 @@
 //! they don't need to. Thus for such protocols, there are different [`Statement`]s for prover and verifier,
 //! like [`SaverProver`] and [`SaverVerifier`] are statements for prover and verifier respectively,
 //! executing SAVER protocol.
+//!
 //! Several [`Statement`]s might need same public parameters like proving knowledge of several BBS+
 //! from the same signer, or verifiable encryption of several messages for the same decryptor. Its not
 //! very efficient to pass the same parameters to each [`Statement`] especially when using this code's WASM
@@ -19,6 +21,67 @@
 //! put all such public parameters as [`SetupParams`] in an array and then reference those by their index
 //! while creating an [`Statement`]. This array of [`SetupParams`] is then included in the [`ProofSpec`]
 //! and used by the prover and verifier during proof creation and verification respectively.
+//!
+//! A common requirement is to prove equality of certain [`Witness`]s of certain [`Statement`](s). This
+//! is done by using the [`EqualWitnesses`] meta-statement. For each set of [`Witness`]s (from the same or different [`Statement`]s)
+//! that need to proven equal, a [`EqualWitnesses`] is created which is a set of witness references [`WitnessRef`].
+//! Each [`WitnessRef`] contains the [`Statement`] index and the [`Witness`] index in that [`Statement`] and
+//! thus uniquely identifies any [`Witness`] across [`Statement`]s. The [`EqualWitnesses`] meta-statement is also
+//! used to prove predicates over signed messages in zero knowledge, when doing a range-proof over a
+//! signed message (using BBS+), the [`EqualWitnesses`] will refer [`Witness`]s from `Statement::PoKBBSSignatureG1`
+//! statement and `Statement::BoundCheckLegoGroth16` statement. Following are some illustrations of [`EqualWitnesses`]
+//!
+//!  ┌────────────────────────────┐    ┌──────────────────────────────┐     ┌────────────────────────────┐
+//!  │ PokBBSSignatureG1          │    │ PokBBSSignatureG1            │     │ PokBBSSignatureG1          │
+//!  │ Statement 1                │    │ Statement 2                  │     │ Statement 3                │
+//!  ├────────────────────────────┤    ├──────────────────────────────┤     ├────────────────────────────┤
+//!  │ A1, A2, A3, A4, A5         │    │ B1, B2, B3, B4               │     │ C1, C2, C3, C4, C5, C6     │
+//!  └─────────▲──────────────────┘    └─────▲────────▲───────────────┘     └─▲────────────────▲─────────┘
+//!            │                             │        │                       │                │
+//!            │                             │        │                       │                │
+//!            │                             │        │                       │                │
+//!            │                             │        │                       │                │
+//!            │            ┌-───────────────┴────────┴───┬───────────────────┼──────┬─────────┴──────────────────┐
+//!            └────────────┼(0, 2), (1, 1), (2, 0)       ├───────────────────┘      │ (2, 3), (3, 4)             │
+//!                         ├-────────────────────────────┤                          ├────────────────────────────┤
+//!                         │       EqualWitnesses        │                          │  EqualWitnesses            │
+//!                         │       MetaStatement 1       │                          │  MetaStatement 2           │
+//!                         │ A3, B2 and C1 are equal     │                          │  B4 and C5 are equal       │
+//!                         └─────────────────────────────┘                          └────────────────────────────┘
+//!
+//!        For proving certain messages from 3 BBS+ signatures are equal. Here there 2 sets of equalities,
+//!        1. message A3 from 1st signature, B2 from 2nd signature and C1 from 3rd signature
+//!        2. message B4 from 2nd signature and C5 from 3rd signature
+//!
+//!        Thus 3 statements, one for each signature, and 2 meta statements, one for each equality
+//!---------------------------------------------------------------------------------------------------------------------------------------------------
+//!
+//!  ┌────────────────────────────┐    ┌──────────────────────────────┐     ┌────────────────────────────┐
+//!  │ PokBBSSignatureG1          │    │ BoundCheckLegoGroth16        │     │ SAVER                      │
+//!  │ Statement 1                │    │ Statement 2                  │     │ Statement 3                │
+//!  ├────────────────────────────┤    ├──────────────────────────────┤     ├────────────────────────────┤
+//!  │ A1, A2, A3, A4, A5         │    │     B1                       │     │             C1             │
+//!  └─────────▲───────▲──────────┘    └─────▲────────-───────────────┘     └───────────────▲────-───────┘
+//!            │       |─────────────────|   │                                              │
+//!            │                         |   │                                              │
+//!            │                         |──-│-────────────────────|                        │
+//!            │                             │                     |                        |───|
+//!            │            ┌-───────────────┴────────-───┬────────|───────────────────────────-|─────────────────┐
+//!            └────────────┼(0, 2),  (1, 0)              |        |─────────────────│── (0, 4), (2, 1)           │
+//!                         ├-────────────────────────────┤                          ├────────────────────────────┤
+//!                         │       EqualWitnesses        │                          │  EqualWitnesses            │
+//!                         │       MetaStatement 1       │                          │  MetaStatement 2           │
+//!                         │ A3 and  B1 are equal        │                          │  A5 and C1 are equal       │
+//!                         └─────────────────────────────┘                          └────────────────────────────┘
+//!
+//!
+//!        For proving certain messages from a BBS+ signature satisfy 2 predicates,
+//!         1) message A3 satisfies bounds specified in statement 2
+//!         2) message A5 has been verifiably encrypted as per statement 3.
+//!
+//!       Thus 3 statements, one for a signature, and one each for a predicate. 2 meta statements, one each
+//!       for proving equality of the message of the signature and the witness of the predicate
+//! --------------------------------------------------------------------------------------------------------------------------------
 //!
 //! After creating the [`ProofSpec`], the prover uses a [`Witness`] per [`Statement`] and creates a
 //! corresponding [`StatementProof`]. All [`StatementProof`]s are grouped together in a [`Proof`].
@@ -72,6 +135,8 @@
 //!
 //! [`Statement`]: crate::statement::Statement
 //! [`MetaStatement`]: crate::meta_statement::MetaStatement
+//! [`EqualWitnesses`]: crate::meta_statement::EqualWitnesses
+//! [`WitnessRef`]: crate::meta_statement::WitnessRef
 //! [`SaverProver`]: crate::statement::saver::SaverProver
 //! [`SaverVerifier`]: crate::statement::saver::SaverVerifier
 //! [`SetupParams`]: crate::setup_params::SetupParams

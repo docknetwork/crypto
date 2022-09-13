@@ -5,8 +5,8 @@ use ark_std::rand::rngs::StdRng;
 use ark_std::rand::SeedableRng;
 use ark_std::UniformRand;
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams,
-    Statements, Witness, WitnessRef, Witnesses,
+    EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, Statements, Witness,
+    WitnessRef, Witnesses,
 };
 use proof_system::statement::{
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
@@ -92,22 +92,22 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     }
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 1), (2, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 3), (2, 1)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
     for i in 0..msg_count_2 {
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(1, i), (3 + i, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
+        ));
     }
 
     let proof_spec_prover = ProofSpec::new(
@@ -144,9 +144,9 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
 
     let mut verifier_setup_params = vec![];
     verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk_1.vk.clone()));
-    verifier_setup_params.push(SetupParams::PublicInputs(vec![Fr::one()]));
+    verifier_setup_params.push(SetupParams::FieldElemVec(vec![Fr::one()]));
     verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk_2.vk.clone()));
-    verifier_setup_params.push(SetupParams::PublicInputs(vec![
+    verifier_setup_params.push(SetupParams::FieldElemVec(vec![
         Fr::one(),
         Fr::from(u64::MAX),
     ]));

@@ -58,7 +58,7 @@ jobs:
       - name: Install WASM
         run: rustup target add wasm32-unknown-unknown
       - name: Build for WASM target
-        run: cargo build --no-default-features --target wasm32-unknown-unknown
+        run: cargo build --no-default-features --features=wasmer-js --target wasm32-unknown-unknown
 
   test:
     runs-on: ubuntu-latest

@@ -6,7 +6,7 @@ use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
 use std::time::Instant;
 
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
+    EqualWitnesses, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
 };
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::{
@@ -52,11 +52,11 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         .add(BoundCheckProverStmt::new_statement_from_params(min, max, snark_pk.clone()).unwrap());
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, msg_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
     test_serialization!(MetaStatements, meta_statements);
@@ -129,11 +129,11 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
 
     // Correct message used in proof creation but meta statement is specifying equality with another message
     let mut meta_statements_wrong = MetaStatements::new();
-    meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements_wrong.add_witness_equality(EqualWitnesses(
         vec![(0, 0), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
     let proof_spec_prover = ProofSpec::new(
         prover_statements.clone(),
         meta_statements_wrong.clone(),
@@ -211,11 +211,11 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     );
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, msg_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
     let proof_spec_prover = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
@@ -273,11 +273,11 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     );
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, msg_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
     let proof_spec_prover = ProofSpec::new(
         prover_statements.clone(),
         meta_statements.clone(),
@@ -387,21 +387,21 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
 
         let mut meta_statements = MetaStatements::new();
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(0, msg_idx_1), (1, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        ));
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(0, msg_idx_2), (2, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        ));
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(0, msg_idx_3), (3, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
+        ));
 
         let prover_proof_spec = ProofSpec::new(
             prover_statements.clone(),
