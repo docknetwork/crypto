@@ -9,8 +9,8 @@ use bbs_plus::setup::SignatureParamsG1;
 use legogroth16::circom::R1CS;
 use legogroth16::ProvingKey;
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams,
-    Statements, Witness, WitnessRef, Witnesses,
+    EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, Statements, Witness,
+    WitnessRef, Witnesses,
 };
 use proof_system::statement::{
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
@@ -69,11 +69,11 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         .unwrap(),
     );
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, unequal_msg_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     test_serialization!(Statements<Bls12_381, G1>, prover_statements);
     test_serialization!(MetaStatements, meta_statements);
@@ -162,11 +162,11 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
     // the prover is proving equality with wrong message
     let mut meta_statements_wrong = MetaStatements::new();
-    meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements_wrong.add_witness_equality(EqualWitnesses(
         vec![(0, unequal_msg_idx + 1), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     let proof_spec_prover_1 = ProofSpec::new(
         prover_statements.clone(),
@@ -255,16 +255,16 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         // Check for less than relation between messages
         let mut meta_statements = MetaStatements::new();
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(0, l_msg_idx), (1, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
-        meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        ));
+        meta_statements.add_witness_equality(EqualWitnesses(
             vec![(0, g_msg_idx), (1, 1)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
+        ));
 
         test_serialization!(Statements<Bls12_381, G1>, prover_statements);
         test_serialization!(MetaStatements, meta_statements);
@@ -346,16 +346,16 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         // Check for less than relation between messages
         let mut meta_statements_1 = MetaStatements::new();
-        meta_statements_1.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        meta_statements_1.add_witness_equality(EqualWitnesses(
             vec![(0, g_msg_idx), (1, 0)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
-        meta_statements_1.add(MetaStatement::WitnessEquality(EqualWitnesses(
+        ));
+        meta_statements_1.add_witness_equality(EqualWitnesses(
             vec![(0, l_msg_idx), (1, 1)]
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
-        )));
+        ));
 
         let proof_spec_prover_1 = ProofSpec::new(
             prover_statements.clone(),
@@ -470,26 +470,26 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     prover_statements.add(R1CSProverStmt::new_statement_from_params_ref(1, 2, 0).unwrap());
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 1), (2, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(1, 5), (2, 1)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(1, 4), (3, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 3), (3, 1)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     let proof_spec_prover = ProofSpec::new(
         prover_statements.clone(),
@@ -523,7 +523,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
     let mut verifier_setup_params = vec![];
     verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk.clone()));
-    verifier_setup_params.push(SetupParams::PublicInputs(vec![Fr::one()]));
+    verifier_setup_params.push(SetupParams::FieldElemVec(vec![Fr::one()]));
     test_serialization!(Vec<SetupParams<Bls12_381, G1>>, verifier_setup_params);
 
     let mut verifier_statements = Statements::new();
@@ -583,4 +583,317 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     );
     assert!(verifier_proof_spec_1.is_valid());
     assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+}
+
+#[test]
+fn pok_of_bbs_plus_sig_and_multiplication_check() {
+    // Prove knowledge of a BBS+ signature and product of 2 messages being equal to a
+    // public value. Checks 2 cases -
+    // 1) both inputs to the product are signed messages,
+    // 2) only one of the input is a signed message, the other input is not part of the signature
+
+    let mut rng = StdRng::seed_from_u64(0u64);
+    let msg_count = 5;
+    let msgs: Vec<Fr> = (0..msg_count)
+        .into_iter()
+        .map(|i| Fr::from((100 + i) * 10 as u64))
+        .collect();
+
+    let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
+
+    let msg_1_idx = 1;
+    let msg_2_idx = 3;
+
+    // Products
+    let product_1 = msgs[msg_1_idx] * msgs[msg_2_idx]; // For case 2
+
+    let a_random = Fr::rand(&mut rng);
+    let product_2 = msgs[msg_1_idx] * a_random; // For case 2
+
+    let commit_witness_count = 2;
+    // Circom code for following in tests/r1cs/circom/multiply2.circom
+    let (snark_pk, r1cs, wasm_bytes) = get_r1cs_and_wasm_bytes(
+        "tests/r1cs/circom/multiply2.r1cs",
+        "tests/r1cs/circom/multiply2.wasm",
+        commit_witness_count,
+        &mut rng,
+    );
+
+    // ---------------- Case 1 ----------------------------------------------
+
+    let mut prover_statements = Statements::new();
+    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    prover_statements.add(
+        R1CSProverStmt::new_statement_from_params(
+            r1cs.clone(),
+            wasm_bytes.clone(),
+            snark_pk.clone(),
+        )
+        .unwrap(),
+    );
+    let mut meta_statements = MetaStatements::new();
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, msg_1_idx), (1, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, msg_2_idx), (1, 1)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+
+    test_serialization!(Statements<Bls12_381, G1>, prover_statements);
+    test_serialization!(MetaStatements, meta_statements);
+
+    let proof_spec_prover = ProofSpec::new(
+        prover_statements.clone(),
+        meta_statements.clone(),
+        vec![],
+        None,
+    );
+    assert!(proof_spec_prover.is_valid());
+    test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig.clone(),
+        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+    ));
+    let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
+    r1cs_wit.set_private("a".to_string(), vec![msgs[msg_1_idx]]);
+    r1cs_wit.set_private("b".to_string(), vec![msgs[msg_2_idx]]);
+    witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
+
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+
+    test_serialization!(ProofG1, proof);
+
+    let mut verifier_statements = Statements::new();
+    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+
+    // The public input for verifier is the product `product`
+    verifier_statements.add(
+        R1CSVerifierStmt::new_statement_from_params(vec![product_1], snark_pk.vk.clone()).unwrap(),
+    );
+
+    test_serialization!(Statements<Bls12_381, G1>, verifier_statements);
+
+    let verifier_proof_spec = ProofSpec::new(
+        verifier_statements.clone(),
+        meta_statements.clone(),
+        vec![],
+        None,
+    );
+    assert!(verifier_proof_spec.is_valid());
+
+    test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
+
+    proof
+        .clone()
+        .verify(verifier_proof_spec.clone(), None)
+        .unwrap();
+
+    // Proof with wrong public input fails
+    let mut verifier_statements_1 = Statements::new();
+    verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    verifier_statements_1.add(
+        R1CSVerifierStmt::new_statement_from_params(vec![Fr::rand(&mut rng)], snark_pk.vk.clone())
+            .unwrap(),
+    );
+    let verifier_proof_spec_1 = ProofSpec::new(
+        verifier_statements_1.clone(),
+        meta_statements.clone(),
+        vec![],
+        None,
+    );
+    assert!(verifier_proof_spec_1.is_valid());
+    assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+
+    // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
+    // the prover is proving equality with wrong message
+    let mut meta_statements_wrong = MetaStatements::new();
+    meta_statements_wrong.add_witness_equality(EqualWitnesses(
+        vec![(0, msg_1_idx + 1), (1, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+    meta_statements_wrong.add_witness_equality(EqualWitnesses(
+        vec![(0, msg_2_idx), (1, 1)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+
+    let proof_spec_prover_1 = ProofSpec::new(
+        prover_statements.clone(),
+        meta_statements_wrong.clone(),
+        vec![],
+        None,
+    );
+    assert!(proof_spec_prover_1.is_valid());
+
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover_1.clone(),
+        witnesses.clone(),
+        None,
+    )
+    .unwrap();
+
+    let proof_spec_verifier_2 = ProofSpec::new(
+        verifier_statements.clone(),
+        meta_statements_wrong,
+        vec![],
+        None,
+    );
+    assert!(proof_spec_verifier_2.is_valid());
+    assert!(proof.verify(proof_spec_verifier_2.clone(), None).is_err());
+
+    // ---------------- Case 2 ----------------------------------------------
+
+    let mut prover_statements = Statements::new();
+    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    prover_statements.add(
+        R1CSProverStmt::new_statement_from_params(
+            r1cs.clone(),
+            wasm_bytes.clone(),
+            snark_pk.clone(),
+        )
+        .unwrap(),
+    );
+    let mut meta_statements = MetaStatements::new();
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, msg_1_idx), (1, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+
+    test_serialization!(Statements<Bls12_381, G1>, prover_statements);
+    test_serialization!(MetaStatements, meta_statements);
+
+    let proof_spec_prover = ProofSpec::new(
+        prover_statements.clone(),
+        meta_statements.clone(),
+        vec![],
+        None,
+    );
+    assert!(proof_spec_prover.is_valid());
+    test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig.clone(),
+        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+    ));
+    let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
+    r1cs_wit.set_private("a".to_string(), vec![msgs[msg_1_idx]]);
+    r1cs_wit.set_private("b".to_string(), vec![a_random]);
+    witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
+
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+
+    test_serialization!(ProofG1, proof);
+
+    let mut verifier_statements = Statements::new();
+    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+
+    // The public input for verifier is the product `product`
+    verifier_statements.add(
+        R1CSVerifierStmt::new_statement_from_params(vec![product_2], snark_pk.vk.clone()).unwrap(),
+    );
+
+    test_serialization!(Statements<Bls12_381, G1>, verifier_statements);
+
+    let verifier_proof_spec = ProofSpec::new(
+        verifier_statements.clone(),
+        meta_statements.clone(),
+        vec![],
+        None,
+    );
+    assert!(verifier_proof_spec.is_valid());
+
+    test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
+
+    proof
+        .clone()
+        .verify(verifier_proof_spec.clone(), None)
+        .unwrap();
+
+    // Proof with wrong public input fails
+    let mut verifier_statements_1 = Statements::new();
+    verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    verifier_statements_1.add(
+        R1CSVerifierStmt::new_statement_from_params(vec![Fr::rand(&mut rng)], snark_pk.vk.clone())
+            .unwrap(),
+    );
+    let verifier_proof_spec_1 = ProofSpec::new(
+        verifier_statements_1.clone(),
+        meta_statements.clone(),
+        vec![],
+        None,
+    );
+    assert!(verifier_proof_spec_1.is_valid());
+    assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+
+    // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
+    // the prover is proving equality with wrong message
+    let mut meta_statements_wrong = MetaStatements::new();
+    meta_statements_wrong.add_witness_equality(EqualWitnesses(
+        vec![(0, msg_1_idx + 1), (1, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+
+    let proof_spec_prover_1 = ProofSpec::new(
+        prover_statements.clone(),
+        meta_statements_wrong.clone(),
+        vec![],
+        None,
+    );
+    assert!(proof_spec_prover_1.is_valid());
+
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover_1.clone(),
+        witnesses.clone(),
+        None,
+    )
+    .unwrap();
+
+    let proof_spec_verifier_2 = ProofSpec::new(
+        verifier_statements.clone(),
+        meta_statements_wrong,
+        vec![],
+        None,
+    );
+    assert!(proof_spec_verifier_2.is_valid());
+    assert!(proof.verify(proof_spec_verifier_2.clone(), None).is_err());
 }

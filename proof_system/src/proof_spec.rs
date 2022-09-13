@@ -6,7 +6,7 @@ use crate::statement::{Statement, Statements};
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::{Read, Write},
     vec::Vec,
 };
@@ -67,12 +67,31 @@ where
     /// Sanity check to ensure the proof spec is valid. This should never be false as these are used
     /// by same entity creating them.
     pub fn is_valid(&self) -> bool {
+        // Ensure that messages(s) being revealed are not used in a witness equality.
+        let mut revealed_wit_refs = BTreeSet::new();
+
+        for (i, st) in self.statements.0.iter().enumerate() {
+            match st {
+                Statement::PoKBBSSignatureG1(s) => {
+                    for k in s.revealed_messages.keys() {
+                        revealed_wit_refs.insert((i, *k));
+                    }
+                }
+                _ => continue,
+            }
+        }
+
         for mt in &self.meta_statements.0 {
             match mt {
                 // All witness equalities should be valid
                 MetaStatement::WitnessEquality(w) => {
                     if !w.is_valid() {
                         return false;
+                    }
+                    for r in w.0.iter() {
+                        if revealed_wit_refs.contains(r) {
+                            return false;
+                        }
                     }
                 }
             }

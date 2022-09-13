@@ -115,3 +115,11 @@ template IsEqual() {
 
     isz.out ==> out;
 }
+
+template OR() {
+    signal input a;
+    signal input b;
+    signal output out;
+
+    out <== a + b - a*b;
+}

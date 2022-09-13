@@ -6,6 +6,7 @@ use ark_serialize::CanonicalSerialize;
 use ark_std::collections::BTreeMap;
 use ark_std::io::Write;
 use ark_std::rand::RngCore;
+use ark_std::vec::Vec;
 use ark_std::UniformRand;
 use legogroth16::circom::{CircomCircuit, WitnessCalculator, R1CS};
 use legogroth16::{

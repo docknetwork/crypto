@@ -52,8 +52,8 @@ pub struct MetaStatements(pub Vec<MetaStatement>);
 /// let eq_2_w = EqualWitnesses(eq_2);
 ///
 /// let mut meta_statements = MetaStatements::new();
-/// meta_statements.add(MetaStatement::WitnessEquality(eq_1_w));
-/// meta_statements.add(MetaStatement::WitnessEquality(eq_2_w));
+/// meta_statements.add_witness_equality(eq_1_w);
+/// meta_statements.add_witness_equality(eq_2_w);
 /// ```
 ///
 #[derive(
@@ -76,6 +76,10 @@ impl MetaStatements {
     pub fn add(&mut self, item: MetaStatement) -> usize {
         self.0.push(item);
         self.0.len() - 1
+    }
+
+    pub fn add_witness_equality(&mut self, item: EqualWitnesses) -> usize {
+        self.add(MetaStatement::WitnessEquality(item))
     }
 
     pub fn is_empty(&self) -> bool {

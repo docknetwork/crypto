@@ -8,9 +8,7 @@ use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
 use bbs_plus::prelude::SignatureG1;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, Witness, WitnessRef, Witnesses,
-};
+use proof_system::prelude::{EqualWitnesses, MetaStatements, Witness, WitnessRef, Witnesses};
 use proof_system::proof_spec::ProofSpec;
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::Statements;
@@ -123,26 +121,26 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
 
     // Since 3 of the messages are being proven equal, add a `MetaStatement` describing that
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 5), (1, 9), (2, 9)] // 0th statement's 5th witness is equal to 1st statement's 9th witness and 2nd statement's 9th witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 4), (1, 8), (2, 8)] // 0th statement's 4th witness is equal to 1st statement's 8th witness and 2nd statement's 8th witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 3), (1, 7), (2, 7)] // 0th statement's 3rd witness is equal to 1st statement's 7th witness and 2nd statement's 7th witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(2, 5), (2, 7)] // 0th statement's 1th witness is equal to 2nd statement's 9th witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
@@ -240,14 +238,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     // Create meta statement describing that message in the signature at index `accum_member_1_idx` is
     // same as the accumulator member
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![
             (0, accum_member_1_idx),
             (1, 0), // Since accumulator (non)membership has only one (for applications) which is the (non)member, that witness is at index 0.
         ]
         .into_iter()
         .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
@@ -285,11 +283,11 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     // Wrong witness reference fails to verify
     let mut meta_statements_incorrect = MetaStatements::new();
-    meta_statements_incorrect.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements_incorrect.add_witness_equality(EqualWitnesses(
         vec![(0, 0), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
     let proof_spec_incorrect = ProofSpec::new(
         statements.clone(),
         meta_statements_incorrect,
@@ -316,14 +314,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         witness: mem_1_wit.clone(),
     }));
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![
             (0, 2), // 2nd message from BBS+ sig in accumulator
             (1, 0),
         ]
         .into_iter()
         .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
     let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context.clone());
     assert!(proof_spec.is_valid());
     let proof = ProofG1::new(
@@ -385,11 +383,11 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     }));
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, accum_member_2_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
@@ -454,11 +452,11 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     }));
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, accum_non_member_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
@@ -519,21 +517,21 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     ));
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, accum_member_1_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, accum_member_2_idx), (2, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, accum_non_member_idx), (3, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, statements);
     test_serialization!(MetaStatements, meta_statements);
@@ -619,16 +617,16 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     test_serialization!(Statements<Bls12_381, G1Affine>, statements);
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 0), (1, 1)] // 0th statement's 0th witness is equal to 1st statement's 1st witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 5), (1, 4)] // 0th statement's 5th witness is equal to 1st statement's 4th witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     let context = Some(b"test".to_vec());
     let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
@@ -660,16 +658,16 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
 
     // Wrong message equality should fail to verify
     let mut meta_statements_wrong = MetaStatements::new();
-    meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements_wrong.add_witness_equality(EqualWitnesses(
         vec![(0, 3), (1, 0)] // this equality doesn't hold
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
-    meta_statements_wrong.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    ));
+    meta_statements_wrong.add_witness_equality(EqualWitnesses(
         vec![(0, 5), (1, 4)] // 0th statement's 0th witness is equal to 1st statement's 4th witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     let proof_spec_invalid = ProofSpec::new(
         statements.clone(),
@@ -819,7 +817,7 @@ fn proof_spec_modification() {
     assert!(!invalid_eq_wit.is_valid());
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(invalid_eq_wit));
+    meta_statements.add_witness_equality(invalid_eq_wit);
 
     let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
     assert!(!invalid_proof_spec.is_valid());
@@ -850,11 +848,11 @@ fn proof_spec_modification() {
     .is_err());
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 5), (2, 4)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
     let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
     assert!(ProofG1::new(
         &mut rng,
@@ -865,11 +863,11 @@ fn proof_spec_modification() {
     .is_err());
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements.add_witness_equality(EqualWitnesses(
         vec![(0, 8), (1, 4)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
     let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
     assert!(ProofG1::new(
         &mut rng,
@@ -887,7 +885,7 @@ fn proof_spec_modification() {
     );
 
     let mut meta_statements = MetaStatements::new();
-    meta_statements.add(MetaStatement::WitnessEquality(valid_eq_wit));
+    meta_statements.add_witness_equality(valid_eq_wit);
 
     // Verifier's created proof spec
     let orig_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
@@ -1032,11 +1030,11 @@ fn verifier_local_linkability() {
     ));
 
     let mut meta_statements_1 = MetaStatements::new();
-    meta_statements_1.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements_1.add_witness_equality(EqualWitnesses(
         vec![(0, 1), (1, 0)] // 0th statement's 0th witness is equal to 1st statement's 0th witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     let context = Some(b"For verifier 1".to_vec());
     let proof_spec_1 = ProofSpec::new(
@@ -1074,11 +1072,11 @@ fn verifier_local_linkability() {
     ));
 
     let mut meta_statements_2 = MetaStatements::new();
-    meta_statements_2.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements_2.add_witness_equality(EqualWitnesses(
         vec![(0, 1), (1, 0)] // 0th statement's 0th witness is equal to 1st statement's 0th witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     let context = Some(b"For verifier 2".to_vec());
     let proof_spec_2 = ProofSpec::new(
@@ -1130,11 +1128,11 @@ fn verifier_local_linkability() {
     ));
 
     let mut meta_statements_3 = MetaStatements::new();
-    meta_statements_3.add(MetaStatement::WitnessEquality(EqualWitnesses(
+    meta_statements_3.add_witness_equality(EqualWitnesses(
         vec![(0, 1), (1, 0)] // 0th statement's 0th witness is equal to 1st statement's 0th witness
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
-    )));
+    ));
 
     let context = Some(b"For verifier 1, revealing messages this time".to_vec());
     let proof_spec_3 = ProofSpec::new(
@@ -1255,4 +1253,79 @@ fn pok_of_bbs_plus_sig_with_reusing_setup_params() {
 
     let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses, None).unwrap();
     proof.verify(proof_spec.clone(), None).unwrap();
+}
+
+#[test]
+fn proof_spec_validation() {
+    // Catch invalid proof spec like with invalid witness equality or revealing a message while also referencing it in witness equality
+
+    let mut rng = StdRng::seed_from_u64(0u64);
+
+    let (msgs_1, params_1, keypair_1, _) = sig_setup(&mut rng, 5);
+    let (msgs_2, params_2, keypair_2, _) = sig_setup(&mut rng, 6);
+
+    let mut statements_1 = Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+    statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        params_1.clone(),
+        keypair_1.public_key.clone(),
+        BTreeMap::new(),
+    ));
+
+    let invalid_wit_eq = EqualWitnesses(vec![(0, 5)].into_iter().collect::<BTreeSet<WitnessRef>>());
+    assert!(!invalid_wit_eq.is_valid());
+
+    let mut meta_statements_1 = MetaStatements::new();
+    meta_statements_1.add_witness_equality(invalid_wit_eq);
+
+    let ps_1 = ProofSpec::new(statements_1, meta_statements_1, vec![], None);
+    assert!(!ps_1.is_valid());
+
+    let mut revealed = BTreeMap::new();
+    revealed.insert(1, msgs_1[1].clone());
+    let mut statements_2 = Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+    statements_2.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        params_1.clone(),
+        keypair_1.public_key.clone(),
+        revealed,
+    ));
+
+    let valid_wit_eq = EqualWitnesses(
+        vec![(0, 1), (0, 2)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    );
+    assert!(valid_wit_eq.is_valid());
+
+    let mut meta_statements_2 = MetaStatements::new();
+    meta_statements_2.add_witness_equality(valid_wit_eq);
+
+    let ps_2 = ProofSpec::new(statements_2, meta_statements_2, vec![], None);
+    assert!(!ps_2.is_valid());
+
+    let mut revealed_1 = BTreeMap::new();
+    revealed_1.insert(3, msgs_2[3].clone());
+    let mut statements_3 = Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+    statements_3.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        params_1.clone(),
+        keypair_1.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements_3.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        params_2.clone(),
+        keypair_2.public_key.clone(),
+        revealed_1,
+    ));
+
+    let valid_wit_eq = EqualWitnesses(
+        vec![(0, 1), (1, 3)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    );
+    assert!(valid_wit_eq.is_valid());
+
+    let mut meta_statements_3 = MetaStatements::new();
+    meta_statements_3.add_witness_equality(valid_wit_eq);
+
+    let ps_3 = ProofSpec::new(statements_3, meta_statements_3, vec![], None);
+    assert!(!ps_3.is_valid());
 }
