@@ -101,7 +101,10 @@
 //! - proof of knowledge of BBS+ signature(s) and that certain message(s) satisfy given bounds (range proof)
 //! - verifiable encryption of messages in a BBS+ signature
 //! - proof of knowledge of BBS+ signature(s) and that certain message(s) satisfy given R1CS. The R1CS is generated
-//! from [Circom](https://github.com/iden3/circom) and the proof system used is [LegoGroth16](https://github.com/lovesh/legogro16)
+//!   from [Circom](https://github.com/iden3/circom) and the proof system used is [LegoGroth16](https://github.com/lovesh/legogro16).
+//!   LegoGroth16 is similar to Groth16 but in addition to the zero knowledge proof, it provides a Pedersen
+//!   commitment to the witness (signed messages in our case). This commitment allows us to prove that the witness in
+//!   the proof protocol are the same as the signed messages using the Schnorr proof of knowledge protocol.
 //!
 //! See following tests for examples:
 //!
@@ -126,8 +129,10 @@
 //!   `pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reuse` shows use of [`SetupParams`]
 //!   when the same commitment key is reused in several commitments and test `pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages`
 //!   shows use of [`SetupParams`] when several messages are used in verifiable encryption for the same decryptor.
-//! - For R1CS, see various tests like using less than, not-equals comparison operators on messages signed with BBS+, proving
-//!   that the preimage of an MiMC hash is the message signed with BBS+ [here](tests/r1cs).
+//! - For R1CS/Circom, see various tests like using less than, not-equals comparison operators on messages signed with BBS+, proving
+//!   that the preimage of an MiMC hash is the message signed with BBS+, sum of certain signed messages (from same or different signatures)
+//!   is bounded by a given value, etc [here](tests/r1cs). The Circom compiler output and circuits are [here](tests/r1cs/circom).
+//!   The circuits were compiled and tested for BLS12-381 curve.
 //!
 //! *Note*: This design is largely inspired from my work at Hyperledger Ursa.
 //!

@@ -2,7 +2,7 @@ use ark_ec::PairingEngine;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     cmp,
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fmt::Debug,
     io::{Read, Write},
     string::String,
@@ -119,18 +119,22 @@ impl<E: PairingEngine> Drop for NonMembership<E> {
     }
 }
 
+/// Witness for the Circom program. Only contains circuit wires that are explicitly set by the prover
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
 pub struct R1CSCircomWitness<E: PairingEngine> {
+    /// Map of name -> value(s) for all inputs including public and private
     #[serde_as(as = "BTreeMap<Same, Vec<FieldBytes>>")]
     pub inputs: BTreeMap<String, Vec<E::Fr>>,
-    #[serde_as(as = "BTreeSet<Same>")]
-    pub public: BTreeSet<String>,
-    #[serde_as(as = "BTreeSet<Same>")]
-    pub private: BTreeSet<String>,
+    /// Names of the public inputs
+    #[serde_as(as = "Vec<Same>")]
+    pub public: Vec<String>,
+    /// Names of the private inputs
+    #[serde_as(as = "Vec<Same>")]
+    pub private: Vec<String>,
     pub public_count: usize,
     pub private_count: usize,
     pub total_count: usize,
@@ -170,8 +174,8 @@ where
     }
 }
 
-/// Create a `Witness` variant for proving knowledge of BBS+ signature
 impl<E: PairingEngine> PoKBBSSignatureG1<E> {
+    /// Create a `Witness` variant for proving knowledge of BBS+ signature
     pub fn new_as_witness(
         signature: BBSSignatureG1<E>,
         unrevealed_messages: BTreeMap<usize, E::Fr>,
@@ -183,15 +187,15 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
     }
 }
 
-/// Create a `Witness` variant for proving membership in accumulator
 impl<E: PairingEngine> Membership<E> {
+    /// Create a `Witness` variant for proving membership in accumulator
     pub fn new_as_witness(element: E::Fr, witness: MembershipWitness<E::G1Affine>) -> Witness<E> {
         Witness::AccumulatorMembership(Membership { element, witness })
     }
 }
 
-/// Create a `Witness` variant for proving non-membership in accumulator
 impl<E: PairingEngine> NonMembership<E> {
+    /// Create a `Witness` variant for proving non-membership in accumulator
     pub fn new_as_witness(
         element: E::Fr,
         witness: NonMembershipWitness<E::G1Affine>,
@@ -204,8 +208,8 @@ impl<E: PairingEngine> R1CSCircomWitness<E> {
     pub fn new() -> Self {
         Self {
             inputs: BTreeMap::new(),
-            public: BTreeSet::new(),
-            private: BTreeSet::new(),
+            public: Vec::new(),
+            private: Vec::new(),
             public_count: 0,
             private_count: 0,
             total_count: 0,
@@ -215,31 +219,35 @@ impl<E: PairingEngine> R1CSCircomWitness<E> {
     pub fn set_public(&mut self, name: String, value: Vec<E::Fr>) {
         self.total_count += value.len();
         self.public_count += value.len();
-        self.public.insert(name.clone());
+        self.public.push(name.clone());
         self.inputs.insert(name, value);
     }
 
+    /// Set a private input signal. Ensure that this function is called for signals
+    /// in the same order as they are declared in the circuit.
     pub fn set_private(&mut self, name: String, value: Vec<E::Fr>) {
         self.total_count += value.len();
         self.private_count += value.len();
-        self.private.insert(name.clone());
+        self.private.push(name.clone());
         self.inputs.insert(name, value);
     }
 
-    pub fn get_private_inputs(&self, count: usize) -> Result<Vec<E::Fr>, ProofSystemError> {
-        if self.private_count < count {
+    /// Get the 1st `n` private inputs to the circuit. The order is determined by the order in which
+    /// `Self::set_private` was called.
+    pub fn get_first_n_private_inputs(&self, n: usize) -> Result<Vec<E::Fr>, ProofSystemError> {
+        if self.private_count < n {
             return Err(ProofSystemError::R1CSInsufficientPrivateInputs(
                 self.private_count,
-                count,
+                n,
             ));
         }
-        let mut inputs = Vec::with_capacity(count);
+        let mut inputs = Vec::with_capacity(n);
         for name in self.private.iter() {
-            if count == inputs.len() {
+            if n == inputs.len() {
                 break;
             }
             let vals = self.inputs.get(name).unwrap();
-            let m = cmp::min(count - inputs.len(), vals.len());
+            let m = cmp::min(n - inputs.len(), vals.len());
             inputs.extend_from_slice(&vals[0..m]);
         }
         Ok(inputs)

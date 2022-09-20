@@ -1,5 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_ff::Zero;
+use ark_ff::{One, Zero};
 use ark_std::rand::rngs::StdRng;
 use ark_std::rand::SeedableRng;
 use ark_std::UniformRand;
@@ -22,26 +22,23 @@ use test_utils::bbs_plus::*;
 use test_utils::{Fr, ProofG1};
 
 #[test]
-fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
-    // Prove knowledge of a signature and that a specific signed message's MiMC hash equals a public value
+fn pok_of_bbs_plus_sig_and_set_membership() {
+    // Prove knowledge of a signature and that a specific signed message member/non-member of a public set
 
     let mut rng = StdRng::seed_from_u64(0u64);
-    let msg_count = 5;
-    let mut msgs: Vec<Fr> = (0..msg_count - 1)
-        .into_iter()
-        .map(|_| Fr::rand(&mut rng))
-        .collect();
-    msgs.push(Fr::from(105u64));
+    let msg_count = 7;
+    let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
 
-    // Message index that will be hashed
-    let msg_idx_to_hash = msg_count - 2;
+    // A public set which will not contain any of the signed messages
+    let mut public_set = (0..5).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
 
-    let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
+    // This message index's membership/non-membership will be checked
+    let member_msg_idx = 3;
 
     let commit_witness_count = 1;
-    // Circom code for following in tests/r1cs/circom/circuits/mimc_hash.circom
-    let r1cs_file_path = "tests/r1cs/circom/bls12-381/mimc_hash_bls12_381.r1cs";
-    let wasm_file_path = "tests/r1cs/circom/bls12-381/mimc_hash_bls12_381.wasm";
+    // Circom code for following in tests/r1cs/circom/circuits/set_membership_5_public.circom
+    let r1cs_file_path = "tests/r1cs/circom/bls12-381/set_membership_5_public.r1cs";
+    let wasm_file_path = "tests/r1cs/circom/bls12-381/set_membership_5_public.wasm";
     let circuit = CircomCircuit::<Bls12_381>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
     let snark_pk = circuit
         .clone()
@@ -50,27 +47,6 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
 
     let r1cs = R1CS::from_file(abs_path(r1cs_file_path)).unwrap();
     let wasm_bytes = std::fs::read(abs_path(wasm_file_path)).unwrap();
-
-    // This is arbitrary
-    let k = Fr::zero();
-
-    // Output of MiMC hash. This should have been created by implementing the MiMC hash here
-    let image = {
-        use legogroth16::circom::WitnessCalculator;
-        let mut wits_calc = WitnessCalculator::<Bls12_381>::from_wasm_bytes(&wasm_bytes).unwrap();
-        let mut circ = circuit.clone();
-        circ.set_wires_using_witness_calculator(
-            &mut wits_calc,
-            [
-                (String::from("in"), vec![msgs[msg_idx_to_hash]]),
-                (String::from("k"), vec![Fr::zero()]),
-            ]
-            .into_iter(),
-            false,
-        )
-        .unwrap();
-        circ.get_public_inputs().unwrap()[0]
-    };
 
     let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -89,7 +65,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add_witness_equality(EqualWitnesses(
-        vec![(0, msg_idx_to_hash), (1, 0)]
+        vec![(0, member_msg_idx), (1, 0)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     ));
@@ -108,8 +84,8 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         msgs.clone().into_iter().enumerate().map(|t| t).collect(),
     ));
     let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
-    r1cs_wit.set_private("in".to_string(), vec![msgs[msg_idx_to_hash]]);
-    r1cs_wit.set_private("k".to_string(), vec![k]);
+    r1cs_wit.set_private("x".to_string(), vec![msgs[member_msg_idx]]);
+    r1cs_wit.set_public("set".to_string(), public_set.clone());
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
     let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
@@ -120,8 +96,13 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
+
+    // The 1st public input will be 0 indicating that the message is not present in the set
+    let mut public_inputs = vec![Fr::zero()];
+    public_inputs.extend(&public_set);
+
     verifier_statements.add(
-        R1CSVerifierStmt::new_statement_from_params(vec![image], snark_pk.vk.clone()).unwrap(),
+        R1CSVerifierStmt::new_statement_from_params(public_inputs, snark_pk.vk.clone()).unwrap(),
     );
     let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
@@ -130,28 +111,45 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         None,
     );
     assert!(verifier_proof_spec.is_valid());
-    proof
-        .clone()
-        .verify(verifier_proof_spec.clone(), None)
-        .unwrap();
+    proof.verify(verifier_proof_spec.clone(), None).unwrap();
 
-    // Proof with wrong public input fails
-    let mut verifier_statements_1 = Statements::new();
-    verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    // -------------------------------------------------------------------------------------- //
+
+    // Update set to contain the signed message
+    public_set[2] = msgs[member_msg_idx].clone();
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig.clone(),
+        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+    ));
+    let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
+    r1cs_wit.set_private("x".to_string(), vec![msgs[member_msg_idx]]);
+    r1cs_wit.set_public("set".to_string(), public_set.clone());
+    witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
+
+    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+
+    let mut verifier_statements = Statements::new();
+    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    verifier_statements_1.add(
-        R1CSVerifierStmt::new_statement_from_params(vec![Fr::rand(&mut rng)], snark_pk.vk.clone())
-            .unwrap(),
+
+    // The 1st public input will be 1 indicating that the message is present in the set
+    let mut public_inputs = vec![Fr::one()];
+    public_inputs.extend(&public_set);
+
+    verifier_statements.add(
+        R1CSVerifierStmt::new_statement_from_params(public_inputs, snark_pk.vk.clone()).unwrap(),
     );
-    let verifier_proof_spec_1 = ProofSpec::new(
-        verifier_statements_1.clone(),
+    let verifier_proof_spec = ProofSpec::new(
+        verifier_statements.clone(),
         meta_statements.clone(),
         vec![],
         None,
     );
-    assert!(verifier_proof_spec_1.is_valid());
-    assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+    assert!(verifier_proof_spec.is_valid());
+    proof.verify(verifier_proof_spec.clone(), None).unwrap();
 }

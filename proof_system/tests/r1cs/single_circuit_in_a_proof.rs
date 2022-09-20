@@ -46,10 +46,10 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     assert_ne!(msgs[unequal_msg_idx], a_random_value);
 
     let commit_witness_count = 1;
-    // Circom code for following in tests/r1cs/circom/not_equal_public.circom
+    // Circom code for following in tests/r1cs/circom/circuits/not_equal_public.circom
     let (snark_pk, r1cs, wasm_bytes) = get_r1cs_and_wasm_bytes(
-        "tests/r1cs/circom/not_equal_public.r1cs",
-        "tests/r1cs/circom/not_equal_public.wasm",
+        "tests/r1cs/circom/bls12-381/not_equal_public.r1cs",
+        "tests/r1cs/circom/bls12-381/not_equal_public.wasm",
         commit_witness_count,
         &mut rng,
     );
@@ -94,7 +94,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     ));
     let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
     r1cs_wit.set_private("in".to_string(), vec![msgs[unequal_msg_idx]]);
-    r1cs_wit.set_private("pub".to_string(), vec![a_random_value]);
+    r1cs_wit.set_public("pub".to_string(), vec![a_random_value]);
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
@@ -222,10 +222,10 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     let (sig_params_2, sig_keypair_2, sig_2) = sig_setup_given_messages(&mut rng, &msgs_2);
 
     let commit_witness_count = 2;
-    // Circom code for following in tests/r1cs/circom/less_than_32.circom
+    // Circom code for following in tests/r1cs/circom/circuits/less_than_32.circom
     let (snark_pk, r1cs, wasm_bytes) = get_r1cs_and_wasm_bytes(
-        "tests/r1cs/circom/less_than_32.r1cs",
-        "tests/r1cs/circom/less_than_32.wasm",
+        "tests/r1cs/circom/bls12-381/less_than_32.r1cs",
+        "tests/r1cs/circom/bls12-381/less_than_32.wasm",
         commit_witness_count,
         &mut rng,
     );
@@ -611,10 +611,10 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     let product_2 = msgs[msg_1_idx] * a_random; // For case 2
 
     let commit_witness_count = 2;
-    // Circom code for following in tests/r1cs/circom/multiply2.circom
+    // Circom code for following in tests/r1cs/circom/circuits/multiply2.circom
     let (snark_pk, r1cs, wasm_bytes) = get_r1cs_and_wasm_bytes(
-        "tests/r1cs/circom/multiply2.r1cs",
-        "tests/r1cs/circom/multiply2.wasm",
+        "tests/r1cs/circom/bls12-381/multiply2.r1cs",
+        "tests/r1cs/circom/bls12-381/multiply2.wasm",
         commit_witness_count,
         &mut rng,
     );

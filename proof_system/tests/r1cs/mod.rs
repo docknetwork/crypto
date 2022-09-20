@@ -4,8 +4,10 @@ use legogroth16::circom::{CircomCircuit, R1CS};
 use legogroth16::ProvingKey;
 use std::path::PathBuf;
 
+pub mod bounded_sum;
 pub mod mimc_hash;
 pub mod multiple_circuits_in_single_proof;
+pub mod set_membership;
 pub mod single_circuit_in_a_proof;
 
 /// Given path relative to this crate, return absolute disk path
