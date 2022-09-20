@@ -18,6 +18,8 @@
 */
 pragma circom 2.0.0;
 
+// `out` signal will contain the bits of input `in` with LSB in the beginning and MSB in end. `in` is expected to be
+// of `n` bits at most.
 template Num2Bits(n) {
     signal input in;
     signal output out[n];
@@ -43,8 +45,10 @@ template LessThan(n) {
 
     component n2b = Num2Bits(n+1);
 
-    n2b.in <== a + (1<<n) - b;
+    // 1<<n is the smallest n+1 bit number, if a < b, i.e. a-b < 0, MSB of (1<<n) + a - b will be 0 because of the borrow.
+    // But if a > b, a-b > 0, even the largest a-b will be less than (1<<n), thus avoiding the carry and keeping the MSB of (1<<n) + a - b as 0
 
+    n2b.in <== (1<<n) + a - b;
     out <== 1-n2b.out[n];
 }
 
@@ -114,12 +118,4 @@ template IsEqual() {
     b - a ==> isz.in;
 
     isz.out ==> out;
-}
-
-template OR() {
-    signal input a;
-    signal input b;
-    signal output out;
-
-    out <== a + b - a*b;
 }

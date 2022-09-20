@@ -65,7 +65,7 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
             .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
 
         let mut wits_calc = WitnessCalculator::<E>::from_wasm_bytes(wasm_bytes)?;
-        let wires = wits_calc.calculate_witnesses(witness.inputs.clone().into_iter(), false)?;
+        let wires = wits_calc.calculate_witnesses(witness.inputs.clone().into_iter(), true)?;
         let circuit = CircomCircuit {
             r1cs,
             wires: Some(wires),
@@ -77,7 +77,8 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
 
         // NOTE: value of id is dummy
         let mut sp = SchnorrProtocol::new(10000, comm_key, snark_proof.d);
-        let mut private_inputs = witness.get_private_inputs(proving_key.vk.commit_witness_count)?;
+        let mut private_inputs =
+            witness.get_first_n_private_inputs(proving_key.vk.commit_witness_count)?;
         private_inputs.push(v);
         sp.init(rng, blindings, private_inputs)?;
         self.snark_proof = Some(snark_proof);

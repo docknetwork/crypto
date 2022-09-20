@@ -1,5 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_ff::{One, Zero};
+use ark_ff::One;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::rngs::StdRng;
 use ark_std::rand::SeedableRng;
@@ -48,19 +48,19 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     let (sig_params_2, sig_keypair_2, sig_2) = sig_setup_given_messages(&mut rng, &msgs_2);
 
     let commit_witness_count_1 = 2;
-    // Circom code for following in tests/r1cs/circom/less_than_32.circom
+    // Circom code for following in tests/r1cs/circom/circuits/less_than_32.circom
     let (snark_pk_1, r1cs_1, wasm_bytes_1) = get_r1cs_and_wasm_bytes(
-        "tests/r1cs/circom/less_than_32.r1cs",
-        "tests/r1cs/circom/less_than_32.wasm",
+        "tests/r1cs/circom/bls12-381/less_than_32.r1cs",
+        "tests/r1cs/circom/bls12-381/less_than_32.wasm",
         commit_witness_count_1,
         &mut rng,
     );
 
     let commit_witness_count_2 = 1;
-    // Circom code for following in tests/r1cs/circom/less_than_public_64.circom
+    // Circom code for following in tests/r1cs/circom/circuits/less_than_public_64.circom
     let (snark_pk_2, r1cs_2, wasm_bytes_2) = get_r1cs_and_wasm_bytes(
-        "tests/r1cs/circom/less_than_public_64.r1cs",
-        "tests/r1cs/circom/less_than_public_64.wasm",
+        "tests/r1cs/circom/bls12-381/less_than_public_64.r1cs",
+        "tests/r1cs/circom/bls12-381/less_than_public_64.wasm",
         commit_witness_count_2,
         &mut rng,
     );
