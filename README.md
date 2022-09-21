@@ -33,7 +33,7 @@ By default, it uses standard library and [rayon](https://github.com/rayon-rs/ray
 
 To build with standard library but without parallelization, use `cargo build --no-default-features --features=std`
 
-For `no_std` support, build as `cargo build --no-default-features`
+For `no_std` support, build as `cargo build --no-default-features --features=wasmer-sys`
 
 For WASM, build as `cargo build --no-default-features --features=wasmer-js --target wasm32-unknown-unknown`
 
