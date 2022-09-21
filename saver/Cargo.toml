@@ -23,9 +23,6 @@ serde_with = { version = "1.10.0", default-features = false, features = ["macros
 zeroize = { version = "1.5.5", features = ["derive"] }
 
 [dependencies.legogroth16]
-git = "https://github.com/lovesh/legogro16"
-branch = "circom"
-#rev = '5bc5e4af466c1bb84a636e18002dcffeeb0d1899'
 version = "0.3.0"
 default-features = false
 
