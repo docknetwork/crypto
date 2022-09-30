@@ -71,7 +71,7 @@ use ark_ff::fields::Field;
 use ark_ff::{batch_inversion, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    cfg_into_iter, cfg_iter,
+    cfg_into_iter, cfg_iter, cfg_iter_mut,
     fmt::Debug,
     io::{Read, Write},
     iter::Iterator,
@@ -533,8 +533,9 @@ where
             P_multiple.as_slice(),
         );
         let wits_affine = E::G1Projective::batch_normalization_into_affine(&wits);
-        y_plus_alpha_inv.iter_mut().for_each(|y| y.zeroize());
+        cfg_iter_mut!(y_plus_alpha_inv).for_each(|y| y.zeroize());
         wits.iter_mut().for_each(|w| w.zeroize());
+        cfg_iter_mut!(wits).for_each(|y| y.zeroize());
 
         Ok(cfg_into_iter!(wits_affine)
             .zip(cfg_into_iter!(d))

@@ -2,12 +2,15 @@ use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::RngCore;
 use ark_std::UniformRand;
-use ark_std::{collections::BTreeMap, io::Write, vec::Vec};
+use ark_std::{cfg_iter_mut, collections::BTreeMap, io::Write, vec::Vec};
 use schnorr_pok::{SchnorrChallengeContributor, SchnorrCommitment};
 use zeroize::Zeroize;
 
 use crate::error::ProofSystemError;
 use crate::statement_proof::{PedersenCommitmentProof, StatementProof};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchnorrProtocol<'a, G: AffineCurve> {
@@ -132,7 +135,7 @@ impl<'a, G: AffineCurve> Zeroize for SchnorrProtocol<'a, G> {
         self.commitment_to_randomness.as_mut().map(|c| c.zeroize());
         self.witnesses
             .as_mut()
-            .map(|w| w.iter_mut().for_each(|v| v.zeroize()));
+            .map(|w| cfg_iter_mut!(w).for_each(|v| v.zeroize()));
     }
 }
 

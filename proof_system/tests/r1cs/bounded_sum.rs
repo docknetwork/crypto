@@ -18,6 +18,7 @@ use proof_system::statement::{
 };
 use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 use test_utils::{Fr, ProofG1, G1};
 
 #[test]
@@ -59,6 +60,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     // All 12 messages whose sum is being taken should be committed to
     let commit_witness_count = 12;
 
+    let start = Instant::now();
     // Circom code for following in tests/r1cs/circom/circuits/sum_12_less_than_public.circom
     let (sum_snark_pk, sum_r1cs, sum_wasm_bytes) = get_r1cs_and_wasm_bytes(
         "tests/r1cs/circom/bls12-381/sum_12_less_than_public.r1cs",
@@ -66,7 +68,12 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
         commit_witness_count,
         &mut rng,
     );
+    println!(
+        "Creating circuit and proving key for bounded sum takes {:?}",
+        start.elapsed()
+    );
 
+    let start = Instant::now();
     let mut prover_setup_params = Vec::<SetupParams<Bls12_381, G1>>::new();
     prover_setup_params.push(SetupParams::BBSPlusSignatureParams(params.clone()));
     prover_setup_params.push(SetupParams::BBSPlusPublicKey(keypair.public_key.clone()));
@@ -125,6 +132,9 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
 
     let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
 
+    println!("Creating proof for bounded sum takes {:?}", start.elapsed());
+
+    let start = Instant::now();
     let mut verifier_setup_params = vec![];
     verifier_setup_params.push(SetupParams::BBSPlusSignatureParams(params));
     verifier_setup_params.push(SetupParams::BBSPlusPublicKey(keypair.public_key.clone()));
@@ -151,4 +161,8 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     );
     assert!(verifier_proof_spec.is_valid());
     proof.verify(verifier_proof_spec.clone(), None).unwrap();
+    println!(
+        "Verifying proof for bounded sum takes {:?}",
+        start.elapsed()
+    );
 }

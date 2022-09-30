@@ -31,6 +31,7 @@
 //! signed message (using BBS+), the [`EqualWitnesses`] will refer [`Witness`]s from `Statement::PoKBBSSignatureG1`
 //! statement and `Statement::BoundCheckLegoGroth16` statement. Following are some illustrations of [`EqualWitnesses`]
 //!
+//! ```text
 //!  ┌────────────────────────────┐    ┌──────────────────────────────┐     ┌────────────────────────────┐
 //!  │ PokBBSSignatureG1          │    │ PokBBSSignatureG1            │     │ PokBBSSignatureG1          │
 //!  │ Statement 1                │    │ Statement 2                  │     │ Statement 3                │
@@ -48,6 +49,7 @@
 //!                         │       MetaStatement 1       │                          │  MetaStatement 2           │
 //!                         │ A3, B2 and C1 are equal     │                          │  B4 and C5 are equal       │
 //!                         └─────────────────────────────┘                          └────────────────────────────┘
+//! ```
 //!
 //!        For proving certain messages from 3 BBS+ signatures are equal. Here there 2 sets of equalities,
 //!        1. message A3 from 1st signature, B2 from 2nd signature and C1 from 3rd signature
@@ -55,7 +57,7 @@
 //!
 //!        Thus 3 statements, one for each signature, and 2 meta statements, one for each equality
 //!---------------------------------------------------------------------------------------------------------------------------------------------------
-//!
+//! ```text
 //!  ┌────────────────────────────┐    ┌──────────────────────────────┐     ┌────────────────────────────┐
 //!  │ PokBBSSignatureG1          │    │ BoundCheckLegoGroth16        │     │ SAVER                      │
 //!  │ Statement 1                │    │ Statement 2                  │     │ Statement 3                │
@@ -73,7 +75,7 @@
 //!                         │       MetaStatement 1       │                          │  MetaStatement 2           │
 //!                         │ A3 and  B1 are equal        │                          │  A5 and C1 are equal       │
 //!                         └─────────────────────────────┘                          └────────────────────────────┘
-//!
+//! ```
 //!
 //!        For proving certain messages from a BBS+ signature satisfy 2 predicates,
 //!         1) message A3 satisfies bounds specified in statement 2

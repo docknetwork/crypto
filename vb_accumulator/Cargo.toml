@@ -1,11 +1,11 @@
 [package]
 name = "vb_accumulator"
-version = "0.8.0"
-edition = "2021"
-authors = ["Dock.io"]
-license = "Apache-2.0"
+version = "0.9.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Positive and universal bilinear map accumulator and proof of membership and non-membership protocol"
-repository = "https://github.com/docknetwork/crypto"
 
 [lib]
 doctest = false
@@ -19,15 +19,15 @@ ark-poly = {version = "^0.3.0", default-features = false }
 ark-std = { version = "^0.3.0", default-features = false }
 digest = "0.9"
 rayon = { version = "1", optional = true }
-schnorr_pok = { version = "0.6.0", default-features = false, path = "../schnorr_pok" }
-dock_crypto_utils = { version = "0.4.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.7.0", default-features = false, path = "../schnorr_pok" }
+dock_crypto_utils = { version = "0.5.0", default-features = false, path = "../utils" }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
 zeroize = { version = "1.5.5", features = ["derive"] }
 
 [dev-dependencies]
-blake2 = { version = "0.9", default-features = false }
-ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
+blake2.workspace = true
+ark-bls12-381.workspace = true
 serde_json = "1.0"
 
 [features]

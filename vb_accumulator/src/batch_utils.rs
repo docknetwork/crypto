@@ -431,24 +431,40 @@ where
 
     /// Inner product of powers of `y`, i.e. the element for which witness needs to be updated and `omega`
     /// Used by the (non)member to update its witness without the knowledge of secret key.
-    pub fn inner_product_with_powers_of_y(&self, element: &G::ScalarField) -> G::Projective {
-        // powers_of_y = [1, element, element^2, element^3, ...]
-        let mut powers_of_y = Vec::with_capacity(self.len());
-        if self.len() > 0 {
+    pub fn inner_product_with_scaled_powers_of_y(
+        &self,
+        y: &G::ScalarField,
+        scalar: &G::ScalarField,
+    ) -> G::Projective {
+        let powers_of_y = Self::scaled_powers_of_y(y, scalar, self.len());
+        // <powers_of_y, omega>
+        VariableBaseMSM::multi_scalar_mul(
+            &self.0,
+            &cfg_into_iter!(powers_of_y)
+                .map(|y| y.into_repr())
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// Return [`scalar`*1, `scalar`*`y`, `scalar`*`y^2`, `scalar`*`y^3`, ..., `scalar`*`y^{n-1}`]
+    pub fn scaled_powers_of_y(
+        y: &G::ScalarField,
+        scalar: &G::ScalarField,
+        n: usize,
+    ) -> Vec<G::ScalarField> {
+        let mut powers_of_y = Vec::with_capacity(n);
+        if n > 0 {
             powers_of_y.push(G::ScalarField::one());
         }
-        if self.len() > 1 {
-            powers_of_y.push(element.clone());
+        if n > 1 {
+            powers_of_y.push(y.clone());
         }
-        for i in 2..self.len() {
-            powers_of_y.push(powers_of_y[i - 1] * element);
+        for i in 2..n {
+            powers_of_y.push(powers_of_y[i - 1] * y);
         }
-        let powers_of_y = cfg_into_iter!(powers_of_y)
-            .map(|y| y.into_repr())
-            .collect::<Vec<_>>();
-
-        // <powers_of_y, omega>
-        VariableBaseMSM::multi_scalar_mul(&self.0, &powers_of_y)
+        cfg_into_iter!(powers_of_y)
+            .map(|y| y * scalar)
+            .collect::<Vec<_>>()
     }
 
     /// Scale the omega vector by the given `scalar`
@@ -488,9 +504,8 @@ where
         V_prime *= v_AD * d_D_inv;
 
         let omega = Self::new(additions, removals, old_accumulator, sk);
-        let mut y_omega_ip = omega.inner_product_with_powers_of_y(element);
         // <powers_of_y, omega> * 1/d_D(x)
-        y_omega_ip *= d_D_inv;
+        let y_omega_ip = omega.inner_product_with_scaled_powers_of_y(element, &d_D_inv);
 
         println!("y_omega_ip={}", y_omega_ip);
         println!("V_prime={}", V_prime);

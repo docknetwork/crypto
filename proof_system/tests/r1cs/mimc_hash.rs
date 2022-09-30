@@ -16,6 +16,7 @@ use proof_system::statement::{
 };
 use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 
 use crate::r1cs::abs_path;
 use test_utils::bbs_plus::*;
@@ -42,11 +43,22 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     // Circom code for following in tests/r1cs/circom/circuits/mimc_hash.circom
     let r1cs_file_path = "tests/r1cs/circom/bls12-381/mimc_hash_bls12_381.r1cs";
     let wasm_file_path = "tests/r1cs/circom/bls12-381/mimc_hash_bls12_381.wasm";
+    let start = Instant::now();
     let circuit = CircomCircuit::<Bls12_381>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
+    println!(
+        "Creating MiMC circuit from R1CS takes {:?}",
+        start.elapsed()
+    );
+
+    let start = Instant::now();
     let snark_pk = circuit
         .clone()
         .generate_proving_key(commit_witness_count, &mut rng)
         .unwrap();
+    println!(
+        "Creating proving key for MiMC circuit takes {:?}",
+        start.elapsed()
+    );
 
     let r1cs = R1CS::from_file(abs_path(r1cs_file_path)).unwrap();
     let wasm_bytes = std::fs::read(abs_path(wasm_file_path)).unwrap();
@@ -72,6 +84,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         circ.get_public_inputs().unwrap()[0]
     };
 
+    let start = Instant::now();
     let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
@@ -113,7 +126,12 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
     let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    println!(
+        "Creating proof for MiMC circuit takes {:?}",
+        start.elapsed()
+    );
 
+    let start = Instant::now();
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         sig_params.clone(),
@@ -134,6 +152,10 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         .clone()
         .verify(verifier_proof_spec.clone(), None)
         .unwrap();
+    println!(
+        "Verifying proof for MiMC circuit takes {:?}",
+        start.elapsed()
+    );
 
     // Proof with wrong public input fails
     let mut verifier_statements_1 = Statements::new();

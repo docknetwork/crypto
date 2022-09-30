@@ -93,7 +93,7 @@ use ark_ff::fields::Field;
 use ark_ff::{batch_inversion, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    cfg_iter,
+    cfg_iter, cfg_iter_mut,
     fmt::Debug,
     io::{Read, Write},
     vec::Vec,
@@ -372,7 +372,7 @@ pub trait Accumulator<E: PairingEngine> {
             self.value().into_projective(),
             y_sk.as_slice(),
         );
-        y_sk.iter_mut().for_each(|y| y.zeroize());
+        cfg_iter_mut!(y_sk).for_each(|y| y.zeroize());
         MembershipWitness::projective_points_to_membership_witnesses(wits)
     }
 

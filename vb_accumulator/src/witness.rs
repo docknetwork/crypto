@@ -193,23 +193,17 @@ pub trait Witness<G: AffineCurve> {
             old_accumulator.into_projective(),
         );
 
-        let mut d_factor = Vec::with_capacity(elements.len());
-
         // Calculate d_A(y)*C_y + v_A(y)*V for each y in `elements`
-        let new_wits: Vec<G::Projective> = d_A
-            .into_iter()
-            .zip(v_A.into_iter())
+        let new_wits: Vec<G::Projective> = cfg_iter!(d_A)
+            .zip(cfg_iter!(v_A))
             .enumerate()
             .map(|(i, (d, v))| {
                 // d*C + v*V
-                let r = old_witnesses[i].mul(d.into_repr()) + table.multiply(&v);
-                // d is needed for non-membership witnesses
-                d_factor.push(d);
-                r
+                old_witnesses[i].mul(d.into_repr()) + table.multiply(v)
             })
             .collect();
         Ok((
-            d_factor,
+            d_A,
             batch_normalize_projective_into_affine::<G::Projective>(new_wits),
         ))
     }
@@ -245,25 +239,21 @@ pub trait Witness<G: AffineCurve> {
             old_accumulator.into_projective(),
         );
 
-        let mut d_factor = Vec::with_capacity(elements.len());
-
         // Calculate 1/d_D(y) * C_y - v_D(y)/d_D(y) * V for each y in `elements`
         // Invert all d_D(y) in a batch for efficiency
         batch_inversion(&mut d_D);
-        let new_wits: Vec<G::Projective> = d_D
-            .into_iter()
-            .zip(v_D.into_iter())
+
+        let new_wits: Vec<G::Projective> = cfg_iter!(d_D)
+            .zip(cfg_iter!(v_D))
             .enumerate()
             .map(|(i, (d_inv, v))| {
-                let v_d_inv = v * d_inv;
+                let v_d_inv = *v * d_inv;
                 // 1/d * C - v/d * V
-                let r = old_witnesses[i].mul(d_inv.into_repr()) - table.multiply(&v_d_inv);
-                d_factor.push(d_inv);
-                r
+                old_witnesses[i].mul(d_inv.into_repr()) - table.multiply(&v_d_inv)
             })
             .collect();
         Ok((
-            d_factor,
+            d_D,
             batch_normalize_projective_into_affine::<G::Projective>(new_wits),
         ))
     }
@@ -304,7 +294,7 @@ pub trait Witness<G: AffineCurve> {
             old_accumulator.into_projective(),
         );
 
-        let mut d_factor = Vec::with_capacity(elements.len());
+        let mut d_factors = Vec::with_capacity(elements.len());
 
         // Calculate d_A(y)/d_D(y) * C_y + v_{A,D}(y)/d_D(y) * V for each y in `elements`
         // Invert all d_D(y) in a batch for efficiency
@@ -320,12 +310,12 @@ pub trait Witness<G: AffineCurve> {
                 // d_A_i/d_D * C + v_{A,D}/d_D * V
                 let r =
                     old_witnesses[i].mul(d_A_times_d_D_inv.into_repr()) + table.multiply(&v_d_inv);
-                d_factor.push(d_A_times_d_D_inv);
+                d_factors.push(d_A_times_d_D_inv);
                 r
             })
             .collect();
         Ok((
-            d_factor,
+            d_factors,
             batch_normalize_projective_into_affine::<G::Projective>(new_wits),
         ))
     }
@@ -351,10 +341,8 @@ pub trait Witness<G: AffineCurve> {
         // d_A(x)/d_D(x)
         let d_A_times_d_D_inv = d_A * d_D_inv;
 
-        // <powers_of_y, omega>
-        let mut y_omega_ip = omega.inner_product_with_powers_of_y(element);
         // <powers_of_y, omega> * 1/d_D(x)
-        y_omega_ip *= d_D_inv;
+        let y_omega_ip = omega.inner_product_with_scaled_powers_of_y(element, &d_D_inv);
 
         // d_A(x)/d_D(x) * C + 1/d_D(x) * <powers_of_y, omega>
         let new_C = old_witness.mul(d_A_times_d_D_inv.into_repr()) + y_omega_ip;
@@ -418,7 +406,7 @@ pub trait Witness<G: AffineCurve> {
 
             let d_A_times_d_D = d_A * d_D;
             // Store d_A_times_d_D to scale vector `omega[t]` later using multi-scalar multiplication
-            omega_t_factors.push(d_A_times_d_D.into_repr());
+            omega_t_factors.push(d_A_times_d_D);
 
             if omegas[t].len() > max_omega_size {
                 max_omega_size = omegas[t].len();
@@ -430,26 +418,48 @@ pub trait Witness<G: AffineCurve> {
 
         let d_D_ij_inv = d_D_ij.inverse().ok_or(VBAccumulatorError::CannotBeZero)?;
 
-        // Add all omega_t vectors
-        let mut final_omega = Vec::<G::Projective>::with_capacity(max_omega_size);
+        // The following is an optimized version of the next block of commented code. The goal here was to do just
+        // one MSM rather than `max_omega_size`
+        let mut bases = Vec::new();
+        let mut scalars = Vec::new();
+        let scaled_powers_of_y =
+            Omega::<G>::scaled_powers_of_y(element, &d_D_ij_inv, max_omega_size);
         for i in 0..max_omega_size {
             // Add ith coefficient of each `omega_t` after multiplying the coefficient by the factor in t_th position.
-            let mut bases = Vec::new();
-            let mut scalars = Vec::new();
             for (t, omega) in omegas.iter().enumerate() {
                 if omega.len() > i {
                     bases.push(*omega.coefficient(i));
-                    scalars.push(omega_t_factors[t]);
+                    scalars.push(omega_t_factors[t] * scaled_powers_of_y[i]);
                 }
             }
-            final_omega.push(VariableBaseMSM::multi_scalar_mul(&bases, &scalars));
         }
-
-        // <powers_of_y, omega>
-        let final_omega = Omega(G::Projective::batch_normalization_into_affine(&final_omega));
-        let mut y_omega_ip = final_omega.inner_product_with_powers_of_y(element);
         // <powers_of_y, omega> * 1/d_D(x)
-        y_omega_ip *= d_D_ij_inv;
+        let y_omega_ip = VariableBaseMSM::multi_scalar_mul(
+            &bases,
+            &cfg_into_iter!(scalars)
+                .map(|s: G::ScalarField| s.into_repr())
+                .collect::<Vec<_>>(),
+        );
+
+        // // Add all omega_t vectors
+        // let mut final_omega = Vec::<G::Projective>::with_capacity(max_omega_size);
+        // for i in 0..max_omega_size {
+        //     // Add ith coefficient of each `omega_t` after multiplying the coefficient by the factor in t_th position.
+        //     let mut bases = Vec::new();
+        //     let mut scalars = Vec::new();
+        //     for (t, omega) in omegas.iter().enumerate() {
+        //         if omega.len() > i {
+        //             bases.push(*omega.coefficient(i));
+        //             scalars.push(omega_t_factors[t]);
+        //         }
+        //     }
+        //     final_omega.push(VariableBaseMSM::multi_scalar_mul(&bases, &scalars));
+        // }
+        //
+        // // <powers_of_y, omega>
+        // let final_omega = Omega(G::Projective::batch_normalization_into_affine(&final_omega));
+        // // <powers_of_y, omega> * 1/d_D(x)
+        // let y_omega_ip = final_omega.inner_product_with_scaled_powers_of_y(element, d_D_ij_inv);
 
         let d_A_times_d_D_inv = d_A_ij * d_D_ij_inv;
 
@@ -1948,7 +1958,6 @@ mod tests {
 
         let (params, keypair, mut accumulator, initial_elems, mut state) =
             setup_universal_accum(&mut rng, max);
-        // println!("Accumulator setup done");
 
         let member = Fr::rand(&mut rng);
         let non_member = Fr::rand(&mut rng);

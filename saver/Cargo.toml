@@ -1,34 +1,34 @@
 [package]
 name = "saver"
-version = "0.4.0"
-edition = "2021"
-authors = ["Dock.io"]
-license = "Apache-2.0"
+version = "0.5.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "SAVER SNARK-friendly, Additively-homomorphic, and Verifiable Encryption and decryption with Rerandomization"
-repository = "https://github.com/docknetwork/crypto"
 
 [dependencies]
-ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
-ark-ff = { version = "^0.3.0", default-features = false }
-ark-ec = { version = "^0.3.0", default-features = false }
-ark-std = { version = "^0.3.0", default-features = false }
+ark-serialize.workspace = true
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-std.workspace = true
 ark-r1cs-std = { version = "^0.3.0", default-features = false }
 ark-relations = { version = "^0.3.0", default-features = false }
 ark-groth16 = { version = "^0.3.0", default-features = false }
-digest = "0.9"
-rayon = { version = "1", optional = true }
-dock_crypto_utils = { version = "0.4.0", default-features = false, path = "../utils" }
-serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
-zeroize = { version = "1.5.5", features = ["derive"] }
+digest.workspace = true
+rayon = {workspace = true, optional = true}
+dock_crypto_utils = { version = "0.5.0", default-features = false, path = "../utils" }
+serde.workspace = true
+serde_with.workspace = true
+zeroize.workspace = true
 
 [dependencies.legogroth16]
 version = "0.3.0"
 default-features = false
 
 [dev-dependencies]
-blake2 = { version = "0.9", default-features = false }
-ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
+blake2.workspace = true
+ark-bls12-381.workspace = true
 serde_json = "1.0"
 proof_system = { path = "../proof_system" }
 bbs_plus = { path = "../bbs_plus" }
