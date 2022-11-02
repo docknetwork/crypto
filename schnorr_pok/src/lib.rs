@@ -26,7 +26,6 @@
 //! 5. Proof if valid if `c == c'`
 
 use crate::error::SchnorrError;
-use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
@@ -34,6 +33,7 @@ use ark_std::{
     cfg_iter,
     fmt::Debug,
     io::{Read, Write},
+    ops::Add,
     vec::Vec,
 };
 use digest::Digest;
@@ -45,6 +45,7 @@ use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+use dock_crypto_utils::msm::variable_base_msm;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -77,10 +78,7 @@ where
     /// Create commitment as `bases[0] * blindings[0] + bases[1] * blindings[1] + ... + bases[i] * blindings[i]`
     /// for step-1 of the protocol. Extra `bases` or `blindings` are ignored.
     pub fn new(bases: &[G], blindings: Vec<G::ScalarField>) -> Self {
-        let scalars = cfg_iter!(blindings)
-            .map(|b| b.into_repr())
-            .collect::<Vec<_>>();
-        let t = VariableBaseMSM::multi_scalar_mul(bases, &scalars).into_affine();
+        let t = variable_base_msm(bases, &blindings).into_affine();
         Self { blindings, t }
     }
 
@@ -158,11 +156,7 @@ where
                 bases.len(),
             ));
         }
-        let mut bases = bases.to_vec();
-        bases.push(*y);
-        let mut scalars = cfg_iter!(self.0).map(|r| r.into_repr()).collect::<Vec<_>>();
-        scalars.push((-*challenge).into_repr());
-        if VariableBaseMSM::multi_scalar_mul(&bases, scalars.as_slice()).into_affine() == *t {
+        if (variable_base_msm(&bases, &self.0).add(y.mul(-*challenge))).into_affine() == *t {
             Ok(())
         } else {
             Err(SchnorrError::InvalidResponse)
@@ -316,7 +310,7 @@ pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes
 mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::{msm::VariableBaseMSM, PairingEngine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,

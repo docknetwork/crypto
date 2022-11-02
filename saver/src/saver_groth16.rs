@@ -2,7 +2,7 @@
 
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::PrimeField;
-use ark_relations::r1cs::{ConstraintSynthesizer, Result as R1CSResult, SynthesisError};
+use ark_relations::r1cs::{ConstraintSynthesizer, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     fmt,
@@ -26,6 +26,7 @@ pub use ark_groth16::{
 };
 use ark_std::ops::AddAssign;
 
+use crate::error::SaverError;
 use dock_crypto_utils::serde_utils::*;
 
 use crate::keygen::EncryptionKey;
@@ -65,7 +66,7 @@ pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
     circuit: C,
     gens: &EncryptionGens<E>,
     rng: &mut R,
-) -> R1CSResult<ProvingKey<E>> {
+) -> Result<ProvingKey<E>, SaverError> {
     let alpha = E::Fr::rand(rng);
     let beta = E::Fr::rand(rng);
     let gamma = E::Fr::rand(rng);
@@ -98,7 +99,7 @@ pub fn create_proof<E, C, R>(
     pk: &ProvingKey<E>,
     encryption_key: &EncryptionKey<E>,
     rng: &mut R,
-) -> R1CSResult<Proof<E>>
+) -> Result<Proof<E>, SaverError>
 where
     E: PairingEngine,
     C: ConstraintSynthesizer<E::Fr>,
@@ -118,7 +119,7 @@ pub fn verify_proof<E: PairingEngine>(
     pvk: &PreparedVerifyingKey<E>,
     proof: &Proof<E>,
     ciphertext: &Ciphertext<E>,
-) -> R1CSResult<bool> {
+) -> Result<(), SaverError> {
     let mut d = ciphertext.X_r.into_projective();
     for c in ciphertext.enc_chunks.iter() {
         d.add_assign(c.into_projective())
@@ -136,8 +137,11 @@ pub fn verify_proof<E: PairingEngine>(
     );
 
     let test = E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?;
-
-    Ok(test == pvk.alpha_g1_beta_g2)
+    if test == pvk.alpha_g1_beta_g2 {
+        Ok(())
+    } else {
+        Err(SaverError::PairingCheckFailed)
+    }
 }
 
 #[cfg(test)]
@@ -233,7 +237,7 @@ mod tests {
                 enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
                 commitment: ct[n as usize + 1].clone(),
             };
-            assert!(verify_proof(&pvk, &proof, &ct).unwrap());
+            verify_proof(&pvk, &proof, &ct).unwrap();
             println!(
                 "Time taken to verify Groth16 proof with chunk_bit_size {}: {:?}",
                 chunk_bit_size,

@@ -30,7 +30,7 @@
 //! ```
 
 use crate::error::BBSPlusError;
-use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{to_bytes, PrimeField, SquareRootField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::collections::BTreeMap;
@@ -49,6 +49,7 @@ use zeroize::Zeroize;
 use dock_crypto_utils::hashing_utils::{
     field_elem_from_seed, projective_group_elem_from_try_and_incr,
 };
+use dock_crypto_utils::msm::variable_base_msm;
 use dock_crypto_utils::serde_utils::*;
 
 #[cfg(feature = "parallel")]
@@ -207,10 +208,7 @@ macro_rules! impl_sig_params {
                 blinding: &E::Fr,
             ) -> Result<E::$group_affine, BBSPlusError> {
                 #[cfg(feature = "parallel")]
-                let (mut bases, mut scalars): (
-                    Vec<E::$group_affine>,
-                    Vec<<<E as ark_ec::PairingEngine>::Fr as PrimeField>::BigInt>,
-                ) = {
+                let (mut bases, mut scalars): (Vec<E::$group_affine>, Vec<E::Fr>) = {
                     // Need to manually check that no message index exceeds the maximum number of messages allowed
                     // because this function can be called with only uncommitted messages; so size of BTreeMap is
                     // not representative of the number of messages
@@ -220,12 +218,12 @@ macro_rules! impl_sig_params {
                         }
                     }
                     cfg_into_iter!(messages)
-                        .map(|(i, msg)| (self.h[i].clone(), msg.into_repr()))
+                        .map(|(i, msg)| (self.h[i].clone(), *msg))
                         .unzip()
                 };
 
                 #[cfg(not(feature = "parallel"))]
-                let (mut bases, mut scalars) = {
+                let (mut bases, mut scalars): (Vec<E::$group_affine>, Vec<E::Fr>) = {
                     let mut bases = Vec::with_capacity(messages.len());
                     let mut scalars = Vec::with_capacity(messages.len());
                     for (i, msg) in messages.into_iter() {
@@ -234,14 +232,14 @@ macro_rules! impl_sig_params {
                             return Err(BBSPlusError::InvalidMessageIdx(i));
                         }
                         bases.push(self.h[i].clone());
-                        scalars.push(msg.into_repr());
+                        scalars.push(*msg);
                     }
                     (bases, scalars)
                 };
 
                 bases.push(self.h_0.clone());
-                scalars.push(blinding.into_repr());
-                Ok(VariableBaseMSM::multi_scalar_mul(&bases, &scalars).into_affine())
+                scalars.push(*blinding);
+                Ok(variable_base_msm(&bases, &scalars).into_affine())
             }
 
             /// Compute `b` from the paper (equivalently 'A*{e+x}').

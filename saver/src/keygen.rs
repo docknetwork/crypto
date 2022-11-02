@@ -176,9 +176,7 @@ impl<E: PairingEngine> EncryptionKey<E> {
             X_0: self.X_0,
             X: self.X.clone(),
             Y: self.Y.clone(),
-            Z: self
-                .Z
-                .iter()
+            Z: cfg_iter!(self.Z)
                 .map(|z| E::G2Prepared::from(*z))
                 .collect::<Vec<_>>(),
             P_1: self.P_1,
@@ -197,14 +195,10 @@ impl<E: PairingEngine> DecryptionKey<E> {
     pub fn prepared(&self) -> PreparedDecryptionKey<E> {
         PreparedDecryptionKey {
             V_0: E::G2Prepared::from(self.V_0),
-            V_1: self
-                .V_1
-                .iter()
+            V_1: cfg_iter!(self.V_1)
                 .map(|v| E::G2Prepared::from(*v))
                 .collect::<Vec<_>>(),
-            V_2: self
-                .V_2
-                .iter()
+            V_2: cfg_iter!(self.V_2)
                 .map(|v| E::G2Prepared::from(*v))
                 .collect::<Vec<_>>(),
         }

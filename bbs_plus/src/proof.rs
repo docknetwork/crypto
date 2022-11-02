@@ -175,7 +175,7 @@ where
 
         let r1 = E::Fr::rand(rng);
         let r2 = E::Fr::rand(rng);
-        let r3 = r1.inverse().unwrap();
+        let r3 = r1.inverse().ok_or(BBSPlusError::CannotInvert0)?;
 
         // b = (e+x) * A = g1 + h_0*s + sum(h_i*m_i) for all i in I
         let b = params.b(

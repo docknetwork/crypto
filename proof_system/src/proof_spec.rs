@@ -64,9 +64,9 @@ where
         self.meta_statements.add(meta_statement)
     }
 
-    /// Sanity check to ensure the proof spec is valid. This should never be false as these are used
+    /// Sanity check to ensure the proof spec is valid. This should never error as these are used
     /// by same entity creating them.
-    pub fn is_valid(&self) -> bool {
+    pub fn validate(&self) -> Result<(), ProofSystemError> {
         // Ensure that messages(s) being revealed are not used in a witness equality.
         let mut revealed_wit_refs = BTreeSet::new();
 
@@ -86,17 +86,17 @@ where
                 // All witness equalities should be valid
                 MetaStatement::WitnessEquality(w) => {
                     if !w.is_valid() {
-                        return false;
+                        return Err(ProofSystemError::InvalidWitnessEquality);
                     }
                     for r in w.0.iter() {
                         if revealed_wit_refs.contains(r) {
-                            return false;
+                            return Err(ProofSystemError::WitnessAlreadyBeingRevealed(r.0, r.1));
                         }
                     }
                 }
             }
         }
-        true
+        Ok(())
     }
 
     /// Derive commitment keys for Schnorr protocol from public params. This is done to avoid

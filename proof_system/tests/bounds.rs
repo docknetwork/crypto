@@ -67,7 +67,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
     let start = Instant::now();
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec_prover);
     println!(
@@ -112,7 +112,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
 
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
@@ -140,7 +140,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
 
     let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
 
@@ -150,7 +150,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         vec![],
         None,
     );
-    assert!(proof_spec_verifier.is_valid());
+    proof_spec_verifier.validate().unwrap();
     assert!(proof.verify(proof_spec_verifier.clone(), None).is_err());
 
     // Prove bound over a message which was not signed
@@ -163,11 +163,11 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
 
     let proof_spec_prover =
         ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
 
     let proof = ProofG1::new(&mut rng, proof_spec_prover, witnesses_wrong, None).unwrap();
     let proof_spec_verifier = ProofSpec::new(verifier_statements, meta_statements, vec![], None);
-    assert!(proof_spec_verifier.is_valid());
+    proof_spec_verifier.validate().unwrap();
     assert!(proof.verify(proof_spec_verifier.clone(), None).is_err());
 }
 
@@ -222,7 +222,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -253,7 +253,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         vec![],
         None,
     );
-    assert!(proof_spec_verifier.is_valid());
+    proof_spec_verifier.validate().unwrap();
     proof.verify(proof_spec_verifier.clone(), None).unwrap();
 
     // Message same as maximum
@@ -284,7 +284,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -315,7 +315,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         vec![],
         None,
     );
-    assert!(proof_spec_verifier.is_valid());
+    proof_spec_verifier.validate().unwrap();
     proof.verify(proof_spec_verifier.clone(), None).unwrap();
 }
 
@@ -409,7 +409,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
             prover_setup_params,
             None,
         );
-        assert!(prover_proof_spec.is_valid());
+        prover_proof_spec.validate().unwrap();
 
         test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
@@ -490,7 +490,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
             verifier_setup_params,
             None,
         );
-        assert!(verifier_proof_spec.is_valid());
+        verifier_proof_spec.validate().unwrap();
 
         test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 

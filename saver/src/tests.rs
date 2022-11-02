@@ -218,7 +218,7 @@ fn bbs_plus_verifiably_encrypt_message() {
 
         let start = Instant::now();
         let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
-        assert!(verify_proof(&pvk, &proof, &ct).unwrap());
+        verify_proof(&pvk, &proof, &ct).unwrap();
         println!("Time taken to verify Groth16 proof {:?}", start.elapsed());
 
         // Decryptor decrypts
@@ -881,8 +881,8 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         );
 
         let start = Instant::now();
-        assert!(verify_proof(&pvk, &proof_1, &ct_1).unwrap());
-        assert!(verify_proof(&pvk, &proof_2, &ct_2).unwrap());
+        verify_proof(&pvk, &proof_1, &ct_1).unwrap();
+        verify_proof(&pvk, &proof_2, &ct_2).unwrap();
         println!(
             "Time taken to verify 2 Groth16 proofs {:?}",
             start.elapsed()

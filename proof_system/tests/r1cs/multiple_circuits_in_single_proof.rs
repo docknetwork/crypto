@@ -116,7 +116,7 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
         prover_setup_params,
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -176,7 +176,7 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
         verifier_setup_params,
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
     proof
         .clone()
         .verify(verifier_proof_spec.clone(), None)

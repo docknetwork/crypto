@@ -1,27 +1,22 @@
 //! Amortized sigma protocol as described in Appendix B of the paper "Compressed Sigma Protocol Theory..."
 
-use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{cfg_iter, vec::Vec, UniformRand};
 use ark_std::{
     io::{Read, Write},
     ops::Add,
     rand::RngCore,
 };
+use ark_std::{vec::Vec, UniformRand};
 use digest::Digest;
 
-use dock_crypto_utils::ff::inner_product;
+use dock_crypto_utils::{ff::inner_product, msm::variable_base_msm};
 
 use crate::compressed_linear_form;
 use crate::error::CompSigmaError;
 use crate::transforms::LinearForm;
-
 use crate::utils::{amortized_response, get_n_powers};
-
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineCurve> {
@@ -64,9 +59,8 @@ where
         };
         let rho = G::ScalarField::rand(rng);
         let t = linear_form.eval(&r);
-        let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
         // h * rho is done separately to avoid copying g
-        let A = VariableBaseMSM::multi_scalar_mul(g, &scalars).add(&h.mul(rho.into_repr()));
+        let A = variable_base_msm(g, &r).add(&h.mul(rho.into_repr()));
         Ok(Self {
             max_size,
             r,
@@ -127,19 +121,13 @@ where
         let count_commitments = commitments.len();
         // `challenge_powers` is of form [c, c^2, c^3, ..., c^n]
         let challenge_powers = get_n_powers(challenge.clone(), count_commitments);
-        let challenge_powers_repr = cfg_iter!(challenge_powers)
-            .map(|c| c.into_repr())
-            .collect::<Vec<_>>();
 
         // P_tilde = A + \sum_{i}(P_i * c^i)
         let mut P_tilde = A.into_projective();
-        P_tilde += VariableBaseMSM::multi_scalar_mul(commitments, &challenge_powers_repr);
+        P_tilde += variable_base_msm(commitments, &challenge_powers);
 
         // Check g*z_tilde + h*phi == P_tilde
-        let z_tilde_repr = cfg_iter!(self.z_tilde)
-            .map(|z| z.into_repr())
-            .collect::<Vec<_>>();
-        let g_z = VariableBaseMSM::multi_scalar_mul(g, &z_tilde_repr);
+        let g_z = variable_base_msm(g, &self.z_tilde);
         let h_phi = h.mul(self.phi);
         if (g_z + h_phi) != P_tilde {
             return Err(CompSigmaError::InvalidResponse);
@@ -221,10 +209,7 @@ pub fn prepare_for_compression<G: AffineCurve, L: LinearForm<G::ScalarField>>(
     let L_tilde = linear_form.scale(new_challenge);
 
     let challenge_powers = get_n_powers(challenge.clone(), Ps.len());
-    let challenge_powers_repr = cfg_iter!(challenge_powers)
-        .map(|c| c.into_repr())
-        .collect::<Vec<_>>();
-    let P = VariableBaseMSM::multi_scalar_mul(Ps, &challenge_powers_repr);
+    let P = variable_base_msm(Ps, &challenge_powers);
     let Y = challenge_powers
         .iter()
         .zip(ys.iter())
@@ -247,10 +232,7 @@ fn calculate_Q<G: AffineCurve>(
     new_challenge: &G::ScalarField,
 ) -> G::Projective {
     let challenge_powers = get_n_powers(challenge.clone(), Ps.len());
-    let challenge_powers_repr = cfg_iter!(challenge_powers)
-        .map(|c| c.into_repr())
-        .collect::<Vec<_>>();
-    let P = VariableBaseMSM::multi_scalar_mul(Ps, &challenge_powers_repr);
+    let P = variable_base_msm(Ps, &challenge_powers);
     let Y = challenge_powers
         .iter()
         .zip(ys.iter())
@@ -266,6 +248,7 @@ fn calculate_Q<G: AffineCurve>(
 mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
+    use ark_ec::msm::VariableBaseMSM;
     use ark_ec::PairingEngine;
     use ark_ff::Zero;
     use ark_std::{

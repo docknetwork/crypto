@@ -20,7 +20,8 @@ use crate::transforms::Homomorphism;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
-use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
+use dock_crypto_utils::{ec::batch_normalize_projective_into_affine, msm::variable_base_msm};
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -66,9 +67,8 @@ where
             (0..g.len()).map(|_| G::ScalarField::rand(rng)).collect()
         };
         let t = homomorphism.eval(&r).unwrap();
-        let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
 
-        let A_hat = VariableBaseMSM::multi_scalar_mul(g, &scalars);
+        let A_hat = variable_base_msm(g, &r);
         Ok(Self {
             r,
             A_hat: A_hat.into_affine(),
@@ -127,14 +127,8 @@ where
             // Split `f` into 2 halves, `f_l` will be the 1st half and `f_r` will be the 2nd
             let (f_l, f_r) = f.split_in_half();
 
-            let A = VariableBaseMSM::multi_scalar_mul(
-                &g_r,
-                &z.iter().map(|z| z.into_repr()).collect::<Vec<_>>(),
-            );
-            let B = VariableBaseMSM::multi_scalar_mul(
-                &g,
-                &z_r.iter().map(|z| z.into_repr()).collect::<Vec<_>>(),
-            );
+            let A = variable_base_msm(&g_r, &z);
+            let B = variable_base_msm(&g, &z_r);
             let a = f_r.eval(&z).unwrap();
             let b = f_l.eval(&z_r).unwrap();
 
@@ -334,9 +328,8 @@ where
         let all_challenges_product = challenge_products.remove(0);
 
         // `B_multiples` is of form [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2]
-        let B_multiples = challenge_products
-            .iter()
-            .zip(challenge_squares.iter())
+        let B_multiples = cfg_iter!(challenge_products)
+            .zip(cfg_iter!(challenge_squares))
             .map(|(c, c_sqr)| (*c * c_sqr).into_repr())
             .collect::<Vec<_>>();
 

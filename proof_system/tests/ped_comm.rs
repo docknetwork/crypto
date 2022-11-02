@@ -81,7 +81,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         vec![],
         context.clone(),
     );
-    assert!(proof_spec.is_valid());
+    proof_spec.validate().unwrap();
 
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
@@ -116,7 +116,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         vec![],
         context.clone(),
     );
-    assert!(proof_spec_invalid.is_valid());
+    proof_spec_invalid.validate().unwrap();
 
     let proof = ProofG1::new(
         &mut rng,
@@ -239,7 +239,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
         all_setup_params,
         context.clone(),
     );
-    assert!(proof_spec.is_valid());
+    proof_spec.validate().unwrap();
 
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 

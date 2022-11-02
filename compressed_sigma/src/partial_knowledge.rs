@@ -1,7 +1,6 @@
 //! Proof of partial knowledge protocol as described in section 4 of the paper "Compressing Proofs of k-Out-Of-n".
 //! Implements both for single witness DLs and DLs involving witness vector
 
-use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{One, PrimeField};
 use ark_poly::{
@@ -21,7 +20,9 @@ use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 use crate::utils::multiples_with_n_powers_of_i;
 
-use dock_crypto_utils::{ec::batch_normalize_projective_into_affine, poly::multiply_many_polys};
+use dock_crypto_utils::{
+    ec::batch_normalize_projective_into_affine, msm::variable_base_msm, poly::multiply_many_polys,
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -68,10 +69,7 @@ fn create_P<R: RngCore, G: AffineCurve>(
     h: &G,
 ) -> (G::ScalarField, G) {
     let gamma = G::ScalarField::rand(rng);
-    let P = VariableBaseMSM::multi_scalar_mul(
-        gs,
-        &cfg_iter!(y).map(|y| y.into_repr()).collect::<Vec<_>>(),
-    ) + h.mul(gamma.into_repr());
+    let P = variable_base_msm(gs, &y) + h.mul(gamma.into_repr());
     (gamma, P.into_affine())
 }
 
@@ -83,10 +81,7 @@ macro_rules! impl_homomorphism {
                 if x.len() < self.size() {
                     return Err(CompSigmaError::VectorTooShort);
                 }
-                let x_repr = cfg_iter!(x[..self.size()])
-                    .map(|t| t.into_repr())
-                    .collect::<Vec<_>>();
-                Ok(VariableBaseMSM::multi_scalar_mul(&self.0, &x_repr).into_affine())
+                Ok(variable_base_msm(&self.0, &x[..self.size()]).into_affine())
             }
 
             fn scale(&self, scalar: &$G::ScalarField) -> Self {
@@ -384,6 +379,7 @@ mod tests {
     use super::*;
     use crate::amortized_homomorphisms::*;
     use ark_bls12_381::{Bls12_381, G1Affine};
+    use ark_ec::msm::VariableBaseMSM;
     use ark_ec::PairingEngine;
     use ark_ff::{One, Zero};
     use ark_std::{

@@ -2,28 +2,23 @@
 //! This is for the relation R_{AMORHOM} where a many homomorphisms are applied over a single witness vector and
 //! there is a commitment to the witness vector.
 
-use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, ProjectiveCurve};
-use ark_ff::{One, PrimeField, Zero};
+use ark_ff::{One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{cfg_iter, vec, vec::Vec, UniformRand};
 use ark_std::{
     io::{Read, Write},
     marker::PhantomData,
-    ops::Add,
     rand::RngCore,
 };
+use ark_std::{vec, vec::Vec, UniformRand};
 use digest::Digest;
 
-use crate::error::CompSigmaError;
-use crate::transforms::Homomorphism;
-
-use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
+use dock_crypto_utils::{hashing_utils::field_elem_from_try_and_incr, msm::variable_base_msm};
 
 use crate::compressed_homomorphism;
+use crate::error::CompSigmaError;
+use crate::transforms::Homomorphism;
 use crate::utils::get_n_powers;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineCurve> {
@@ -93,10 +88,7 @@ impl<G: AffineCurve, F: Homomorphism<G::ScalarField, Output = G>> AmortizeHomomo
         ys: &[G],
         rho_powers: &[G::ScalarField],
     ) -> G::Projective {
-        let r = cfg_iter!(rho_powers[..ys.len()])
-            .map(|r| r.into_repr())
-            .collect::<Vec<_>>();
-        VariableBaseMSM::multi_scalar_mul(ys, &r)
+        variable_base_msm(ys, &rho_powers[..ys.len()])
     }
 
     /// Inner product of vectors `fs` and `rho_powers`.
@@ -136,9 +128,7 @@ where
             (0..g.len()).map(|_| G::ScalarField::rand(rng)).collect()
         };
         let t = f_rho.eval(&r).unwrap();
-        let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
-
-        let A = VariableBaseMSM::multi_scalar_mul(g, &scalars);
+        let A = variable_base_msm(g, &r);
         Ok(Self {
             r,
             A: A.into_affine(),
@@ -183,10 +173,9 @@ where
             return Err(CompSigmaError::VectorLenMismatch);
         }
 
-        let z_repr = cfg_iter!(self.z).map(|z| z.into_repr()).collect::<Vec<_>>();
         let challenge_repr = challenge.into_repr();
 
-        if VariableBaseMSM::multi_scalar_mul(g, &z_repr) != P.mul(challenge_repr).add_mixed(A) {
+        if variable_base_msm(g, &self.z) != P.mul(challenge_repr).add_mixed(A) {
             return Err(CompSigmaError::InvalidResponse);
         }
 

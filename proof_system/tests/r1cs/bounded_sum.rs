@@ -109,7 +109,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
         prover_setup_params,
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
 
     let mut witnesses = Witnesses::new();
     for i in 0..12 {
@@ -159,7 +159,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
         verifier_setup_params,
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
     proof.verify(verifier_proof_spec.clone(), None).unwrap();
     println!(
         "Verifying proof for bounded sum takes {:?}",

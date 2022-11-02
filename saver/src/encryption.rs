@@ -742,12 +742,7 @@ impl<E: PairingEngine> Ciphertext<E> {
         gens: &EncryptionGens<E>,
     ) -> crate::Result<()> {
         self.verify_commitment(ek, gens)?;
-        if saver_groth16::verify_proof(&ark_groth16::prepare_verifying_key(&snark_vk), proof, self)?
-        {
-            Ok(())
-        } else {
-            Err(SaverError::InvalidProof)
-        }
+        saver_groth16::verify_proof(&ark_groth16::prepare_verifying_key(&snark_vk), proof, self)
     }
 
     /// Same as `Self::verify_commitment_and_proof` but takes prepared encryption key and generators
@@ -760,11 +755,7 @@ impl<E: PairingEngine> Ciphertext<E> {
         gens: &PreparedEncryptionGens<E>,
     ) -> crate::Result<()> {
         self.verify_commitment_given_prepared(ek, gens)?;
-        if saver_groth16::verify_proof(snark_vk, proof, self)? {
-            Ok(())
-        } else {
-            Err(SaverError::InvalidProof)
-        }
+        saver_groth16::verify_proof(snark_vk, proof, self)
     }
 
     pub fn decrypt_given_groth16_vk(

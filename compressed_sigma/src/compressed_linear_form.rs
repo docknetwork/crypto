@@ -5,7 +5,7 @@ use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::{Field, One, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    cfg_into_iter, cfg_iter,
+    cfg_iter,
     io::{Read, Write},
     ops::{Add, MulAssign},
     rand::RngCore,
@@ -21,7 +21,7 @@ use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
-use dock_crypto_utils::msm::WindowTable;
+use dock_crypto_utils::msm::{variable_base_msm, WindowTable};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -66,9 +66,8 @@ where
         };
         let rho = G::ScalarField::rand(rng);
         let t = linear_form.eval(&r);
-        let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
         // h * rho is done separately to avoid copying g
-        let A_hat = VariableBaseMSM::multi_scalar_mul(g, &scalars).add(&h.mul(rho.into_repr()));
+        let A_hat = variable_base_msm(g, &r).add(&h.mul(rho.into_repr()));
         Ok(Self {
             r,
             rho,
@@ -147,16 +146,11 @@ where
             let (L_tilde_l, L_tilde_r) = L_tilde.split_in_half();
 
             // A = g_hat_r * z_hat_l + k * L_tilde_r(z_hat_l)
-            let A = VariableBaseMSM::multi_scalar_mul(
-                &g_hat_r,
-                &z_hat.iter().map(|z| z.into_repr()).collect::<Vec<_>>(),
-            ) + k_table.multiply(&L_tilde_r.eval(&z_hat));
+            let A = variable_base_msm(&g_hat_r, &z_hat) + k_table.multiply(&L_tilde_r.eval(&z_hat));
 
             // B = g_hat_l * z_hat_r + k * L_tilde_l(z_hat_r)
-            let B = VariableBaseMSM::multi_scalar_mul(
-                &g_hat,
-                &z_hat_r.iter().map(|z| z.into_repr()).collect::<Vec<_>>(),
-            ) + k_table.multiply(&L_tilde_l.eval(&z_hat_r));
+            let B =
+                variable_base_msm(&g_hat, &z_hat_r) + k_table.multiply(&L_tilde_l.eval(&z_hat_r));
 
             A.serialize(&mut bytes).unwrap();
             B.serialize(&mut bytes).unwrap();
@@ -278,11 +272,11 @@ where
         // Check if g_hat * [z'_0, z'_1] + k * L_tilde([z'_0, z'_1]) == Q
         g_hat.push(*k);
 
-        let mut scalars = vec![self.z_prime_0.into_repr(), self.z_prime_1.into_repr()];
+        let mut scalars = vec![self.z_prime_0, self.z_prime_1];
         let l_z = L_tilde.eval(&[self.z_prime_0, self.z_prime_1]);
-        scalars.push(l_z.into_repr());
+        scalars.push(l_z);
 
-        if VariableBaseMSM::multi_scalar_mul(&g_hat, &scalars) == Q {
+        if variable_base_msm(&g_hat, &scalars) == Q {
             Ok(())
         } else {
             Err(CompSigmaError::InvalidResponse)
@@ -339,21 +333,16 @@ where
         let all_challenges_product = challenge_products.remove(0);
 
         // `B_multiples` is of form [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2]
-        let B_multiples = challenge_products
-            .iter()
-            .zip(challenge_squares.iter())
+        let B_multiples = cfg_iter!(challenge_products)
+            .zip(cfg_iter!(challenge_squares))
             .map(|(c, c_sqr)| (*c * c_sqr).into_repr())
             .collect::<Vec<_>>();
 
         // Q' = A * [c_2*c_3*...*c_n, c_3*...*c_n, ..., c_{n-1}*c_n, c_n, 1] + B * [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*..*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Q * c_1^2*c_2*c_3*..*c_n
         // Set Q to Q*(c_1*c_2*c_3*...*c_n)
         Q.mul_assign(all_challenges_product);
-        let Q_prime = VariableBaseMSM::multi_scalar_mul(
-            &self.A,
-            &cfg_iter!(challenge_products)
-                .map(|c| c.into_repr())
-                .collect::<Vec<_>>(),
-        ) + VariableBaseMSM::multi_scalar_mul(&self.B, &B_multiples)
+        let Q_prime = variable_base_msm(&self.A, &challenge_products)
+            + VariableBaseMSM::multi_scalar_mul(&self.B, &B_multiples)
             + Q;
 
         let l_z = L_tilde.eval(&[self.z_prime_0, self.z_prime_1]);
@@ -362,13 +351,7 @@ where
         g_hat_multiples.push(l_z);
 
         // Check if g' * z' + k * L'(z') == Q'
-        if VariableBaseMSM::multi_scalar_mul(
-            &g_hat,
-            &cfg_iter!(g_hat_multiples)
-                .map(|g| g.into_repr())
-                .collect::<Vec<_>>(),
-        ) == Q_prime
-        {
+        if variable_base_msm(&g_hat, &g_hat_multiples) == Q_prime {
             Ok(())
         } else {
             Err(CompSigmaError::InvalidResponse)
@@ -466,11 +449,7 @@ mod tests {
             let h = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
             let k = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
 
-            let P = (VariableBaseMSM::multi_scalar_mul(
-                &g,
-                &x.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-            ) + h.mul(gamma.into_repr()))
-            .into_affine();
+            let P = (variable_base_msm(&g, &x) + h.mul(gamma.into_repr())).into_affine();
             let y = linear_form.eval(&x);
 
             let rand_comm = RandomCommitment::new(&mut rng, &g, &h, &linear_form, None).unwrap();

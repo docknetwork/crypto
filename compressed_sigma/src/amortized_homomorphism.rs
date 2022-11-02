@@ -13,11 +13,13 @@ use ark_std::{
 };
 use digest::Digest;
 
+use dock_crypto_utils::msm::variable_base_msm;
+
 use crate::compressed_homomorphism;
 use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
-
 use crate::utils::{amortized_response, get_n_powers};
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -62,8 +64,7 @@ where
             (0..max_size).map(|_| G::ScalarField::rand(rng)).collect()
         };
         let t = f.eval(&r).unwrap();
-        let scalars = cfg_iter!(r).map(|b| b.into_repr()).collect::<Vec<_>>();
-        let A = VariableBaseMSM::multi_scalar_mul(g, &scalars);
+        let A = variable_base_msm(g, &r);
         Ok(Self {
             max_size,
             r,
