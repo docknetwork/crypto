@@ -8,6 +8,7 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 pub enum BBSPlusError {
+    CannotInvert0,
     NoMessageToSign,
     MessageCountIncompatibleWithSigParams(usize, usize),
     InvalidMessageIdx(usize),

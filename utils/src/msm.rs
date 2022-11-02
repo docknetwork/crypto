@@ -1,8 +1,9 @@
-use ark_ec::msm::FixedBaseMSM;
-use ark_ec::ProjectiveCurve;
+use ark_ec::msm::{FixedBaseMSM, VariableBaseMSM};
+use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
+    cfg_iter,
     fmt::Debug,
     io::{Read, Write},
     vec::Vec,
@@ -11,6 +12,9 @@ use ark_std::{
 use crate::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Use when same elliptic curve point is to be multiplied by several scalars.
 #[serde_as]
@@ -64,6 +68,20 @@ pub fn multiply_field_elems_with_same_group_elem<G: ProjectiveCurve>(
     let scalar_size = G::ScalarField::size_in_bits();
     let table = WindowTable::new(scalar_size, elements.len(), group_elem);
     table.multiply_many(elements)
+}
+
+pub fn variable_base_msm<G: AffineCurve>(bases: &[G], scalars: &[G::ScalarField]) -> G::Projective {
+    let s = cfg_iter!(scalars)
+        .map(|b| b.into_repr())
+        .collect::<Vec<_>>();
+    VariableBaseMSM::multi_scalar_mul(bases, &s)
+}
+
+pub fn variable_base_msm_with_bigint<G: AffineCurve>(
+    bases: &[G],
+    scalars: &[<G::ScalarField as PrimeField>::BigInt],
+) -> G::Projective {
+    VariableBaseMSM::multi_scalar_mul(bases, &scalars)
 }
 
 #[cfg(test)]

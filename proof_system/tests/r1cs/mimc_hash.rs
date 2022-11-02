@@ -113,7 +113,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -147,7 +147,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
     proof
         .clone()
         .verify(verifier_proof_spec.clone(), None)
@@ -174,6 +174,6 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec_1.is_valid());
+    verifier_proof_spec_1.validate().unwrap();
     assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
 }

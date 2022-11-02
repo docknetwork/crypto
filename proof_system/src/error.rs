@@ -58,6 +58,10 @@ pub enum ProofSystemError {
     IncompatibleR1CSSetupParamAtIndex(usize),
     CircomError(CircomError),
     R1CSInsufficientPrivateInputs(usize, usize),
+    InvalidWitnessEquality,
+    /// Witness is being used a zero knowledge proof (bound check, accumulator, etc) while also being
+    /// revealed. This shouldn't be the case, ever.
+    WitnessAlreadyBeingRevealed(usize, usize),
 }
 
 impl From<SchnorrError> for ProofSystemError {

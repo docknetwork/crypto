@@ -230,7 +230,7 @@ macro_rules! impl_signature_alg {
 
                 let e = E::Fr::rand(rng);
                 // 1/(e+x)
-                let e_plus_x_inv = (e + sk.0).inverse().unwrap();
+                let e_plus_x_inv = (e + sk.0).inverse().ok_or(BBSPlusError::CannotInvert0)?;
 
                 // {commitment + b} * {1/(e+x)}
                 let commitment_plus_b = b.add_mixed(commitment);

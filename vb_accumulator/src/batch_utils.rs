@@ -4,14 +4,13 @@
 //! Utilities for batch updates to the accumulators and witnesses.
 
 use crate::setup::SecretKey;
-use ark_ec::msm::VariableBaseMSM;
 use ark_ec::AffineCurve;
-use ark_ff::{batch_inversion, One, PrimeField, Zero};
+use ark_ff::{batch_inversion, PrimeField, Zero};
 use ark_poly::polynomial::{univariate::DensePolynomial, UVPolynomial};
 use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    cfg_into_iter, cfg_iter,
+    cfg_iter,
     fmt::Debug,
     io::{Read, Write},
     iter::{IntoIterator, Iterator},
@@ -28,6 +27,7 @@ use dock_crypto_utils::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+use dock_crypto_utils::msm::variable_base_msm;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -438,12 +438,7 @@ where
     ) -> G::Projective {
         let powers_of_y = Self::scaled_powers_of_y(y, scalar, self.len());
         // <powers_of_y, omega>
-        VariableBaseMSM::multi_scalar_mul(
-            &self.0,
-            &cfg_into_iter!(powers_of_y)
-                .map(|y| y.into_repr())
-                .collect::<Vec<_>>(),
-        )
+        variable_base_msm(&self.0, &powers_of_y)
     }
 
     /// Return [`scalar`*1, `scalar`*`y`, `scalar`*`y^2`, `scalar`*`y^3`, ..., `scalar`*`y^{n-1}`]
@@ -452,19 +447,14 @@ where
         scalar: &G::ScalarField,
         n: usize,
     ) -> Vec<G::ScalarField> {
-        let mut powers_of_y = Vec::with_capacity(n);
+        let mut powers = Vec::with_capacity(n);
         if n > 0 {
-            powers_of_y.push(G::ScalarField::one());
+            powers.push(scalar.clone());
         }
-        if n > 1 {
-            powers_of_y.push(y.clone());
+        for i in 1..n {
+            powers.push(powers[i - 1] * y);
         }
-        for i in 2..n {
-            powers_of_y.push(powers_of_y[i - 1] * y);
-        }
-        cfg_into_iter!(powers_of_y)
-            .map(|y| y * scalar)
-            .collect::<Vec<_>>()
+        powers
     }
 
     /// Scale the omega vector by the given `scalar`

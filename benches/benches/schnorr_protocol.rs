@@ -1,5 +1,4 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::msm::VariableBaseMSM;
 use ark_ec::PairingEngine;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::PrimeField;
@@ -74,11 +73,7 @@ macro_rules! bench_vector {
                 .into_iter()
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<Vec<_>>();
-            let y = VariableBaseMSM::multi_scalar_mul(
-                &bases,
-                &witnesses.iter().map(|w| w.into_repr()).collect::<Vec<_>>(),
-            )
-            .into_affine();
+            let y = variable_base_msm(&bases, &witnesses).into_affine();
             bases_vec.push(bases);
             witnesses_vec.push(witnesses);
             y_vec.push(y);

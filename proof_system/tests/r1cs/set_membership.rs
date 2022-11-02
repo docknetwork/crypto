@@ -76,7 +76,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -110,7 +110,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
     proof.verify(verifier_proof_spec.clone(), None).unwrap();
 
     // -------------------------------------------------------------------------------------- //
@@ -150,6 +150,6 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
     proof.verify(verifier_proof_spec.clone(), None).unwrap();
 }

@@ -106,7 +106,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         vec![],
         None,
     );
-    assert!(prover_proof_spec.is_valid());
+    prover_proof_spec.validate().unwrap();
 
     let start = Instant::now();
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
@@ -159,7 +159,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
 
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
@@ -204,7 +204,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         vec![],
         None,
     );
-    assert!(prover_proof_spec.is_valid());
+    prover_proof_spec.validate().unwrap();
 
     let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
 
@@ -214,7 +214,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
     assert!(proof.verify(verifier_proof_spec.clone(), None).is_err());
 
     // Verifiably encrypt a message which was not signed
@@ -227,13 +227,13 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
 
     let prover_proof_spec =
         ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
-    assert!(prover_proof_spec.is_valid());
+    prover_proof_spec.validate().unwrap();
 
     let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses_wrong, None).unwrap();
 
     let verifier_proof_spec =
         ProofSpec::new(verifier_statements.clone(), meta_statements, vec![], None);
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
     assert!(proof.verify(verifier_proof_spec.clone(), None).is_err());
 }
 
@@ -314,7 +314,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
             prover_setup_params,
             None,
         );
-        assert!(prover_proof_spec.is_valid());
+        prover_proof_spec.validate().unwrap();
         test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
         let mut witnesses = Witnesses::new();
@@ -381,7 +381,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
             verifier_setup_params,
             None,
         );
-        assert!(verifier_proof_spec.is_valid());
+        verifier_proof_spec.validate().unwrap();
         test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
         let start = Instant::now();
@@ -598,7 +598,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             prover_setup_params,
             None,
         );
-        assert!(prover_proof_spec.is_valid());
+        prover_proof_spec.validate().unwrap();
 
         test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
@@ -740,7 +740,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             verifier_setup_params,
             None,
         );
-        assert!(verifier_proof_spec.is_valid());
+        verifier_proof_spec.validate().unwrap();
         test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
         let start = Instant::now();
@@ -882,7 +882,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         prover_setup_params,
         None,
     );
-    assert!(prover_proof_spec.is_valid());
+    prover_proof_spec.validate().unwrap();
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
 
     let mut witnesses = Witnesses::new();
@@ -933,7 +933,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         verifier_setup_params,
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
     proof

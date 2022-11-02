@@ -118,9 +118,8 @@ use crate::batch_utils::Omega;
 use crate::batch_utils::{Poly_d, Poly_v_A, Poly_v_AD, Poly_v_D};
 use crate::error::VBAccumulatorError;
 use crate::setup::SecretKey;
-use ark_ec::msm::VariableBaseMSM;
 
-use dock_crypto_utils::msm::WindowTable;
+use dock_crypto_utils::msm::{variable_base_msm, WindowTable};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -434,12 +433,7 @@ pub trait Witness<G: AffineCurve> {
             }
         }
         // <powers_of_y, omega> * 1/d_D(x)
-        let y_omega_ip = VariableBaseMSM::multi_scalar_mul(
-            &bases,
-            &cfg_into_iter!(scalars)
-                .map(|s: G::ScalarField| s.into_repr())
-                .collect::<Vec<_>>(),
-        );
+        let y_omega_ip = variable_base_msm(&bases, &scalars);
 
         // // Add all omega_t vectors
         // let mut final_omega = Vec::<G::Projective>::with_capacity(max_omega_size);

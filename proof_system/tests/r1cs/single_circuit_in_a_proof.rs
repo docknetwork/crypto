@@ -84,7 +84,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
     test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
 
     let mut witnesses = Witnesses::new();
@@ -127,7 +127,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
 
     test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
 
@@ -156,7 +156,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec_1.is_valid());
+    verifier_proof_spec_1.validate().unwrap();
     assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
 
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
@@ -174,7 +174,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover_1.is_valid());
+    proof_spec_prover_1.validate().unwrap();
 
     let proof = ProofG1::new(
         &mut rng,
@@ -190,7 +190,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         vec![],
         None,
     );
-    assert!(proof_spec_verifier_2.is_valid());
+    proof_spec_verifier_2.validate().unwrap();
     assert!(proof.verify(proof_spec_verifier_2.clone(), None).is_err());
 }
 
@@ -275,7 +275,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
             vec![],
             None,
         );
-        assert!(proof_spec_prover.is_valid());
+        proof_spec_prover.validate().unwrap();
         test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
 
         let mut witnesses = Witnesses::new();
@@ -313,7 +313,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
             vec![],
             None,
         );
-        assert!(verifier_proof_spec.is_valid());
+        verifier_proof_spec.validate().unwrap();
 
         test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
 
@@ -339,7 +339,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
             vec![],
             None,
         );
-        assert!(verifier_proof_spec_1.is_valid());
+        verifier_proof_spec_1.validate().unwrap();
         assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
 
         // -----------------------------------------------------------------------------
@@ -363,7 +363,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
             vec![],
             None,
         );
-        assert!(proof_spec_prover_1.is_valid());
+        proof_spec_prover_1.validate().unwrap();
 
         let mut witnesses_1 = Witnesses::new();
         witnesses_1.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -395,7 +395,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
             vec![],
             None,
         );
-        assert!(verifier_proof_spec_2.is_valid());
+        verifier_proof_spec_2.validate().unwrap();
         proof_1
             .clone()
             .verify(verifier_proof_spec_2.clone(), None)
@@ -418,7 +418,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
             vec![],
             None,
         );
-        assert!(verifier_proof_spec_3.is_valid());
+        verifier_proof_spec_3.validate().unwrap();
         assert!(proof_1.verify(verifier_proof_spec_3.clone(), None).is_err());
     }
 
@@ -497,7 +497,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         prover_setup_params,
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -551,7 +551,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
     proof
         .clone()
         .verify(verifier_proof_spec.clone(), None)
@@ -581,7 +581,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec_1.is_valid());
+    verifier_proof_spec_1.validate().unwrap();
     assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
 }
 
@@ -656,7 +656,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
     test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
 
     let mut witnesses = Witnesses::new();
@@ -695,7 +695,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
 
     test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
 
@@ -721,7 +721,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec_1.is_valid());
+    verifier_proof_spec_1.validate().unwrap();
     assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
 
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
@@ -744,7 +744,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover_1.is_valid());
+    proof_spec_prover_1.validate().unwrap();
 
     let proof = ProofG1::new(
         &mut rng,
@@ -760,7 +760,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(proof_spec_verifier_2.is_valid());
+    proof_spec_verifier_2.validate().unwrap();
     assert!(proof.verify(proof_spec_verifier_2.clone(), None).is_err());
 
     // ---------------- Case 2 ----------------------------------------------
@@ -795,7 +795,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover.is_valid());
+    proof_spec_prover.validate().unwrap();
     test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
 
     let mut witnesses = Witnesses::new();
@@ -834,7 +834,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec.is_valid());
+    verifier_proof_spec.validate().unwrap();
 
     test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
 
@@ -860,7 +860,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(verifier_proof_spec_1.is_valid());
+    verifier_proof_spec_1.validate().unwrap();
     assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
 
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
@@ -878,7 +878,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(proof_spec_prover_1.is_valid());
+    proof_spec_prover_1.validate().unwrap();
 
     let proof = ProofG1::new(
         &mut rng,
@@ -894,6 +894,6 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         vec![],
         None,
     );
-    assert!(proof_spec_verifier_2.is_valid());
+    proof_spec_verifier_2.validate().unwrap();
     assert!(proof.verify(proof_spec_verifier_2.clone(), None).is_err());
 }

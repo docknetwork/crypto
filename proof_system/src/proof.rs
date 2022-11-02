@@ -63,9 +63,7 @@ where
         witnesses: Witnesses<E>,
         nonce: Option<Vec<u8>>,
     ) -> Result<Self, ProofSystemError> {
-        if !proof_spec.is_valid() {
-            return Err(ProofSystemError::InvalidProofSpec);
-        }
+        proof_spec.validate()?;
 
         // There should be a witness for each statement
         if proof_spec.statements.len() != witnesses.len() {
@@ -333,9 +331,7 @@ where
         proof_spec: ProofSpec<E, G>,
         nonce: Option<Vec<u8>>,
     ) -> Result<(), ProofSystemError> {
-        if !proof_spec.is_valid() {
-            return Err(ProofSystemError::InvalidProofSpec);
-        }
+        proof_spec.validate()?;
 
         // Number of statement proofs is less than number of statements which means some statements
         // are not satisfied.

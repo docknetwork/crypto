@@ -72,6 +72,7 @@ use ark_std::{
     vec::Vec,
     One, UniformRand,
 };
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use dock_crypto_utils::serde_utils::*;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 use serde::{Deserialize, Serialize};
@@ -175,7 +176,7 @@ where
 
         let r1 = E::Fr::rand(rng);
         let r2 = E::Fr::rand(rng);
-        let r3 = r1.inverse().unwrap();
+        let r3 = r1.inverse().ok_or(BBSPlusError::CannotInvert0)?;
 
         // b = (e+x) * A = g1 + h_0*s + sum(h_i*m_i) for all i in I
         let b = params.b(
@@ -374,9 +375,7 @@ where
         pk: &PublicKeyG2<E>,
         params: &SignatureParamsG1<E>,
     ) -> Result<(), BBSPlusError> {
-        if self.A_prime.is_zero() {
-            return Err(BBSPlusError::ZeroSignature);
-        }
+        self.verify_except_pairings(revealed_msgs, challenge, params)?;
 
         // Verify the randomized signature
         if !E::product_of_pairings(&[
@@ -390,7 +389,70 @@ where
         {
             return Err(BBSPlusError::PairingCheckFailed);
         }
+        Ok(())
+    }
 
+    pub fn verify_with_randomized_pairing_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::Fr>,
+        challenge: &E::Fr,
+        pk: &PublicKeyG2<E>,
+        params: &SignatureParamsG1<E>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), BBSPlusError> {
+        self.verify_except_pairings(revealed_msgs, challenge, params)?;
+        pairing_checker.add_sources(self.A_prime, pk.0, self.A_bar, params.g2);
+        Ok(())
+    }
+
+    /// For the verifier to independently calculate the challenge
+    pub fn challenge_contribution<W: Write>(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::Fr>,
+        params: &SignatureParamsG1<E>,
+        writer: W,
+    ) -> Result<(), BBSPlusError> {
+        PoKOfSignatureG1Protocol::compute_challenge_contribution(
+            &self.A_prime,
+            &self.A_bar,
+            &self.d,
+            &self.T1,
+            &self.T2,
+            revealed_msgs,
+            params,
+            writer,
+        )
+    }
+
+    /// Get the response from post-challenge phase of the Schnorr protocol for the given message index
+    /// `msg_idx`. Used when comparing message equality
+    pub fn get_resp_for_message(
+        &self,
+        msg_idx: usize,
+        revealed_msg_ids: &BTreeSet<usize>,
+    ) -> Result<&E::Fr, BBSPlusError> {
+        // Revealed messages are not part of Schnorr protocol
+        if revealed_msg_ids.contains(&msg_idx) {
+            return Err(BBSPlusError::InvalidMsgIdxForResponse(msg_idx));
+        }
+        // Adjust message index as the revealed messages are not part of the Schnorr protocol
+        let mut adjusted_idx = msg_idx;
+        for i in revealed_msg_ids {
+            if *i < msg_idx {
+                adjusted_idx -= 1;
+            }
+        }
+        // 2 added to the index, since 0th and 1st index are reserved for `s'` and `r2`
+        let r = self.sc_resp_2.get_response(2 + adjusted_idx)?;
+        Ok(r)
+    }
+
+    pub fn verify_schnorr_proofs(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::Fr>,
+        challenge: &E::Fr,
+        params: &SignatureParamsG1<E>,
+    ) -> Result<(), BBSPlusError> {
         // Verify the 1st Schnorr proof
         let bases_1 = [self.A_prime, params.h_0];
         // A_bar - d
@@ -441,46 +503,18 @@ where
         Ok(())
     }
 
-    /// For the verifier to independently calculate the challenge
-    pub fn challenge_contribution<W: Write>(
+    /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this
+    /// protocol or others) and the pairing equations are combined in a randomized pairing check.
+    fn verify_except_pairings(
         &self,
         revealed_msgs: &BTreeMap<usize, E::Fr>,
+        challenge: &E::Fr,
         params: &SignatureParamsG1<E>,
-        writer: W,
     ) -> Result<(), BBSPlusError> {
-        PoKOfSignatureG1Protocol::compute_challenge_contribution(
-            &self.A_prime,
-            &self.A_bar,
-            &self.d,
-            &self.T1,
-            &self.T2,
-            revealed_msgs,
-            params,
-            writer,
-        )
-    }
-
-    /// Get the response from post-challenge phase of the Schnorr protocol for the given message index
-    /// `msg_idx`. Used when comparing message equality
-    pub fn get_resp_for_message(
-        &self,
-        msg_idx: usize,
-        revealed_msg_ids: &BTreeSet<usize>,
-    ) -> Result<&E::Fr, BBSPlusError> {
-        // Revealed messages are not part of Schnorr protocol
-        if revealed_msg_ids.contains(&msg_idx) {
-            return Err(BBSPlusError::InvalidMsgIdxForResponse(msg_idx));
+        if self.A_prime.is_zero() {
+            return Err(BBSPlusError::ZeroSignature);
         }
-        // Adjust message index as the revealed messages are not part of the Schnorr protocol
-        let mut adjusted_idx = msg_idx;
-        for i in revealed_msg_ids {
-            if *i < msg_idx {
-                adjusted_idx -= 1;
-            }
-        }
-        // 2 added to the index, since 0th and 1st index are reserved for `s'` and `r2`
-        let r = self.sc_resp_2.get_response(2 + adjusted_idx)?;
-        Ok(r)
+        self.verify_schnorr_proofs(revealed_msgs, challenge, params)
     }
 }
 
@@ -1033,5 +1067,95 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_PoK_multiple_sigs_with_randomized_pairing_check() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let message_count = 5;
+        let params =
+            SignatureParamsG1::<Bls12_381>::new::<Blake2b>("test".as_bytes(), message_count);
+        let keypair = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params);
+
+        let sig_count = 10;
+        let mut msgs = vec![];
+        let mut sigs = vec![];
+        let mut chal_bytes_prover = vec![];
+        let mut poks = vec![];
+        let mut proofs = vec![];
+        for i in 0..sig_count {
+            msgs.push(
+                (0..message_count)
+                    .into_iter()
+                    .map(|_| Fr::rand(&mut rng))
+                    .collect::<Vec<Fr>>(),
+            );
+            sigs.push(
+                SignatureG1::<Bls12_381>::new(&mut rng, &msgs[i], &keypair.secret_key, &params)
+                    .unwrap(),
+            );
+            let pok = PoKOfSignatureG1Protocol::init(
+                &mut rng,
+                &sigs[i],
+                &params,
+                &msgs[i],
+                BTreeMap::new(),
+                BTreeSet::new(),
+            )
+            .unwrap();
+            pok.challenge_contribution(&BTreeMap::new(), &params, &mut chal_bytes_prover)
+                .unwrap();
+            poks.push(pok);
+        }
+
+        let challenge_prover = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_prover);
+
+        for pok in poks {
+            proofs.push(pok.gen_proof(&challenge_prover).unwrap());
+        }
+
+        let mut chal_bytes_verifier = vec![];
+
+        for proof in &proofs {
+            proof
+                .challenge_contribution(&BTreeMap::new(), &params, &mut chal_bytes_verifier)
+                .unwrap();
+        }
+
+        let challenge_verifier =
+            compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_verifier);
+
+        let start = Instant::now();
+        for proof in proofs.clone() {
+            proof
+                .verify(
+                    &BTreeMap::new(),
+                    &challenge_verifier,
+                    &keypair.public_key,
+                    &params,
+                )
+                .unwrap();
+        }
+        println!("Time to verify {} sigs: {:?}", sig_count, start.elapsed());
+
+        let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
+        let start = Instant::now();
+        for proof in proofs.clone() {
+            proof
+                .verify_with_randomized_pairing_checker(
+                    &BTreeMap::new(),
+                    &challenge_verifier,
+                    &keypair.public_key,
+                    &params,
+                    &mut pairing_checker,
+                )
+                .unwrap();
+        }
+        assert!(pairing_checker.verify());
+        println!(
+            "Time to verify {} sigs using randomized pairing checker: {:?}",
+            sig_count,
+            start.elapsed()
+        );
     }
 }

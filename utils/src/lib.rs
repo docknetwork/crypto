@@ -8,3 +8,4 @@ pub mod ff;
 pub mod hashing_utils;
 pub mod msm;
 pub mod poly;
+pub mod randomized_pairing_check;
