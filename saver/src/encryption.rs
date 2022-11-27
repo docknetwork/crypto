@@ -14,21 +14,17 @@ use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{One, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::ops::Add;
-use ark_std::{
-    io::{Read, Write},
-    marker::PhantomData,
-    ops::Neg,
-    rand::RngCore,
-    vec,
-    vec::Vec,
-    UniformRand,
-};
+use ark_std::{io::{Read, Write}, marker::PhantomData, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand, cfg_into_iter, cfg_iter};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::utils::CHUNK_TYPE;
-use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
+use dock_crypto_utils::ec::{batch_normalize_projective_into_affine, pairing_product_with_g2_prepared};
+use dock_crypto_utils::ff::non_zero_random;
 use dock_crypto_utils::serde_utils::*;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Ciphertext used with Groth16
 #[serde_as]
@@ -224,8 +220,29 @@ impl<E: PairingEngine> Encryption<E> {
             .collect::<Vec<_>>();
         let circuit =
             BitsizeCheckCircuit::new(chunk_bit_size, None, Some(decomposed_message.clone()), true);
-        let proof = saver_groth16::create_proof(circuit, &r, snark_pk, &ek, rng).unwrap();
+        let proof = saver_groth16::create_proof(circuit, &r, snark_pk, &ek, rng)?;
         Ok((ct, r, proof))
+    }
+
+    pub fn rerandomize_ciphertext_and_proof<R: RngCore>(
+        ciphertext: Ciphertext<E>,
+        proof: ark_groth16::Proof<E>,
+        snark_vk: &ark_groth16::VerifyingKey<E>,
+        ek: &EncryptionKey<E>,
+        rng: &mut R,
+    ) -> crate::Result<(Ciphertext<E>, E::Fr, ark_groth16::Proof<E>)> {
+        let r_prime = non_zero_random::<E::Fr, R>(rng);
+        let r_prime_repr = r_prime.into_repr();
+        let xr = ek.X_0.mul(r_prime_repr).add_mixed(&ciphertext.X_r).into_affine();
+        let enc = cfg_into_iter!(ciphertext.enc_chunks).zip(cfg_iter!(ek.X)).map(|(c, x)| x.mul(r_prime_repr).add_mixed(&c)).collect::<Vec<_>>();
+        let comm = ek.P_1.mul(r_prime_repr).add_mixed(&ciphertext.commitment).into_affine();
+        let proof = saver_groth16::randomize_proof(proof, &r_prime, snark_vk, &ek, rng)?;
+        let ct = Ciphertext {
+            X_r: xr,
+            commitment: comm,
+            enc_chunks: batch_normalize_projective_into_affine(enc),
+        };
+        Ok((ct, r_prime, proof))
     }
 
     /// Same as `Self::encrypt` but takes the SNARK verification key instead of the generators used for Elgamal encryption
@@ -418,19 +435,56 @@ impl<E: PairingEngine> Encryption<E> {
         ek: &PreparedEncryptionKey<E>,
         gens: &PreparedEncryptionGens<E>,
     ) -> crate::Result<()> {
-        if c.len() != ek.supported_chunks_count()? as usize {
+        let expected_count = ek.supported_chunks_count()? as usize;
+        if c.len() != expected_count {
             return Err(SaverError::IncompatibleEncryptionKey(
                 c.len(),
-                ek.supported_chunks_count()? as usize,
+                expected_count,
             ));
         }
-        let mut product = vec![];
-        product.push(((*c_0).into(), ek.Z[0].clone()));
-        for i in 1..ek.Z.len() {
-            product.push((c[i - 1].into(), ek.Z[i].clone()));
+
+        let (a, b) = (Self::get_g1_for_ciphertext_commitment_pairing_checks(c_0, c, commitment), Self::get_g2_for_ciphertext_commitment_pairing_checks(ek, gens));
+        if pairing_product_with_g2_prepared::<E>(&a, &b).is_one() {
+            Ok(())
+        } else {
+            return Err(SaverError::InvalidCommitment);
         }
-        product.push((commitment.neg().into(), gens.H.clone()));
-        if E::product_of_pairings(&product).is_one() {
+    }
+
+    pub fn verify_commitments_in_batch(
+        ciphertexts: &[Ciphertext<E>],
+        r_powers: &[E::Fr],
+        ek: &EncryptionKey<E>,
+        gens: &EncryptionGens<E>,
+    ) -> crate::Result<()> {
+        Self::verify_commitments_in_batch_given_prepared(
+            ciphertexts,
+            r_powers,
+            &ek.prepared(),
+            &gens.prepared(),
+        )
+    }
+
+    pub fn verify_commitments_in_batch_given_prepared(
+        ciphertexts: &[Ciphertext<E>],
+        r_powers: &[E::Fr],
+        ek: &PreparedEncryptionKey<E>,
+        gens: &PreparedEncryptionGens<E>,
+    ) -> crate::Result<()> {
+        assert_eq!(r_powers.len(), ciphertexts.len());
+        let expected_count = ek.supported_chunks_count()? as usize;
+        for c in ciphertexts {
+            if c.enc_chunks.len() != expected_count {
+                return Err(SaverError::IncompatibleEncryptionKey(
+                    c.enc_chunks.len(),
+                    expected_count,
+                ));
+            }
+        }
+
+        let a = Self::get_g1_for_ciphertext_commitments_in_batch_pairing_checks(ciphertexts, r_powers);
+        let b = Self::get_g2_for_ciphertext_commitment_pairing_checks(ek, gens);
+        if pairing_product_with_g2_prepared::<E>(&a, &b).is_one() {
             Ok(())
         } else {
             return Err(SaverError::InvalidCommitment);
@@ -656,10 +710,11 @@ impl<E: PairingEngine> Encryption<E> {
         ek: &EncryptionKey<E>,
         g_i: &[E::G1Affine],
     ) -> crate::Result<(Vec<E::G1Affine>, E::Fr)> {
-        if message_chunks.len() != ek.supported_chunks_count()? as usize {
+        let expected_count = ek.supported_chunks_count()? as usize;
+        if message_chunks.len() != expected_count {
             return Err(SaverError::IncompatibleEncryptionKey(
                 message_chunks.len(),
-                ek.supported_chunks_count()? as usize,
+                expected_count,
             ));
         }
         if message_chunks.len() > g_i.len() {
@@ -672,8 +727,7 @@ impl<E: PairingEngine> Encryption<E> {
         let r_repr = r.into_repr();
         let mut ct = vec![];
         ct.push(ek.X_0.mul(r_repr));
-        let mut m = message_chunks
-            .into_iter()
+        let mut m = cfg_into_iter!(message_chunks)
             .map(|m_i| <E::Fr as PrimeField>::BigInt::from(m_i as u64))
             .collect::<Vec<_>>();
         for i in 0..ek.X.len() {
@@ -728,6 +782,64 @@ impl<E: PairingEngine> Encryption<E> {
         }
         Err(SaverError::CouldNotFindDiscreteLog)
     }
+
+    pub fn get_g1_for_ciphertext_commitment_pairing_checks(
+        c_0: &E::G1Affine,
+        c: &[E::G1Affine],
+        commitment: &E::G1Affine,
+    ) -> Vec<E::G1Affine> {
+        let mut a = Vec::with_capacity(c.len() + 2);
+        a.push((*c_0).into());
+        for i in 0..c.len() {
+            a.push(c[i].into());
+        }
+        a.push(commitment.neg().into());
+        a
+    }
+
+    pub fn get_g1_for_ciphertext_commitments_in_batch_pairing_checks(
+        ciphertexts: &[Ciphertext<E>],
+        r_powers: &[E::Fr],
+    ) -> Vec<E::G1Affine> {
+        let mut a = Vec::with_capacity(ciphertexts[0].enc_chunks.len() + 2);
+        let num = r_powers.len();
+        let r_powers_repr = cfg_iter!(r_powers).map(|r| r.into_repr()).collect::<Vec<_>>();
+
+        let mut bases = vec![];
+        for i in 0..num {
+            bases.push(ciphertexts[i].X_r);
+        }
+        a.push(VariableBaseMSM::multi_scalar_mul(&bases, &r_powers_repr));
+
+        for j in 0..ciphertexts[0].enc_chunks.len() {
+            let mut bases = vec![];
+            for i in 0..num {
+                bases.push(ciphertexts[i].enc_chunks[j]);
+            }
+            a.push(VariableBaseMSM::multi_scalar_mul(&bases, &r_powers_repr));
+        }
+
+        let mut bases = vec![];
+        for i in 0..num {
+            bases.push(ciphertexts[i].commitment);
+        }
+        a.push(VariableBaseMSM::multi_scalar_mul(&bases, &r_powers_repr).neg());
+        batch_normalize_projective_into_affine(a)
+    }
+
+    pub fn get_g2_for_ciphertext_commitment_pairing_checks(
+        ek: &PreparedEncryptionKey<E>,
+        gens: &PreparedEncryptionGens<E>,
+    ) -> Vec<E::G2Prepared> {
+        let mut b = Vec::with_capacity(ek.Z.len() + 1);
+        b.push(ek.Z[0].clone());
+        for i in 1..ek.Z.len() {
+            b.push(ek.Z[i].clone());
+        }
+        b.push(gens.H.clone());
+        b
+    }
+
 }
 
 impl<E: PairingEngine> Ciphertext<E> {
@@ -757,6 +869,7 @@ impl<E: PairingEngine> Ciphertext<E> {
         self.verify_commitment_given_prepared(ek, gens)?;
         saver_groth16::verify_proof(snark_vk, proof, self)
     }
+
 
     pub fn decrypt_given_groth16_vk(
         &self,
@@ -1142,7 +1255,7 @@ pub(crate) mod tests {
             }
 
             println!(
-                "Time taken for {} iterations and {} chunk size:",
+                "Time taken for {} iterations and {}-bit chunk size:",
                 count, chunk_bit_size
             );
             println!("Encryption {:?}", total_enc);
@@ -1163,6 +1276,50 @@ pub(crate) mod tests {
                 total_ver_dec_prep
             );
         }
+        check(4, 10);
+        check(8, 10);
+        check(16, 4);
+    }
+
+    #[test]
+    fn batch_commitment_verification() {
+        fn check(chunk_bit_size: u8, count: u8) {
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let (gens, g_i, _, ek, _) = enc_setup(chunk_bit_size, &mut rng);
+
+            let mut cts = vec![];
+
+            let mut total_ver_com = Duration::default();
+
+            for _ in 0..count {
+                let m = Fr::rand(&mut rng);
+                let (ct, _) = Encryption::encrypt(&mut rng, &m, &ek, &g_i, chunk_bit_size).unwrap();
+
+                let start = Instant::now();
+                ct.verify_commitment(&ek, &gens).unwrap();
+                total_ver_com += start.elapsed();
+
+                cts.push(ct);
+            }
+
+            let r = Fr::rand(&mut rng);
+            let mut r_powers = vec![Fr::one(); count as usize];
+            for i in 1..count as usize {
+                r_powers[i] = r_powers[i-1] * &r;
+            }
+
+            let start = Instant::now();
+            Encryption::verify_commitments_in_batch(&cts, &r_powers, &ek, &gens).unwrap();
+            let t = start.elapsed();
+
+            println!(
+                "Time taken for {} iterations and {}-bit chunk size:",
+                count, chunk_bit_size
+            );
+            println!("Verifying commitment {:?}", total_ver_com);
+            println!("Verifying commitments in batch {:?}", t);
+        }
+
         check(4, 10);
         check(8, 10);
         check(16, 10);

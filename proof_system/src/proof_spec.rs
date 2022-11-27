@@ -11,6 +11,7 @@ use ark_std::{
     vec::Vec,
 };
 use legogroth16::{
+    aggregation::srs::{ProverSRS, VerifierSRS},
     PreparedVerifyingKey as LegoPreparedVerifyingKey, VerifyingKey as LegoVerifyingKey,
 };
 use saver::prelude::{
@@ -19,6 +20,14 @@ use saver::prelude::{
     VerifyingKey as SaverVerifyingKey,
 };
 use serde::{Deserialize, Serialize};
+
+// TODO: Serialize snarkpack params
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SnarkpackSRS<E: PairingEngine> {
+    ProverSrs(ProverSRS<E>),
+    VerifierSrs(VerifierSRS<E>),
+}
 
 /// Describes the relations that need to proven. This is created independently by the prover and verifier and must
 /// be agreed upon and be same before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s.
@@ -35,6 +44,11 @@ pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
     /// the proof or the verifier's identity or some verifier-specific identity of the holder
     /// or all of the above combined.
     pub context: Option<Vec<u8>>,
+    pub aggregate_groth16: Option<BTreeSet<usize>>,
+    pub aggregate_legogroth16: Option<BTreeSet<usize>>,
+    // TODO: Remove this skip
+    #[serde(skip)]
+    pub snark_aggregation_srs: Option<SnarkpackSRS<E>>,
 }
 
 impl<E, G> ProofSpec<E, G>
@@ -53,6 +67,29 @@ where
             meta_statements,
             setup_params,
             context,
+            aggregate_groth16: None,
+            aggregate_legogroth16: None,
+            snark_aggregation_srs: None,
+        }
+    }
+
+    pub fn new_with_aggregation(
+        statements: Statements<E, G>,
+        meta_statements: MetaStatements,
+        setup_params: Vec<SetupParams<E, G>>,
+        context: Option<Vec<u8>>,
+        aggregate_groth16: Option<BTreeSet<usize>>,
+        aggregate_legogroth16: Option<BTreeSet<usize>>,
+        snark_aggregation_srs: Option<SnarkpackSRS<E>>,
+    ) -> Self {
+        Self {
+            statements,
+            meta_statements,
+            setup_params,
+            context,
+            aggregate_groth16,
+            aggregate_legogroth16,
+            snark_aggregation_srs,
         }
     }
 
@@ -69,6 +106,12 @@ where
     pub fn validate(&self) -> Result<(), ProofSystemError> {
         // Ensure that messages(s) being revealed are not used in a witness equality.
         let mut revealed_wit_refs = BTreeSet::new();
+
+        if (self.aggregate_groth16.is_some() || self.aggregate_legogroth16.is_some())
+            && self.snark_aggregation_srs.is_none()
+        {
+            return Err(ProofSystemError::SnarckpackSrsNotProvided);
+        }
 
         for (i, st) in self.statements.0.iter().enumerate() {
             match st {
@@ -266,6 +309,110 @@ where
             meta_statements: MetaStatements::new(),
             setup_params: Vec::new(),
             context: None,
+            aggregate_groth16: None,
+            aggregate_legogroth16: None,
+            snark_aggregation_srs: None,
+        }
+    }
+}
+
+mod serialization {
+    use super::*;
+
+    impl<E: PairingEngine> CanonicalSerialize for SnarkpackSRS<E> {
+        fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+            match self {
+                Self::ProverSrs(s) => {
+                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
+                }
+                Self::VerifierSrs(s) => {
+                    CanonicalSerialize::serialize(&1u8, &mut writer)?;
+                    CanonicalSerialize::serialize(s, &mut writer)
+                }
+            }
+        }
+
+        fn serialized_size(&self) -> usize {
+            match self {
+                Self::ProverSrs(s) => 0u8.serialized_size() + s.serialized_size(),
+                Self::VerifierSrs(s) => 1u8.serialized_size() + s.serialized_size(),
+            }
+        }
+
+        fn serialize_uncompressed<W: Write>(
+            &self,
+            mut writer: W,
+        ) -> Result<(), SerializationError> {
+            match self {
+                Self::ProverSrs(s) => {
+                    0u8.serialize_uncompressed(&mut writer)?;
+                    s.serialize_uncompressed(&mut writer)
+                }
+                Self::VerifierSrs(s) => {
+                    1u8.serialize_uncompressed(&mut writer)?;
+                    s.serialize_uncompressed(&mut writer)
+                }
+            }
+        }
+
+        fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+            match self {
+                Self::ProverSrs(s) => {
+                    0u8.serialize_unchecked(&mut writer)?;
+                    s.serialize_unchecked(&mut writer)
+                }
+                Self::VerifierSrs(s) => {
+                    1u8.serialize_unchecked(&mut writer)?;
+                    s.serialize_unchecked(&mut writer)
+                }
+            }
+        }
+
+        fn uncompressed_size(&self) -> usize {
+            match self {
+                Self::ProverSrs(s) => 0u8.uncompressed_size() + s.uncompressed_size(),
+                Self::VerifierSrs(s) => 1u8.uncompressed_size() + s.uncompressed_size(),
+            }
+        }
+    }
+
+    impl<E: PairingEngine> CanonicalDeserialize for SnarkpackSRS<E> {
+        fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
+            match t {
+                0u8 => Ok(Self::ProverSrs(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
+                1u8 => Ok(Self::VerifierSrs(CanonicalDeserialize::deserialize(
+                    &mut reader,
+                )?)),
+                _ => Err(SerializationError::InvalidData),
+            }
+        }
+
+        fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+            match u8::deserialize_uncompressed(&mut reader)? {
+                0u8 => Ok(Self::ProverSrs(
+                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                )),
+                1u8 => Ok(Self::VerifierSrs(
+                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                )),
+                _ => Err(SerializationError::InvalidData),
+            }
+        }
+
+        fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+            match u8::deserialize_unchecked(&mut reader)? {
+                0u8 => Ok(Self::ProverSrs(
+                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+                )),
+                1u8 => Ok(Self::VerifierSrs(
+                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+                )),
+                _ => Err(SerializationError::InvalidData),
+            }
         }
     }
 }

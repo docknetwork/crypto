@@ -2,15 +2,16 @@ use crate::error::ProofSystemError;
 use crate::statement_proof::{SaverProof, StatementProof};
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::PrimeField;
+use ark_ff::{One, PrimeField};
 use ark_groth16::{prepare_verifying_key, PreparedVerifyingKey, VerifyingKey};
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::RngCore;
 use ark_std::{collections::BTreeMap, io::Write, ops::Add, vec, vec::Vec, UniformRand};
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use saver::commitment::ChunkedCommitment;
 use saver::encryption::{Ciphertext, Encryption};
 use saver::keygen::PreparedEncryptionKey;
-use saver::prelude::{ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey};
+use saver::prelude::{ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, SaverError};
 use saver::setup::PreparedEncryptionGens;
 use saver::utils::decompose;
 
@@ -104,6 +105,7 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         let snark_proving_key = self
             .snark_proving_key
             .ok_or(ProofSystemError::SaverSnarkProvingKeyNotProvided)?;
+
         // Create ciphertext and the snark proof
         let (ciphertext, randomness_enc, proof) = Encryption::encrypt_with_proof(
             rng,
@@ -113,64 +115,57 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
             self.chunk_bit_size,
         )?;
 
-        // blinding used for `H` in both commitments
-        let h_blinding = E::Fr::rand(rng);
+        self.init_schnorr_protocols(
+            rng,
+            ck_comm_ct,
+            ck_comm_chunks,
+            ck_comm_combined,
+            message,
+            blinding_combined_message,
+            ciphertext,
+            randomness_enc,
+            proof,
+        )
+    }
 
-        // blinding used to prove knowledge of message in `comm_combined`. The caller of this method ensures
-        // that this will be same as the one used proving knowledge of the corresponding message in BBS+
-        // signature, thus allowing them to be proved equal.
-        let blinding_combined_message = if blinding_combined_message.is_none() {
-            E::Fr::rand(rng)
-        } else {
-            blinding_combined_message.unwrap()
+    pub fn init_with_ciphertext_and_proof<R: RngCore>(
+        &mut self,
+        rng: &mut R,
+        ck_comm_ct: &'a [E::G1Affine],
+        ck_comm_chunks: &'a [E::G1Affine],
+        ck_comm_combined: &'a [E::G1Affine],
+        message: E::Fr,
+        blinding_combined_message: Option<E::Fr>,
+        old_randomness: E::Fr,
+        ciphertext: Ciphertext<E>,
+        proof: ark_groth16::Proof<E>,
+    ) -> Result<(), ProofSystemError> {
+        if self.ciphertext.is_some() {
+            return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
         };
+        let snark_proving_key = self
+            .snark_proving_key
+            .ok_or(ProofSystemError::SaverSnarkProvingKeyNotProvided)?;
 
-        // Initialize the 3 Schnorr protocols
-
-        let comm_combined = self
-            .chunked_commitment_gens
-            .G
-            .mul(message.into_repr())
-            .add(&(self.chunked_commitment_gens.H.mul(h_blinding.into_repr())))
-            .into_affine();
-        let comm_chunks = ChunkedCommitment::<E::G1Affine>::get_commitment_given_commitment_key(
-            &message,
-            &h_blinding,
-            self.chunk_bit_size,
-            &ck_comm_chunks,
+        let (ciphertext, randomness_enc, proof) = Encryption::rerandomize_ciphertext_and_proof(
+            ciphertext,
+            proof,
+            &snark_proving_key.pk.vk,
+            self.encryption_key,
+            rng,
         )?;
 
-        let message_chunks = decompose(&message, self.chunk_bit_size)?
-            .into_iter()
-            .map(|m| E::Fr::from(m as u64))
-            .collect::<Vec<_>>();
-
-        // NOTE: value of id is dummy
-        let mut sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, ciphertext.commitment);
-        let mut sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, comm_chunks);
-        let mut sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, comm_combined);
-
-        let blindings_chunks = (0..message_chunks.len())
-            .map(|i| (i, E::Fr::rand(rng)))
-            .collect::<BTreeMap<usize, E::Fr>>();
-        let mut sp_ciphertext_wit = message_chunks.clone();
-        sp_ciphertext_wit.push(randomness_enc);
-        sp_ciphertext.init(rng, blindings_chunks.clone(), sp_ciphertext_wit)?;
-
-        let mut sp_chunks_wit = message_chunks.clone();
-        sp_chunks_wit.push(h_blinding);
-        sp_chunks.init(rng, blindings_chunks, sp_chunks_wit)?;
-
-        let mut blinding = BTreeMap::new();
-        blinding.insert(0, blinding_combined_message);
-        sp_combined.init(rng, blinding, vec![message, h_blinding])?;
-
-        self.ciphertext = Some(ciphertext);
-        self.snark_proof = Some(proof);
-        self.sp_ciphertext = Some(sp_ciphertext);
-        self.sp_chunks = Some(sp_chunks);
-        self.sp_combined = Some(sp_combined);
-        Ok(())
+        self.init_schnorr_protocols(
+            rng,
+            ck_comm_ct,
+            ck_comm_chunks,
+            ck_comm_combined,
+            message,
+            blinding_combined_message,
+            ciphertext,
+            old_randomness + randomness_enc,
+            proof,
+        )
     }
 
     pub fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ProofSystemError> {
@@ -266,6 +261,7 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
             &pvk,
             &pgens,
             &pek,
+            &mut None
         )
     }
 
@@ -279,10 +275,22 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         pvk: &PreparedVerifyingKey<E>,
         pgens: &PreparedEncryptionGens<E>,
         pek: &PreparedEncryptionKey<E>,
+        pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
-        proof
-            .ciphertext
-            .verify_commitment_and_proof_given_prepared(&proof.snark_proof, &pvk, &pek, &pgens)?;
+        match pairing_checker {
+            Some(c) => {
+                let expected_count = pek.supported_chunks_count()? as usize;
+                if proof.ciphertext.enc_chunks.len() != expected_count {
+                    return Err(SaverError::IncompatibleEncryptionKey(
+                        proof.ciphertext.enc_chunks.len(),
+                        expected_count,
+                    ).into());
+                }
+                let (a, b) = (Encryption::<E>::get_g1_for_ciphertext_commitment_pairing_checks(&proof.ciphertext.X_r, &proof.ciphertext.enc_chunks, &proof.ciphertext.commitment), Encryption::get_g2_for_ciphertext_commitment_pairing_checks(pek, pgens));
+                c.add_prepared_sources_and_target(&a, b, &E::Fqk::one())
+            }
+            None => proof.ciphertext.verify_commitment_and_proof_given_prepared(&proof.snark_proof, pvk, pek, pgens)?
+        }
 
         // NOTE: value of id is dummy
         let sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, proof.ciphertext.commitment);
@@ -352,5 +360,77 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         );
         let ck_comm_combined = vec![chunked_commitment_gens.G, chunked_commitment_gens.H];
         (ck_comm_chunks, ck_comm_combined)
+    }
+
+    fn init_schnorr_protocols<R: RngCore>(
+        &mut self,
+        rng: &mut R,
+        ck_comm_ct: &'a [E::G1Affine],
+        ck_comm_chunks: &'a [E::G1Affine],
+        ck_comm_combined: &'a [E::G1Affine],
+        message: E::Fr,
+        blinding_combined_message: Option<E::Fr>,
+        ciphertext: Ciphertext<E>,
+        randomness_enc: E::Fr,
+        proof: ark_groth16::Proof<E>,
+    ) -> Result<(), ProofSystemError> {
+        // blinding used for `H` in both commitments
+        let h_blinding = E::Fr::rand(rng);
+
+        // blinding used to prove knowledge of message in `comm_combined`. The caller of this method ensures
+        // that this will be same as the one used proving knowledge of the corresponding message in BBS+
+        // signature, thus allowing them to be proved equal.
+        let blinding_combined_message = if blinding_combined_message.is_none() {
+            E::Fr::rand(rng)
+        } else {
+            blinding_combined_message.unwrap()
+        };
+
+        // Initialize the 3 Schnorr protocols
+
+        let comm_combined = self
+            .chunked_commitment_gens
+            .G
+            .mul(message.into_repr())
+            .add(&(self.chunked_commitment_gens.H.mul(h_blinding.into_repr())))
+            .into_affine();
+        let comm_chunks = ChunkedCommitment::<E::G1Affine>::get_commitment_given_commitment_key(
+            &message,
+            &h_blinding,
+            self.chunk_bit_size,
+            &ck_comm_chunks,
+        )?;
+
+        let message_chunks = decompose(&message, self.chunk_bit_size)?
+            .into_iter()
+            .map(|m| E::Fr::from(m as u64))
+            .collect::<Vec<_>>();
+
+        // NOTE: value of id is dummy
+        let mut sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, ciphertext.commitment);
+        let mut sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, comm_chunks);
+        let mut sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, comm_combined);
+
+        let blindings_chunks = (0..message_chunks.len())
+            .map(|i| (i, E::Fr::rand(rng)))
+            .collect::<BTreeMap<usize, E::Fr>>();
+        let mut sp_ciphertext_wit = message_chunks.clone();
+        sp_ciphertext_wit.push(randomness_enc);
+        sp_ciphertext.init(rng, blindings_chunks.clone(), sp_ciphertext_wit)?;
+
+        let mut sp_chunks_wit = message_chunks.clone();
+        sp_chunks_wit.push(h_blinding);
+        sp_chunks.init(rng, blindings_chunks, sp_chunks_wit)?;
+
+        let mut blinding = BTreeMap::new();
+        blinding.insert(0, blinding_combined_message);
+        sp_combined.init(rng, blinding, vec![message, h_blinding])?;
+
+        self.ciphertext = Some(ciphertext);
+        self.snark_proof = Some(proof);
+        self.sp_ciphertext = Some(sp_ciphertext);
+        self.sp_chunks = Some(sp_chunks);
+        self.sp_combined = Some(sp_combined);
+        Ok(())
     }
 }

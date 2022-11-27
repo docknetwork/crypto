@@ -96,7 +96,7 @@ use crate::setup::{PublicKey, SetupParams};
 use crate::witness::{MembershipWitness, NonMembershipWitness};
 use ark_ec::wnaf::WnafContext;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{to_bytes, Field, PrimeField, SquareRootField, Zero};
+use ark_ff::{to_bytes, Field, PrimeField, SquareRootField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     fmt::Debug,
@@ -111,7 +111,9 @@ use schnorr_pok::error::SchnorrError;
 use schnorr_pok::SchnorrChallengeContributor;
 use zeroize::Zeroize;
 
+use dock_crypto_utils::ec::pairing_product;
 use dock_crypto_utils::msm::WindowTable;
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -688,7 +690,7 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         element: &E::Fr,
         element_blinding: Option<E::Fr>,
         witness: &E::G1Affine,
-        pairing_extra: Option<E::G1Affine>,
+        pairing_extra: Option<E::G1Projective>,
         pk: &PublicKey<E::G2Affine>,
         params: &SetupParams<E>,
         prk: &ProvingKey<E::G1Affine>,
@@ -730,50 +732,34 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
 
         // Compute R_E using a multi-pairing
         // R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho) * pairing_extra
-        // Here `pairing_extra` refers to `K * -r_v` and is used to for creating the pairing `e(K, P_tilde)^{-r_v} as e(K * {-r_v}, P_tilde)`
-        let mut E_C_times_r_y = E_C;
-        E_C_times_r_y *= r_y;
+        // Here `pairing_extra` refers to `K * -r_v` and is used to for creating the pairing `e(K, P_tilde)^{-r_v} as e(-r_v * K, P_tilde)` for non-membership proof
+        // Thus, R_E = e(r_y * E_C, params.P_tilde) * e((-r_delta_sigma - r_delta_rho) * prk.Z, params.P_tilde) * e((-r_sigma - r_rho) * prk.Z, Q_tilde) * e(-r_v * K, P_tilde)
+        // Further simplifying, R_E = e(r_y * E_C + (-r_delta_sigma - r_delta_rho) * prk.Z + -r_v * K, params.P_tilde) * e((-r_sigma - r_rho) * prk.Z, Q_tilde)
+
+        // r_y * E_C
+        let E_C_times_r_y = E_C.mul(r_y.into_repr());
+        // (-r_delta_sigma - r_delta_rho) * prk.Z
+        let z_p = Z_table.multiply(&(-r_delta_sigma - r_delta_rho));
+        let mut p = E_C_times_r_y + z_p;
+        // In case of non-membership add -r_v * K
+        if pairing_extra.is_some() {
+            p += pairing_extra.unwrap();
+        }
+
         let P_tilde_prepared = E::G2Prepared::from(params.P_tilde);
         let R_E = E::product_of_pairings(
             [
-                // e(E_C, params.P_tilde)^r_y = e(r_y * E_C, params.P_tilde)
-                (
-                    E::G1Prepared::from(E_C_times_r_y.into_affine()),
-                    P_tilde_prepared.clone(),
-                ),
-                // e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) = e((-r_delta_sigma - r_delta_rho) * prk.Z, params.P_tilde)
-                (
-                    E::G1Prepared::from(
-                        Z_table
-                            .multiply(&(-r_delta_sigma - r_delta_rho))
-                            .into_affine(),
-                    ),
-                    P_tilde_prepared.clone(),
-                ),
-                // e(prk.Z, Q_tilde)^(-r_sigma - r_rho) = e((-r_sigma - r_rho) * prk.Z, Q_tilde)
+                // e(r_y * E_C + (-r_delta_sigma - r_delta_rho) * prk.Z + -r_v * K, params.P_tilde)
+                (E::G1Prepared::from(p.into_affine()), P_tilde_prepared),
+                // e((-r_sigma - r_rho) * prk.Z, Q_tilde)
                 (
                     E::G1Prepared::from(Z_table.multiply(&(-r_sigma - r_rho)).into_affine()),
                     E::G2Prepared::from(pk.0),
                 ),
             ]
-            .iter()
-            .chain(
-                pairing_extra
-                    .map_or_else(
-                        || {
-                            [
-                                // To keep both arms of same size. `product_of_pairings` ignores tuples where any element is 0 so the result is not impacted
-                                (
-                                    E::G1Prepared::from(E::G1Affine::zero()),
-                                    E::G2Prepared::from(E::G2Affine::zero()),
-                                ),
-                            ]
-                        },
-                        |a| [(E::G1Prepared::from(a), P_tilde_prepared)],
-                    )
-                    .iter(),
-            ),
+            .iter(),
         );
+
         // R_sigma = r_sigma * prk.X
         let R_sigma = X_table.multiply(&r_sigma);
         // R_rho = r_rho * prk.Y
@@ -864,16 +850,107 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         randomized_witness: &RandomizedWitness<E::G1Affine>,
         schnorr_commit: &SchnorrCommit<E>,
         schnorr_response: &SchnorrResponse<E::Fr>,
-        pairing_extra: Option<[E::G1Affine; 2]>,
+        pairing_extra: Option<E::G1Projective>,
         accumulator_value: &E::G1Affine,
         challenge: &E::Fr,
         pk: &PublicKey<E::G2Affine>,
         params: &SetupParams<E>,
         prk: &ProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
-        // There are multiple multiplications with X, Y and Z which can be done in variable time so use wNAF.
-        // TODO: Since proving key is fixed, these tables can be created just once and stored.
+        let (p, q) = Self::verify_proof_except_pairings(
+            randomized_witness,
+            schnorr_commit,
+            schnorr_response,
+            pairing_extra,
+            accumulator_value,
+            challenge,
+            prk,
+        )?;
+        let R_E = pairing_product::<E>(&[p, q], &[params.P_tilde, pk.0]);
+        if R_E != schnorr_commit.R_E {
+            return Err(VBAccumulatorError::PairingResponseInvalid);
+        }
+
+        Ok(())
+    }
+
+    fn verify_proof_with_randomized_pairing_checker(
+        randomized_witness: &RandomizedWitness<E::G1Affine>,
+        schnorr_commit: &SchnorrCommit<E>,
+        schnorr_response: &SchnorrResponse<E::Fr>,
+        pairing_extra: Option<E::G1Projective>,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::Fr,
+        pk: &PublicKey<E::G2Affine>,
+        params: &SetupParams<E>,
+        prk: &ProvingKey<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        let (p, q) = Self::verify_proof_except_pairings(
+            randomized_witness,
+            schnorr_commit,
+            schnorr_response,
+            pairing_extra,
+            accumulator_value,
+            challenge,
+            prk,
+        )?;
+        pairing_checker.add_multiple_sources_and_target(
+            &[p, q],
+            &[params.P_tilde, pk.0],
+            &schnorr_commit.R_E,
+        );
+        Ok(())
+    }
+
+    fn verify_proof_except_pairings(
+        randomized_witness: &RandomizedWitness<E::G1Affine>,
+        schnorr_commit: &SchnorrCommit<E>,
+        schnorr_response: &SchnorrResponse<E::Fr>,
+        pairing_extra: Option<E::G1Projective>,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::Fr,
+        prk: &ProvingKey<E::G1Affine>,
+    ) -> Result<(E::G1Affine, E::G1Affine), VBAccumulatorError> {
+        let (context, X_table, Y_table, Z_table, T_sigma_table, T_rho_table, E_C_table) =
+            Self::get_tables(prk, randomized_witness);
+        Self::verify_schnorr_proofs(
+            schnorr_commit,
+            schnorr_response,
+            challenge,
+            &context,
+            &X_table,
+            &Y_table,
+            &T_sigma_table,
+            &T_rho_table,
+        )?;
+
+        Ok(Self::get_g1_for_pairing_checks(
+            schnorr_response,
+            pairing_extra,
+            accumulator_value,
+            challenge,
+            &context,
+            &E_C_table,
+            &Z_table,
+        ))
+    }
+
+    /// There are multiple multiplications with X, Y and Z which can be done in variable time so use wNAF.
+    fn get_tables(
+        prk: &ProvingKey<E::G1Affine>,
+        randomized_witness: &RandomizedWitness<E::G1Affine>,
+    ) -> (
+        WnafContext,
+        Vec<E::G1Projective>,
+        Vec<E::G1Projective>,
+        Vec<E::G1Projective>,
+        Vec<E::G1Projective>,
+        Vec<E::G1Projective>,
+        Vec<E::G1Projective>,
+    ) {
         let context = WnafContext::new(4);
+        // TODO: Since proving key is fixed, these tables can be created just once and stored.
         let X_table = context.table(prk.X.into_projective());
         let Y_table = context.table(prk.Y.into_projective());
         let Z_table = context.table(prk.Z.into_projective());
@@ -881,10 +958,29 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         let T_sigma_table = context.table(randomized_witness.T_sigma.into_projective());
         let T_rho_table = context.table(randomized_witness.T_rho.into_projective());
         let E_C_table = context.table(randomized_witness.E_C.into_projective());
+        (
+            context,
+            X_table,
+            Y_table,
+            Z_table,
+            T_sigma_table,
+            T_rho_table,
+            E_C_table,
+        )
+    }
 
-        // The verifier recomputes various `R_`s values given the responses from the proof and the challenge
-        // and compares them with the `R_`s from the proof for equality
-
+    /// The verifier recomputes various `R_`s values given the responses from the proof and the challenge
+    /// and compares them with the `R_`s from the proof for equality
+    fn verify_schnorr_proofs(
+        schnorr_commit: &SchnorrCommit<E>,
+        schnorr_response: &SchnorrResponse<E::Fr>,
+        challenge: &E::Fr,
+        context: &WnafContext,
+        X_table: &[E::G1Projective],
+        Y_table: &[E::G1Projective],
+        T_sigma_table: &[E::G1Projective],
+        T_rho_table: &[E::G1Projective],
+    ) -> Result<(), VBAccumulatorError> {
         // R_sigma = schnorr_response.s_sigma * prk.X - challenge * randomized_witness.T_sigma
         let mut R_sigma = context
             .mul_with_table(&X_table, &schnorr_response.s_sigma)
@@ -924,103 +1020,53 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         if R_delta_rho.into_affine() != schnorr_commit.R_delta_rho {
             return Err(VBAccumulatorError::DeltaRhoResponseInvalid);
         }
+        Ok(())
+    }
 
-        let P_tilde_prepared = E::G2Prepared::from(params.P_tilde);
-        let Q_tilde_prepared = E::G2Prepared::from(pk.0);
-
+    fn get_g1_for_pairing_checks(
+        schnorr_response: &SchnorrResponse<E::Fr>,
+        pairing_extra: Option<E::G1Projective>,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::Fr,
+        context: &WnafContext,
+        E_C_table: &[E::G1Projective],
+        Z_table: &[E::G1Projective],
+    ) -> (E::G1Affine, E::G1Affine) {
         // R_E = e(E_C, params.P_tilde)^s_y * e(prk.Z, params.P_tilde)^(-s_delta_sigma - s_delta_rho) * e(prk.Z, Q_tilde)^(-s_sigma - s_rho) * e(V, params.P_tilde)^-challenge * e(E_C, Q_tilde)^challenge * pairing_extra
-        // Here `pairing_extra` refers to `E_d * -challenge` and `K * -s_v` and is used to for creating the pairings `e(E_d, P_tilde)^challenge and `e(K, P_tilde)^{-s_v} as e(K * {-r_v}, P_tilde)`
-        let R_E = E::product_of_pairings(
-            [
-                // e(E_C, params.P_tilde)^s_y = e(s_y * E_C, params.P_tilde)
-                (
-                    E::G1Prepared::from(
-                        context
-                            .mul_with_table(&E_C_table, &schnorr_response.s_y)
-                            .unwrap()
-                            .into_affine(),
-                    ),
-                    P_tilde_prepared.clone(),
-                ),
-                // e(Z, params.P_tilde)^(-s_delta_sigma - s_delta_rho) = e((s_delta_sigma - s_delta_rho) * Z, params.P_tilde)
-                (
-                    E::G1Prepared::from(
-                        context
-                            .mul_with_table(
-                                &Z_table,
-                                &(-schnorr_response.s_delta_sigma - schnorr_response.s_delta_rho),
-                            )
-                            .unwrap()
-                            .into_affine(),
-                    ),
-                    P_tilde_prepared.clone(),
-                ),
-                // e(Z, Q_tilde)^(-s_sigma - s_rho) = e((s_sigma - s_rho) * Z, Q_tilde)
-                (
-                    E::G1Prepared::from(
-                        context
-                            .mul_with_table(
-                                &Z_table,
-                                &(-schnorr_response.s_sigma - schnorr_response.s_rho),
-                            )
-                            .unwrap()
-                            .into_affine(),
-                    ),
-                    Q_tilde_prepared.clone(),
-                ),
-                // e(V, params.P_tilde)^-challenge = e(-challenge * V, params.P_tilde)
-                (
-                    E::G1Prepared::from(
-                        accumulator_value
-                            .mul((-*challenge).into_repr())
-                            .into_affine(),
-                    ),
-                    P_tilde_prepared.clone(),
-                ),
-                // e(E_C, Q_tilde)^challenge = e(challenge * E_C, Q_tilde)
-                (
-                    E::G1Prepared::from(
-                        context
-                            .mul_with_table(&E_C_table, challenge)
-                            .unwrap()
-                            .into_affine(),
-                    ),
-                    Q_tilde_prepared,
-                ),
-            ]
-            .iter()
-            .chain(
-                pairing_extra
-                    .map_or_else(
-                        || {
-                            [
-                                // To keep both arms of same size. `product_of_pairings` ignores tuples where any element is 0 so the result is not impacted
-                                (
-                                    E::G1Prepared::from(E::G1Affine::zero()),
-                                    E::G2Prepared::from(E::G2Affine::zero()),
-                                ),
-                                (
-                                    E::G1Prepared::from(E::G1Affine::zero()),
-                                    E::G2Prepared::from(E::G2Affine::zero()),
-                                ),
-                            ]
-                        },
-                        |[a, b]| {
-                            [
-                                (E::G1Prepared::from(a), P_tilde_prepared.clone()),
-                                (E::G1Prepared::from(b), P_tilde_prepared),
-                            ]
-                        },
-                    )
-                    .iter(),
-            ),
-        );
+        // Here `pairing_extra` refers to `E_d * -challenge` and `K * -s_v` and is used to for creating the pairings `e(E_d, P_tilde)^challenge` as `e(challenge * E_d, P_tilde)` and `e(K, P_tilde)^{-s_v}` as `e(-s_v * K, P_tilde)`
+        // Thus, R_E = e(s_y * E_C, params.P_tilde) * e((s_delta_sigma - s_delta_rho) * Z, params.P_tilde) * e((s_sigma - s_rho) * Z, Q_tilde) * e(-challenge * V, params.P_tilde) * e(challenge * E_C, Q_tilde) * e(challenge * E_d, P_tilde) * e(-s_v * K, P_tilde)
+        // Further simplifying, R_E = e(s_y * E_C + (s_delta_sigma - s_delta_rho) * Z + -challenge * V + challenge * E_d + -s_v * K, params.P_tilde) * e((s_sigma - s_rho) * Z + challenge * E_C, Q_tilde)
 
-        if R_E != schnorr_commit.R_E {
-            return Err(VBAccumulatorError::PairingResponseInvalid);
+        // s_y * E_C
+        let E_C_p = context
+            .mul_with_table(&E_C_table, &schnorr_response.s_y)
+            .unwrap();
+        // (s_delta_sigma - s_delta_rho) * Z
+        let z_p = context
+            .mul_with_table(
+                &Z_table,
+                &(-schnorr_response.s_delta_sigma - schnorr_response.s_delta_rho),
+            )
+            .unwrap();
+        // -challenge * V
+        let a = accumulator_value.mul((-*challenge).into_repr());
+        let mut p = E_C_p + z_p + a;
+        // In case of non-membership add challenge * E_d + -s_v * K
+        if pairing_extra.is_some() {
+            p += pairing_extra.unwrap();
         }
 
-        Ok(())
+        // (s_sigma - s_rho) * Z
+        let z_q = context
+            .mul_with_table(
+                &Z_table,
+                &(-schnorr_response.s_sigma - schnorr_response.s_rho),
+            )
+            .unwrap();
+        // challenge * E_C
+        let E_C_q = context.mul_with_table(&E_C_table, challenge).unwrap();
+        let q = z_q + E_C_q;
+        (p.into_affine(), q.into_affine())
     }
 }
 
@@ -1172,7 +1218,7 @@ where
             &element,
             element_blinding,
             &witness.C,
-            Some(K_table.multiply(&-r_v).into_affine()),
+            Some(K_table.multiply(&-r_v)),
             pk,
             params,
             &prk.XYZ,
@@ -1314,6 +1360,29 @@ where
         )
     }
 
+    pub fn verify_with_randomized_pairing_checker(
+        &self,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::Fr,
+        pk: &PublicKey<E::G2Affine>,
+        params: &SetupParams<E>,
+        prk: &MembershipProvingKey<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof_with_randomized_pairing_checker(
+            &self.randomized_witness.0,
+            &self.schnorr_commit.0,
+            &self.schnorr_response.0,
+            None,
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            &prk.0,
+            pairing_checker
+        )
+    }
+
     /// Get response for Schnorr protocol for the member. This is useful when the member is also used
     /// in another relation that is proven along this protocol.
     pub fn get_schnorr_response_for_element(&self) -> &E::Fr {
@@ -1357,12 +1426,83 @@ where
         params: &SetupParams<E>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
-        // There are multiple multiplications with K, P and E_d which can be done in variable time so use wNAF.
+        /*let (context, K_table, P_table, E_d_table) =
+            Self::get_tables(prk, params, &self.randomized_witness.E_d);
+
+        self.verify_schnorr_proofs(challenge, &context, &K_table, &P_table, &E_d_table)?;
+        let pairing_extra = self.get_pairing_contribution(challenge, &context, &K_table, &E_d_table);*/
+        let pairing_extra = self.verify_except_pairings(challenge, params, prk)?;
+
+        <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof(
+            &self.randomized_witness.C,
+            &self.schnorr_commit.C,
+            &self.schnorr_response.C,
+            Some(pairing_extra),
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            &prk.XYZ,
+        )
+    }
+
+    pub fn verify_with_randomized_pairing_checker(
+        &self,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::Fr,
+        pk: &PublicKey<E::G2Affine>,
+        params: &SetupParams<E>,
+        prk: &NonMembershipProvingKey<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        let pairing_extra = self.verify_except_pairings(challenge, params, prk)?;
+
+        <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof_with_randomized_pairing_checker(
+            &self.randomized_witness.C,
+            &self.schnorr_commit.C,
+            &self.schnorr_response.C,
+            Some(pairing_extra),
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            &prk.XYZ,
+            pairing_checker
+        )
+    }
+
+    /// Get response for Schnorr protocol for the non-member. This is useful when the non-member is also used
+    /// in another relation that is proven along this protocol.
+    pub fn get_schnorr_response_for_element(&self) -> &E::Fr {
+        self.schnorr_response.C.get_response_for_element()
+    }
+
+    /// There are multiple multiplications with K, P and E_d which can be done in variable time so use wNAF.
+    pub fn get_tables(
+        prk: &NonMembershipProvingKey<E::G1Affine>,
+        params: &SetupParams<E>,
+        E_d: &E::G1Affine,
+    ) -> (
+        WnafContext,
+        Vec<E::G1Projective>,
+        Vec<E::G1Projective>,
+        Vec<E::G1Projective>,
+    ) {
         let context = WnafContext::new(4);
         let K_table = context.table(prk.K.into_projective());
         let P_table = context.table(params.P.into_projective());
-        let E_d_table = context.table(self.randomized_witness.E_d.into_projective());
+        let E_d_table = context.table(E_d.into_projective());
+        (context, K_table, P_table, E_d_table)
+    }
 
+    pub fn verify_schnorr_proofs(
+        &self,
+        challenge: &E::Fr,
+        context: &WnafContext,
+        K_table: &[E::G1Projective],
+        P_table: &[E::G1Projective],
+        E_d_table: &[E::G1Projective],
+    ) -> Result<(), VBAccumulatorError> {
         // R_A = schnorr_response.s_u * params.P + schnorr_response.s_v * prk.K - challenge * randomized_witness.E_d;
         let mut R_A = context
             .mul_with_table(&P_table, &self.schnorr_response.s_u)
@@ -1389,36 +1529,34 @@ where
         if R_B.into_affine() != self.schnorr_commit.R_B {
             return Err(VBAccumulatorError::E_d_inv_ResponseInvalid);
         }
-
-        let pairing_contribution = [
-            // -schnorr_response.s_v * prk.K
-            context
-                .mul_with_table(&K_table, &-self.schnorr_response.s_v)
-                .unwrap()
-                .into_affine(),
-            // challenge * randomized_witness.E_d
-            context
-                .mul_with_table(&E_d_table, challenge)
-                .unwrap()
-                .into_affine(),
-        ];
-        <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof(
-            &self.randomized_witness.C,
-            &self.schnorr_commit.C,
-            &self.schnorr_response.C,
-            Some(pairing_contribution),
-            accumulator_value,
-            challenge,
-            pk,
-            params,
-            &prk.XYZ,
-        )
+        Ok(())
     }
 
-    /// Get response for Schnorr protocol for the non-member. This is useful when the non-member is also used
-    /// in another relation that is proven along this protocol.
-    pub fn get_schnorr_response_for_element(&self) -> &E::Fr {
-        self.schnorr_response.C.get_response_for_element()
+    pub fn get_pairing_contribution(
+        &self,
+        challenge: &E::Fr,
+        context: &WnafContext,
+        K_table: &[E::G1Projective],
+        E_d_table: &[E::G1Projective],
+    ) -> E::G1Projective {
+        // -schnorr_response.s_v * prk.K + challenge * randomized_witness.E_d
+        context
+            .mul_with_table(&K_table, &-self.schnorr_response.s_v)
+            .unwrap()
+            + context.mul_with_table(&E_d_table, challenge).unwrap()
+    }
+
+    fn verify_except_pairings(
+        &self,
+        challenge: &E::Fr,
+        params: &SetupParams<E>,
+        prk: &NonMembershipProvingKey<E::G1Affine>,
+    ) -> Result<E::G1Projective, VBAccumulatorError> {
+        let (context, K_table, P_table, E_d_table) =
+            Self::get_tables(prk, params, &self.randomized_witness.E_d);
+
+        self.verify_schnorr_proofs(challenge, &context, &K_table, &P_table, &E_d_table)?;
+        Ok(self.get_pairing_contribution(challenge, &context, &K_table, &E_d_table))
     }
 }
 

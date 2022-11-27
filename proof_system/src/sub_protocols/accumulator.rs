@@ -3,9 +3,10 @@ use crate::statement_proof::StatementProof;
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_std::io::Write;
 use ark_std::rand::RngCore;
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use vb_accumulator::prelude::{
-    MembershipProofProtocol, MembershipProvingKey, NonMembershipProofProtocol,
-    NonMembershipProvingKey, PublicKey, SetupParams as AccumParams,
+    MembershipProof, MembershipProofProtocol, MembershipProvingKey, NonMembershipProof,
+    NonMembershipProofProtocol, NonMembershipProvingKey, PublicKey, SetupParams as AccumParams,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -98,24 +99,30 @@ impl<'a, E: PairingEngine> AccumulatorMembershipSubProtocol<'a, E> {
         Ok(StatementProof::AccumulatorMembership(proof))
     }
 
-    pub fn verify_proof_contribution<G: AffineCurve>(
+    pub fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E, G>,
+        proof: &MembershipProof<E>,
+        pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
-        match proof {
-            StatementProof::AccumulatorMembership(p) => {
-                p.verify(
-                    &self.accumulator_value,
-                    challenge,
-                    self.public_key,
-                    self.params,
-                    self.proving_key,
-                )?;
-                Ok(())
-            }
-            _ => Err(ProofSystemError::ProofIncompatibleWithAccumulatorMembershipProtocol),
+        match pairing_checker {
+            Some(c) => proof.verify_with_randomized_pairing_checker(
+                &self.accumulator_value,
+                challenge,
+                self.public_key,
+                self.params,
+                self.proving_key,
+                c,
+            )?,
+            None => proof.verify(
+                &self.accumulator_value,
+                challenge,
+                self.public_key,
+                self.params,
+                self.proving_key,
+            )?,
         }
+        Ok(())
     }
 }
 
@@ -189,23 +196,29 @@ impl<'a, E: PairingEngine> AccumulatorNonMembershipSubProtocol<'a, E> {
         Ok(StatementProof::AccumulatorNonMembership(proof))
     }
 
-    pub fn verify_proof_contribution<G: AffineCurve>(
+    pub fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E, G>,
+        proof: &NonMembershipProof<E>,
+        pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
-        match proof {
-            StatementProof::AccumulatorNonMembership(p) => {
-                p.verify(
-                    &self.accumulator_value,
-                    challenge,
-                    self.public_key,
-                    self.params,
-                    self.proving_key,
-                )?;
-                Ok(())
-            }
-            _ => Err(ProofSystemError::ProofIncompatibleWithAccumulatorNonMembershipProtocol),
+        match pairing_checker {
+            Some(c) => proof.verify_with_randomized_pairing_checker(
+                &self.accumulator_value,
+                challenge,
+                self.public_key,
+                self.params,
+                self.proving_key,
+                c,
+            )?,
+            None => proof.verify(
+                &self.accumulator_value,
+                challenge,
+                self.public_key,
+                self.params,
+                self.proving_key,
+            )?,
         }
+        Ok(())
     }
 }

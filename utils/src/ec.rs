@@ -19,11 +19,11 @@ pub fn pairing_product<E: PairingEngine>(a: &[E::G1Affine], b: &[E::G2Affine]) -
 
 pub fn pairing_product_with_g2_prepared<E: PairingEngine>(
     a: &[E::G1Affine],
-    b: Vec<E::G2Prepared>,
+    b: &[E::G2Prepared],
 ) -> E::Fqk {
     let pairs: Vec<(E::G1Prepared, E::G2Prepared)> = cfg_iter!(a)
         .map(|e| E::G1Prepared::from(*e))
-        .zip(cfg_into_iter!(b))
+        .zip(cfg_iter!(b).map(|e| e.clone()))
         .collect();
     E::product_of_pairings(pairs.iter())
 }

@@ -2,9 +2,9 @@ use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
-use proof_system::prelude::generate_snark_srs_bound_check;
+use proof_system::prelude::{generate_snark_srs_bound_check, ProverConfig};
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatements, ProofSpec, StatementProof, Witness, WitnessRef, Witnesses,
+    EqualWitnesses, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
 };
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::{
@@ -32,10 +32,7 @@ pub fn decrypt_and_verify(
     enc_gens: &EncryptionGens<Bls12_381>,
     chunk_bit_size: u8,
 ) {
-    let ct = match &proof.statement_proof(stmt_idx).unwrap() {
-        StatementProof::Saver(s) => &s.ciphertext,
-        _ => panic!("This should never happen"),
-    };
+    let ct = proof.get_saver_ciphertext_and_proof(stmt_idx).unwrap().0;
     let (decrypted_message, nu) = ct
         .decrypt_given_groth16_vk(sk, dk, snark_vk, chunk_bit_size)
         .unwrap();
@@ -125,7 +122,14 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let start = Instant::now();
-    let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+    let (proof, comm_rand) = ProofG1::new(
+        &mut rng,
+        prover_proof_spec.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap();
     println!(
         "Time taken to create proof of 1 encrypted message in signature over {} messages {:?}",
         msg_count,
@@ -166,10 +170,20 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(verifier_proof_spec.clone(), None)
+        .verify(verifier_proof_spec.clone(), None, Default::default())
         .unwrap();
     println!(
         "Time taken to verify proof of 1 encrypted message in signature over {} messages {:?}",
+        msg_count,
+        start.elapsed()
+    );
+    let start = Instant::now();
+    proof
+        .clone()
+        .verify_using_randomized_pairing_check(&mut rng, verifier_proof_spec.clone(), None, Default::default())
+        .unwrap();
+    println!(
+        "Time taken to verify proof of 1 encrypted message in signature over {} messages with randomized pairing check {:?}",
         msg_count,
         start.elapsed()
     );
@@ -191,6 +205,46 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         start.elapsed()
     );
 
+    let start = Instant::now();
+    let mut m = BTreeMap::new();
+    let (c, p) = proof.get_saver_ciphertext_and_proof(1).unwrap();
+    m.insert(
+        1,
+        (*(comm_rand.get(&1).unwrap()), (*c).clone(), (*p).clone()),
+    );
+    let config = ProverConfig::<Bls12_381> {
+        reuse_groth16_proofs: Some(m),
+        reuse_legogroth16_proofs: None,
+    };
+    let proof = ProofG1::new(
+        &mut rng,
+        prover_proof_spec.clone(),
+        witnesses.clone(),
+        None,
+        config,
+    )
+    .unwrap()
+    .0;
+    println!(
+        "Time taken to create proof of 1 encrypted message with re-randomization for SAVER in signature over {} messages {:?}",
+        msg_count,
+        start.elapsed()
+    );
+    proof
+        .clone()
+        .verify(verifier_proof_spec.clone(), None, Default::default())
+        .unwrap();
+    decrypt_and_verify(
+        &proof,
+        1,
+        &snark_pk.pk.vk,
+        msgs[enc_msg_idx].clone(),
+        &sk,
+        &dk,
+        &enc_gens,
+        chunk_bit_size,
+    );
+
     // Correct message verifiably encrypted but meta statement is specifying equality with another message
     let mut meta_statements_wrong = MetaStatements::new();
     meta_statements_wrong.add_witness_equality(EqualWitnesses(
@@ -206,7 +260,15 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     );
     prover_proof_spec.validate().unwrap();
 
-    let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        prover_proof_spec.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
@@ -215,7 +277,9 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         None,
     );
     verifier_proof_spec.validate().unwrap();
-    assert!(proof.verify(verifier_proof_spec.clone(), None).is_err());
+    assert!(proof
+        .verify(verifier_proof_spec.clone(), None, Default::default())
+        .is_err());
 
     // Verifiably encrypt a message which was not signed
     let mut witnesses_wrong = Witnesses::new();
@@ -229,12 +293,26 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
     prover_proof_spec.validate().unwrap();
 
-    let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses_wrong, None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        prover_proof_spec.clone(),
+        witnesses_wrong,
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     let verifier_proof_spec =
         ProofSpec::new(verifier_statements.clone(), meta_statements, vec![], None);
     verifier_proof_spec.validate().unwrap();
-    assert!(proof.verify(verifier_proof_spec.clone(), None).is_err());
+    assert!(proof
+        .clone()
+        .verify(verifier_proof_spec.clone(), None, Default::default())
+        .is_err());
+    assert!(proof
+        .verify_using_randomized_pairing_check(&mut rng, verifier_proof_spec, None, Default::default())
+        .is_err());
 }
 
 #[test]
@@ -327,8 +405,14 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
         }
 
         let start = Instant::now();
-        let proof =
-            ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+        let (proof, comm_rand) = ProofG1::new(
+            &mut rng,
+            prover_proof_spec.clone(),
+            witnesses.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap();
         println!(
             "Time taken to create proof of {} encrypted messages in signature over {} messages: {:?}",
             enc_msg_indices.len(),
@@ -387,10 +471,22 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
         let start = Instant::now();
         proof
             .clone()
-            .verify(verifier_proof_spec.clone(), None)
+            .verify(verifier_proof_spec.clone(), None, Default::default())
             .unwrap();
         println!(
             "Time taken to verify proof of {} encrypted messages in signature over {} messages: {:?}",
+            enc_msg_indices.len(),
+            msg_count,
+            start.elapsed()
+        );
+
+        let start = Instant::now();
+        proof
+            .clone()
+            .verify_using_randomized_pairing_check(&mut rng, verifier_proof_spec.clone(), None, Default::default())
+            .unwrap();
+        println!(
+            "Time taken to verify proof of {} encrypted messages in signature over {} messages with randomized pairing check: {:?}",
             enc_msg_indices.len(),
             msg_count,
             start.elapsed()
@@ -415,6 +511,38 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
             msg_count,
             start.elapsed()
         );
+
+        let start = Instant::now();
+        let mut m = BTreeMap::new();
+        for i in 1..=enc_msg_indices.len() {
+            let (c, p) = proof.get_saver_ciphertext_and_proof(i).unwrap();
+            m.insert(
+                i,
+                (*(comm_rand.get(&i).unwrap()), (*c).clone(), (*p).clone()),
+            );
+        }
+        let config = ProverConfig::<Bls12_381> {
+            reuse_groth16_proofs: Some(m),
+            reuse_legogroth16_proofs: None,
+        };
+        let proof = ProofG1::new(
+            &mut rng,
+            prover_proof_spec.clone(),
+            witnesses.clone(),
+            None,
+            config,
+        )
+        .unwrap()
+        .0;
+        println!(
+            "Time taken to create proof of {} encrypted message with re-randomization for SAVER in signature over {} messages {:?}",
+            enc_msg_indices.len(),
+            msg_count,
+            start.elapsed()
+        );
+        proof
+            .verify(verifier_proof_spec.clone(), None, Default::default())
+            .unwrap();
     }
     check(true);
     check(false);
@@ -613,8 +741,14 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         witnesses.add(Witness::Saver(enc_msg_3));
 
         let start = Instant::now();
-        let proof =
-            ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+        let (proof, comm_rand) = ProofG1::new(
+            &mut rng,
+            prover_proof_spec.clone(),
+            witnesses.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap();
         println!(
             "Time taken to create proof of verifiable encryption of 4 messages in signature: {:?}",
             start.elapsed()
@@ -746,10 +880,20 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         let start = Instant::now();
         proof
             .clone()
-            .verify(verifier_proof_spec.clone(), None)
+            .verify(verifier_proof_spec.clone(), None, Default::default())
             .unwrap();
         println!(
             "Time taken to verify proof of verifiable encryption of 4 messages in signature: {:?}",
+            start.elapsed()
+        );
+
+        let start = Instant::now();
+        proof
+            .clone()
+            .verify_using_randomized_pairing_check(&mut rng, verifier_proof_spec.clone(), None, Default::default())
+            .unwrap();
+        println!(
+            "Time taken to verify proof of verifiable encryption of 4 messages in signature with randomized pairing check: {:?}",
             start.elapsed()
         );
 
@@ -793,6 +937,37 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             &enc_gens_2,
             chunk_bit_size,
         );
+
+        let start = Instant::now();
+        let mut m = BTreeMap::new();
+        for i in 1..=4 {
+            let (c, p) = proof.get_saver_ciphertext_and_proof(i).unwrap();
+            m.insert(
+                i,
+                (*(comm_rand.get(&i).unwrap()), (*c).clone(), (*p).clone()),
+            );
+        }
+        let config = ProverConfig::<Bls12_381> {
+            reuse_groth16_proofs: Some(m),
+            reuse_legogroth16_proofs: None,
+        };
+        let proof = ProofG1::new(
+            &mut rng,
+            prover_proof_spec.clone(),
+            witnesses.clone(),
+            None,
+            config,
+        )
+        .unwrap()
+        .0;
+        println!(
+            "Time taken to create proof of verifiable encryption with re-randomization of 4 messages in signature: {:?}",
+            start.elapsed()
+        );
+
+        proof
+            .verify(verifier_proof_spec.clone(), None, Default::default())
+            .unwrap();
     }
     check(true);
     check(false);
@@ -896,7 +1071,21 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+    let start = Instant::now();
+    let (proof, comm_rand) = ProofG1::new(
+        &mut rng,
+        prover_proof_spec.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap();
+    println!(
+        "Time taken to create proof of bound check of 2 bound checks and 1 verifiable encryption in signature over {} messages: {:?}",
+        msg_count,
+        start.elapsed()
+    );
+
     test_serialization!(ProofG1, proof);
 
     let mut verifier_setup_params = vec![];
@@ -936,10 +1125,25 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     verifier_proof_spec.validate().unwrap();
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
+    let start = Instant::now();
     proof
         .clone()
-        .verify(verifier_proof_spec.clone(), None)
+        .verify(verifier_proof_spec.clone(), None, Default::default())
         .unwrap();
+    println!(
+        "Time taken to verify proof of 2 bound checks and 1 verifiable encryption: {:?}",
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+    proof
+        .clone()
+        .verify_using_randomized_pairing_check(&mut rng, verifier_proof_spec.clone(), None, Default::default())
+        .unwrap();
+    println!(
+        "Time taken to verify proof of 2 bound checks and 1 verifiable encryption with randomized pairing check: {:?}",
+        start.elapsed()
+    );
 
     decrypt_and_verify(
         &proof,
@@ -951,4 +1155,39 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         &enc_gens,
         chunk_bit_size,
     );
+
+    let mut l = BTreeMap::new();
+    let p1 = proof.get_legogroth16_proof(1).unwrap();
+    let p2 = proof.get_legogroth16_proof(2).unwrap();
+    l.insert(1, (*(comm_rand.get(&1).unwrap()), (*p1).clone()));
+    l.insert(2, (*(comm_rand.get(&2).unwrap()), (*p2).clone()));
+
+    let mut g = BTreeMap::new();
+    let (c, p) = proof.get_saver_ciphertext_and_proof(3).unwrap();
+    g.insert(
+        3,
+        (*(comm_rand.get(&3).unwrap()), (*c).clone(), (*p).clone()),
+    );
+    let config = ProverConfig::<Bls12_381> {
+        reuse_groth16_proofs: Some(g),
+        reuse_legogroth16_proofs: Some(l),
+    };
+    let start = Instant::now();
+    let proof = ProofG1::new(
+        &mut rng,
+        prover_proof_spec.clone(),
+        witnesses.clone(),
+        None,
+        config,
+    )
+    .unwrap()
+    .0;
+    println!(
+        "Time taken to create proof with re-randomization of bound check of 2 bound checks and 1 verifiable encryption in signature over {} messages: {:?}",
+        msg_count,
+        start.elapsed()
+    );
+    proof
+        .verify(verifier_proof_spec.clone(), None, Default::default())
+        .unwrap();
 }

@@ -78,6 +78,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 pub use serialization::*;
 use zeroize::Zeroize;
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
 /// Proof of knowledge of BBS+ signature in group G1
 /// The BBS+ signature proves validity of a set of messages {m_i}, i in I. This stateful protocol proves knowledge of such
@@ -374,9 +375,7 @@ where
         pk: &PublicKeyG2<E>,
         params: &SignatureParamsG1<E>,
     ) -> Result<(), BBSPlusError> {
-        if self.A_prime.is_zero() {
-            return Err(BBSPlusError::ZeroSignature);
-        }
+        self.verify_except_pairings(revealed_msgs, challenge, params)?;
 
         // Verify the randomized signature
         if !E::product_of_pairings(&[
@@ -390,7 +389,68 @@ where
         {
             return Err(BBSPlusError::PairingCheckFailed);
         }
+        Ok(())
+    }
 
+    pub fn verify_with_randomized_pairing_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::Fr>,
+        challenge: &E::Fr,
+        pk: &PublicKeyG2<E>,
+        params: &SignatureParamsG1<E>,
+        pairing_checker: &mut RandomizedPairingChecker<E>
+    ) -> Result<(), BBSPlusError> {
+        self.verify_except_pairings(revealed_msgs, challenge, params)?;
+        pairing_checker.add_sources(self.A_prime, pk.0, self.A_bar, params.g2);
+        Ok(())
+    }
+
+    /// For the verifier to independently calculate the challenge
+    pub fn challenge_contribution<W: Write>(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::Fr>,
+        params: &SignatureParamsG1<E>,
+        writer: W,
+    ) -> Result<(), BBSPlusError> {
+        PoKOfSignatureG1Protocol::compute_challenge_contribution(
+            &self.A_prime,
+            &self.A_bar,
+            &self.d,
+            &self.T1,
+            &self.T2,
+            revealed_msgs,
+            params,
+            writer,
+        )
+    }
+
+    /// Get the response from post-challenge phase of the Schnorr protocol for the given message index
+    /// `msg_idx`. Used when comparing message equality
+    pub fn get_resp_for_message(
+        &self,
+        msg_idx: usize,
+        revealed_msg_ids: &BTreeSet<usize>,
+    ) -> Result<&E::Fr, BBSPlusError> {
+        // Revealed messages are not part of Schnorr protocol
+        if revealed_msg_ids.contains(&msg_idx) {
+            return Err(BBSPlusError::InvalidMsgIdxForResponse(msg_idx));
+        }
+        // Adjust message index as the revealed messages are not part of the Schnorr protocol
+        let mut adjusted_idx = msg_idx;
+        for i in revealed_msg_ids {
+            if *i < msg_idx {
+                adjusted_idx -= 1;
+            }
+        }
+        // 2 added to the index, since 0th and 1st index are reserved for `s'` and `r2`
+        let r = self.sc_resp_2.get_response(2 + adjusted_idx)?;
+        Ok(r)
+    }
+
+    pub fn verify_schnorr_proofs(&self,
+                                 revealed_msgs: &BTreeMap<usize, E::Fr>,
+                                 challenge: &E::Fr,
+                                 params: &SignatureParamsG1<E>) -> Result<(), BBSPlusError> {
         // Verify the 1st Schnorr proof
         let bases_1 = [self.A_prime, params.h_0];
         // A_bar - d
@@ -441,46 +501,14 @@ where
         Ok(())
     }
 
-    /// For the verifier to independently calculate the challenge
-    pub fn challenge_contribution<W: Write>(
-        &self,
-        revealed_msgs: &BTreeMap<usize, E::Fr>,
-        params: &SignatureParamsG1<E>,
-        writer: W,
-    ) -> Result<(), BBSPlusError> {
-        PoKOfSignatureG1Protocol::compute_challenge_contribution(
-            &self.A_prime,
-            &self.A_bar,
-            &self.d,
-            &self.T1,
-            &self.T2,
-            revealed_msgs,
-            params,
-            writer,
-        )
-    }
-
-    /// Get the response from post-challenge phase of the Schnorr protocol for the given message index
-    /// `msg_idx`. Used when comparing message equality
-    pub fn get_resp_for_message(
-        &self,
-        msg_idx: usize,
-        revealed_msg_ids: &BTreeSet<usize>,
-    ) -> Result<&E::Fr, BBSPlusError> {
-        // Revealed messages are not part of Schnorr protocol
-        if revealed_msg_ids.contains(&msg_idx) {
-            return Err(BBSPlusError::InvalidMsgIdxForResponse(msg_idx));
+    fn verify_except_pairings(&self,
+                                  revealed_msgs: &BTreeMap<usize, E::Fr>,
+                                  challenge: &E::Fr,
+                                  params: &SignatureParamsG1<E>,) -> Result<(), BBSPlusError> {
+        if self.A_prime.is_zero() {
+            return Err(BBSPlusError::ZeroSignature);
         }
-        // Adjust message index as the revealed messages are not part of the Schnorr protocol
-        let mut adjusted_idx = msg_idx;
-        for i in revealed_msg_ids {
-            if *i < msg_idx {
-                adjusted_idx -= 1;
-            }
-        }
-        // 2 added to the index, since 0th and 1st index are reserved for `s'` and `r2`
-        let r = self.sc_resp_2.get_response(2 + adjusted_idx)?;
-        Ok(r)
+        self.verify_schnorr_proofs(revealed_msgs, challenge, params)
     }
 }
 

@@ -258,11 +258,11 @@ mod serialization {
     use super::*;
 
     impl<E: PairingEngine> CanonicalSerialize for Witness<E> {
-        impl_serialize!();
+        impl_serialize_witness!();
     }
 
     impl<E: PairingEngine> CanonicalDeserialize for Witness<E> {
-        impl_deserialize!();
+        impl_deserialize_witness!();
     }
 }
 

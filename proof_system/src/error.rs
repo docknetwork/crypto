@@ -62,6 +62,9 @@ pub enum ProofSystemError {
     /// Witness is being used a zero knowledge proof (bound check, accumulator, etc) while also being
     /// revealed. This shouldn't be the case, ever.
     WitnessAlreadyBeingRevealed(usize, usize),
+    SnarckpackSrsNotProvided,
+    NotASaverStatementProof,
+    RandomizedPairingCheckFailed,
 }
 
 impl From<SchnorrError> for ProofSystemError {

@@ -5,8 +5,9 @@ use ark_std::{
     io::Write,
     vec::Vec,
 };
-use bbs_plus::prelude::{PublicKeyG2, SignatureParamsG1};
+use bbs_plus::prelude::{PoKOfSignatureG1Proof, PublicKeyG2, SignatureParamsG1};
 use bbs_plus::proof::PoKOfSignatureG1Protocol;
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
 use crate::error::ProofSystemError;
 use crate::statement_proof::StatementProof;
@@ -98,22 +99,27 @@ impl<'a, E: PairingEngine> PoKBBSSigG1SubProtocol<'a, E> {
         Ok(StatementProof::PoKBBSSignatureG1(proof))
     }
 
-    pub fn verify_proof_contribution<G: AffineCurve>(
+    pub fn verify_proof_contribution(
         &self,
         challenge: &E::Fr,
-        proof: &StatementProof<E, G>,
+        proof: &PoKOfSignatureG1Proof<E>,
+        pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
-        match proof {
-            StatementProof::PoKBBSSignatureG1(p) => {
-                p.verify(
-                    self.revealed_messages,
-                    challenge,
-                    self.public_key,
-                    self.signature_params,
-                )?;
-                Ok(())
-            }
-            _ => Err(ProofSystemError::ProofIncompatibleWithBBSPlusProtocol),
+        match pairing_checker {
+            Some(c) => proof.verify_with_randomized_pairing_checker(
+                self.revealed_messages,
+                challenge,
+                self.public_key,
+                self.signature_params,
+                c,
+            )?,
+            None => proof.verify(
+                self.revealed_messages,
+                challenge,
+                self.public_key,
+                self.signature_params,
+            )?,
         }
+        Ok(())
     }
 }

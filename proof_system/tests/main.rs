@@ -1,1 +1,2 @@
-pub mod r1cs;
+// TODO: Uncomment
+// pub mod r1cs;

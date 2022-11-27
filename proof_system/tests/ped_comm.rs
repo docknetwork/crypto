@@ -91,12 +91,16 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         proof_spec.clone(),
         witnesses.clone(),
         nonce.clone(),
+        Default::default(),
     )
-    .unwrap();
+    .unwrap()
+    .0;
 
     test_serialization!(ProofG1, proof);
 
-    proof.verify(proof_spec, nonce.clone()).unwrap();
+    proof
+        .verify(proof_spec, nonce.clone(), Default::default())
+        .unwrap();
 
     // Wrong commitment should fail to verify
     let mut statements_wrong = Statements::new();
@@ -123,9 +127,13 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         proof_spec_invalid.clone(),
         witnesses.clone(),
         nonce.clone(),
+        Default::default(),
     )
-    .unwrap();
-    assert!(proof.verify(proof_spec_invalid, nonce.clone()).is_err());
+    .unwrap()
+    .0;
+    assert!(proof
+        .verify(proof_spec_invalid, nonce.clone(), Default::default())
+        .is_err());
 
     // Wrong message equality should fail to verify
     let mut meta_statements_wrong = MetaStatements::new();
@@ -152,10 +160,14 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         proof_spec_invalid.clone(),
         witnesses.clone(),
         nonce.clone(),
+        Default::default(),
     )
-    .unwrap();
+    .unwrap()
+    .0;
 
-    assert!(proof.verify(proof_spec_invalid, nonce).is_err());
+    assert!(proof
+        .verify(proof_spec_invalid, nonce, Default::default())
+        .is_err());
 }
 
 #[test]
@@ -249,10 +261,14 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
         proof_spec.clone(),
         witnesses.clone(),
         nonce.clone(),
+        Default::default(),
     )
-    .unwrap();
+    .unwrap()
+    .0;
 
     test_serialization!(ProofG1, proof);
 
-    proof.verify(proof_spec, nonce.clone()).unwrap();
+    proof
+        .verify(proof_spec, nonce.clone(), Default::default())
+        .unwrap();
 }
