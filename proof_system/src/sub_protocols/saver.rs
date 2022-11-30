@@ -5,13 +5,16 @@ use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{One, PrimeField};
 use ark_groth16::{prepare_verifying_key, PreparedVerifyingKey, VerifyingKey};
 use ark_serialize::CanonicalSerialize;
-use ark_std::rand::RngCore;
+use ark_std::rand::{Rng, RngCore};
 use ark_std::{collections::BTreeMap, io::Write, ops::Add, vec, vec::Vec, UniformRand};
+use dock_crypto_utils::ff::powers;
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use saver::commitment::ChunkedCommitment;
 use saver::encryption::{Ciphertext, Encryption};
 use saver::keygen::PreparedEncryptionKey;
-use saver::prelude::{ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, SaverError};
+use saver::prelude::{
+    ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, SaverError,
+};
 use saver::saver_groth16::calculate_d;
 use saver::setup::PreparedEncryptionGens;
 use saver::utils::decompose;
@@ -262,7 +265,7 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
             &pvk,
             &pgens,
             &pek,
-            &mut None
+            &mut None,
         )
     }
 
@@ -283,11 +286,19 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
             return Err(SaverError::IncompatibleEncryptionKey(
                 proof.ciphertext.enc_chunks.len(),
                 expected_count,
-            ).into());
+            )
+            .into());
         }
         match pairing_checker {
             Some(c) => {
-                let (a, b) = (Encryption::<E>::get_g1_for_ciphertext_commitment_pairing_checks(&proof.ciphertext.X_r, &proof.ciphertext.enc_chunks, &proof.ciphertext.commitment), Encryption::get_g2_for_ciphertext_commitment_pairing_checks(pek, pgens));
+                let (a, b) = (
+                    Encryption::<E>::get_g1_for_ciphertext_commitment_pairing_checks(
+                        &proof.ciphertext.X_r,
+                        &proof.ciphertext.enc_chunks,
+                        &proof.ciphertext.commitment,
+                    ),
+                    Encryption::get_g2_for_ciphertext_commitment_pairing_checks(pek, pgens),
+                );
                 c.add_prepared_sources_and_target(&a, b, &E::Fqk::one());
                 let d = calculate_d(pvk, &proof.ciphertext)?;
                 c.add_prepared_sources_and_target(
@@ -300,7 +311,9 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
                     &pvk.alpha_g1_beta_g2,
                 );
             }
-            None => proof.ciphertext.verify_commitment_and_proof_given_prepared(&proof.snark_proof, pvk, pek, pgens)?
+            None => proof
+                .ciphertext
+                .verify_commitment_and_proof_given_prepared(&proof.snark_proof, pvk, pek, pgens)?,
         }
 
         // NOTE: value of id is dummy
@@ -329,6 +342,47 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         sp_ciphertext.verify_proof_contribution_as_struct(challenge, &proof.sp_ciphertext)?;
         sp_chunks.verify_proof_contribution_as_struct(challenge, &proof.sp_chunks)?;
         sp_combined.verify_proof_contribution_as_struct(challenge, &proof.sp_combined)
+    }
+
+    pub fn verify_ciphertext_commitments_in_batch<R: Rng>(
+        rng: &mut R,
+        ciphertexts: &[Ciphertext<E>],
+        pgens: &PreparedEncryptionGens<E>,
+        pek: &PreparedEncryptionKey<E>,
+        pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+    ) -> Result<(), ProofSystemError> {
+        let r = E::Fr::rand(rng);
+        let r_powers = powers(&r, ciphertexts.len());
+        match pairing_checker {
+            Some(c) => {
+                assert_eq!(r_powers.len(), ciphertexts.len());
+                let expected_count = pek.supported_chunks_count()? as usize;
+                for c in ciphertexts {
+                    if c.enc_chunks.len() != expected_count {
+                        return Err(SaverError::IncompatibleEncryptionKey(
+                            c.enc_chunks.len(),
+                            expected_count,
+                        )
+                        .into());
+                    }
+                }
+
+                let a = Encryption::get_g1_for_ciphertext_commitments_in_batch_pairing_checks(
+                    ciphertexts,
+                    &r_powers,
+                );
+                let b = Encryption::get_g2_for_ciphertext_commitment_pairing_checks(pek, pgens);
+                c.add_prepared_sources_and_target(&a, b, &E::Fqk::one());
+                Ok(())
+            }
+            None => Encryption::verify_commitments_in_batch_given_prepared(
+                ciphertexts,
+                &r_powers,
+                pek,
+                pgens,
+            )
+            .map_err(|e| e.into()),
+        }
     }
 
     pub fn compute_challenge_contribution<W: Write>(

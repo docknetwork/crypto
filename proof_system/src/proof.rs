@@ -5,6 +5,7 @@ use ark_std::{
     collections::BTreeSet,
     io::{Read, Write},
     marker::PhantomData,
+    vec::Vec,
 };
 use digest::Digest;
 use legogroth16::aggregation;

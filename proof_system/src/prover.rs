@@ -1,15 +1,8 @@
+//! Code for the prover to generate a `Proof`
+
 use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    collections::BTreeMap,
-    fmt::Debug,
-    format,
-    io::{Read, Write},
-    marker::PhantomData,
-    rand::RngCore,
-    vec,
-    vec::Vec,
-    UniformRand,
+    collections::BTreeMap, format, marker::PhantomData, rand::RngCore, vec, vec::Vec, UniformRand,
 };
 
 use crate::statement::Statement;
@@ -19,6 +12,7 @@ use crate::{error::ProofSystemError, witness::Witnesses};
 use digest::Digest;
 
 use crate::meta_statement::WitnessRef;
+use crate::prelude::SnarkpackSRS;
 use crate::proof::{AggregatedGroth16, Proof};
 use crate::proof_spec::ProofSpec;
 use crate::statement_proof::StatementProof;
@@ -32,37 +26,43 @@ use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 use saver::encryption::Ciphertext;
-use crate::prelude::SnarkpackSRS;
 
+/// Passed to the prover during proof creation
 pub struct ProverConfig<E: PairingEngine> {
-    pub reuse_groth16_proofs:
+    /// The SAVER randomness, ciphertext and proof to reuse when creating the composite proof. This is more
+    /// efficient than generating a new ciphertext and proof.
+    pub reuse_saver_proofs:
         Option<BTreeMap<usize, (E::Fr, Ciphertext<E>, ark_groth16::Proof<E>)>>,
+    /// The LegoGroth16 randomness and proof to reuse when creating the composite proof. This is more
+    /// efficient than generating a new proof.
     pub reuse_legogroth16_proofs: Option<BTreeMap<usize, (E::Fr, legogroth16::Proof<E>)>>,
 }
 
 impl<E: PairingEngine> Default for ProverConfig<E> {
     fn default() -> Self {
         Self {
-            reuse_groth16_proofs: None,
+            reuse_saver_proofs: None,
             reuse_legogroth16_proofs: None,
         }
     }
 }
 
 impl<E: PairingEngine> ProverConfig<E> {
-    fn get_groth16_proof(
+    /// Get SAVER randomness, ciphertext and proof to reuse for the given statement id
+    fn get_saver_proof(
         &mut self,
-        s_id: &usize,
+        statement_id: &usize,
     ) -> Option<(E::Fr, Ciphertext<E>, ark_groth16::Proof<E>)> {
-        self.reuse_groth16_proofs
+        self.reuse_saver_proofs
             .as_mut()
-            .and_then(|p| p.remove(s_id))
+            .and_then(|p| p.remove(statement_id))
     }
 
-    fn get_legogroth16_proof(&mut self, s_id: &usize) -> Option<(E::Fr, legogroth16::Proof<E>)> {
+    /// Get LegoGroth16 randomness and proof to reuse for the given statement id
+    fn get_legogroth16_proof(&mut self, statement_id: &usize) -> Option<(E::Fr, legogroth16::Proof<E>)> {
         self.reuse_legogroth16_proofs
             .as_mut()
-            .and_then(|p| p.remove(s_id))
+            .and_then(|p| p.remove(statement_id))
     }
 }
 
@@ -76,6 +76,9 @@ where
     /// it must be kept same while creating and verifying the proof. One use of `nonce` is for replay
     /// protection, here the prover might have chosen its nonce to prevent the verifier from reusing
     /// the proof as its own or the verifier might want to require the user to create fresh proof.
+    /// Also returns the randomness used by statements using SAVER and LegoGroth16 proofs which can
+    /// then be used as helpers in subsequent proof creations where these proofs are reused than
+    /// creating fresh proofs.
     pub fn new<R: RngCore>(
         rng: &mut R,
         proof_spec: ProofSpec<E, G>,
@@ -247,7 +250,7 @@ where
                             pk,
                         );
 
-                        match config.get_groth16_proof(&s_idx) {
+                        match config.get_saver_proof(&s_idx) {
                             Some((v, ct, proof)) => {
                                 sp.init_with_ciphertext_and_proof(
                                     rng, ck_comm_ct, &cc_keys.0, &cc_keys.1, w, blinding, v, ct,
@@ -419,12 +422,13 @@ where
 
             let srs = match proof_spec.snark_aggregation_srs {
                 Some(SnarkpackSRS::ProverSrs(srs)) => srs,
-                _ => return Err(ProofSystemError::SnarckpackSrsNotProvided)
+                _ => return Err(ProofSystemError::SnarckpackSrsNotProvided),
             };
 
-            use legogroth16::aggregation::transcript::new_merlin_transcript;
+            use legogroth16::aggregation::transcript::{new_merlin_transcript, Transcript};
 
             let mut transcript = new_merlin_transcript(b"aggregation");
+            transcript.append(b"challenge", &challenge);
 
             if proof_spec.aggregate_groth16.is_some() {
                 let to_aggr = proof_spec.aggregate_groth16.unwrap();
@@ -433,14 +437,19 @@ where
                     for i in &a {
                         let p = match statement_proofs.get(*i).unwrap() {
                             StatementProof::Saver(s) => &s.snark_proof,
-                            _ => return Err(ProofSystemError::NotASaverStatementProof)
+                            _ => return Err(ProofSystemError::NotASaverStatementProof),
                         };
                         proofs.push(p.clone());
                     }
-                    let ag_proof = legogroth16::aggregation::groth16::aggregate_proofs(&srs, &mut transcript, &proofs).map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;
+                    let ag_proof = legogroth16::aggregation::groth16::aggregate_proofs(
+                        &srs,
+                        &mut transcript,
+                        &proofs,
+                    )
+                    .map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;
                     aggregated_groth16.push(AggregatedGroth16 {
                         proof: ag_proof,
-                        statements: a
+                        statements: a,
                     });
                 }
             }
@@ -453,14 +462,20 @@ where
                         let p = match statement_proofs.get(*i).unwrap() {
                             StatementProof::BoundCheckLegoGroth16(s) => &s.snark_proof,
                             StatementProof::R1CSLegoGroth16(s) => &s.snark_proof,
-                            _ => return Err(ProofSystemError::NotASaverStatementProof)
+                            _ => return Err(ProofSystemError::NotASaverStatementProof),
                         };
                         proofs.push(p.clone());
                     }
-                    let (ag_proof, _) = legogroth16::aggregation::legogroth16::using_groth16::aggregate_proofs(&srs, &mut transcript, &proofs).map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;
+                    let (ag_proof, _) =
+                        legogroth16::aggregation::legogroth16::using_groth16::aggregate_proofs(
+                            &srs,
+                            &mut transcript,
+                            &proofs,
+                        )
+                        .map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;
                     aggregated_legogroth16.push(AggregatedGroth16 {
                         proof: ag_proof,
-                        statements: a
+                        statements: a,
                     });
                 }
             }
@@ -470,8 +485,16 @@ where
             Self {
                 statement_proofs,
                 nonce,
-                aggregated_groth16: if aggregated_groth16.len() > 0 {Some(aggregated_groth16)} else {None},
-                aggregated_legogroth16: if aggregated_legogroth16.len() > 0 {Some(aggregated_legogroth16)} else {None},
+                aggregated_groth16: if aggregated_groth16.len() > 0 {
+                    Some(aggregated_groth16)
+                } else {
+                    None
+                },
+                aggregated_legogroth16: if aggregated_legogroth16.len() > 0 {
+                    Some(aggregated_legogroth16)
+                } else {
+                    None
+                },
                 _phantom: PhantomData,
             },
             commitment_randomness,
@@ -526,9 +549,14 @@ where
         let mut statement_proofs = vec![];
         for sp in self.statement_proofs() {
             match sp {
-                StatementProof::Saver(sp) => statement_proofs.push(StatementProof::SaverWithAggregation(sp.for_aggregation())),
-                StatementProof::BoundCheckLegoGroth16(b) => statement_proofs.push(StatementProof::BoundCheckLegoGroth16WithAggregation(b.for_aggregation())),
-                StatementProof::R1CSLegoGroth16(b) => statement_proofs.push(StatementProof::R1CSLegoGroth16WithAggregation(b.for_aggregation())),
+                StatementProof::Saver(sp) => statement_proofs
+                    .push(StatementProof::SaverWithAggregation(sp.for_aggregation())),
+                StatementProof::BoundCheckLegoGroth16(b) => statement_proofs.push(
+                    StatementProof::BoundCheckLegoGroth16WithAggregation(b.for_aggregation()),
+                ),
+                StatementProof::R1CSLegoGroth16(b) => statement_proofs.push(
+                    StatementProof::R1CSLegoGroth16WithAggregation(b.for_aggregation()),
+                ),
                 _ => statement_proofs.push(sp.clone()),
             }
         }
@@ -537,7 +565,7 @@ where
             nonce: self.nonce.clone(),
             aggregated_groth16: self.aggregated_groth16.clone(),
             aggregated_legogroth16: self.aggregated_legogroth16.clone(),
-            _phantom: PhantomData
+            _phantom: PhantomData,
         }
     }
 }

@@ -140,7 +140,15 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
         witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
     }
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     let mut verifier_setup_params = vec![];
     verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk_1.vk.clone()));
@@ -179,6 +187,11 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     verifier_proof_spec.validate().unwrap();
     proof
         .clone()
-        .verify(verifier_proof_spec.clone(), None)
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
 }

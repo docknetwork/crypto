@@ -22,7 +22,6 @@ hkdf = "0.11.0"
 serde.workspace = true
 serde_with.workspace = true
 rayon = {workspace = true, optional = true}
-merlin = { workspace = true, default-features = false }
 
 [dev-dependencies]
 blake2.workspace = true
@@ -30,7 +29,7 @@ ark-bls12-381.workspace = true
 
 [features]
 default = [ "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std", "ark-poly/std", "merlin/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std", "ark-poly/std"]
 print-trace = [ "ark-std/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-poly/parallel", "ark-std/parallel", "rayon" ]
 #with-serde = ["serde", "serde_with"]

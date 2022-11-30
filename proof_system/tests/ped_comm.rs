@@ -99,7 +99,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     test_serialization!(ProofG1, proof);
 
     proof
-        .verify(proof_spec, nonce.clone(), Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec, nonce.clone(), Default::default())
         .unwrap();
 
     // Wrong commitment should fail to verify
@@ -132,7 +132,12 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     .unwrap()
     .0;
     assert!(proof
-        .verify(proof_spec_invalid, nonce.clone(), Default::default())
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec_invalid,
+            nonce.clone(),
+            Default::default()
+        )
         .is_err());
 
     // Wrong message equality should fail to verify
@@ -166,7 +171,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     .0;
 
     assert!(proof
-        .verify(proof_spec_invalid, nonce, Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec_invalid, nonce, Default::default())
         .is_err());
 }
 
@@ -269,6 +274,6 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     test_serialization!(ProofG1, proof);
 
     proof
-        .verify(proof_spec, nonce.clone(), Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec, nonce.clone(), Default::default())
         .unwrap();
 }

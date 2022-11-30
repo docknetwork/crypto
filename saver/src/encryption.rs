@@ -14,12 +14,23 @@ use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{One, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::ops::Add;
-use ark_std::{io::{Read, Write}, marker::PhantomData, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand, cfg_into_iter, cfg_iter};
+use ark_std::{
+    cfg_into_iter, cfg_iter,
+    io::{Read, Write},
+    marker::PhantomData,
+    ops::Neg,
+    rand::RngCore,
+    vec,
+    vec::Vec,
+    UniformRand,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::utils::CHUNK_TYPE;
-use dock_crypto_utils::ec::{batch_normalize_projective_into_affine, pairing_product_with_g2_prepared};
+use dock_crypto_utils::ec::{
+    batch_normalize_projective_into_affine, pairing_product_with_g2_prepared,
+};
 use dock_crypto_utils::ff::non_zero_random;
 use dock_crypto_utils::serde_utils::*;
 
@@ -233,9 +244,20 @@ impl<E: PairingEngine> Encryption<E> {
     ) -> crate::Result<(Ciphertext<E>, E::Fr, ark_groth16::Proof<E>)> {
         let r_prime = non_zero_random::<E::Fr, R>(rng);
         let r_prime_repr = r_prime.into_repr();
-        let xr = ek.X_0.mul(r_prime_repr).add_mixed(&ciphertext.X_r).into_affine();
-        let enc = cfg_into_iter!(ciphertext.enc_chunks).zip(cfg_iter!(ek.X)).map(|(c, x)| x.mul(r_prime_repr).add_mixed(&c)).collect::<Vec<_>>();
-        let comm = ek.P_1.mul(r_prime_repr).add_mixed(&ciphertext.commitment).into_affine();
+        let xr = ek
+            .X_0
+            .mul(r_prime_repr)
+            .add_mixed(&ciphertext.X_r)
+            .into_affine();
+        let enc = cfg_into_iter!(ciphertext.enc_chunks)
+            .zip(cfg_iter!(ek.X))
+            .map(|(c, x)| x.mul(r_prime_repr).add_mixed(&c))
+            .collect::<Vec<_>>();
+        let comm = ek
+            .P_1
+            .mul(r_prime_repr)
+            .add_mixed(&ciphertext.commitment)
+            .into_affine();
         let proof = saver_groth16::randomize_proof(proof, &r_prime, snark_vk, &ek, rng)?;
         let ct = Ciphertext {
             X_r: xr,
@@ -443,7 +465,10 @@ impl<E: PairingEngine> Encryption<E> {
             ));
         }
 
-        let (a, b) = (Self::get_g1_for_ciphertext_commitment_pairing_checks(c_0, c, commitment), Self::get_g2_for_ciphertext_commitment_pairing_checks(ek, gens));
+        let (a, b) = (
+            Self::get_g1_for_ciphertext_commitment_pairing_checks(c_0, c, commitment),
+            Self::get_g2_for_ciphertext_commitment_pairing_checks(ek, gens),
+        );
         if pairing_product_with_g2_prepared::<E>(&a, &b).is_one() {
             Ok(())
         } else {
@@ -482,7 +507,8 @@ impl<E: PairingEngine> Encryption<E> {
             }
         }
 
-        let a = Self::get_g1_for_ciphertext_commitments_in_batch_pairing_checks(ciphertexts, r_powers);
+        let a =
+            Self::get_g1_for_ciphertext_commitments_in_batch_pairing_checks(ciphertexts, r_powers);
         let b = Self::get_g2_for_ciphertext_commitment_pairing_checks(ek, gens);
         if pairing_product_with_g2_prepared::<E>(&a, &b).is_one() {
             Ok(())
@@ -803,7 +829,9 @@ impl<E: PairingEngine> Encryption<E> {
     ) -> Vec<E::G1Affine> {
         let mut a = Vec::with_capacity(ciphertexts[0].enc_chunks.len() + 2);
         let num = r_powers.len();
-        let r_powers_repr = cfg_iter!(r_powers).map(|r| r.into_repr()).collect::<Vec<_>>();
+        let r_powers_repr = cfg_iter!(r_powers)
+            .map(|r| r.into_repr())
+            .collect::<Vec<_>>();
 
         let mut bases = vec![];
         for i in 0..num {
@@ -839,7 +867,6 @@ impl<E: PairingEngine> Encryption<E> {
         b.push(gens.H.clone());
         b
     }
-
 }
 
 impl<E: PairingEngine> Ciphertext<E> {
@@ -869,7 +896,6 @@ impl<E: PairingEngine> Ciphertext<E> {
         self.verify_commitment_given_prepared(ek, gens)?;
         saver_groth16::verify_proof(snark_vk, proof, self)
     }
-
 
     pub fn decrypt_given_groth16_vk(
         &self,
@@ -973,8 +999,6 @@ impl<E: PairingEngine> CiphertextAlt<E> {
         )
     }
 }
-
-// TODO: Add function to rerandomize
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -1305,7 +1329,7 @@ pub(crate) mod tests {
             let r = Fr::rand(&mut rng);
             let mut r_powers = vec![Fr::one(); count as usize];
             for i in 1..count as usize {
-                r_powers[i] = r_powers[i-1] * &r;
+                r_powers[i] = r_powers[i - 1] * &r;
             }
 
             let start = Instant::now();

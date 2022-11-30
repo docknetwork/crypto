@@ -7,6 +7,7 @@ use std::path::PathBuf;
 pub mod bounded_sum;
 pub mod mimc_hash;
 pub mod multiple_circuits_in_single_proof;
+pub mod proof_aggregation;
 pub mod set_membership;
 pub mod single_circuit_in_a_proof;
 

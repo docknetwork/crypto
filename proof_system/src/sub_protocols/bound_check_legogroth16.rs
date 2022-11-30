@@ -1,5 +1,7 @@
 use crate::error::ProofSystemError;
-use crate::statement_proof::{BoundCheckLegoGroth16Proof, BoundCheckLegoGroth16ProofWhenAggregatingSnarks, StatementProof};
+use crate::statement_proof::{
+    BoundCheckLegoGroth16Proof, BoundCheckLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
+};
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_ff::{Field, PrimeField};

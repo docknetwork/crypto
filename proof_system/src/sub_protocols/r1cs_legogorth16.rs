@@ -1,16 +1,21 @@
 use crate::error::ProofSystemError;
-use crate::statement_proof::{R1CSLegoGroth16Proof, R1CSLegoGroth16ProofWhenAggregatingSnarks, StatementProof};
+use crate::statement_proof::{
+    R1CSLegoGroth16Proof, R1CSLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
+};
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::CanonicalSerialize;
 use ark_std::collections::BTreeMap;
 use ark_std::io::Write;
 use ark_std::rand::RngCore;
-use ark_std::vec::Vec;
 use ark_std::UniformRand;
-use legogroth16::circom::{CircomCircuit, WitnessCalculator, R1CS};
-use legogroth16::{create_random_proof, prepare_verifying_key, rerandomize_proof_1, verify_proof, PreparedVerifyingKey, Proof, ProvingKey, VerifyingKey, calculate_d};
+use ark_std::{vec, vec::Vec};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use legogroth16::circom::{CircomCircuit, WitnessCalculator, R1CS};
+use legogroth16::{
+    calculate_d, create_random_proof, prepare_verifying_key, rerandomize_proof_1, verify_proof,
+    PreparedVerifyingKey, Proof, ProvingKey, VerifyingKey,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct R1CSLegogroth16Protocol<'a, E: PairingEngine> {
@@ -177,7 +182,9 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
             .verifying_key
             .ok_or(ProofSystemError::LegoGroth16VerifyingKeyNotProvided)?;
         let pvk = prepare_verifying_key(verifying_key);
-        self.verify_proof_contribution_using_prepared(challenge, inputs, proof, comm_key, &pvk, &mut None)
+        self.verify_proof_contribution_using_prepared(
+            challenge, inputs, proof, comm_key, &pvk, &mut None,
+        )
     }
 
     pub fn verify_proof_contribution_using_prepared(
@@ -203,7 +210,7 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
                     &pvk.alpha_g1_beta_g2,
                 );
             }
-            None => verify_proof(pvk, &proof.snark_proof, inputs)?
+            None => verify_proof(pvk, &proof.snark_proof, inputs)?,
         }
 
         // NOTE: value of id is dummy

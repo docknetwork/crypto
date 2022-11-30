@@ -22,15 +22,18 @@ use saver::prelude::{
 use serde::{Deserialize, Serialize};
 
 // TODO: Serialize snarkpack params
-
+/// SRS used for Groth16 and LegoGroth16 proof aggregation using SnarkPack.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SnarkpackSRS<E: PairingEngine> {
+    /// SRS used by prover
     ProverSrs(ProverSRS<E>),
+    /// SRS used by verifier
     VerifierSrs(VerifierSRS<E>),
 }
 
 /// Describes the relations that need to proven. This is created independently by the prover and verifier and must
 /// be agreed upon and be same before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s.
+/// Also contains other instructions like which proofs to aggregate.
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
@@ -44,7 +47,11 @@ pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
     /// the proof or the verifier's identity or some verifier-specific identity of the holder
     /// or all of the above combined.
     pub context: Option<Vec<u8>>,
+    /// Statement indices for which Groth16 proof should be aggregated. Each BTreeSet represents one
+    /// group of statements whose proof will be aggregated into 1 aggregate proof. The number of aggregate
+    /// proofs is the length of the vector
     pub aggregate_groth16: Option<Vec<BTreeSet<usize>>>,
+    /// Same as `aggregate_groth16` above but aggregates LegoGroth16 proof instead of Groth16.
     pub aggregate_legogroth16: Option<Vec<BTreeSet<usize>>>,
     // TODO: Remove this skip
     #[serde(skip)]
@@ -56,6 +63,7 @@ where
     E: PairingEngine,
     G: AffineCurve,
 {
+    /// Create a new `ProofSpec`
     pub fn new(
         statements: Statements<E, G>,
         meta_statements: MetaStatements,
@@ -73,6 +81,7 @@ where
         }
     }
 
+    /// Same as `Self::new` but specifies which proofs should be aggregated.
     pub fn new_with_aggregation(
         statements: Statements<E, G>,
         meta_statements: MetaStatements,

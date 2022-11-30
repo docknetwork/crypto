@@ -1,5 +1,5 @@
 use ark_ff::PrimeField;
-use ark_std::rand::Rng;
+use ark_std::{rand::Rng, vec, vec::Vec};
 
 #[cfg(feature = "parallel")]
 use {ark_std::cfg_into_iter, rayon::prelude::*};
@@ -27,4 +27,12 @@ pub fn non_zero_random<F: PrimeField, R: Rng>(rng: &mut R) -> F {
         r = F::rand(rng);
     }
     r
+}
+
+pub fn powers<F: PrimeField>(s: &F, num: usize) -> Vec<F> {
+    let mut powers = vec![F::one()];
+    for i in 1..num {
+        powers.push(powers[i - 1] * s);
+    }
+    powers
 }

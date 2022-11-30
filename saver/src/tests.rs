@@ -188,13 +188,23 @@ fn bbs_plus_verifiably_encrypt_message() {
         witnesses.add(Witness::PedersenCommitment(wit_comm_ct));
 
         println!("Timing for {}-bit chunks", chunk_bit_size);
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), None, Default::default()).unwrap().0;
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap()
+        .0;
         println!("Time taken to create proof {:?}", start.elapsed());
 
         // Verifies the proof
         assert_eq!(comm_chunks, comm_single);
         let start = Instant::now();
-        proof.verify(proof_spec, None, Default::default()).unwrap();
+        proof
+            .verify::<StdRng>(&mut rng, proof_spec, None, Default::default())
+            .unwrap();
         println!("Time taken to verify proof {:?}", start.elapsed());
 
         let start = Instant::now();
@@ -534,14 +544,24 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         witnesses.add(Witness::PedersenCommitment(wit_comm_chunks_3));
         witnesses.add(Witness::PedersenCommitment(wit_comm_ct_3));
 
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), None, Default::default()).unwrap().0;
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap()
+        .0;
 
         // Verifies the proof
         assert_eq!(comm_chunks_1, comm_single_1);
         assert_eq!(comm_chunks_2, comm_single_2);
         assert_eq!(comm_chunks_3, comm_single_3);
         let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
-        proof.verify(proof_spec, None, Default::default()).unwrap();
+        proof
+            .verify::<StdRng>(&mut rng, proof_spec, None, Default::default())
+            .unwrap();
 
         for (ct, proof, m_idx) in vec![
             (&ct_1, &proof_1, m_idx_1),
@@ -852,14 +872,24 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         witnesses.add(Witness::PedersenCommitment(wit_comm_chunks_2));
         witnesses.add(Witness::PedersenCommitment(wit_comm_ct_2));
 
-        let proof = ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), None, Default::default()).unwrap().0;
+        let proof = ProofG1::new(
+            &mut rng,
+            proof_spec.clone(),
+            witnesses.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap()
+        .0;
         println!("Time taken to create proof {:?}", start.elapsed());
 
         // Verifies the proof
         assert_eq!(comm_chunks_1, comm_single_1);
         assert_eq!(comm_chunks_2, comm_single_2);
         let start = Instant::now();
-        proof.verify(proof_spec, None, Default::default()).unwrap();
+        proof
+            .verify::<StdRng>(&mut rng, proof_spec, None, Default::default())
+            .unwrap();
         println!("Time taken to verify proof {:?}", start.elapsed());
 
         let start = Instant::now();

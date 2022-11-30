@@ -10,7 +10,9 @@ use dock_crypto_utils::msm::variable_base_msm;
 use std::time::Instant;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 
-use proof_system::prelude::{EqualWitnesses, MetaStatements, Witness, WitnessRef, Witnesses};
+use proof_system::prelude::{
+    EqualWitnesses, MetaStatements, VerifierConfig, Witness, WitnessRef, Witnesses,
+};
 use proof_system::proof_spec::ProofSpec;
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::Statements;
@@ -187,22 +189,26 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
     // Proof with no nonce shouldn't verify
     assert!(proof
         .clone()
-        .verify(proof_spec.clone(), None, Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec.clone(), None, Default::default())
         .is_err());
     assert!(proof
         .clone()
-        .verify_using_randomized_pairing_check(
+        .verify(
             &mut rng,
             proof_spec.clone(),
             None,
-            Default::default()
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
         )
         .is_err());
 
     // Proof with invalid nonce shouldn't verify
     assert!(proof
         .clone()
-        .verify(
+        .verify::<StdRng>(
+            &mut rng,
             proof_spec.clone(),
             Some(b"random...".to_vec()),
             Default::default()
@@ -210,11 +216,14 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
         .is_err());
     assert!(proof
         .clone()
-        .verify_using_randomized_pairing_check(
+        .verify(
             &mut rng,
             proof_spec.clone(),
             Some(b"random...".to_vec()),
-            Default::default()
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
         )
         .is_err());
 
@@ -224,7 +233,12 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(proof_spec.clone(), nonce.clone(), Default::default())
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default(),
+        )
         .unwrap();
     println!(
         "Time to verify proof with 3 BBS+ signatures: {:?}",
@@ -233,7 +247,15 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
 
     let start = Instant::now();
     proof
-        .verify_using_randomized_pairing_check(&mut rng, proof_spec, nonce, Default::default())
+        .verify(
+            &mut rng,
+            proof_spec,
+            nonce,
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
+        )
         .unwrap();
     println!(
         "Time to verify proof with 3 BBS+ signatures with randomized pairing check: {:?}",
@@ -337,7 +359,12 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(proof_spec.clone(), nonce.clone(), Default::default())
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default(),
+        )
         .unwrap();
     println!(
         "Time to verify proof with a BBS+ signature and positive accumulator membership: {:?}",
@@ -346,11 +373,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     let start = Instant::now();
     proof
-        .verify_using_randomized_pairing_check(
+        .verify(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
-            Default::default(),
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
         )
         .unwrap();
     println!("Time to verify proof with a BBS+ signature and positive accumulator membership with randomized pairing check: {:?}", start.elapsed());
@@ -380,18 +410,22 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     assert!(proof
         .clone()
-        .verify(
+        .verify::<StdRng>(
+            &mut rng,
             proof_spec_incorrect.clone(),
             nonce.clone(),
             Default::default()
         )
         .is_err());
     assert!(proof
-        .verify_using_randomized_pairing_check(
+        .verify(
             &mut rng,
             proof_spec_incorrect.clone(),
             nonce.clone(),
-            Default::default()
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
         )
         .is_err());
 
@@ -427,14 +461,22 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     .0;
     assert!(proof
         .clone()
-        .verify(proof_spec.clone(), nonce.clone(), Default::default())
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default()
+        )
         .is_err());
     assert!(proof
-        .verify_using_randomized_pairing_check(
+        .verify(
             &mut rng,
             proof_spec,
             nonce.clone(),
-            Default::default()
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
         )
         .is_err());
 
@@ -518,7 +560,12 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(proof_spec.clone(), nonce.clone(), Default::default())
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default(),
+        )
         .unwrap();
     println!(
         "Time to verify proof with a BBS+ signature and universal accumulator membership: {:?}",
@@ -528,11 +575,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify_using_randomized_pairing_check(
+        .verify(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
-            Default::default(),
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
         )
         .unwrap();
     println!("Time to verify proof with a BBS+ signature and universal accumulator membership with randomized pairing check: {:?}", start.elapsed());
@@ -609,7 +659,12 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(proof_spec.clone(), nonce.clone(), Default::default())
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default(),
+        )
         .unwrap();
     println!(
         "Time to verify proof with a BBS+ signature and universal accumulator non-membership: {:?}",
@@ -618,11 +673,14 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     let start = Instant::now();
     proof
-        .verify_using_randomized_pairing_check(
+        .verify(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
-            Default::default(),
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
         )
         .unwrap();
     println!("Time to verify proof with a BBS+ signature and universal accumulator non-membership with randomized pairing check: {:?}", start.elapsed());
@@ -729,13 +787,26 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(proof_spec.clone(), nonce.clone(), Default::default())
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default(),
+        )
         .unwrap();
     println!("Time to verify proof with a BBS+ signature and 3 accumulator membership and non-membership checks: {:?}", start.elapsed());
 
     let start = Instant::now();
     proof
-        .verify_using_randomized_pairing_check(&mut rng, proof_spec, nonce, Default::default())
+        .verify(
+            &mut rng,
+            proof_spec,
+            nonce,
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
+        )
         .unwrap();
     println!("Time to verify proof with a BBS+ signature and 3 accumulator membership and non-membership checks with randomized pairing check: {:?}", start.elapsed());
 }
@@ -814,7 +885,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     test_serialization!(ProofG1, proof);
 
     proof
-        .verify(proof_spec, nonce.clone(), Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec, nonce.clone(), Default::default())
         .unwrap();
 
     // Wrong message equality should fail to verify
@@ -848,7 +919,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     .0;
 
     assert!(proof
-        .verify(proof_spec_invalid, nonce, Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec_invalid, nonce, Default::default())
         .is_err());
 }
 
@@ -922,7 +993,9 @@ fn requesting_partially_blind_bbs_plus_sig() {
 
     test_serialization!(ProofG1, proof);
 
-    proof.verify(proof_spec, nonce, Default::default()).unwrap();
+    proof
+        .verify::<StdRng>(&mut rng, proof_spec, nonce, Default::default())
+        .unwrap();
 
     // Now requester picks the messages he is revealing to the signer and prepares `uncommitted_messages`
     // to request the blind signature
@@ -1078,10 +1151,15 @@ fn proof_spec_modification() {
     // Above proof is valid if verified using the modified proof spec but not with the original proof spec
     invalid_proof
         .clone()
-        .verify(modified_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng>(
+            &mut rng,
+            modified_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
     assert!(invalid_proof
-        .verify(orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng>(&mut rng, orig_proof_spec.clone(), None, Default::default())
         .is_err());
 
     // Proof created using original proof spec will be valid
@@ -1095,7 +1173,7 @@ fn proof_spec_modification() {
     .unwrap()
     .0;
     valid_proof
-        .verify(orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng>(&mut rng, orig_proof_spec.clone(), None, Default::default())
         .unwrap();
 
     // Verifier creates proof spec with 2 statements, prover modifies it to remove a statement
@@ -1139,10 +1217,15 @@ fn proof_spec_modification() {
     // Above proof is valid if verified using the modified proof spec but not with the original proof spec
     invalid_proof
         .clone()
-        .verify(modified_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng>(
+            &mut rng,
+            modified_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
     assert!(invalid_proof
-        .verify(orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng>(&mut rng, orig_proof_spec.clone(), None, Default::default())
         .is_err());
 
     // Proof created using original proof spec will be valid
@@ -1156,7 +1239,7 @@ fn proof_spec_modification() {
     .unwrap()
     .0;
     valid_proof
-        .verify(orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng>(&mut rng, orig_proof_spec.clone(), None, Default::default())
         .unwrap();
 }
 
@@ -1262,7 +1345,7 @@ fn verifier_local_linkability() {
     .0;
 
     proof_1
-        .verify(proof_spec_1, None, Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec_1, None, Default::default())
         .unwrap();
 
     // Prover proves to verifier 2
@@ -1314,7 +1397,7 @@ fn verifier_local_linkability() {
     .0;
 
     proof_2
-        .verify(proof_spec_2, None, Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec_2, None, Default::default())
         .unwrap();
 
     // Prover again proves to verifier 1, this time something different like revealing a message but still uses his registration
@@ -1380,7 +1463,7 @@ fn verifier_local_linkability() {
     .0;
 
     proof_3
-        .verify(proof_spec_3, None, Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec_3, None, Default::default())
         .unwrap();
 }
 
@@ -1490,7 +1573,7 @@ fn pok_of_bbs_plus_sig_with_reusing_setup_params() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(proof_spec.clone(), None, Default::default())
+        .verify::<StdRng>(&mut rng, proof_spec.clone(), None, Default::default())
         .unwrap();
     println!(
         "Time to verify proof with 4 BBS+ signatures: {:?}",
@@ -1499,7 +1582,15 @@ fn pok_of_bbs_plus_sig_with_reusing_setup_params() {
 
     let start = Instant::now();
     proof
-        .verify_using_randomized_pairing_check(&mut rng, proof_spec, None, Default::default())
+        .verify(
+            &mut rng,
+            proof_spec,
+            None,
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
+        )
         .unwrap();
     println!(
         "Time to verify proof with 4 BBS+ signatures with randomized pairing check: {:?}",

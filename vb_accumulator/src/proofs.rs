@@ -102,6 +102,7 @@ use ark_std::{
     fmt::Debug,
     io::{Read, Write},
     rand::RngCore,
+    vec::Vec,
     UniformRand,
 };
 use digest::Digest;
@@ -903,6 +904,8 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         Ok(())
     }
 
+    /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this
+    /// protocol or others) and the pairing equations are combined in a randomized pairing check.
     fn verify_proof_except_pairings(
         randomized_witness: &RandomizedWitness<E::G1Affine>,
         schnorr_commit: &SchnorrCommit<E>,
@@ -1546,6 +1549,8 @@ where
             + context.mul_with_table(&E_d_table, challenge).unwrap()
     }
 
+    /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this
+    /// protocol or others) and the pairing equations are combined in a randomized pairing check.
     fn verify_except_pairings(
         &self,
         challenge: &E::Fr,
@@ -1610,6 +1615,9 @@ mod tests {
 
         let mut proof_create_duration = Duration::default();
         let mut proof_verif_duration = Duration::default();
+        let mut proof_verif_with_rand_pair_check_duration = Duration::default();
+
+        let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
 
         for i in 0..count {
             let start = Instant::now();
@@ -1672,7 +1680,24 @@ mod tests {
                 )
                 .unwrap();
             proof_verif_duration += start.elapsed();
+
+            let start = Instant::now();
+            proof
+                .verify_with_randomized_pairing_checker(
+                    &accumulator.value(),
+                    &challenge_verifier,
+                    &keypair.public_key,
+                    &params,
+                    &prk,
+                    &mut pairing_checker,
+                )
+                .unwrap();
+            proof_verif_with_rand_pair_check_duration += start.elapsed();
         }
+
+        let start = Instant::now();
+        assert!(pairing_checker.verify());
+        proof_verif_with_rand_pair_check_duration += start.elapsed();
 
         println!(
             "Time to create {} membership proofs is {:?}",
@@ -1681,6 +1706,10 @@ mod tests {
         println!(
             "Time to verify {} membership proofs is {:?}",
             count, proof_verif_duration
+        );
+        println!(
+            "Time to verify {} membership proofs using randomized pairing checker is {:?}",
+            count, proof_verif_with_rand_pair_check_duration
         );
     }
 
@@ -1726,6 +1755,9 @@ mod tests {
 
         let mut proof_create_duration = Duration::default();
         let mut proof_verif_duration = Duration::default();
+        let mut proof_verif_with_rand_pair_check_duration = Duration::default();
+
+        let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
 
         for i in 0..count {
             let start = Instant::now();
@@ -1787,7 +1819,24 @@ mod tests {
                 )
                 .unwrap();
             proof_verif_duration += start.elapsed();
+
+            let start = Instant::now();
+            proof
+                .verify_with_randomized_pairing_checker(
+                    &accumulator.value(),
+                    &challenge_verifier,
+                    &keypair.public_key,
+                    &params,
+                    &prk,
+                    &mut pairing_checker,
+                )
+                .unwrap();
+            proof_verif_with_rand_pair_check_duration += start.elapsed();
         }
+
+        let start = Instant::now();
+        assert!(pairing_checker.verify());
+        proof_verif_with_rand_pair_check_duration += start.elapsed();
 
         println!(
             "Time to create {} non-membership proofs is {:?}",
@@ -1796,6 +1845,10 @@ mod tests {
         println!(
             "Time to verify {} non-membership proofs is {:?}",
             count, proof_verif_duration
+        );
+        println!(
+            "Time to verify {} non-membership proofs using randomized pairing checker is {:?}",
+            count, proof_verif_with_rand_pair_check_duration
         );
     }
 }

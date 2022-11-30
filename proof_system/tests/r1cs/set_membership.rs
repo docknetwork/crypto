@@ -88,7 +88,15 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     r1cs_wit.set_public("set".to_string(), public_set.clone());
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -111,7 +119,14 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
         None,
     );
     verifier_proof_spec.validate().unwrap();
-    proof.verify(verifier_proof_spec.clone(), None).unwrap();
+    proof
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap();
 
     // -------------------------------------------------------------------------------------- //
 
@@ -128,7 +143,15 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     r1cs_wit.set_public("set".to_string(), public_set.clone());
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -151,5 +174,12 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
         None,
     );
     verifier_proof_spec.validate().unwrap();
-    proof.verify(verifier_proof_spec.clone(), None).unwrap();
+    proof
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap();
 }

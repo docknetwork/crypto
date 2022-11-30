@@ -99,7 +99,15 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     test_serialization!(ProofG1, proof);
 
@@ -133,7 +141,12 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
 
     proof
         .clone()
-        .verify(verifier_proof_spec.clone(), None)
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
 
     // Proof with wrong public input fails
@@ -157,7 +170,14 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         None,
     );
     verifier_proof_spec_1.validate().unwrap();
-    assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+    assert!(proof
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec_1.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
 
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
     // the prover is proving equality with wrong message
@@ -181,8 +201,10 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         proof_spec_prover_1.clone(),
         witnesses.clone(),
         None,
+        Default::default(),
     )
-    .unwrap();
+    .unwrap()
+    .0;
 
     let proof_spec_verifier_2 = ProofSpec::new(
         verifier_statements.clone(),
@@ -191,7 +213,14 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         None,
     );
     proof_spec_verifier_2.validate().unwrap();
-    assert!(proof.verify(proof_spec_verifier_2.clone(), None).is_err());
+    assert!(proof
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec_verifier_2.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
 }
 
 #[test]
@@ -290,7 +319,15 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-        let proof = ProofG1::new(rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+        let proof = ProofG1::new(
+            rng,
+            proof_spec_prover.clone(),
+            witnesses.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap()
+        .0;
 
         test_serialization!(ProofG1, proof);
 
@@ -319,7 +356,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         proof
             .clone()
-            .verify(verifier_proof_spec.clone(), None)
+            .verify::<StdRng>(rng, verifier_proof_spec.clone(), None, Default::default())
             .unwrap();
 
         // Proof with wrong public input fails
@@ -340,7 +377,9 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
             None,
         );
         verifier_proof_spec_1.validate().unwrap();
-        assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+        assert!(proof
+            .verify::<StdRng>(rng, verifier_proof_spec_1.clone(), None, Default::default())
+            .is_err());
 
         // -----------------------------------------------------------------------------
 
@@ -375,8 +414,15 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         r1cs_wit.set_private("b".to_string(), vec![msgs[l_msg_idx]]);
         witnesses_1.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-        let proof_1 =
-            ProofG1::new(rng, proof_spec_prover_1.clone(), witnesses_1.clone(), None).unwrap();
+        let proof_1 = ProofG1::new(
+            rng,
+            proof_spec_prover_1.clone(),
+            witnesses_1.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap()
+        .0;
 
         let mut verifier_statements_2 = Statements::new();
         verifier_statements_2.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -398,7 +444,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         verifier_proof_spec_2.validate().unwrap();
         proof_1
             .clone()
-            .verify(verifier_proof_spec_2.clone(), None)
+            .verify::<StdRng>(rng, verifier_proof_spec_2.clone(), None, Default::default())
             .unwrap();
 
         // Proof with wrong public input fails
@@ -419,7 +465,9 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
             None,
         );
         verifier_proof_spec_3.validate().unwrap();
-        assert!(proof_1.verify(verifier_proof_spec_3.clone(), None).is_err());
+        assert!(proof_1
+            .verify::<StdRng>(rng, verifier_proof_spec_3.clone(), None, Default::default())
+            .is_err());
     }
 
     check(
@@ -519,7 +567,15 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     r1cs_wit_2.set_private("b".to_string(), vec![msgs_1[3]]);
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit_2));
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     let mut verifier_setup_params = vec![];
     verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk.clone()));
@@ -554,7 +610,12 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     verifier_proof_spec.validate().unwrap();
     proof
         .clone()
-        .verify(verifier_proof_spec.clone(), None)
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
 
     // Proof with wrong public input fails
@@ -582,7 +643,14 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         None,
     );
     verifier_proof_spec_1.validate().unwrap();
-    assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+    assert!(proof
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec_1.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
 }
 
 #[test]
@@ -671,7 +739,15 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     test_serialization!(ProofG1, proof);
 
@@ -701,7 +777,12 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     proof
         .clone()
-        .verify(verifier_proof_spec.clone(), None)
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
 
     // Proof with wrong public input fails
@@ -722,7 +803,14 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         None,
     );
     verifier_proof_spec_1.validate().unwrap();
-    assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+    assert!(proof
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec_1.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
 
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
     // the prover is proving equality with wrong message
@@ -751,8 +839,10 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         proof_spec_prover_1.clone(),
         witnesses.clone(),
         None,
+        Default::default(),
     )
-    .unwrap();
+    .unwrap()
+    .0;
 
     let proof_spec_verifier_2 = ProofSpec::new(
         verifier_statements.clone(),
@@ -761,7 +851,14 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         None,
     );
     proof_spec_verifier_2.validate().unwrap();
-    assert!(proof.verify(proof_spec_verifier_2.clone(), None).is_err());
+    assert!(proof
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec_verifier_2.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
 
     // ---------------- Case 2 ----------------------------------------------
 
@@ -810,7 +907,15 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     test_serialization!(ProofG1, proof);
 
@@ -840,7 +945,12 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     proof
         .clone()
-        .verify(verifier_proof_spec.clone(), None)
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
 
     // Proof with wrong public input fails
@@ -861,7 +971,14 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         None,
     );
     verifier_proof_spec_1.validate().unwrap();
-    assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+    assert!(proof
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec_1.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
 
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
     // the prover is proving equality with wrong message
@@ -885,8 +1002,10 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         proof_spec_prover_1.clone(),
         witnesses.clone(),
         None,
+        Default::default(),
     )
-    .unwrap();
+    .unwrap()
+    .0;
 
     let proof_spec_verifier_2 = ProofSpec::new(
         verifier_statements.clone(),
@@ -895,5 +1014,12 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         None,
     );
     proof_spec_verifier_2.validate().unwrap();
-    assert!(proof.verify(proof_spec_verifier_2.clone(), None).is_err());
+    assert!(proof
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec_verifier_2.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
 }
