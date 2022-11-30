@@ -1,5 +1,5 @@
 use crate::error::ProofSystemError;
-use crate::statement_proof::{BoundCheckLegoGroth16Proof, StatementProof};
+use crate::statement_proof::{BoundCheckLegoGroth16Proof, BoundCheckLegoGroth16ProofWhenAggregatingSnarks, StatementProof};
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_ff::{Field, PrimeField};
@@ -223,6 +223,17 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
     }
 
+    pub fn verify_proof_contribution_using_prepared_when_aggregating_snark(
+        &self,
+        challenge: &E::Fr,
+        proof: &BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>,
+        comm_key: &[E::G1Affine],
+    ) -> Result<(), ProofSystemError> {
+        // NOTE: value of id is dummy
+        let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
+        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
+    }
+
     pub fn compute_challenge_contribution<W: Write>(
         comm_key: &[E::G1Affine],
         proof: &BoundCheckLegoGroth16Proof<E>,
@@ -230,6 +241,17 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
     ) -> Result<(), ProofSystemError> {
         comm_key.serialize_unchecked(&mut writer)?;
         proof.snark_proof.d.serialize_unchecked(&mut writer)?;
+        proof.sp.t.serialize_unchecked(&mut writer)?;
+        Ok(())
+    }
+
+    pub fn compute_challenge_contribution_when_aggregating_snark<W: Write>(
+        comm_key: &[E::G1Affine],
+        proof: &BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>,
+        mut writer: W,
+    ) -> Result<(), ProofSystemError> {
+        comm_key.serialize_unchecked(&mut writer)?;
+        proof.commitment.serialize_unchecked(&mut writer)?;
         proof.sp.t.serialize_unchecked(&mut writer)?;
         Ok(())
     }

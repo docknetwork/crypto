@@ -26,11 +26,15 @@ impl<E> RandomizedPairingChecker<E>
     where
         E: PairingEngine,
 {
-    pub fn new<R: Rng>(rng: &mut R) -> Self {
+    pub fn new_using_rng<R: Rng>(rng: &mut R) -> Self {
+        Self::new(E::Fr::rand(rng))
+    }
+
+    pub fn new(r: E::Fr) -> Self {
         Self {
             left: E::Fqk::one(),
             right: E::Fqk::one(),
-            r: E::Fr::rand(rng),
+            r,
             current_r: E::Fr::one(),
         }
     }
@@ -124,11 +128,15 @@ impl<E> RandomizedPairingCheckerLazy<E>
     where
         E: PairingEngine,
 {
-    pub fn new<R: Rng>(rng: &mut R) -> Self {
+    pub fn new_using_rng<R: Rng>(rng: &mut R) -> Self {
+        Self::new(E::Fr::rand(rng))
+    }
+
+    pub fn new(r: E::Fr) -> Self {
         Self {
             left: vec![],
             right: E::Fqk::one(),
-            r: E::Fr::rand(rng),
+            r,
             current_r: E::Fr::one(),
         }
     }
@@ -289,7 +297,7 @@ mod test {
         t1 += start.elapsed().as_micros();
 
         let start = Instant::now();
-        let mut checker = RandomizedPairingChecker::<Bls12_381>::new(&mut rng);
+        let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng);
         checker.add_multiple_sources_and_target(&a1, &b1, &out1);
         checker.add_multiple_sources_and_target(&a2, &b2, &out2);
         checker.add_multiple_sources_and_target(&a3, &b3, &out3);
@@ -298,19 +306,19 @@ mod test {
         println!("Time taken without checker {} us", t1);
 
         let start = Instant::now();
-        let mut checker = RandomizedPairingCheckerLazy::<Bls12_381>::new(&mut rng);
+        let mut checker = RandomizedPairingCheckerLazy::<Bls12_381>::new_using_rng(&mut rng);
         checker.add_multiple_sources_and_target(&a1, &b1, &out1);
         checker.add_multiple_sources_and_target(&a2, &b2, &out2);
         checker.add_multiple_sources_and_target(&a3, &b3, &out3);
         assert!(checker.verify());
         println!("Time taken with lazy checker {} us", start.elapsed().as_micros());
 
-        let mut checker = RandomizedPairingChecker::<Bls12_381>::new(&mut rng);
+        let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng);
         checker.add_multiple_sources(&a1, &b1, &rev_vec(&a1), &rev_vec(&b1));
         assert!(checker.verify());
 
         let start = Instant::now();
-        let mut checker = RandomizedPairingChecker::<Bls12_381>::new(&mut rng);
+        let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng);
         checker.add_multiple_sources(&a1, &b1, &rev_vec(&a1), &rev_vec(&b1));
         checker.add_multiple_sources(&a2, &b2, &rev_vec(&a2), &rev_vec(&b2));
         checker.add_multiple_sources(&a3, &b3, &rev_vec(&a3), &rev_vec(&b3));
@@ -318,7 +326,7 @@ mod test {
         println!("Time taken with checker {} us", start.elapsed().as_micros());
 
         let start = Instant::now();
-        let mut checker = RandomizedPairingCheckerLazy::<Bls12_381>::new(&mut rng);
+        let mut checker = RandomizedPairingCheckerLazy::<Bls12_381>::new_using_rng(&mut rng);
         checker.add_multiple_sources(&a1, &b1, &rev_vec(&a1), &rev_vec(&b1));
         checker.add_multiple_sources(&a2, &b2, &rev_vec(&a2), &rev_vec(&b2));
         checker.add_multiple_sources(&a3, &b3, &rev_vec(&a3), &rev_vec(&b3));
@@ -326,7 +334,7 @@ mod test {
         println!("Time taken with lazy checker {} us", start.elapsed().as_micros());
 
         let start = Instant::now();
-        let mut checker = RandomizedPairingChecker::<Bls12_381>::new(&mut rng);
+        let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng);
         checker.add_multiple_sources_and_target(&a1, &b1, &out1);
         checker.add_multiple_sources_and_target(&a2, &b2, &out2);
         checker.add_multiple_sources_and_target(&a3, &b3, &out3);
@@ -337,7 +345,7 @@ mod test {
         println!("Time taken with checker {} us", start.elapsed().as_micros());
 
         let start = Instant::now();
-        let mut checker = RandomizedPairingCheckerLazy::<Bls12_381>::new(&mut rng);
+        let mut checker = RandomizedPairingCheckerLazy::<Bls12_381>::new_using_rng(&mut rng);
         checker.add_multiple_sources_and_target(&a1, &b1, &out1);
         checker.add_multiple_sources_and_target(&a2, &b2, &out2);
         checker.add_multiple_sources_and_target(&a3, &b3, &out3);
@@ -347,11 +355,11 @@ mod test {
         assert!(checker.verify());
         println!("Time taken with lazy checker {} us", start.elapsed().as_micros());
 
-        let mut checker = RandomizedPairingChecker::<Bls12_381>::new(&mut rng);
+        let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng);
         checker.add_sources(a1[0].clone(), b1[0].clone(), a1[0].clone(), b1[0].clone());
         assert!(checker.verify());
 
-        let mut checker = RandomizedPairingChecker::<Bls12_381>::new(&mut rng);
+        let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng);
         checker.add_sources(a1[0].clone(), b1[0].clone(), a1[0].clone(), b1[0].clone());
         checker.add_sources(a1[1].clone(), b1[1].clone(), a1[1].clone(), b1[1].clone());
         checker.add_sources(a1[2].clone(), b1[2].clone(), a1[2].clone(), b1[2].clone());

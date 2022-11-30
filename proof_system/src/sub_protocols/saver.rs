@@ -1,5 +1,5 @@
 use crate::error::ProofSystemError;
-use crate::statement_proof::{SaverProof, StatementProof};
+use crate::statement_proof::{SaverProof, SaverProofWhenAggregatingSnarks, StatementProof};
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{One, PrimeField};
@@ -12,6 +12,7 @@ use saver::commitment::ChunkedCommitment;
 use saver::encryption::{Ciphertext, Encryption};
 use saver::keygen::PreparedEncryptionKey;
 use saver::prelude::{ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, SaverError};
+use saver::saver_groth16::calculate_d;
 use saver::setup::PreparedEncryptionGens;
 use saver::utils::decompose;
 
@@ -277,21 +278,49 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         pek: &PreparedEncryptionKey<E>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
+        let expected_count = pek.supported_chunks_count()? as usize;
+        if proof.ciphertext.enc_chunks.len() != expected_count {
+            return Err(SaverError::IncompatibleEncryptionKey(
+                proof.ciphertext.enc_chunks.len(),
+                expected_count,
+            ).into());
+        }
         match pairing_checker {
             Some(c) => {
-                let expected_count = pek.supported_chunks_count()? as usize;
-                if proof.ciphertext.enc_chunks.len() != expected_count {
-                    return Err(SaverError::IncompatibleEncryptionKey(
-                        proof.ciphertext.enc_chunks.len(),
-                        expected_count,
-                    ).into());
-                }
                 let (a, b) = (Encryption::<E>::get_g1_for_ciphertext_commitment_pairing_checks(&proof.ciphertext.X_r, &proof.ciphertext.enc_chunks, &proof.ciphertext.commitment), Encryption::get_g2_for_ciphertext_commitment_pairing_checks(pek, pgens));
-                c.add_prepared_sources_and_target(&a, b, &E::Fqk::one())
+                c.add_prepared_sources_and_target(&a, b, &E::Fqk::one());
+                let d = calculate_d(pvk, &proof.ciphertext)?;
+                c.add_prepared_sources_and_target(
+                    &[proof.snark_proof.a, proof.snark_proof.c, d],
+                    vec![
+                        proof.snark_proof.b.into(),
+                        pvk.delta_g2_neg_pc.clone(),
+                        pvk.gamma_g2_neg_pc.clone(),
+                    ],
+                    &pvk.alpha_g1_beta_g2,
+                );
             }
             None => proof.ciphertext.verify_commitment_and_proof_given_prepared(&proof.snark_proof, pvk, pek, pgens)?
         }
 
+        // NOTE: value of id is dummy
+        let sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, proof.ciphertext.commitment);
+        let sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, proof.comm_chunks);
+        let sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, proof.comm_combined);
+
+        sp_ciphertext.verify_proof_contribution_as_struct(challenge, &proof.sp_ciphertext)?;
+        sp_chunks.verify_proof_contribution_as_struct(challenge, &proof.sp_chunks)?;
+        sp_combined.verify_proof_contribution_as_struct(challenge, &proof.sp_combined)
+    }
+
+    pub fn verify_proof_contribution_using_prepared_when_aggregating_snark(
+        &self,
+        challenge: &E::Fr,
+        proof: &SaverProofWhenAggregatingSnarks<E>,
+        ck_comm_ct: &[E::G1Affine],
+        ck_comm_chunks: &[E::G1Affine],
+        ck_comm_combined: &[E::G1Affine],
+    ) -> Result<(), ProofSystemError> {
         // NOTE: value of id is dummy
         let sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, proof.ciphertext.commitment);
         let sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, proof.comm_chunks);
@@ -307,6 +336,30 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         ck_comm_chunks: &[E::G1Affine],
         ck_comm_combined: &[E::G1Affine],
         proof: &SaverProof<E>,
+        mut writer: W,
+    ) -> Result<(), ProofSystemError> {
+        ck_comm_ct.serialize_unchecked(&mut writer)?;
+        proof
+            .ciphertext
+            .commitment
+            .serialize_unchecked(&mut writer)?;
+        proof.sp_ciphertext.t.serialize_unchecked(&mut writer)?;
+
+        ck_comm_chunks.serialize_unchecked(&mut writer)?;
+        proof.comm_chunks.serialize_unchecked(&mut writer)?;
+        proof.sp_chunks.t.serialize_unchecked(&mut writer)?;
+
+        ck_comm_combined.serialize_unchecked(&mut writer)?;
+        proof.comm_combined.serialize_unchecked(&mut writer)?;
+        proof.sp_combined.t.serialize_unchecked(&mut writer)?;
+        Ok(())
+    }
+
+    pub fn compute_challenge_contribution_when_aggregating_snark<W: Write>(
+        ck_comm_ct: &[E::G1Affine],
+        ck_comm_chunks: &[E::G1Affine],
+        ck_comm_combined: &[E::G1Affine],
+        proof: &SaverProofWhenAggregatingSnarks<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
         ck_comm_ct.serialize_unchecked(&mut writer)?;

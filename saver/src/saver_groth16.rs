@@ -220,7 +220,7 @@ pub fn verify_aggregate_proof<E: PairingEngine, R: Rng, T: Transcript>(
 
     let r = transcript.challenge_scalar::<E::Fr>(b"r-random-fiatshamir");
 
-    let mut c = PairingCheck::new(&mut rng);
+    let mut c = PairingCheck::new_using_rng(&mut rng);
     let mut checker = pairing_check.unwrap_or_else(|| &mut c);
 
     let ver_srs_proj = ip_verifier_srs.to_projective();

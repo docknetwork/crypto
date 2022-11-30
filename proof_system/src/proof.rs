@@ -16,12 +16,6 @@ pub struct AggregatedGroth16<E: PairingEngine> {
     pub statements: BTreeSet<usize>,
 }
 
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct AggregatedLegoGroth16<E: PairingEngine> {
-    pub proof: aggregation::legogroth16::AggregateLegoProof<E>,
-    pub statements: BTreeSet<usize>,
-}
-
 /// Created by the prover and verified by the verifier
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -30,10 +24,10 @@ pub struct Proof<E: PairingEngine, G: AffineCurve, D: Digest> {
     pub nonce: Option<Vec<u8>>,
     // TODO: Remove this skip
     #[serde(skip)]
-    pub aggregated_groth16: Option<AggregatedGroth16<E>>,
+    pub aggregated_groth16: Option<Vec<AggregatedGroth16<E>>>,
     // TODO: Remove this skip
     #[serde(skip)]
-    pub aggregated_legogroth16: Option<AggregatedLegoGroth16<E>>,
+    pub aggregated_legogroth16: Option<Vec<AggregatedGroth16<E>>>,
     pub _phantom: PhantomData<D>,
 }
 

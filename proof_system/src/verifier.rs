@@ -1,6 +1,7 @@
+use std::collections::BTreeMap;
 use crate::error::ProofSystemError;
 use crate::proof::Proof;
-use crate::proof_spec::ProofSpec;
+use crate::proof_spec::{ProofSpec, SnarkpackSRS};
 use crate::statement::Statement;
 use crate::statement_proof::StatementProof;
 use crate::sub_protocols::accumulator::{
@@ -15,6 +16,7 @@ use ark_ec::{AffineCurve, PairingEngine};
 use ark_std::rand::RngCore;
 use digest::Digest;
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use saver::encryption::Ciphertext;
 
 #[derive(Default)]
 pub struct VerifierConfig {
@@ -44,7 +46,7 @@ where
         nonce: Option<Vec<u8>>,
         config: VerifierConfig,
     ) -> Result<(), ProofSystemError> {
-        let checker = RandomizedPairingChecker::new(rng);
+        let checker = RandomizedPairingChecker::new_using_rng(rng);
         self._verify(proof_spec, nonce, config, Some(checker))
     }
 
@@ -64,6 +66,35 @@ where
                 proof_spec.statements.len(),
                 self.statement_proofs.len(),
             ));
+        }
+
+        // TODO: Check SNARK SRSs compatible when aggregating and state proof compatible with proof spec when aggregating
+
+        let aggregate_snarks = proof_spec.aggregate_groth16.is_some() || proof_spec.aggregate_legogroth16.is_some();
+        let mut agg_saver = Vec::<Vec<Ciphertext<E>>>::new();
+        let mut agg_lego = Vec::<(Vec<E::G1Affine>, Vec<Vec<E::Fr>>)>::new();
+
+        let mut agg_saver_stmts = BTreeMap::new();
+        let mut agg_lego_stmts = BTreeMap::new();
+
+        if aggregate_snarks {
+            if let Some(a) = &proof_spec.aggregate_groth16 {
+                for (i, s) in a.into_iter().enumerate() {
+                    for j in s {
+                        agg_saver_stmts.insert(*j, i);
+                    }
+                    agg_saver.push(vec![]);
+                }
+            }
+
+            if let Some(a) = &proof_spec.aggregate_legogroth16 {
+                for (i, s) in a.into_iter().enumerate() {
+                    for j in s {
+                        agg_lego_stmts.insert(*j, i);
+                    }
+                    agg_lego.push((vec![], vec![]));
+                }
+            }
         }
 
         // Prepare commitment keys for running Schnorr protocols of all statements.
@@ -269,6 +300,29 @@ where
                             &mut challenge_bytes,
                         )?;
                     }
+                    StatementProof::SaverWithAggregation(p) => {
+                        for i in 0..witness_equalities.len() {
+                            if witness_equalities[i].contains(&(s_idx, 0)) {
+                                let resp = p.get_schnorr_response_for_combined_message()?;
+                                Self::check_response_for_equality(
+                                    s_idx,
+                                    0,
+                                    i,
+                                    &mut responses_for_equalities,
+                                    resp,
+                                )?;
+                            }
+                        }
+                        let ek_comm_key = ek_comm.get(s_idx).unwrap();
+                        let cc_keys = chunked_comm.get(s_idx).unwrap();
+                        SaverProtocol::compute_challenge_contribution_when_aggregating_snark(
+                            ek_comm_key,
+                            &cc_keys.0,
+                            &cc_keys.1,
+                            p,
+                            &mut challenge_bytes,
+                        )?;
+                    }
                     _ => {
                         return Err(ProofSystemError::ProofIncompatibleWithStatement(
                             s_idx,
@@ -294,6 +348,27 @@ where
 
                         let comm_key = bound_check_comm.get(s_idx).unwrap();
                         BoundCheckProtocol::compute_challenge_contribution(
+                            comm_key,
+                            &p,
+                            &mut challenge_bytes,
+                        )?;
+                    }
+                    StatementProof::BoundCheckLegoGroth16WithAggregation(p) => {
+                        for i in 0..witness_equalities.len() {
+                            if witness_equalities[i].contains(&(s_idx, 0)) {
+                                let resp = p.get_schnorr_response_for_message()?;
+                                Self::check_response_for_equality(
+                                    s_idx,
+                                    0,
+                                    i,
+                                    &mut responses_for_equalities,
+                                    resp,
+                                )?;
+                            }
+                        }
+
+                        let comm_key = bound_check_comm.get(s_idx).unwrap();
+                        BoundCheckProtocol::compute_challenge_contribution_when_aggregating_snark(
                             comm_key,
                             &p,
                             &mut challenge_bytes,
@@ -448,91 +523,145 @@ where
                         ))
                     }
                 },
-                Statement::SaverVerifier(s) => match proof {
-                    StatementProof::Saver(ref saver_proof) => {
-                        let enc_gens = s.get_encryption_gens(&proof_spec.setup_params, s_idx)?;
-                        let comm_gens =
-                            s.get_chunked_commitment_gens(&proof_spec.setup_params, s_idx)?;
-                        let enc_key = s.get_encryption_key(&proof_spec.setup_params, s_idx)?;
-                        let vk = s.get_snark_verifying_key(&proof_spec.setup_params, s_idx)?;
-                        let sp = SaverProtocol::new_for_verifier(
-                            s_idx,
-                            s.chunk_bit_size,
-                            enc_gens,
-                            comm_gens,
-                            enc_key,
-                            vk,
-                        );
-                        let ek_comm_key = ek_comm.get(s_idx).unwrap();
-                        let cc_keys = chunked_comm.get(s_idx).unwrap();
-                        sp.verify_proof_contribution_using_prepared(
-                            &challenge,
-                            saver_proof,
-                            ek_comm_key,
-                            &cc_keys.0,
-                            &cc_keys.1,
-                            derived_saver_vk.get(s_idx).unwrap(),
-                            derived_gens.get(s_idx).unwrap(),
-                            derived_ek.get(s_idx).unwrap(),
-                            &mut pairing_checker
-                        )?
-                    }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
-                },
-                Statement::BoundCheckLegoGroth16Verifier(s) => match proof {
-                    StatementProof::BoundCheckLegoGroth16(ref bc_proof) => {
-                        let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
-                        let sp = BoundCheckProtocol::new_for_verifier(
-                            s_idx,
-                            s.min,
-                            s.max,
-                            verifying_key,
-                        );
-                        let comm_key = bound_check_comm.get(s_idx).unwrap();
-                        sp.verify_proof_contribution_using_prepared(
-                            &challenge,
-                            bc_proof,
-                            &comm_key,
-                            derived_lego_vk.get(s_idx).unwrap(),
-                            &mut pairing_checker
-                        )?
-                    }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
+                Statement::SaverVerifier(s) => {
+                    let enc_gens = s.get_encryption_gens(&proof_spec.setup_params, s_idx)?;
+                    let comm_gens =
+                        s.get_chunked_commitment_gens(&proof_spec.setup_params, s_idx)?;
+                    let enc_key = s.get_encryption_key(&proof_spec.setup_params, s_idx)?;
+                    let vk = s.get_snark_verifying_key(&proof_spec.setup_params, s_idx)?;
+                    let sp = SaverProtocol::new_for_verifier(
+                        s_idx,
+                        s.chunk_bit_size,
+                        enc_gens,
+                        comm_gens,
+                        enc_key,
+                        vk,
+                    );
+                    let ek_comm_key = ek_comm.get(s_idx).unwrap();
+                    let cc_keys = chunked_comm.get(s_idx).unwrap();
+
+                    match proof {
+                        StatementProof::Saver(ref saver_proof) => {
+                            sp.verify_proof_contribution_using_prepared(
+                                &challenge,
+                                saver_proof,
+                                ek_comm_key,
+                                &cc_keys.0,
+                                &cc_keys.1,
+                                derived_saver_vk.get(s_idx).unwrap(),
+                                derived_gens.get(s_idx).unwrap(),
+                                derived_ek.get(s_idx).unwrap(),
+                                &mut pairing_checker
+                            )?
+                        }
+                        StatementProof::SaverWithAggregation(ref saver_proof) => {
+                            let agg_idx = agg_saver_stmts.get(&s_idx).ok_or_else(|| ProofSystemError::InvalidStatementProofIndex(s_idx))?;
+                            agg_saver[*agg_idx].push(saver_proof.ciphertext.clone());
+                            sp.verify_proof_contribution_using_prepared_when_aggregating_snark(
+                                &challenge,
+                                saver_proof,
+                                ek_comm_key,
+                                &cc_keys.0,
+                                &cc_keys.1,
+                            )?
+                        }
+                        _ => {
+                            return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                                s_idx,
+                                format!("{:?}", proof),
+                                format!("{:?}", s),
+                            ))
+                        }
                     }
                 },
-                Statement::R1CSCircomVerifier(s) => match proof {
-                    StatementProof::R1CSLegoGroth16(ref r1cs_proof) => {
-                        let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
-                        let sp = R1CSLegogroth16Protocol::new_for_verifier(s_idx, verifying_key);
-                        sp.verify_proof_contribution_using_prepared(
-                            &challenge,
-                            s.get_public_inputs(&proof_spec.setup_params, s_idx)?,
-                            r1cs_proof,
-                            r1cs_comm_keys.get(s_idx).unwrap(),
-                            derived_lego_vk.get(s_idx).unwrap(),
-                            &mut pairing_checker
-                        )?
+                Statement::BoundCheckLegoGroth16Verifier(s) => {
+                    let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
+                    let sp = BoundCheckProtocol::new_for_verifier(
+                        s_idx,
+                        s.min,
+                        s.max,
+                        verifying_key,
+                    );
+                    let comm_key = bound_check_comm.get(s_idx).unwrap();
+                    match proof {
+                        StatementProof::BoundCheckLegoGroth16(ref bc_proof) => {
+                            sp.verify_proof_contribution_using_prepared(
+                                &challenge,
+                                bc_proof,
+                                &comm_key,
+                                derived_lego_vk.get(s_idx).unwrap(),
+                                &mut pairing_checker
+                            )?
+                        }
+                        StatementProof::BoundCheckLegoGroth16WithAggregation(ref bc_proof) => {
+                            let pub_inp = vec![E::Fr::from(sp.min), E::Fr::from(sp.max)];
+                            let agg_idx = agg_lego_stmts.get(&s_idx).ok_or_else(|| ProofSystemError::InvalidStatementProofIndex(s_idx))?;
+                            agg_lego[*agg_idx].0.push(bc_proof.commitment.clone());
+                            agg_lego[*agg_idx].1.push(pub_inp);
+                            sp.verify_proof_contribution_using_prepared_when_aggregating_snark(
+                                &challenge,
+                                bc_proof,
+                                &comm_key,
+                            )?
+                        }
+                        _ => {
+                            return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                                s_idx,
+                                format!("{:?}", proof),
+                                format!("{:?}", s),
+                            ))
+                        }
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
+                },
+                Statement::R1CSCircomVerifier(s) => {
+                    let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
+                    let sp = R1CSLegogroth16Protocol::new_for_verifier(s_idx, verifying_key);
+
+                    match proof {
+                        StatementProof::R1CSLegoGroth16(ref r1cs_proof) => {
+                            sp.verify_proof_contribution_using_prepared(
+                                &challenge,
+                                s.get_public_inputs(&proof_spec.setup_params, s_idx)?,
+                                r1cs_proof,
+                                r1cs_comm_keys.get(s_idx).unwrap(),
+                                derived_lego_vk.get(s_idx).unwrap(),
+                                &mut pairing_checker
+                            )?
+                        }
+                        StatementProof::R1CSLegoGroth16WithAggregation(ref r1cs_proof) => {
+                            sp.verify_proof_contribution_using_prepared_when_aggregating_snark(
+                                &challenge,
+                                r1cs_proof,
+                                r1cs_comm_keys.get(s_idx).unwrap(),
+                            )?
+                        }
+                        _ => {
+                            return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                                s_idx,
+                                format!("{:?}", proof),
+                                format!("{:?}", s),
+                            ))
+                        }
                     }
                 },
                 _ => return Err(ProofSystemError::InvalidStatement),
+            }
+        }
+
+        if aggregate_snarks {
+            // TODO: validate that statements are apt for aggregation and not being repeated
+
+            let srs = match proof_spec.snark_aggregation_srs {
+                Some(SnarkpackSRS::VerifierSrs(srs)) => srs,
+                _ => return Err(ProofSystemError::SnarckpackSrsNotProvided)
+            };
+
+            use legogroth16::aggregation::transcript::new_merlin_transcript;
+
+            let mut transcript = new_merlin_transcript(b"aggregation");
+
+            if proof_spec.aggregate_groth16.is_some() {
+
             }
         }
 

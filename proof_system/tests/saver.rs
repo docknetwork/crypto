@@ -14,10 +14,11 @@ use proof_system::statement::{
     saver::SaverProver as SaverProverStmt, saver::SaverVerifier as SaverVerifierStmt, Statements,
 };
 use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
-use saver::keygen::{DecryptionKey, SecretKey};
+use saver::keygen::{DecryptionKey, EncryptionKey, SecretKey};
 use saver::prelude::VerifyingKey;
 use saver::setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens};
 use std::time::Instant;
+use saver::saver_groth16::ProvingKey;
 
 use test_utils::bbs_plus::*;
 use test_utils::{test_serialization, Fr, ProofG1};
@@ -318,26 +319,18 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
 #[test]
 fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
     // Prove knowledge of BBS+ signature and a certain messages are verifiably encrypted.
-    fn check(reuse_setup_params: bool) {
+    fn check(reuse_setup_params: bool, chunk_bit_size: u8, enc_gens: EncryptionGens<Bls12_381>, snark_pk: ProvingKey<Bls12_381>, sk: SecretKey<Fr>, ek: EncryptionKey<Bls12_381>, dk: DecryptionKey<Bls12_381>) {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let msg_count = 5;
         let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
 
-        // Decryptor creates public parameters
-        let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
-
-        // For transformed commitment to the message
-        let chunked_comm_gens = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
-
-        let chunk_bit_size = 16;
-
-        let (snark_pk, sk, ek, dk) =
-            setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
-
         // Message with following indices are verifiably encrypted
         let enc_msg_indices = vec![0, 2, 3];
         let enc_msgs = enc_msg_indices.iter().map(|i| msgs[*i]).collect::<Vec<_>>();
+
+        // For transformed commitment to the message, created by the verifier
+        let chunked_comm_gens = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
 
         let mut prover_setup_params = vec![];
         if reuse_setup_params {
@@ -544,36 +537,32 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
             .verify(verifier_proof_spec.clone(), None, Default::default())
             .unwrap();
     }
-    check(true);
-    check(false);
+
+    let mut rng = StdRng::seed_from_u64(10u64);
+
+    // Decryptor creates public parameters
+    let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
+    let chunk_bit_size = 16;
+    let (snark_pk, sk, ek, dk) =
+        setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
+
+    check(true, chunk_bit_size, enc_gens.clone(), snark_pk.clone(), sk.clone(), ek.clone(), dk.clone());
+    check(false, chunk_bit_size, enc_gens,  snark_pk, sk, ek, dk);
 }
 
 #[test]
 fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
     // Prove knowledge of BBS+ signature and a certain messages are verifiably encrypted for 2 different decryptors
-    fn check(reuse_setup_params: bool) {
+    fn check(reuse_setup_params: bool, chunk_bit_size: u8, enc_gens_1: EncryptionGens<Bls12_381>, snark_pk_1: ProvingKey<Bls12_381>, sk_1: SecretKey<Fr>, ek_1: EncryptionKey<Bls12_381>, dk_1: DecryptionKey<Bls12_381>, enc_gens_2: EncryptionGens<Bls12_381>, snark_pk_2: ProvingKey<Bls12_381>, sk_2: SecretKey<Fr>, ek_2: EncryptionKey<Bls12_381>, dk_2: DecryptionKey<Bls12_381>) {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let msg_count = 5;
         let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
 
-        let chunk_bit_size = 16;
-
-        // 1st Decryptor setup
-        let enc_gens_1 = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
         // For transformed commitment to the message
         let chunked_comm_gens_1 = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
-        // Snark setup and keygen
-        let (snark_pk_1, sk_1, ek_1, dk_1) =
-            setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens_1).unwrap();
-
-        // 2nd Decryptor setup
-        let enc_gens_2 = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
         // For transformed commitment to the message
         let chunked_comm_gens_2 = ChunkedCommitmentGens::<G1Affine>::new_using_rng(&mut rng);
-        // Snark setup and keygen
-        let (snark_pk_2, sk_2, ek_2, dk_2) =
-            setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens_2).unwrap();
 
         // Message with index `enc_msg_idx_1` is verifiably encrypted for both decryptors
         let enc_msg_idx_1 = 1;
@@ -969,8 +958,25 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             .verify(verifier_proof_spec.clone(), None, Default::default())
             .unwrap();
     }
-    check(true);
-    check(false);
+
+    let mut rng = StdRng::seed_from_u64(100u64);
+
+    let chunk_bit_size = 16;
+
+    // 1st Decryptor setup
+    let enc_gens_1 = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
+    // Snark setup and keygen
+    let (snark_pk_1, sk_1, ek_1, dk_1) =
+        setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens_1).unwrap();
+
+    // 2nd Decryptor setup
+    let enc_gens_2 = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
+    // Snark setup and keygen
+    let (snark_pk_2, sk_2, ek_2, dk_2) =
+        setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens_2).unwrap();
+
+    check(true, chunk_bit_size, enc_gens_1.clone(), snark_pk_1.clone(), sk_1.clone(), ek_1.clone(), dk_1.clone(), enc_gens_2.clone(), snark_pk_2.clone(), sk_2.clone(), ek_2.clone(), dk_2.clone());
+    check(false, chunk_bit_size, enc_gens_1, snark_pk_1, sk_1, ek_1, dk_1, enc_gens_2, snark_pk_2, sk_2, ek_2, dk_2);
 }
 
 #[test]

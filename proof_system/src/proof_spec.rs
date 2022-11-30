@@ -44,8 +44,8 @@ pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
     /// the proof or the verifier's identity or some verifier-specific identity of the holder
     /// or all of the above combined.
     pub context: Option<Vec<u8>>,
-    pub aggregate_groth16: Option<BTreeSet<usize>>,
-    pub aggregate_legogroth16: Option<BTreeSet<usize>>,
+    pub aggregate_groth16: Option<Vec<BTreeSet<usize>>>,
+    pub aggregate_legogroth16: Option<Vec<BTreeSet<usize>>>,
     // TODO: Remove this skip
     #[serde(skip)]
     pub snark_aggregation_srs: Option<SnarkpackSRS<E>>,
@@ -78,8 +78,8 @@ where
         meta_statements: MetaStatements,
         setup_params: Vec<SetupParams<E, G>>,
         context: Option<Vec<u8>>,
-        aggregate_groth16: Option<BTreeSet<usize>>,
-        aggregate_legogroth16: Option<BTreeSet<usize>>,
+        aggregate_groth16: Option<Vec<BTreeSet<usize>>>,
+        aggregate_legogroth16: Option<Vec<BTreeSet<usize>>>,
         snark_aggregation_srs: Option<SnarkpackSRS<E>>,
     ) -> Self {
         Self {
@@ -112,6 +112,8 @@ where
         {
             return Err(ProofSystemError::SnarckpackSrsNotProvided);
         }
+
+        // TODO: Validate no conflicts in self.aggregate_groth16 and self.aggregate_legogroth16
 
         for (i, st) in self.statements.0.iter().enumerate() {
             match st {

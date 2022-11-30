@@ -71,6 +71,17 @@ impl<E: PairingEngine> SaverProof<E> {
             .get_response(0)
             .map_err(|e| e.into())
     }
+
+    pub fn for_aggregation(&self) -> SaverProofWhenAggregatingSnarks<E> {
+        SaverProofWhenAggregatingSnarks {
+            ciphertext: self.ciphertext.clone(),
+            comm_chunks: self.comm_chunks.clone(),
+            comm_combined: self.comm_combined.clone(),
+            sp_ciphertext: self.sp_ciphertext.clone(),
+            sp_chunks: self.sp_chunks.clone(),
+            sp_combined: self.sp_combined.clone(),
+        }
+    }
 }
 
 #[serde_as]
@@ -113,6 +124,13 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Proof<E> {
     pub fn get_schnorr_response_for_message(&self) -> Result<&E::Fr, ProofSystemError> {
         self.sp.response.get_response(0).map_err(|e| e.into())
     }
+
+    pub fn for_aggregation(&self) -> BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E> {
+        BoundCheckLegoGroth16ProofWhenAggregatingSnarks {
+            commitment: self.snark_proof.d.clone(),
+            sp: self.sp.clone(),
+        }
+    }
 }
 
 #[serde_as]
@@ -149,6 +167,13 @@ impl<E: PairingEngine> R1CSLegoGroth16Proof<E> {
         index: usize,
     ) -> Result<&E::Fr, ProofSystemError> {
         self.sp.response.get_response(index).map_err(|e| e.into())
+    }
+
+    pub fn for_aggregation(&self) -> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
+        R1CSLegoGroth16ProofWhenAggregatingSnarks {
+            commitment: self.snark_proof.d.clone(),
+            sp: self.sp.clone(),
+        }
     }
 }
 

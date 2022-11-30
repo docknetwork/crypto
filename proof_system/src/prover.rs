@@ -19,7 +19,7 @@ use crate::{error::ProofSystemError, witness::Witnesses};
 use digest::Digest;
 
 use crate::meta_statement::WitnessRef;
-use crate::proof::Proof;
+use crate::proof::{AggregatedGroth16, Proof};
 use crate::proof_spec::ProofSpec;
 use crate::statement_proof::StatementProof;
 use crate::sub_protocols::accumulator::{
@@ -32,6 +32,7 @@ use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 use saver::encryption::Ciphertext;
+use crate::prelude::SnarkpackSRS;
 
 pub struct ProverConfig<E: PairingEngine> {
     pub reuse_groth16_proofs:
@@ -90,12 +91,6 @@ where
                 proof_spec.statements.len(),
                 witnesses.len(),
             ));
-        }
-
-        let mut aggregate_snarks =
-            proof_spec.aggregate_groth16.is_some() || proof_spec.aggregate_legogroth16.is_some();
-        if !aggregate_snarks {
-            // TODO: Check no of groth16 and legogroth16
         }
 
         // Keep blinding for each witness reference that is part of an equality. This means that for
@@ -408,12 +403,75 @@ where
         for mut p in sub_protocols {
             statement_proofs.push(p.gen_proof_contribution(&challenge)?);
         }
+
+        // TODO: Revisit - aggregating after challenge generation, is this correct?
+
+        let mut aggregated_groth16 = vec![];
+        let mut aggregated_legogroth16 = vec![];
+
+        let mut aggregate_snarks =
+            proof_spec.aggregate_groth16.is_some() || proof_spec.aggregate_legogroth16.is_some();
+        if !aggregate_snarks {
+            // TODO: Check no of groth16 and legogroth16
+        }
+        if aggregate_snarks {
+            // TODO: validate that statements are apt for aggregation and not being repeated
+
+            let srs = match proof_spec.snark_aggregation_srs {
+                Some(SnarkpackSRS::ProverSrs(srs)) => srs,
+                _ => return Err(ProofSystemError::SnarckpackSrsNotProvided)
+            };
+
+            use legogroth16::aggregation::transcript::new_merlin_transcript;
+
+            let mut transcript = new_merlin_transcript(b"aggregation");
+
+            if proof_spec.aggregate_groth16.is_some() {
+                let to_aggr = proof_spec.aggregate_groth16.unwrap();
+                let mut proofs = vec![];
+                for a in to_aggr {
+                    for i in &a {
+                        let p = match statement_proofs.get(*i).unwrap() {
+                            StatementProof::Saver(s) => &s.snark_proof,
+                            _ => return Err(ProofSystemError::NotASaverStatementProof)
+                        };
+                        proofs.push(p.clone());
+                    }
+                    let ag_proof = legogroth16::aggregation::groth16::aggregate_proofs(&srs, &mut transcript, &proofs).map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;
+                    aggregated_groth16.push(AggregatedGroth16 {
+                        proof: ag_proof,
+                        statements: a
+                    });
+                }
+            }
+
+            if proof_spec.aggregate_legogroth16.is_some() {
+                let to_aggr = proof_spec.aggregate_legogroth16.unwrap();
+                let mut proofs = vec![];
+                for a in to_aggr {
+                    for i in &a {
+                        let p = match statement_proofs.get(*i).unwrap() {
+                            StatementProof::BoundCheckLegoGroth16(s) => &s.snark_proof,
+                            StatementProof::R1CSLegoGroth16(s) => &s.snark_proof,
+                            _ => return Err(ProofSystemError::NotASaverStatementProof)
+                        };
+                        proofs.push(p.clone());
+                    }
+                    let (ag_proof, _) = legogroth16::aggregation::legogroth16::using_groth16::aggregate_proofs(&srs, &mut transcript, &proofs).map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;
+                    aggregated_legogroth16.push(AggregatedGroth16 {
+                        proof: ag_proof,
+                        statements: a
+                    });
+                }
+            }
+        }
+
         Ok((
             Self {
                 statement_proofs,
                 nonce,
-                aggregated_groth16: None,
-                aggregated_legogroth16: None,
+                aggregated_groth16: if aggregated_groth16.len() > 0 {Some(aggregated_groth16)} else {None},
+                aggregated_legogroth16: if aggregated_legogroth16.len() > 0 {Some(aggregated_legogroth16)} else {None},
                 _phantom: PhantomData,
             },
             commitment_randomness,
@@ -461,6 +519,25 @@ where
             StatementProof::BoundCheckLegoGroth16(s) => Ok(&s.snark_proof),
             StatementProof::R1CSLegoGroth16(s) => Ok(&s.snark_proof),
             _ => Err(ProofSystemError::NotASaverStatementProof),
+        }
+    }
+
+    pub fn for_aggregate(&self) -> Self {
+        let mut statement_proofs = vec![];
+        for sp in self.statement_proofs() {
+            match sp {
+                StatementProof::Saver(sp) => statement_proofs.push(StatementProof::SaverWithAggregation(sp.for_aggregation())),
+                StatementProof::BoundCheckLegoGroth16(b) => statement_proofs.push(StatementProof::BoundCheckLegoGroth16WithAggregation(b.for_aggregation())),
+                StatementProof::R1CSLegoGroth16(b) => statement_proofs.push(StatementProof::R1CSLegoGroth16WithAggregation(b.for_aggregation())),
+                _ => statement_proofs.push(sp.clone()),
+            }
+        }
+        Self {
+            statement_proofs,
+            nonce: self.nonce.clone(),
+            aggregated_groth16: self.aggregated_groth16.clone(),
+            aggregated_legogroth16: self.aggregated_legogroth16.clone(),
+            _phantom: PhantomData
         }
     }
 }
