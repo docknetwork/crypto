@@ -229,10 +229,11 @@ mod tests {
     use super::*;
     use crate::utils::pad_homomorphisms_to_have_same_size;
     use ark_bls12_381::Bls12_381;
+    use ark_ec::msm::VariableBaseMSM;
     use ark_ec::PairingEngine;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
-        UniformRand,
+        UniformRand, Zero,
     };
     use blake2::Blake2b;
     use dock_crypto_utils::ec::batch_normalize_projective_into_affine;

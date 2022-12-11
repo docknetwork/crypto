@@ -2,7 +2,7 @@ use ark_ec::AffineCurve;
 use ark_ff::PrimeField;
 use ark_std::{vec, vec::Vec};
 use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
-use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
+use dock_crypto_utils::msm::{multiply_field_elems_with_same_group_elem, variable_base_msm};
 
 use crate::transforms::{Homomorphism, LinearForm};
 
@@ -197,14 +197,7 @@ macro_rules! impl_simple_homomorphism {
         impl Homomorphism<$preimage_type> for $name<$image_type> {
             type Output = $image_type;
             fn eval(&self, x: &[$preimage_type]) -> Result<Self::Output, CompSigmaError> {
-                Ok(VariableBaseMSM::multi_scalar_mul(
-                    &self.constants,
-                    x.iter()
-                        .map(|x| x.into_repr())
-                        .collect::<Vec<_>>()
-                        .as_slice(),
-                )
-                .into_affine())
+                Ok(variable_base_msm(&self.constants, x).into_affine())
             }
 
             fn scale(&self, scalar: &$preimage_type) -> Self {
