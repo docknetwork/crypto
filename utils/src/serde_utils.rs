@@ -1,98 +1,57 @@
 //! Serde serialization for `arkworks-rs` objects they themselves don't implement serde
 
-use ark_ec::AffineCurve;
-use ark_ff::Field;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{fmt, io, marker::PhantomData, string::ToString, vec, vec::Vec};
-use serde::de::{SeqAccess, Visitor};
-use serde::{Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 
-pub struct FieldBytes;
+pub type FieldBytes = AsCanonical;
+pub type AffineGroupBytes = AsCanonical;
 
-impl<F: Field> SerializeAs<F> for FieldBytes {
-    fn serialize_as<S>(elem: &F, serializer: S) -> Result<S::Ok, S::Error>
+// This is taken from the expanded [`serde_with::serde_conv!`] macro but generalized for any `T: CanonicalSerialize + CanonicalDeserialize`
+
+pub struct AsCanonical;
+impl AsCanonical {
+    pub fn serialize<S, T>(x: &T, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        T: CanonicalSerialize,
+        S: Serializer,
+    {
+        let size = x.serialized_size();
+        let mut bytes = Vec::with_capacity(size);
+        x.serialize(&mut bytes).map_err(serde::ser::Error::custom)?;
+        Serialize::serialize(&bytes, serializer)
+    }
+    pub fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+    where
+        T: CanonicalDeserialize,
+        D: Deserializer<'de>,
+    {
+        let y: Vec<u8> = Deserialize::deserialize(deserializer)?;
+        T::deserialize(y.as_slice()).map_err(serde::de::Error::custom)
+    }
+}
+
+impl<T> SerializeAs<T> for AsCanonical
+where
+    T: CanonicalSerialize,
+{
+    fn serialize_as<S>(x: &T, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let mut bytes = vec![];
-        CanonicalSerialize::serialize(elem, &mut bytes).map_err(serde::ser::Error::custom)?;
-        serializer.serialize_bytes(&bytes)
+        Self::serialize(x, serializer)
     }
 }
-
-impl<'de, F: Field> DeserializeAs<'de, F> for FieldBytes {
-    fn deserialize_as<D>(deserializer: D) -> Result<F, D::Error>
+impl<'de, T> DeserializeAs<'de, T> for AsCanonical
+where
+    T: CanonicalDeserialize,
+{
+    fn deserialize_as<D>(deserializer: D) -> Result<T, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct FVisitor<F: Field>(PhantomData<F>);
-
-        impl<'a, F: Field> Visitor<'a> for FVisitor<F> {
-            type Value = F;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("expected field element")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'a>,
-            {
-                let mut bytes: Vec<u8> = Vec::with_capacity(seq.size_hint().unwrap_or(32));
-                while let Some(b) = seq.next_element()? {
-                    bytes.push(b);
-                }
-                let f = CanonicalDeserialize::deserialize(bytes.as_slice())
-                    .map_err(serde::de::Error::custom)?;
-                Ok(f)
-            }
-        }
-        deserializer.deserialize_seq(FVisitor::<F>(PhantomData))
-    }
-}
-
-pub struct AffineGroupBytes;
-
-impl<G: AffineCurve> SerializeAs<G> for AffineGroupBytes {
-    fn serialize_as<S>(elem: &G, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut bytes = vec![];
-        CanonicalSerialize::serialize(elem, &mut bytes).map_err(serde::ser::Error::custom)?;
-        serializer.serialize_bytes(&bytes)
-    }
-}
-
-impl<'de, G: AffineCurve> DeserializeAs<'de, G> for AffineGroupBytes {
-    fn deserialize_as<D>(deserializer: D) -> Result<G, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct GVisitor<G: AffineCurve>(PhantomData<G>);
-
-        impl<'a, G: AffineCurve> Visitor<'a> for GVisitor<G> {
-            type Value = G;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("expected group element in affine coordinates")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'a>,
-            {
-                let mut bytes: Vec<u8> = Vec::with_capacity(seq.size_hint().unwrap_or(48));
-                while let Some(b) = seq.next_element()? {
-                    bytes.push(b);
-                }
-                let g = CanonicalDeserialize::deserialize(bytes.as_slice())
-                    .map_err(serde::de::Error::custom)?;
-                Ok(g)
-            }
-        }
-        deserializer.deserialize_seq(GVisitor::<G>(PhantomData))
+        Self::deserialize(deserializer)
     }
 }
 
@@ -121,50 +80,6 @@ where
 #[macro_export]
 macro_rules! impl_for_groth16_struct {
     ($serializer_name: ident, $struct_name: ident, $error_msg: expr) => {
-        pub struct $serializer_name;
-
-        impl<E: PairingEngine> SerializeAs<$struct_name<E>> for $serializer_name {
-            fn serialize_as<S>(elem: &$struct_name<E>, serializer: S) -> Result<S::Ok, S::Error>
-            where
-                S: Serializer,
-            {
-                let mut bytes = vec![];
-                CanonicalSerialize::serialize(elem, &mut bytes)
-                    .map_err(serde::ser::Error::custom)?;
-                serializer.serialize_bytes(&bytes)
-            }
-        }
-
-        impl<'de, E: PairingEngine> DeserializeAs<'de, $struct_name<E>> for $serializer_name {
-            fn deserialize_as<D>(deserializer: D) -> Result<$struct_name<E>, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                struct PVisitor<E: PairingEngine>(PhantomData<E>);
-
-                impl<'a, E: PairingEngine> Visitor<'a> for PVisitor<E> {
-                    type Value = $struct_name<E>;
-
-                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                        formatter.write_str($error_msg)
-                    }
-
-                    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-                    where
-                        A: SeqAccess<'a>,
-                    {
-                        let mut bytes = Vec::<u8>::new();
-                        while let Some(b) = seq.next_element()? {
-                            bytes.push(b);
-                        }
-                        let p: $struct_name<E> =
-                            CanonicalDeserialize::deserialize(bytes.as_slice())
-                                .map_err(serde::de::Error::custom)?;
-                        Ok(p)
-                    }
-                }
-                deserializer.deserialize_seq(PVisitor::<E>(PhantomData))
-            }
-        }
+        pub type $serializer_name = ::dock_crypto_utils::serde_utils::AsCanonical;
     };
 }
