@@ -344,6 +344,11 @@ mod tests {
             let obj_ser = serde_json::to_string(&$obj).unwrap();
             let obj_deser = serde_json::from_str::<$obj_type>(&obj_ser).unwrap();
             assert_eq!($obj, obj_deser);
+
+            // Test Message Pack serialization
+            let ser = rmp_serde::to_vec_named(&$obj).unwrap();
+            let deser = rmp_serde::from_slice::<$obj_type>(&ser).unwrap();
+            assert_eq!($obj, deser);
         };
     }
 
