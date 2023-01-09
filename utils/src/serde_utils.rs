@@ -1,7 +1,7 @@
 //! Serde serialization for `arkworks-rs` objects they themselves don't implement serde
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{fmt, io, marker::PhantomData, string::ToString, vec, vec::Vec};
+use ark_std::{io, string::ToString, vec::Vec};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 
@@ -79,7 +79,7 @@ where
 
 #[macro_export]
 macro_rules! impl_for_groth16_struct {
-    ($serializer_name: ident, $struct_name: ident, $error_msg: expr) => {
+    ($serializer_name: ident) => {
         pub type $serializer_name = ::dock_crypto_utils::serde_utils::AsCanonical;
     };
 }

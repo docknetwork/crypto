@@ -216,26 +216,13 @@ macro_rules! impl_deserialize {
     };
 }
 
-use ark_ec::PairingEngine;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{fmt, marker::PhantomData, vec, vec::Vec};
-use legogroth16::{circom::R1CS, Proof as LegoProof, ProvingKey, VerifyingKey};
-use saver::saver_groth16::Proof;
-use serde::de::{SeqAccess, Visitor};
-use serde::{Deserializer, Serializer};
-use serde_with::{DeserializeAs, SerializeAs};
-
 use dock_crypto_utils::impl_for_groth16_struct;
 
-impl_for_groth16_struct!(LegoProvingKeyBytes, ProvingKey, "expected LegoProvingKey");
+impl_for_groth16_struct!(LegoProvingKeyBytes);
 
-impl_for_groth16_struct!(
-    LegoVerifyingKeyBytes,
-    VerifyingKey,
-    "expected LegoVerifyingKey"
-);
+impl_for_groth16_struct!(LegoVerifyingKeyBytes);
 
-impl_for_groth16_struct!(ProofBytes, Proof, "expected Proof");
-impl_for_groth16_struct!(LegoProofBytes, LegoProof, "expected LegoProofBytes");
+impl_for_groth16_struct!(ProofBytes);
+impl_for_groth16_struct!(LegoProofBytes);
 
-impl_for_groth16_struct!(R1CSBytes, R1CS, "expected R1CS");
+impl_for_groth16_struct!(R1CSBytes);
