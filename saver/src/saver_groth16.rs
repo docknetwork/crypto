@@ -5,19 +5,14 @@ use ark_ff::PrimeField;
 use ark_relations::r1cs::{ConstraintSynthesizer, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    fmt,
     io::{Read, Write},
-    marker::PhantomData,
     rand::{Rng, RngCore},
-    vec,
-    vec::Vec,
     UniformRand,
 };
 
 use dock_crypto_utils::impl_for_groth16_struct;
-use serde::de::{SeqAccess, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_with::{serde_as, DeserializeAs, SerializeAs};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::encryption::Ciphertext;
 pub use ark_groth16::{
@@ -45,16 +40,8 @@ pub struct ProvingKey<E: PairingEngine> {
     pub gamma_g1: E::G1Affine,
 }
 
-impl_for_groth16_struct!(
-    Groth16ProvingKeyBytes,
-    Groth16ProvingKey,
-    "expected Groth16ProvingKey"
-);
-impl_for_groth16_struct!(
-    Groth16VerifyingKeyBytes,
-    VerifyingKey,
-    "expected Groth16VerifyingKey"
-);
+impl_for_groth16_struct!(Groth16ProvingKeyBytes);
+impl_for_groth16_struct!(Groth16VerifyingKeyBytes);
 
 /// These parameters are needed for setting up keys for encryption/decryption
 pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1Affine] {
