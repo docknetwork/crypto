@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Schemes used to develop DAC (Delegatable Anonymous Credentials)"
 
 [dependencies]
 ark-ff.workspace = true

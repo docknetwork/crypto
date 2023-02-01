@@ -15,4 +15,4 @@ ark-std.workspace = true
 ark-bls12-381.workspace = true
 ark-serialize.workspace = true
 blake2.workspace = true
-proof_system = { version = "0.15.0", default-features = false, path = "../proof_system" }
+proof_system = { version = "0.16.0", default-features = false, path = "../proof_system" }
