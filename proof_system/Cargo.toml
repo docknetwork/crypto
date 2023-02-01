@@ -18,11 +18,11 @@ ark-ec.workspace = true
 ark-std.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
-bbs_plus = { version = "0.9.0", default-features = false, path = "../bbs_plus" }
-schnorr_pok = { version = "0.7.0", default-features = false, path = "../schnorr_pok" }
-vb_accumulator = { version = "0.10.0", default-features = false, path = "../vb_accumulator" }
-dock_crypto_utils = { version = "0.7.0", default-features = false, path = "../utils" }
-saver = { version = "0.7.0", default-features = false, path = "../saver" }
+bbs_plus = { version = "0.10.0", default-features = false, path = "../bbs_plus" }
+schnorr_pok = { version = "0.8.0", default-features = false, path = "../schnorr_pok" }
+vb_accumulator = { version = "0.11.0", default-features = false, path = "../vb_accumulator" }
+dock_crypto_utils = { version = "0.8.0", default-features = false, path = "../utils" }
+saver = { version = "0.8.0", default-features = false, path = "../saver" }
 serde.workspace = true
 serde_with.workspace = true
 ark-groth16 = { version = "^0.3.0", default-features = false }

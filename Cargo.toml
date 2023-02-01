@@ -9,7 +9,8 @@ members = [
     "saver",
     "compressed_sigma",
     "benches",
-    "test_utils"
+    "test_utils",
+    "delegatable_credentials"
 ]
 resolver = "2"
 
@@ -31,7 +32,8 @@ serde_with = { version = "1.10.0", default-features = false, features = ["macros
 zeroize = { version = "1.5.5", features = ["derive"] }
 blake2 = { version = "0.9", default-features = false }
 ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
-
+ark-poly = { version = "^0.3.0", default-features = false }
+merlin = { version = "^3.0", default-features = false }
 
 [profile.release]
 lto = true

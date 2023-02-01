@@ -186,11 +186,7 @@ pub trait Witness<G: AffineCurve> {
             .unzip();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
-        let table = WindowTable::new(
-            G::ScalarField::size_in_bits(),
-            elements.len(),
-            old_accumulator.into_projective(),
-        );
+        let table = WindowTable::new(elements.len(), old_accumulator.into_projective());
 
         // Calculate d_A(y)*C_y + v_A(y)*V for each y in `elements`
         let new_wits: Vec<G::Projective> = cfg_iter!(d_A)
@@ -232,11 +228,7 @@ pub trait Witness<G: AffineCurve> {
             .unzip();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
-        let table = WindowTable::new(
-            G::ScalarField::size_in_bits(),
-            elements.len(),
-            old_accumulator.into_projective(),
-        );
+        let table = WindowTable::new(elements.len(), old_accumulator.into_projective());
 
         // Calculate 1/d_D(y) * C_y - v_D(y)/d_D(y) * V for each y in `elements`
         // Invert all d_D(y) in a batch for efficiency
@@ -287,11 +279,7 @@ pub trait Witness<G: AffineCurve> {
             .collect::<Vec<_>>();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
-        let table = WindowTable::new(
-            G::ScalarField::size_in_bits(),
-            elements.len(),
-            old_accumulator.into_projective(),
-        );
+        let table = WindowTable::new(elements.len(), old_accumulator.into_projective());
 
         let mut d_factors = Vec::with_capacity(elements.len());
 

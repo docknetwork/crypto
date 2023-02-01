@@ -703,10 +703,9 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         // TODO: Since proving key is fixed, these tables can be created just once and stored.
         // There are multiple multiplications with X, Y and Z so create tables for them. 20 multiplications
         // is the upper bound
-        let scalar_size = E::Fr::size_in_bits();
-        let X_table = WindowTable::new(scalar_size, 20, prk.X.into_projective());
-        let Y_table = WindowTable::new(scalar_size, 20, prk.Y.into_projective());
-        let Z_table = WindowTable::new(scalar_size, 20, prk.Z.into_projective());
+        let X_table = WindowTable::new(20, prk.X.into_projective());
+        let Y_table = WindowTable::new(20, prk.Y.into_projective());
+        let Z_table = WindowTable::new(20, prk.Z.into_projective());
 
         // To prove e(witness, element*P_tilde + Q_tilde) == e(accumulated, P_tilde)
         let sigma = E::Fr::rand(rng);
@@ -1181,9 +1180,8 @@ where
         // TODO: Since proving key is fixed, these tables can be created just once and stored.
         // There are multiple multiplications with P and K so create tables for them. 20 multiplications
         // is the upper bound
-        let scalar_size = E::Fr::size_in_bits();
-        let P_table = WindowTable::new(scalar_size, 20, params.P.into_projective());
-        let K_table = WindowTable::new(scalar_size, 20, prk.K.into_projective());
+        let P_table = WindowTable::new(20, params.P.into_projective());
+        let K_table = WindowTable::new(20, prk.K.into_projective());
 
         // To prove non-zero d of witness
         let tau = E::Fr::rand(rng); // blinding in commitment to d

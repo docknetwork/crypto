@@ -30,10 +30,10 @@ pub struct WindowTable<G: ProjectiveCurve> {
 }
 
 impl<G: ProjectiveCurve> WindowTable<G> {
-    /// Create new table for `group_elem`. `scalar_size` is the size in bits of the scalar.
-    /// num_multiplications is the number of multiplication that need to be done and it can be an
-    /// approximation as it does not impact correctness but only performance.
-    pub fn new(scalar_size: usize, num_multiplications: usize, group_elem: G) -> Self {
+    /// Create new table for `group_elem`. `num_multiplications` is the number of multiplication that
+    /// need to be done and it can be an approximation as it does not impact correctness but only performance.
+    pub fn new(num_multiplications: usize, group_elem: G) -> Self {
+        let scalar_size = G::ScalarField::size_in_bits();
         let window_size = FixedBaseMSM::get_mul_window_size(num_multiplications);
         let outerc = (scalar_size + window_size - 1) / window_size;
         let table = FixedBaseMSM::get_window_table(scalar_size, window_size, group_elem);
@@ -65,8 +65,7 @@ pub fn multiply_field_elems_with_same_group_elem<G: ProjectiveCurve>(
     group_elem: G,
     elements: &[G::ScalarField],
 ) -> Vec<G> {
-    let scalar_size = G::ScalarField::size_in_bits();
-    let table = WindowTable::new(scalar_size, elements.len(), group_elem);
+    let table = WindowTable::new(elements.len(), group_elem);
     table.multiply_many(elements)
 }
 

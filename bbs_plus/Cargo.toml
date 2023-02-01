@@ -1,6 +1,6 @@
 [package]
 name = "bbs_plus"
-version = "0.9.0"
+version = "0.10.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -18,8 +18,8 @@ ark-ec.workspace = true
 ark-std.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
-schnorr_pok = { version = "0.7.0", default-features = false, path = "../schnorr_pok" }
-dock_crypto_utils = { version = "0.7.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.8.0", default-features = false, path = "../schnorr_pok" }
+dock_crypto_utils = { version = "0.8.0", default-features = false, path = "../utils" }
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true

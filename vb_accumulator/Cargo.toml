@@ -1,6 +1,6 @@
 [package]
 name = "vb_accumulator"
-version = "0.10.0"
+version = "0.11.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -12,18 +12,18 @@ doctest = false
 path = "src/lib.rs"
 
 [dependencies]
-ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
-ark-ff = { version = "^0.3.0", default-features = false }
-ark-ec = { version = "^0.3.0", default-features = false }
+ark-serialize.workspace = true
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-std.workspace = true
 ark-poly = {version = "^0.3.0", default-features = false }
-ark-std = { version = "^0.3.0", default-features = false }
-digest = "0.9"
-rayon = { version = "1", optional = true }
-schnorr_pok = { version = "0.7.0", default-features = false, path = "../schnorr_pok" }
-dock_crypto_utils = { version = "0.7.0", default-features = false, path = "../utils" }
-serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
-zeroize = { version = "1.5.5", features = ["derive"] }
+digest.workspace = true
+rayon = {workspace = true, optional = true}
+serde.workspace = true
+serde_with.workspace = true
+zeroize.workspace = true
+schnorr_pok = { version = "0.8.0", default-features = false, path = "../schnorr_pok" }
+dock_crypto_utils = { version = "0.8.0", default-features = false, path = "../utils" }
 
 [dev-dependencies]
 blake2.workspace = true

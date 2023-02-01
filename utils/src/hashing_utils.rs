@@ -8,6 +8,10 @@ use hkdf::Hkdf;
 
 const ZERO_AS_OCTET: [u8; 1] = [0u8];
 
+// [trait_alias](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-alias.html) are in unstable Rust.
+// Uncomment following when they become stable and use ExpandableDigest
+// trait ExpandableDigest = Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone;
+
 /// Deterministically generate a field element from given seed similar to the procedure defined
 /// here <https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-04#section-2.3>
 /// This process can be used to create secret keys from limited entropy source (the seed) without

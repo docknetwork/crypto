@@ -1,0 +1,35 @@
+[package]
+name = "delegatable_credentials"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-std.workspace = true
+ark-serialize.workspace = true
+ark-poly.workspace = true
+digest.workspace = true
+rayon = {workspace = true, optional = true}
+serde.workspace = true
+serde_with.workspace = true
+dock_crypto_utils = { version = "0.8.0", default-features = false, path = "../utils" }
+zeroize.workspace = true
+num-bigint = { version = "0.4.0", default-features = false }
+schnorr_pok = { version = "0.8.0", default-features = false, path = "../schnorr_pok" }
+[dependencies.num-integer]
+version = "0.1.42"
+features = ["i128"]
+default-features = false
+
+[dev-dependencies]
+blake2.workspace = true
+ark-bls12-381.workspace = true
+
+[features]
+default = [ "parallel" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std", "dock_crypto_utils/std", "ark-poly/std"]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "ark-poly/parallel"]
