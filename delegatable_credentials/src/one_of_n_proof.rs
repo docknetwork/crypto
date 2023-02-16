@@ -6,12 +6,15 @@ use ark_std::collections::BTreeMap;
 use ark_std::io::{Read, Write};
 use ark_std::ops::{Add, Neg, Sub};
 use ark_std::rand::RngCore;
-use ark_std::UniformRand;
+use ark_std::{cfg_iter, UniformRand};
 use ark_std::{vec, vec::Vec};
 use dock_crypto_utils::ec::{
     batch_normalize_projective_into_affine, pairing_product_with_g2_prepared,
 };
 use dock_crypto_utils::msm::WindowTable;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// SRS used for the 1-of-N proof
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -88,7 +91,7 @@ impl<E: PairingEngine> OneOfNProof<E> {
                 actual_at = a.len();
                 // `a_j = s * actual_j`
                 a.push({
-                    let a = pk.iter().map(|p| p.mul(s_repr)).collect::<Vec<_>>();
+                    let a = cfg_iter!(pk).map(|p| p.mul(s_repr)).collect::<Vec<_>>();
                     batch_normalize_projective_into_affine(a)
                 });
                 // Temporary value for `d` and `z`, will be overwritten later
@@ -104,9 +107,8 @@ impl<E: PairingEngine> OneOfNProof<E> {
                 let z_i = random_challenges[i - 1].into_repr();
                 // `a_j = d_i * decoy_j - z_i * actual`
                 a.push({
-                    let a = pk
-                        .iter()
-                        .zip(instance.iter())
+                    let a = cfg_iter!(pk)
+                        .zip(cfg_iter!(instance))
                         .map(|(b, b_prime)| b.mul(d_i_repr).sub(b_prime.mul(z_i)))
                         .collect::<Vec<_>>();
                     batch_normalize_projective_into_affine(a)

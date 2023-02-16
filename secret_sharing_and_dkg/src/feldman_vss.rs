@@ -1,0 +1,150 @@
+//! Feldman Verifiable Secret Sharing Scheme. Based on the paper [A practical scheme for non-interactive verifiable secret sharing](https://www.cs.umd.edu/~gasarch/TOPICS/secretsharing/feldmanVSS.pdf)
+
+use ark_ec::AffineCurve;
+use ark_ff::PrimeField;
+use ark_poly::univariate::DensePolynomial;
+use ark_std::rand::RngCore;
+use ark_std::{cfg_iter, vec::Vec, UniformRand};
+use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
+
+use dock_crypto_utils::ff::powers;
+use dock_crypto_utils::msm::variable_base_msm;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
+use crate::common::{CommitmentToCoefficients, Share, ShareId, Shares};
+use crate::error::SSError;
+use crate::shamir_ss;
+
+/// Generate a random secret with its shares according to Feldman's verifiable secret sharing.
+/// Returns the secret, shares, and commitments to coefficients of the polynomials for
+/// the secret and the polynomial
+pub fn deal_random_secret<R: RngCore, G: AffineCurve>(
+    rng: &mut R,
+    threshold: ShareId,
+    total: ShareId,
+    ck: &G,
+) -> Result<
+    (
+        G::ScalarField,
+        Shares<G::ScalarField>,
+        CommitmentToCoefficients<G>,
+        DensePolynomial<G::ScalarField>,
+    ),
+    SSError,
+> {
+    let secret = G::ScalarField::rand(rng);
+    let (shares, coeff_comms, poly) = deal_secret(rng, secret.clone(), threshold, total, ck)?;
+    Ok((secret, shares, coeff_comms, poly))
+}
+
+/// Same as `deal_random_secret` above but accepts the secret to share
+pub fn deal_secret<R: RngCore, G: AffineCurve>(
+    rng: &mut R,
+    secret: G::ScalarField,
+    threshold: ShareId,
+    total: ShareId,
+    ck: &G,
+) -> Result<
+    (
+        Shares<G::ScalarField>,
+        CommitmentToCoefficients<G>,
+        DensePolynomial<G::ScalarField>,
+    ),
+    SSError,
+> {
+    let (shares, poly) = shamir_ss::deal_secret(rng, secret, threshold, total)?;
+    let coeff_comms = commit_to_poly(&poly, ck);
+    Ok((shares, coeff_comms.into(), poly))
+}
+
+pub(crate) fn commit_to_poly<G: AffineCurve>(
+    poly: &DensePolynomial<G::ScalarField>,
+    ck: &G,
+) -> Vec<G> {
+    batch_normalize_projective_into_affine(
+        cfg_iter!(poly.coeffs)
+            .map(|i| ck.mul(i.into_repr()))
+            .collect::<Vec<_>>(),
+    )
+}
+
+impl<F: PrimeField> Share<F> {
+    /// Executed by each participant to verify its share received from the dealer.
+    pub fn verify<G: AffineCurve<ScalarField = F>>(
+        &self,
+        commitment_coeffs: &CommitmentToCoefficients<G>,
+        ck: &G,
+    ) -> Result<(), SSError> {
+        let len = commitment_coeffs.0.len() as ShareId;
+        if self.threshold > len {
+            return Err(SSError::BelowThreshold(self.threshold, len));
+        }
+        let powers = powers(
+            &G::ScalarField::from(self.id as u64),
+            self.threshold as usize,
+        );
+        if variable_base_msm(&commitment_coeffs.0, &powers) != ck.mul(self.share.into_repr()) {
+            return Err(SSError::InvalidShare);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use ark_bls12_381::Bls12_381;
+    use ark_ec::{PairingEngine, ProjectiveCurve};
+    use ark_ff::One;
+    use ark_std::rand::{rngs::StdRng, SeedableRng};
+
+    #[test]
+    fn feldman_verifiable_secret_sharing() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let g1 = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+        let g2 = <Bls12_381 as PairingEngine>::G2Projective::rand(&mut rng).into_affine();
+
+        fn check<G: AffineCurve>(rng: &mut StdRng, g: &G) {
+            for (threshold, total) in vec![
+                (2, 2),
+                (2, 3),
+                (2, 4),
+                (2, 5),
+                (3, 3),
+                (3, 4),
+                (3, 5),
+                (4, 5),
+                (4, 8),
+                (4, 9),
+                (4, 12),
+                (5, 5),
+                (5, 7),
+                (5, 10),
+                (5, 13),
+                (7, 10),
+                (7, 15),
+            ] {
+                let (secret, shares, commitments, _) =
+                    deal_random_secret::<_, G>(rng, threshold as ShareId, total as ShareId, g)
+                        .unwrap();
+
+                for share in &shares.0 {
+                    // Wrong share fails to verify
+                    let mut wrong_share = share.clone();
+                    wrong_share.share += G::ScalarField::one();
+                    assert!(wrong_share.verify(&commitments, &g).is_err());
+
+                    // Correct share verifies
+                    share.verify(&commitments, g).unwrap();
+                }
+
+                assert_eq!(shares.reconstruct_secret().unwrap(), secret);
+            }
+        }
+
+        check(&mut rng, &g1);
+        check(&mut rng, &g2);
+    }
+}

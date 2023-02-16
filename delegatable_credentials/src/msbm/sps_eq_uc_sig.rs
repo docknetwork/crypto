@@ -8,7 +8,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError
 use ark_std::io::{Read, Write};
 use ark_std::ops::{Add, Neg};
 use ark_std::rand::RngCore;
-use ark_std::UniformRand;
+use ark_std::{cfg_into_iter, cfg_iter, UniformRand};
 use ark_std::{collections::BTreeSet, vec::Vec};
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use dock_crypto_utils::ec::{
@@ -30,6 +30,9 @@ use crate::msbm::keys::{
 use crate::set_commitment::{
     AggregateSubsetWitness, SetCommitment, SetCommitmentOpening, SetCommitmentSRS, SubsetWitness,
 };
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 impl_proof_of_knowledge_of_discrete_log!(RandCommitmentProtocol, RandCommitmentProof);
 
@@ -552,11 +555,14 @@ impl<E: PairingEngine> Signature<E> {
                 );
             }
             let powers = &srs.P1[0..max_attributes_per_commitment];
-            let mut key = Vec::with_capacity(k_prime - k + 1);
-            for i in k..=k_prime {
-                let p = powers.iter().map(|p| p.mul(sk_merc[i] * y_inv)).collect();
-                key.push(batch_normalize_projective_into_affine(p));
-            }
+            let key = cfg_into_iter!(k..=k_prime)
+                .map(|i| {
+                    let p = cfg_iter!(powers)
+                        .map(|p| p.mul(sk_merc[i] * y_inv))
+                        .collect();
+                    batch_normalize_projective_into_affine(p)
+                })
+                .collect::<Vec<_>>();
             uk = Some(UpdateKey {
                 start_index: k,
                 max_attributes_per_commitment,

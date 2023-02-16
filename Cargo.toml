@@ -10,7 +10,8 @@ members = [
     "compressed_sigma",
     "benches",
     "test_utils",
-    "delegatable_credentials"
+    "delegatable_credentials",
+    "secret_sharing_and_dkg"
 ]
 resolver = "2"
 

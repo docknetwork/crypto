@@ -9,13 +9,16 @@ use ark_std::io::{Read, Write};
 use ark_std::ops::Neg;
 use ark_std::rand::RngCore;
 use ark_std::UniformRand;
-use ark_std::{vec, vec::Vec};
+use ark_std::{cfg_iter, vec, vec::Vec};
 use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
 use dock_crypto_utils::ec::{
     batch_normalize_projective_into_affine, pairing_product_with_g2_prepared,
 };
 use dock_crypto_utils::hashing_utils::field_elem_from_seed;
 use zeroize::Zeroize;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Secret key of the form `(x_0, (x_1, x_2, x_3, ..., x_n))`. The key `(x_1, x_2, x_3, ..., x_n)` is the
 /// secret key for the Mercurial signature scheme
@@ -136,6 +139,7 @@ impl<E: PairingEngine> UserPublicKey<E> {
         chi: &E::Fr,
         P1: &E::G1Affine,
     ) -> Self {
+        // (upk + (P1 * chi)) * psi
         Self(
             P1.mul(chi.into_repr())
                 .add_mixed(&self.0)
@@ -157,11 +161,9 @@ impl<E: PairingEngine> UpdateKey<E> {
         Self {
             start_index: self.start_index,
             max_attributes_per_commitment: self.max_attributes_per_commitment,
-            keys: self
-                .keys
-                .iter()
+            keys: cfg_iter!(self.keys)
                 .map(|k| {
-                    let j = k.iter().map(|j| j.mul(r_repr)).collect::<Vec<_>>();
+                    let j = cfg_iter!(k).map(|j| j.mul(r_repr)).collect::<Vec<_>>();
                     batch_normalize_projective_into_affine(j)
                 })
                 .collect::<Vec<_>>(),
@@ -177,8 +179,7 @@ impl<E: PairingEngine> UpdateKey<E> {
     ) -> Result<(), DelegationError> {
         self._verify(
             sig,
-            public_key.X.0[self.start_index..=self.end_index()]
-                .iter()
+            cfg_iter!(public_key.X.0[self.start_index..=self.end_index()])
                 .map(|p| E::G2Prepared::from(*p))
                 .collect(),
             t,
@@ -225,14 +226,14 @@ impl<E: PairingEngine> UpdateKey<E> {
         t: usize,
         srs: &SetCommitmentSRS<E>,
     ) -> Result<(), DelegationError> {
-        let sum = srs.P1[0..t].iter().sum::<E::G1Affine>();
+        let sum = cfg_iter!(srs.P1[0..t]).sum::<E::G1Affine>();
         let mut a = vec![sum; x_prep.len()];
         let mut b = x_prep;
         a.push(
             self.keys
                 .iter()
                 .fold(E::G1Affine::zero(), |sum, v| {
-                    sum + v.iter().sum::<E::G1Affine>()
+                    sum + cfg_iter!(v).sum::<E::G1Affine>()
                 })
                 .neg(),
         );
