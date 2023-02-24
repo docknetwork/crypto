@@ -284,12 +284,21 @@ mod tests {
                 witnesses.add(Witness::PedersenCommitment(decomposed));
                 witnesses.add(Witness::PedersenCommitment(wit2));
 
-                let proof =
-                    ProofG1::new(&mut rng, proof_spec.clone(), witnesses.clone(), None).unwrap();
+                let proof = ProofG1::new(
+                    &mut rng,
+                    proof_spec.clone(),
+                    witnesses.clone(),
+                    None,
+                    Default::default(),
+                )
+                .unwrap()
+                .0;
                 total_prove += start.elapsed();
 
                 let start = Instant::now();
-                proof.verify(proof_spec, None).unwrap();
+                proof
+                    .verify::<StdRng>(&mut rng, proof_spec, None, Default::default())
+                    .unwrap();
                 total_verify += start.elapsed();
             }
 

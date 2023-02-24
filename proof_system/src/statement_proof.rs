@@ -24,6 +24,9 @@ pub enum StatementProof<E: PairingEngine, G: AffineCurve> {
     Saver(SaverProof<E>),
     BoundCheckLegoGroth16(BoundCheckLegoGroth16Proof<E>),
     R1CSLegoGroth16(R1CSLegoGroth16Proof<E>),
+    SaverWithAggregation(SaverProofWhenAggregatingSnarks<E>),
+    BoundCheckLegoGroth16WithAggregation(BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>),
+    R1CSLegoGroth16WithAggregation(R1CSLegoGroth16ProofWhenAggregatingSnarks<E>),
 }
 
 #[serde_as]
@@ -68,6 +71,42 @@ impl<E: PairingEngine> SaverProof<E> {
             .get_response(0)
             .map_err(|e| e.into())
     }
+
+    pub fn for_aggregation(&self) -> SaverProofWhenAggregatingSnarks<E> {
+        SaverProofWhenAggregatingSnarks {
+            ciphertext: self.ciphertext.clone(),
+            comm_chunks: self.comm_chunks.clone(),
+            comm_combined: self.comm_combined.clone(),
+            sp_ciphertext: self.sp_ciphertext.clone(),
+            sp_chunks: self.sp_chunks.clone(),
+            sp_combined: self.sp_combined.clone(),
+        }
+    }
+}
+
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct SaverProofWhenAggregatingSnarks<E: PairingEngine> {
+    pub ciphertext: Ciphertext<E>,
+    #[serde_as(as = "AffineGroupBytes")]
+    pub comm_chunks: E::G1Affine,
+    #[serde_as(as = "AffineGroupBytes")]
+    pub comm_combined: E::G1Affine,
+    pub sp_ciphertext: PedersenCommitmentProof<E::G1Affine>,
+    pub sp_chunks: PedersenCommitmentProof<E::G1Affine>,
+    pub sp_combined: PedersenCommitmentProof<E::G1Affine>,
+}
+
+impl<E: PairingEngine> SaverProofWhenAggregatingSnarks<E> {
+    pub fn get_schnorr_response_for_combined_message(&self) -> Result<&E::Fr, ProofSystemError> {
+        self.sp_combined
+            .response
+            .get_response(0)
+            .map_err(|e| e.into())
+    }
 }
 
 #[serde_as]
@@ -82,6 +121,30 @@ pub struct BoundCheckLegoGroth16Proof<E: PairingEngine> {
 }
 
 impl<E: PairingEngine> BoundCheckLegoGroth16Proof<E> {
+    pub fn get_schnorr_response_for_message(&self) -> Result<&E::Fr, ProofSystemError> {
+        self.sp.response.get_response(0).map_err(|e| e.into())
+    }
+
+    pub fn for_aggregation(&self) -> BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E> {
+        BoundCheckLegoGroth16ProofWhenAggregatingSnarks {
+            commitment: self.snark_proof.d.clone(),
+            sp: self.sp.clone(),
+        }
+    }
+}
+
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E: PairingEngine> {
+    #[serde_as(as = "AffineGroupBytes")]
+    pub commitment: E::G1Affine,
+    pub sp: PedersenCommitmentProof<E::G1Affine>,
+}
+
+impl<E: PairingEngine> BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E> {
     pub fn get_schnorr_response_for_message(&self) -> Result<&E::Fr, ProofSystemError> {
         self.sp.response.get_response(0).map_err(|e| e.into())
     }
@@ -105,6 +168,33 @@ impl<E: PairingEngine> R1CSLegoGroth16Proof<E> {
     ) -> Result<&E::Fr, ProofSystemError> {
         self.sp.response.get_response(index).map_err(|e| e.into())
     }
+
+    pub fn for_aggregation(&self) -> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
+        R1CSLegoGroth16ProofWhenAggregatingSnarks {
+            commitment: self.snark_proof.d.clone(),
+            sp: self.sp.clone(),
+        }
+    }
+}
+
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct R1CSLegoGroth16ProofWhenAggregatingSnarks<E: PairingEngine> {
+    #[serde_as(as = "AffineGroupBytes")]
+    pub commitment: E::G1Affine,
+    pub sp: PedersenCommitmentProof<E::G1Affine>,
+}
+
+impl<E: PairingEngine> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
+    pub fn get_schnorr_response_for_message(
+        &self,
+        index: usize,
+    ) -> Result<&E::Fr, ProofSystemError> {
+        self.sp.response.get_response(index).map_err(|e| e.into())
+    }
 }
 
 mod serialization {
@@ -114,10 +204,10 @@ mod serialization {
     };
 
     impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for StatementProof<E, G> {
-        impl_serialize!();
+        impl_serialize_statement_proof!();
     }
 
     impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for StatementProof<E, G> {
-        impl_deserialize!();
+        impl_deserialize_statement_proof!();
     }
 }

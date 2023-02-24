@@ -1,17 +1,20 @@
 use crate::error::ProofSystemError;
-use crate::statement_proof::{R1CSLegoGroth16Proof, StatementProof};
+use crate::statement_proof::{
+    R1CSLegoGroth16Proof, R1CSLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
+};
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_serialize::CanonicalSerialize;
 use ark_std::collections::BTreeMap;
 use ark_std::io::Write;
 use ark_std::rand::RngCore;
-use ark_std::vec::Vec;
 use ark_std::UniformRand;
+use ark_std::{vec, vec::Vec};
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use legogroth16::circom::{CircomCircuit, WitnessCalculator, R1CS};
 use legogroth16::{
-    create_random_proof, prepare_verifying_key, verify_proof, PreparedVerifyingKey, Proof,
-    ProvingKey, VerifyingKey,
+    calculate_d, create_random_proof, prepare_verifying_key, rerandomize_proof_1, verify_proof,
+    PreparedVerifyingKey, Proof, ProvingKey, VerifyingKey,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -64,18 +67,18 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
             .proving_key
             .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
 
+        // blinding for the commitment in the snark proof
+        let v = E::Fr::rand(rng);
+
         let mut wits_calc = WitnessCalculator::<E>::from_wasm_bytes(wasm_bytes)?;
         let wires = wits_calc.calculate_witnesses(witness.inputs.clone().into_iter(), true)?;
         let circuit = CircomCircuit {
             r1cs,
             wires: Some(wires),
         };
-
-        // blinding for the commitment in the snark proof
-        let v = E::Fr::rand(rng);
         let snark_proof = create_random_proof(circuit, v, proving_key, rng)?;
 
-        // NOTE: value of id is dummy
+        /*// NOTE: value of id is dummy
         let mut sp = SchnorrProtocol::new(10000, comm_key, snark_proof.d);
         let mut private_inputs =
             witness.get_first_n_private_inputs(proving_key.vk.commit_witness_count)?;
@@ -83,7 +86,55 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
         sp.init(rng, blindings, private_inputs)?;
         self.snark_proof = Some(snark_proof);
         self.sp = Some(sp);
-        Ok(())
+        Ok(())*/
+        self.init_schnorr_protocol(
+            rng,
+            comm_key,
+            witness,
+            blindings,
+            proving_key.vk.commit_witness_count,
+            v,
+            snark_proof,
+        )
+    }
+
+    pub fn init_with_old_randomness_and_proof<R: RngCore>(
+        &mut self,
+        rng: &mut R,
+        comm_key: &'a [E::G1Affine],
+        witness: crate::witness::R1CSCircomWitness<E>,
+        blindings: BTreeMap<usize, E::Fr>,
+        old_v: E::Fr,
+        proof: Proof<E>,
+    ) -> Result<(), ProofSystemError> {
+        if self.sp.is_some() {
+            return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
+        }
+        let proving_key = self
+            .proving_key
+            .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
+
+        // new blinding for the commitment in the snark proof
+        let v = E::Fr::rand(rng);
+
+        let snark_proof = rerandomize_proof_1(
+            &proof,
+            old_v,
+            v,
+            &proving_key.vk,
+            &proving_key.common.eta_delta_inv_g1,
+            rng,
+        );
+
+        self.init_schnorr_protocol(
+            rng,
+            comm_key,
+            witness,
+            blindings,
+            proving_key.vk.commit_witness_count,
+            v,
+            snark_proof,
+        )
     }
 
     pub fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ProofSystemError> {
@@ -131,7 +182,9 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
             .verifying_key
             .ok_or(ProofSystemError::LegoGroth16VerifyingKeyNotProvided)?;
         let pvk = prepare_verifying_key(verifying_key);
-        self.verify_proof_contribution_using_prepared(challenge, inputs, proof, comm_key, &pvk)
+        self.verify_proof_contribution_using_prepared(
+            challenge, inputs, proof, comm_key, &pvk, &mut None,
+        )
     }
 
     pub fn verify_proof_contribution_using_prepared(
@@ -141,12 +194,39 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
         proof: &R1CSLegoGroth16Proof<E>,
         comm_key: &[E::G1Affine],
         pvk: &PreparedVerifyingKey<E>,
+        pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
-        verify_proof(pvk, &proof.snark_proof, inputs)?;
+        let snark_proof = &proof.snark_proof;
+        match pairing_checker {
+            Some(c) => {
+                let d = calculate_d(pvk, snark_proof, inputs)?;
+                c.add_prepared_sources_and_target(
+                    &[snark_proof.a, snark_proof.c, d],
+                    vec![
+                        snark_proof.b.into(),
+                        pvk.delta_g2_neg_pc.clone(),
+                        pvk.gamma_g2_neg_pc.clone(),
+                    ],
+                    &pvk.alpha_g1_beta_g2,
+                );
+            }
+            None => verify_proof(pvk, &proof.snark_proof, inputs)?,
+        }
 
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.snark_proof.d);
 
+        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
+    }
+
+    pub fn verify_proof_contribution_using_prepared_when_aggregating_snark(
+        &self,
+        challenge: &E::Fr,
+        proof: &R1CSLegoGroth16ProofWhenAggregatingSnarks<E>,
+        comm_key: &[E::G1Affine],
+    ) -> Result<(), ProofSystemError> {
+        // NOTE: value of id is dummy
+        let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
         sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
     }
 
@@ -161,7 +241,38 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
         Ok(())
     }
 
+    pub fn compute_challenge_contribution_when_aggregating_snark<W: Write>(
+        comm_key: &[E::G1Affine],
+        proof: &R1CSLegoGroth16ProofWhenAggregatingSnarks<E>,
+        mut writer: W,
+    ) -> Result<(), ProofSystemError> {
+        comm_key.serialize_unchecked(&mut writer)?;
+        proof.commitment.serialize_unchecked(&mut writer)?;
+        proof.sp.t.serialize_unchecked(&mut writer)?;
+        Ok(())
+    }
+
     pub fn schnorr_comm_key(vk: &VerifyingKey<E>) -> Vec<E::G1Affine> {
         vk.get_commitment_key_for_witnesses()
+    }
+
+    fn init_schnorr_protocol<R: RngCore>(
+        &mut self,
+        rng: &mut R,
+        comm_key: &'a [E::G1Affine],
+        witness: crate::witness::R1CSCircomWitness<E>,
+        blindings: BTreeMap<usize, E::Fr>,
+        commit_witness_count: usize,
+        v: E::Fr,
+        snark_proof: Proof<E>,
+    ) -> Result<(), ProofSystemError> {
+        // NOTE: value of id is dummy
+        let mut sp = SchnorrProtocol::new(10000, comm_key, snark_proof.d);
+        let mut private_inputs = witness.get_first_n_private_inputs(commit_witness_count)?;
+        private_inputs.push(v);
+        sp.init(rng, blindings, private_inputs)?;
+        self.snark_proof = Some(snark_proof);
+        self.sp = Some(sp);
+        Ok(())
     }
 }

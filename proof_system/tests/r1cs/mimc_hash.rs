@@ -125,7 +125,15 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     r1cs_wit.set_private("k".to_string(), vec![k]);
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
     println!(
         "Creating proof for MiMC circuit takes {:?}",
         start.elapsed()
@@ -150,7 +158,12 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     verifier_proof_spec.validate().unwrap();
     proof
         .clone()
-        .verify(verifier_proof_spec.clone(), None)
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
     println!(
         "Verifying proof for MiMC circuit takes {:?}",
@@ -175,5 +188,12 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         None,
     );
     verifier_proof_spec_1.validate().unwrap();
-    assert!(proof.verify(verifier_proof_spec_1.clone(), None).is_err());
+    assert!(proof
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec_1.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
 }

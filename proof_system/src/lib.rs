@@ -150,7 +150,7 @@
 //! [`ProofSpec`]: crate::proof_spec::ProofSpec
 //! [`Witness`]: crate::witness::Witness
 //! [`StatementProof`]: crate::statement_proof::StatementProof
-//! [`Proof`]: crate::proof::Proof
+//! [`Proof`]: proof::Proof
 //! [`SubProtocol`]: crate::sub_protocols::SubProtocol
 //! [`SaverProtocol`]: crate::sub_protocols::saver::SaverProtocol
 //! [`SchnorrProtocol`]: crate::sub_protocols::schnorr::SchnorrProtocol
@@ -166,9 +166,11 @@ pub mod error;
 pub mod meta_statement;
 pub mod proof;
 pub mod proof_spec;
+pub mod prover;
 pub mod statement;
 pub mod statement_proof;
 pub mod sub_protocols;
+pub mod verifier;
 pub mod witness;
 
 pub mod prelude {
@@ -176,9 +178,11 @@ pub mod prelude {
     pub use crate::meta_statement::*;
     pub use crate::proof::*;
     pub use crate::proof_spec::*;
+    pub use crate::prover::*;
     pub use crate::setup_params::*;
     pub use crate::statement::*;
     pub use crate::statement_proof::*;
     pub use crate::sub_protocols::bound_check_legogroth16::generate_snark_srs_bound_check;
+    pub use crate::verifier::*;
     pub use crate::witness::*;
 }

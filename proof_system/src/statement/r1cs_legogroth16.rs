@@ -73,6 +73,32 @@ impl<E: PairingEngine> R1CSCircomProver<E> {
         }))
     }
 
+    pub fn new_statement_from_params_when_reusing_proof<G: AffineCurve>(
+        snark_proving_key: ProvingKey<E>,
+    ) -> Result<Statement<E, G>, ProofSystemError> {
+        Ok(Statement::R1CSCircomProver(Self {
+            r1cs: None,
+            r1cs_ref: None,
+            wasm_bytes: None,
+            wasm_bytes_ref: None,
+            snark_proving_key: Some(snark_proving_key),
+            snark_proving_key_ref: None,
+        }))
+    }
+
+    pub fn new_statement_from_params_ref_when_reusing_proof<G: AffineCurve>(
+        snark_proving_key_ref: usize,
+    ) -> Result<Statement<E, G>, ProofSystemError> {
+        Ok(Statement::R1CSCircomProver(Self {
+            r1cs: None,
+            r1cs_ref: None,
+            wasm_bytes: None,
+            wasm_bytes_ref: None,
+            snark_proving_key: None,
+            snark_proving_key_ref: Some(snark_proving_key_ref),
+        }))
+    }
+
     pub fn get_r1cs<'a, G: AffineCurve>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],

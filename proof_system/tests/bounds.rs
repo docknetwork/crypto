@@ -6,7 +6,8 @@ use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
 use std::time::Instant;
 
 use proof_system::prelude::{
-    EqualWitnesses, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
+    EqualWitnesses, MetaStatements, ProofSpec, ProverConfig, VerifierConfig, Witness, WitnessRef,
+    Witnesses,
 };
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::{
@@ -85,7 +86,14 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let start = Instant::now();
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let (proof, comm_rand) = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap();
     println!(
         "Time taken to create proof of bound check of 1 message in signature over {} messages {:?}",
         msg_count,
@@ -119,13 +127,74 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(verifier_proof_spec.clone(), None)
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
     println!(
         "Time taken to verify proof of bound check of 1 message in signature over {} messages {:?}",
         msg_count,
         start.elapsed()
     );
+    proof
+        .clone()
+        .verify(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
+        )
+        .unwrap();
+
+    let start = Instant::now();
+    let mut m = BTreeMap::new();
+    let p = proof.get_legogroth16_proof(1).unwrap();
+    m.insert(1, (*(comm_rand.get(&1).unwrap()), (*p).clone()));
+    let config = ProverConfig::<Bls12_381> {
+        reuse_saver_proofs: None,
+        reuse_legogroth16_proofs: Some(m),
+    };
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        config,
+    )
+    .unwrap()
+    .0;
+    println!(
+        "Time taken to create proof with re-randomization of bound check of 1 message in signature over {} messages {:?}",
+        msg_count,
+        start.elapsed()
+    );
+    proof
+        .clone()
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap();
+    proof
+        .clone()
+        .verify(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
+        )
+        .unwrap();
 
     // Correct message used in proof creation but meta statement is specifying equality with another message
     let mut meta_statements_wrong = MetaStatements::new();
@@ -142,7 +211,15 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     );
     proof_spec_prover.validate().unwrap();
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     let proof_spec_verifier = ProofSpec::new(
         verifier_statements.clone(),
@@ -151,7 +228,26 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         None,
     );
     proof_spec_verifier.validate().unwrap();
-    assert!(proof.verify(proof_spec_verifier.clone(), None).is_err());
+    assert!(proof
+        .clone()
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec_verifier.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
+    assert!(proof
+        .verify(
+            &mut rng,
+            proof_spec_verifier.clone(),
+            None,
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
+        )
+        .is_err());
 
     // Prove bound over a message which was not signed
     let mut witnesses_wrong = Witnesses::new();
@@ -165,10 +261,37 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
     proof_spec_prover.validate().unwrap();
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover, witnesses_wrong, None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover,
+        witnesses_wrong,
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
     let proof_spec_verifier = ProofSpec::new(verifier_statements, meta_statements, vec![], None);
     proof_spec_verifier.validate().unwrap();
-    assert!(proof.verify(proof_spec_verifier.clone(), None).is_err());
+    assert!(proof
+        .clone()
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec_verifier.clone(),
+            None,
+            Default::default()
+        )
+        .is_err());
+    assert!(proof
+        .verify(
+            &mut rng,
+            proof_spec_verifier,
+            None,
+            VerifierConfig {
+                use_randomized_pairing_checks: true,
+                lazy_randomized_pairing_checks: false,
+            },
+        )
+        .is_err());
 }
 
 #[test]
@@ -231,7 +354,15 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     ));
     witnesses.add(Witness::BoundCheckLegoGroth16(msg));
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -254,7 +385,14 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         None,
     );
     proof_spec_verifier.validate().unwrap();
-    proof.verify(proof_spec_verifier.clone(), None).unwrap();
+    proof
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec_verifier.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap();
 
     // Message same as maximum
     let mut prover_statements = Statements::new();
@@ -293,7 +431,15 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     ));
     witnesses.add(Witness::BoundCheckLegoGroth16(msg));
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -316,7 +462,14 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         None,
     );
     proof_spec_verifier.validate().unwrap();
-    proof.verify(proof_spec_verifier.clone(), None).unwrap();
+    proof
+        .verify::<StdRng>(
+            &mut rng,
+            proof_spec_verifier.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap();
 }
 
 #[test]
@@ -423,8 +576,14 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         witnesses.add(Witness::BoundCheckLegoGroth16(msg_3));
 
         let start = Instant::now();
-        let proof =
-            ProofG1::new(&mut rng, prover_proof_spec.clone(), witnesses.clone(), None).unwrap();
+        let (proof, comm_rand) = ProofG1::new(
+            &mut rng,
+            prover_proof_spec.clone(),
+            witnesses.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap();
         println!(
             "Time taken to create proof of bound check of 3 messages in signature over {} messages: {:?}",
             msg_count,
@@ -495,12 +654,71 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
 
         let start = Instant::now();
-        proof.verify(verifier_proof_spec.clone(), None).unwrap();
+        proof
+            .clone()
+            .verify::<StdRng>(
+                &mut rng,
+                verifier_proof_spec.clone(),
+                None,
+                Default::default(),
+            )
+            .unwrap();
         println!(
             "Time taken to verify proof of bound check of 3 messages in signature over {} messages: {:?}",
             msg_count,
             start.elapsed()
         );
+        let start = Instant::now();
+        proof
+            .clone()
+            .verify(
+                &mut rng,
+                verifier_proof_spec.clone(),
+                None,
+                VerifierConfig {
+                    use_randomized_pairing_checks: true,
+                    lazy_randomized_pairing_checks: false,
+                },
+            )
+            .unwrap();
+        println!(
+            "Time taken to verify proof of bound check of 3 messages in signature over {} messages with randomized pairing check: {:?}",
+            msg_count,
+            start.elapsed()
+        );
+
+        let start = Instant::now();
+        let mut m = BTreeMap::new();
+        for i in 1..=3 {
+            let p = proof.get_legogroth16_proof(i).unwrap();
+            m.insert(i, (*(comm_rand.get(&i).unwrap()), (*p).clone()));
+        }
+        let config = ProverConfig::<Bls12_381> {
+            reuse_saver_proofs: None,
+            reuse_legogroth16_proofs: Some(m),
+        };
+        let proof = ProofG1::new(
+            &mut rng,
+            prover_proof_spec.clone(),
+            witnesses.clone(),
+            None,
+            config,
+        )
+        .unwrap()
+        .0;
+        println!(
+            "Time taken to create proof with re-randomization of bound check of 3 messages in signature over {} messages: {:?}",
+            msg_count,
+            start.elapsed()
+        );
+        proof
+            .verify::<StdRng>(
+                &mut rng,
+                verifier_proof_spec.clone(),
+                None,
+                Default::default(),
+            )
+            .unwrap();
     }
     check(false);
     check(true);

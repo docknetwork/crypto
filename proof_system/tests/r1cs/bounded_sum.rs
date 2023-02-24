@@ -130,7 +130,15 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     r1cs_wit.set_public("max".to_string(), vec![sum_bound]);
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new(&mut rng, proof_spec_prover.clone(), witnesses.clone(), None).unwrap();
+    let proof = ProofG1::new(
+        &mut rng,
+        proof_spec_prover.clone(),
+        witnesses.clone(),
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .0;
 
     println!("Creating proof for bounded sum takes {:?}", start.elapsed());
 
@@ -160,7 +168,14 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
         None,
     );
     verifier_proof_spec.validate().unwrap();
-    proof.verify(verifier_proof_spec.clone(), None).unwrap();
+    proof
+        .verify::<StdRng>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
+        .unwrap();
     println!(
         "Verifying proof for bounded sum takes {:?}",
         start.elapsed()

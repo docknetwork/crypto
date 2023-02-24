@@ -1,5 +1,7 @@
 use crate::error::ProofSystemError;
-use crate::statement_proof::{BoundCheckLegoGroth16Proof, StatementProof};
+use crate::statement_proof::{
+    BoundCheckLegoGroth16Proof, BoundCheckLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
+};
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_ff::{Field, PrimeField};
@@ -13,9 +15,10 @@ use ark_std::rand::Rng;
 use ark_std::{
     cmp::Ordering, collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand,
 };
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use legogroth16::{
-    create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof,
-    PreparedVerifyingKey, Proof, ProvingKey, VerifyingKey,
+    calculate_d, create_random_proof, generate_random_parameters, prepare_verifying_key,
+    rerandomize_proof_1, verify_proof, PreparedVerifyingKey, Proof, ProvingKey, VerifyingKey,
 };
 
 /// Runs the LegoGroth16 protocol for proving bounds of a witness and a Schnorr protocol for proving
@@ -80,16 +83,18 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         let proving_key = self
             .proving_key
             .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
+
+        // blinding for the commitment in the snark proof
+        let v = E::Fr::rand(rng);
+
         let circuit = BoundCheckCircuit {
             min: Some(E::Fr::from(self.min)),
             max: Some(E::Fr::from(self.max)),
             value: Some(message),
         };
-        // blinding for the commitment in the snark proof
-        let v = E::Fr::rand(rng);
         let snark_proof = create_random_proof(circuit, v, proving_key, rng)?;
 
-        // blinding used to prove knowledge of message in `snark_proof.d`. The caller of this method ensures
+        /*// blinding used to prove knowledge of message in `snark_proof.d`. The caller of this method ensures
         // that this will be same as the one used proving knowledge of the corresponding message in BBS+
         // signature, thus allowing them to be proved equal.
         let blinding = if blinding.is_none() {
@@ -104,7 +109,39 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         sp.init(rng, blindings, vec![message, v])?;
         self.snark_proof = Some(snark_proof);
         self.sp = Some(sp);
-        Ok(())
+        Ok(())*/
+        self.init_schnorr_protocol(rng, comm_key, message, blinding, v, snark_proof)
+    }
+
+    pub fn init_with_old_randomness_and_proof<R: RngCore>(
+        &mut self,
+        rng: &mut R,
+        comm_key: &'a [E::G1Affine],
+        message: E::Fr,
+        blinding: Option<E::Fr>,
+        old_v: E::Fr,
+        proof: Proof<E>,
+    ) -> Result<(), ProofSystemError> {
+        if self.sp.is_some() {
+            return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
+        }
+        let proving_key = self
+            .proving_key
+            .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
+
+        // new blinding for the commitment in the snark proof
+        let v = E::Fr::rand(rng);
+
+        let snark_proof = rerandomize_proof_1(
+            &proof,
+            old_v,
+            v,
+            &proving_key.vk,
+            &proving_key.common.eta_delta_inv_g1,
+            rng,
+        );
+
+        self.init_schnorr_protocol(rng, comm_key, message, blinding, v, snark_proof)
     }
 
     pub fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ProofSystemError> {
@@ -153,7 +190,7 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
             .verifying_key
             .ok_or(ProofSystemError::LegoGroth16VerifyingKeyNotProvided)?;
         let pvk = prepare_verifying_key(verifying_key);
-        self.verify_proof_contribution_using_prepared(challenge, proof, comm_key, &pvk)
+        self.verify_proof_contribution_using_prepared(challenge, proof, comm_key, &pvk, &mut None)
     }
 
     pub fn verify_proof_contribution_using_prepared(
@@ -162,16 +199,40 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         proof: &BoundCheckLegoGroth16Proof<E>,
         comm_key: &[E::G1Affine],
         pvk: &PreparedVerifyingKey<E>,
+        pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
-        verify_proof(
-            pvk,
-            &proof.snark_proof,
-            &[E::Fr::from(self.min), E::Fr::from(self.max)],
-        )?;
+        let pub_inp = &[E::Fr::from(self.min), E::Fr::from(self.max)];
+        let snark_proof = &proof.snark_proof;
+        match pairing_checker {
+            Some(c) => {
+                let d = calculate_d(pvk, snark_proof, pub_inp)?;
+                c.add_prepared_sources_and_target(
+                    &[snark_proof.a, snark_proof.c, d],
+                    vec![
+                        snark_proof.b.into(),
+                        pvk.delta_g2_neg_pc.clone(),
+                        pvk.gamma_g2_neg_pc.clone(),
+                    ],
+                    &pvk.alpha_g1_beta_g2,
+                );
+            }
+            None => verify_proof(pvk, snark_proof, pub_inp)?,
+        }
 
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.snark_proof.d);
 
+        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
+    }
+
+    pub fn verify_proof_contribution_using_prepared_when_aggregating_snark(
+        &self,
+        challenge: &E::Fr,
+        proof: &BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>,
+        comm_key: &[E::G1Affine],
+    ) -> Result<(), ProofSystemError> {
+        // NOTE: value of id is dummy
+        let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
         sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
     }
 
@@ -182,6 +243,17 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
     ) -> Result<(), ProofSystemError> {
         comm_key.serialize_unchecked(&mut writer)?;
         proof.snark_proof.d.serialize_unchecked(&mut writer)?;
+        proof.sp.t.serialize_unchecked(&mut writer)?;
+        Ok(())
+    }
+
+    pub fn compute_challenge_contribution_when_aggregating_snark<W: Write>(
+        comm_key: &[E::G1Affine],
+        proof: &BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>,
+        mut writer: W,
+    ) -> Result<(), ProofSystemError> {
+        comm_key.serialize_unchecked(&mut writer)?;
+        proof.commitment.serialize_unchecked(&mut writer)?;
         proof.sp.t.serialize_unchecked(&mut writer)?;
         Ok(())
     }
@@ -204,6 +276,33 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
 
     pub fn schnorr_comm_key(vk: &VerifyingKey<E>) -> Vec<E::G1Affine> {
         vec![vk.gamma_abc_g1[1 + 2], vk.eta_gamma_inv_g1]
+    }
+
+    fn init_schnorr_protocol<R: RngCore>(
+        &mut self,
+        rng: &mut R,
+        comm_key: &'a [E::G1Affine],
+        message: E::Fr,
+        blinding: Option<E::Fr>,
+        v: E::Fr,
+        snark_proof: Proof<E>,
+    ) -> Result<(), ProofSystemError> {
+        // blinding used to prove knowledge of message in `snark_proof.d`. The caller of this method ensures
+        // that this will be same as the one used proving knowledge of the corresponding message in BBS+
+        // signature, thus allowing them to be proved equal.
+        let blinding = if blinding.is_none() {
+            E::Fr::rand(rng)
+        } else {
+            blinding.unwrap()
+        };
+        // NOTE: value of id is dummy
+        let mut sp = SchnorrProtocol::new(10000, comm_key, snark_proof.d);
+        let mut blindings = BTreeMap::new();
+        blindings.insert(0, blinding);
+        sp.init(rng, blindings, vec![message, v])?;
+        self.snark_proof = Some(snark_proof);
+        self.sp = Some(sp);
+        Ok(())
     }
 }
 
