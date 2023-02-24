@@ -31,8 +31,7 @@ use saver::encryption::Ciphertext;
 pub struct ProverConfig<E: PairingEngine> {
     /// The SAVER randomness, ciphertext and proof to reuse when creating the composite proof. This is more
     /// efficient than generating a new ciphertext and proof.
-    pub reuse_saver_proofs:
-        Option<BTreeMap<usize, (E::Fr, Ciphertext<E>, ark_groth16::Proof<E>)>>,
+    pub reuse_saver_proofs: Option<BTreeMap<usize, (E::Fr, Ciphertext<E>, ark_groth16::Proof<E>)>>,
     /// The LegoGroth16 randomness and proof to reuse when creating the composite proof. This is more
     /// efficient than generating a new proof.
     pub reuse_legogroth16_proofs: Option<BTreeMap<usize, (E::Fr, legogroth16::Proof<E>)>>,
@@ -59,7 +58,10 @@ impl<E: PairingEngine> ProverConfig<E> {
     }
 
     /// Get LegoGroth16 randomness and proof to reuse for the given statement id
-    fn get_legogroth16_proof(&mut self, statement_id: &usize) -> Option<(E::Fr, legogroth16::Proof<E>)> {
+    fn get_legogroth16_proof(
+        &mut self,
+        statement_id: &usize,
+    ) -> Option<(E::Fr, legogroth16::Proof<E>)> {
         self.reuse_legogroth16_proofs
             .as_mut()
             .and_then(|p| p.remove(statement_id))

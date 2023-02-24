@@ -1,6 +1,6 @@
 [package]
 name = "dock_crypto_utils"
-version = "0.6.0"
+version = "0.8.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -15,7 +15,7 @@ path = "src/lib.rs"
 ark-ff.workspace = true
 ark-ec.workspace = true
 ark-std.workspace = true
-ark-poly = { version = "^0.3.0", default-features = false }
+ark-poly.workspace = true
 ark-serialize.workspace = true
 digest.workspace = true
 hkdf = "0.11.0"

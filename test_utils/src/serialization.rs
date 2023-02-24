@@ -26,6 +26,11 @@ macro_rules! test_serialization {
         let ser = serde_json::to_string(&$obj).unwrap();
         let deser = serde_json::from_str::<$obj_type>(&ser).unwrap();
         assert_eq!($obj, deser);
+
+        // Test Message Pack serialization
+        let ser = rmp_serde::to_vec_named(&$obj).unwrap();
+        let deser = rmp_serde::from_slice::<$obj_type>(&ser).unwrap();
+        assert_eq!($obj, deser);
     };
     ($obj_type:ty, $obj: ident) => {
         let mut serz = vec![];

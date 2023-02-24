@@ -1,6 +1,6 @@
 [package]
 name = "proof_system"
-version = "0.14.0"
+version = "0.17.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -18,11 +18,11 @@ ark-ec.workspace = true
 ark-std.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
-bbs_plus = { version = "0.9.0", default-features = false, path = "../bbs_plus" }
-schnorr_pok = { version = "0.7.0", default-features = false, path = "../schnorr_pok" }
-vb_accumulator = { version = "0.10.0", default-features = false, path = "../vb_accumulator" }
-dock_crypto_utils = { version = "0.6.0", default-features = false, path = "../utils" }
-saver = { version = "0.6.0", default-features = false, path = "../saver" }
+bbs_plus = { version = "0.10.0", default-features = false, path = "../bbs_plus" }
+schnorr_pok = { version = "0.8.0", default-features = false, path = "../schnorr_pok" }
+vb_accumulator = { version = "0.11.0", default-features = false, path = "../vb_accumulator" }
+dock_crypto_utils = { version = "0.8.0", default-features = false, path = "../utils" }
+saver = { version = "0.8.0", default-features = false, path = "../saver" }
 serde.workspace = true
 serde_with.workspace = true
 ark-groth16 = { version = "^0.3.0", default-features = false }
@@ -30,17 +30,18 @@ ark-r1cs-std = { version = "^0.3.0", default-features = false }
 ark-relations = { version = "^0.3.0", default-features = false }
 zeroize.workspace = true
 merlin = { workspace = true, default-features = false }
-legogroth16 = { workspace = true, features = ["circom", "aggregation"] }
+legogroth16 = { workspace = true, default-features = false, features = ["circom", "aggregation"] }
 
 [dev-dependencies]
 ark-bls12-381.workspace = true
 blake2.workspace = true
 serde_json = "1.0"
+rmp-serde = "1.0"
 test_utils = { version = "0.1.0", default-features = false, path = "../test_utils" }
 
 [features]
 default = [ "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "legogroth16/circom", "merlin/std" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "merlin/std" ]
 print-trace = [ "ark-std/print-trace", "schnorr_pok/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace", "dock_crypto_utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel", "legogroth16/parallel", "ark-r1cs-std/parallel", "dock_crypto_utils/parallel" ]
 wasmer-js = ["legogroth16/wasmer-js"]

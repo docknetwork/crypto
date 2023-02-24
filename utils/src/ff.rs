@@ -29,6 +29,7 @@ pub fn non_zero_random<F: PrimeField, R: Rng>(rng: &mut R) -> F {
     r
 }
 
+/// Powers of a finite field as `[1, s, s^2, .. s^{num-1}]`
 pub fn powers<F: PrimeField>(s: &F, num: usize) -> Vec<F> {
     let mut powers = vec![F::one()];
     for i in 1..num {

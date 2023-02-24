@@ -9,7 +9,9 @@ members = [
     "saver",
     "compressed_sigma",
     "benches",
-    "test_utils"
+    "test_utils",
+    "delegatable_credentials",
+    "secret_sharing_and_dkg"
 ]
 resolver = "2"
 
@@ -31,11 +33,9 @@ serde_with = { version = "1.10.0", default-features = false, features = ["macros
 zeroize = { version = "1.5.5", features = ["derive"] }
 blake2 = { version = "0.9", default-features = false }
 ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
+ark-poly = { version = "^0.3.0", default-features = false }
 merlin = { version = "^3.0", default-features = false }
-[workspace.dependencies.legogroth16]
-#version = "0.3.0"
-path = '../../legogroth16'
-default-features = false
+legogroth16 = { version = "0.4.0", default-features = false }
 
 [profile.release]
 lto = true

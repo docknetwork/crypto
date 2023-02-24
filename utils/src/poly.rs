@@ -56,3 +56,27 @@ pub fn inner_product_poly<F: PrimeField>(
 
     sum
 }
+
+/// Create a polynomial from given `roots` as `(x-roots[0])*(x-roots[1])*(x-roots[2])*..`
+pub fn poly_from_roots<F: PrimeField>(roots: &[F]) -> DensePolynomial<F> {
+    if roots.is_empty() {
+        return DensePolynomial::zero();
+    }
+
+    // [(x-roots[0]), (x-roots[1]), (x-roots[2]), ..., (x-roots[last])]
+
+    #[cfg(not(feature = "parallel"))]
+    let x_i = roots
+        .iter()
+        .map(|i| DensePolynomial::from_coefficients_slice(&[-*i, F::one()]))
+        .collect::<Vec<_>>();
+
+    #[cfg(feature = "parallel")]
+    let x_i = roots
+        .par_iter()
+        .map(|i| DensePolynomial::from_coefficients_slice(&[-*i, F::one()]))
+        .collect();
+
+    // Product (x-roots[0]) * (x-roots[1]) * (x-roots[2]) * ... * (x-roots[last])
+    multiply_many_polys(x_i)
+}

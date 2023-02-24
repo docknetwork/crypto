@@ -133,7 +133,7 @@ where
 
         // There are many multiplications done with `k`, so creating a table for it
         let lg2 = z_hat.len() & (z_hat.len() - 1);
-        let k_table = WindowTable::new(G::ScalarField::size_in_bits(), lg2, k.into_projective());
+        let k_table = WindowTable::new(lg2, k.into_projective());
 
         // In each iteration of the loop, size of `z_hat`, `g_hat` and `L_tilde` is reduced by half
         while z_hat.len() > 2 {
