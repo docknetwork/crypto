@@ -9,6 +9,7 @@ use proof_system::prelude::{
     EqualWitnesses, MetaStatements, ProofSpec, ProverConfig, VerifierConfig, Witness, WitnessRef,
     Witnesses,
 };
+use proof_system::prover::OldLegoGroth16Proof;
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::{
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
@@ -146,8 +147,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
             verifier_proof_spec.clone(),
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();
@@ -155,7 +155,10 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     let start = Instant::now();
     let mut m = BTreeMap::new();
     let p = proof.get_legogroth16_proof(1).unwrap();
-    m.insert(1, (*(comm_rand.get(&1).unwrap()), (*p).clone()));
+    m.insert(
+        1,
+        OldLegoGroth16Proof(*(comm_rand.get(&1).unwrap()), (*p).clone()),
+    );
     let config = ProverConfig::<Bls12_381> {
         reuse_saver_proofs: None,
         reuse_legogroth16_proofs: Some(m),
@@ -190,8 +193,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
             verifier_proof_spec.clone(),
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();
@@ -243,8 +245,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
             proof_spec_verifier.clone(),
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .is_err());
@@ -287,8 +288,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
             proof_spec_verifier,
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .is_err());
@@ -676,8 +676,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
                 verifier_proof_spec.clone(),
                 None,
                 VerifierConfig {
-                    use_randomized_pairing_checks: true,
-                    lazy_randomized_pairing_checks: false,
+                    use_lazy_randomized_pairing_checks: Some(false),
                 },
             )
             .unwrap();
@@ -691,7 +690,10 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         let mut m = BTreeMap::new();
         for i in 1..=3 {
             let p = proof.get_legogroth16_proof(i).unwrap();
-            m.insert(i, (*(comm_rand.get(&i).unwrap()), (*p).clone()));
+            m.insert(
+                i,
+                OldLegoGroth16Proof(*(comm_rand.get(&i).unwrap()), (*p).clone()),
+            );
         }
         let config = ProverConfig::<Bls12_381> {
             reuse_saver_proofs: None,

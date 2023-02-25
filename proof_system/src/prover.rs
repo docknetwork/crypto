@@ -1,8 +1,16 @@
 //! Code for the prover to generate a `Proof`
 
 use ark_ec::{AffineCurve, PairingEngine};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
-    collections::BTreeMap, format, marker::PhantomData, rand::RngCore, vec, vec::Vec, UniformRand,
+    collections::BTreeMap,
+    format,
+    io::{Read, Write},
+    marker::PhantomData,
+    rand::RngCore,
+    vec,
+    vec::Vec,
+    UniformRand,
 };
 
 use crate::statement::Statement;
@@ -27,14 +35,20 @@ use crate::sub_protocols::schnorr::SchnorrProtocol;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 use saver::encryption::Ciphertext;
 
+/// The SAVER randomness, ciphertext and proof to reuse when creating the composite proof. This is more
+/// efficient than generating a new ciphertext and proof.
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct OldSaverProof<E: PairingEngine>(pub E::Fr, pub Ciphertext<E>, pub ark_groth16::Proof<E>);
+/// The LegoGroth16 randomness and proof to reuse when creating the composite proof. This is more
+/// efficient than generating a new proof.
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct OldLegoGroth16Proof<E: PairingEngine>(pub E::Fr, pub legogroth16::Proof<E>);
+
 /// Passed to the prover during proof creation
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProverConfig<E: PairingEngine> {
-    /// The SAVER randomness, ciphertext and proof to reuse when creating the composite proof. This is more
-    /// efficient than generating a new ciphertext and proof.
-    pub reuse_saver_proofs: Option<BTreeMap<usize, (E::Fr, Ciphertext<E>, ark_groth16::Proof<E>)>>,
-    /// The LegoGroth16 randomness and proof to reuse when creating the composite proof. This is more
-    /// efficient than generating a new proof.
-    pub reuse_legogroth16_proofs: Option<BTreeMap<usize, (E::Fr, legogroth16::Proof<E>)>>,
+    pub reuse_saver_proofs: Option<BTreeMap<usize, OldSaverProof<E>>>,
+    pub reuse_legogroth16_proofs: Option<BTreeMap<usize, OldLegoGroth16Proof<E>>>,
 }
 
 impl<E: PairingEngine> Default for ProverConfig<E> {
@@ -48,20 +62,14 @@ impl<E: PairingEngine> Default for ProverConfig<E> {
 
 impl<E: PairingEngine> ProverConfig<E> {
     /// Get SAVER randomness, ciphertext and proof to reuse for the given statement id
-    fn get_saver_proof(
-        &mut self,
-        statement_id: &usize,
-    ) -> Option<(E::Fr, Ciphertext<E>, ark_groth16::Proof<E>)> {
+    fn get_saver_proof(&mut self, statement_id: &usize) -> Option<OldSaverProof<E>> {
         self.reuse_saver_proofs
             .as_mut()
             .and_then(|p| p.remove(statement_id))
     }
 
     /// Get LegoGroth16 randomness and proof to reuse for the given statement id
-    fn get_legogroth16_proof(
-        &mut self,
-        statement_id: &usize,
-    ) -> Option<(E::Fr, legogroth16::Proof<E>)> {
+    fn get_legogroth16_proof(&mut self, statement_id: &usize) -> Option<OldLegoGroth16Proof<E>> {
         self.reuse_legogroth16_proofs
             .as_mut()
             .and_then(|p| p.remove(statement_id))
@@ -253,7 +261,7 @@ where
                         );
 
                         match config.get_saver_proof(&s_idx) {
-                            Some((v, ct, proof)) => {
+                            Some(OldSaverProof(v, ct, proof)) => {
                                 sp.init_with_ciphertext_and_proof(
                                     rng, ck_comm_ct, &cc_keys.0, &cc_keys.1, w, blinding, v, ct,
                                     proof,
@@ -295,9 +303,10 @@ where
                             BoundCheckProtocol::new_for_prover(s_idx, s.min, s.max, proving_key);
 
                         match config.get_legogroth16_proof(&s_idx) {
-                            Some((v, proof)) => sp.init_with_old_randomness_and_proof(
-                                rng, comm_key, w, blinding, v, proof,
-                            )?,
+                            Some(OldLegoGroth16Proof(v, proof)) => sp
+                                .init_with_old_randomness_and_proof(
+                                    rng, comm_key, w, blinding, v, proof,
+                                )?,
                             None => sp.init(rng, comm_key, w, blinding)?,
                         }
 
@@ -337,14 +346,15 @@ where
                         let mut sp = R1CSLegogroth16Protocol::new_for_prover(s_idx, proving_key);
 
                         match config.get_legogroth16_proof(&s_idx) {
-                            Some((v, proof)) => sp.init_with_old_randomness_and_proof(
-                                rng,
-                                comm_key,
-                                w,
-                                blindings_map,
-                                v,
-                                proof,
-                            )?,
+                            Some(OldLegoGroth16Proof(v, proof)) => sp
+                                .init_with_old_randomness_and_proof(
+                                    rng,
+                                    comm_key,
+                                    w,
+                                    blindings_map,
+                                    v,
+                                    proof,
+                                )?,
                             None => {
                                 let r1cs = s.get_r1cs(&proof_spec.setup_params, s_idx)?;
                                 let wasm_bytes =
@@ -420,7 +430,7 @@ where
             // TODO: Check no of groth16 and legogroth16
         }
         if aggregate_snarks {
-            // TODO: validate that statements are apt for aggregation and not being repeated
+            // The validity of `ProofSpec` ensures that statements are not being repeated
 
             let srs = match proof_spec.snark_aggregation_srs {
                 Some(SnarkpackSRS::ProverSrs(srs)) => srs,

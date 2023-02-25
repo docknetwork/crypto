@@ -122,8 +122,50 @@ where
             return Err(ProofSystemError::SnarckpackSrsNotProvided);
         }
 
-        // TODO: Validate no conflicts in self.aggregate_groth16 and self.aggregate_legogroth16
+        // Check that the same statement id does not occur in self.aggregate_groth16 and self.aggregate_legogroth16
+        fn check_disjoint_in_same_list(
+            st_ids: &Vec<BTreeSet<usize>>,
+        ) -> Result<(), ProofSystemError> {
+            let len_st_ids = st_ids.len();
+            for (i, s_ids) in st_ids.iter().enumerate() {
+                if i < (len_st_ids - 1) {
+                    for j in (i + 1)..len_st_ids {
+                        if !s_ids.is_disjoint(&st_ids[j]) {
+                            return Err(
+                                ProofSystemError::SameStatementIdsFoundInMultipleAggregations(
+                                    s_ids.intersection(&st_ids[j]).cloned().collect(),
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
 
+        if let Some(g16) = &self.aggregate_groth16 {
+            check_disjoint_in_same_list(g16)?
+        }
+        if let Some(lg16) = &self.aggregate_legogroth16 {
+            check_disjoint_in_same_list(lg16)?
+        }
+        if let (Some(g16), Some(lg16)) = (&self.aggregate_groth16, &self.aggregate_legogroth16) {
+            let len_lg16 = lg16.len();
+            for s_ids in g16 {
+                for j in 0..len_lg16 {
+                    if !s_ids.is_disjoint(&lg16[j]) {
+                        return Err(
+                            ProofSystemError::SameStatementIdsFoundInMultipleAggregations(
+                                s_ids.intersection(&lg16[j]).cloned().collect(),
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Check that a message signed with BBS+ being revealed does not occur as a witness in any zero
+        // knowledge proof
         for (i, st) in self.statements.0.iter().enumerate() {
             match st {
                 Statement::PoKBBSSignatureG1(s) => {
@@ -134,7 +176,6 @@ where
                 _ => continue,
             }
         }
-
         for mt in &self.meta_statements.0 {
             match mt {
                 // All witness equalities should be valid

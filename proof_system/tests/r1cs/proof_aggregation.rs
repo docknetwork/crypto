@@ -182,8 +182,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
             verifier_proof_spec.clone(),
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();

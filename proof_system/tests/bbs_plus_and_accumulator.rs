@@ -198,8 +198,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
             proof_spec.clone(),
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .is_err());
@@ -221,8 +220,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
             proof_spec.clone(),
             Some(b"random...".to_vec()),
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .is_err());
@@ -252,8 +250,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
             proof_spec,
             nonce,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();
@@ -378,8 +375,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             proof_spec.clone(),
             nonce.clone(),
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();
@@ -423,8 +419,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             proof_spec_incorrect.clone(),
             nonce.clone(),
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .is_err());
@@ -474,8 +469,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             proof_spec,
             nonce.clone(),
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .is_err());
@@ -580,8 +574,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             proof_spec.clone(),
             nonce.clone(),
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();
@@ -678,8 +671,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             proof_spec.clone(),
             nonce.clone(),
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();
@@ -803,8 +795,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
             proof_spec,
             nonce,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();
@@ -1587,8 +1578,7 @@ fn pok_of_bbs_plus_sig_with_reusing_setup_params() {
             proof_spec,
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();

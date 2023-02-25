@@ -65,6 +65,13 @@ pub enum ProofSystemError {
     SnarckpackSrsNotProvided,
     NotASaverStatementProof,
     RandomizedPairingCheckFailed,
+    SameStatementIdsFoundInMultipleAggregations(Vec<usize>),
+    NoAggregateGroth16ProofFound,
+    InvalidNumberOfAggregateGroth16Proofs(usize, usize),
+    NotFoundAggregateGroth16ProofForRequiredStatements(usize, BTreeSet<usize>),
+    NoAggregateLegoGroth16ProofFound,
+    InvalidNumberOfAggregateLegoGroth16Proofs(usize, usize),
+    NotFoundAggregateLegoGroth16ProofForRequiredStatements(usize, BTreeSet<usize>),
 }
 
 impl From<SchnorrError> for ProofSystemError {

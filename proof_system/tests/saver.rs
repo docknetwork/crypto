@@ -6,6 +6,7 @@ use proof_system::prelude::{generate_snark_srs_bound_check, ProverConfig, Verifi
 use proof_system::prelude::{
     EqualWitnesses, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
 };
+use proof_system::prover::{OldLegoGroth16Proof, OldSaverProof};
 use proof_system::setup_params::SetupParams;
 use proof_system::statement::{
     bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
@@ -191,13 +192,30 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
             verifier_proof_spec.clone(),
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();
     println!(
         "Time taken to verify proof of 1 encrypted message in signature over {} messages with randomized pairing check {:?}",
+        msg_count,
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+    proof
+        .clone()
+        .verify(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            VerifierConfig {
+                use_lazy_randomized_pairing_checks: Some(true),
+            },
+        )
+        .unwrap();
+    println!(
+        "Time taken to verify proof of 1 encrypted message in signature over {} messages with lazy randomized pairing check {:?}",
         msg_count,
         start.elapsed()
     );
@@ -224,7 +242,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let (c, p) = proof.get_saver_ciphertext_and_proof(1).unwrap();
     m.insert(
         1,
-        (*(comm_rand.get(&1).unwrap()), (*c).clone(), (*p).clone()),
+        OldSaverProof(*(comm_rand.get(&1).unwrap()), (*c).clone(), (*p).clone()),
     );
     let config = ProverConfig::<Bls12_381> {
         reuse_saver_proofs: Some(m),
@@ -345,8 +363,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
             verifier_proof_spec,
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .is_err());
@@ -530,13 +547,31 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
                 verifier_proof_spec.clone(),
                 None,
                 VerifierConfig {
-                    use_randomized_pairing_checks: true,
-                    lazy_randomized_pairing_checks: false,
+                    use_lazy_randomized_pairing_checks: Some(false),
                 },
             )
             .unwrap();
         println!(
             "Time taken to verify proof of {} encrypted messages in signature over {} messages with randomized pairing check: {:?}",
+            enc_msg_indices.len(),
+            msg_count,
+            start.elapsed()
+        );
+
+        let start = Instant::now();
+        proof
+            .clone()
+            .verify(
+                &mut rng,
+                verifier_proof_spec.clone(),
+                None,
+                VerifierConfig {
+                    use_lazy_randomized_pairing_checks: Some(true),
+                },
+            )
+            .unwrap();
+        println!(
+            "Time taken to verify proof of {} encrypted messages in signature over {} messages with lazy randomized pairing check: {:?}",
             enc_msg_indices.len(),
             msg_count,
             start.elapsed()
@@ -568,7 +603,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
             let (c, p) = proof.get_saver_ciphertext_and_proof(i).unwrap();
             m.insert(
                 i,
-                (*(comm_rand.get(&i).unwrap()), (*c).clone(), (*p).clone()),
+                OldSaverProof(*(comm_rand.get(&i).unwrap()), (*c).clone(), (*p).clone()),
             );
         }
         let config = ProverConfig::<Bls12_381> {
@@ -971,13 +1006,29 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
                 verifier_proof_spec.clone(),
                 None,
                 VerifierConfig {
-                    use_randomized_pairing_checks: true,
-                    lazy_randomized_pairing_checks: false,
+                    use_lazy_randomized_pairing_checks: Some(false),
                 },
             )
             .unwrap();
         println!(
             "Time taken to verify proof of verifiable encryption of 4 messages in signature with randomized pairing check: {:?}",
+            start.elapsed()
+        );
+
+        let start = Instant::now();
+        proof
+            .clone()
+            .verify(
+                &mut rng,
+                verifier_proof_spec.clone(),
+                None,
+                VerifierConfig {
+                    use_lazy_randomized_pairing_checks: Some(false),
+                },
+            )
+            .unwrap();
+        println!(
+            "Time taken to verify proof of verifiable encryption of 4 messages in signature with lazy randomized pairing check: {:?}",
             start.elapsed()
         );
 
@@ -1028,7 +1079,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             let (c, p) = proof.get_saver_ciphertext_and_proof(i).unwrap();
             m.insert(
                 i,
-                (*(comm_rand.get(&i).unwrap()), (*c).clone(), (*p).clone()),
+                OldSaverProof(*(comm_rand.get(&i).unwrap()), (*c).clone(), (*p).clone()),
             );
         }
         let config = ProverConfig::<Bls12_381> {
@@ -1280,8 +1331,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
             verifier_proof_spec.clone(),
             None,
             VerifierConfig {
-                use_randomized_pairing_checks: true,
-                lazy_randomized_pairing_checks: false,
+                use_lazy_randomized_pairing_checks: Some(false),
             },
         )
         .unwrap();
@@ -1304,14 +1354,20 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     let mut l = BTreeMap::new();
     let p1 = proof.get_legogroth16_proof(1).unwrap();
     let p2 = proof.get_legogroth16_proof(2).unwrap();
-    l.insert(1, (*(comm_rand.get(&1).unwrap()), (*p1).clone()));
-    l.insert(2, (*(comm_rand.get(&2).unwrap()), (*p2).clone()));
+    l.insert(
+        1,
+        OldLegoGroth16Proof(*(comm_rand.get(&1).unwrap()), (*p1).clone()),
+    );
+    l.insert(
+        2,
+        OldLegoGroth16Proof(*(comm_rand.get(&2).unwrap()), (*p2).clone()),
+    );
 
     let mut g = BTreeMap::new();
     let (c, p) = proof.get_saver_ciphertext_and_proof(3).unwrap();
     g.insert(
         3,
-        (*(comm_rand.get(&3).unwrap()), (*c).clone(), (*p).clone()),
+        OldSaverProof(*(comm_rand.get(&3).unwrap()), (*c).clone(), (*p).clone()),
     );
     let config = ProverConfig::<Bls12_381> {
         reuse_saver_proofs: Some(g),

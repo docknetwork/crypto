@@ -12,24 +12,31 @@ use crate::sub_protocols::r1cs_legogorth16::R1CSLegogroth16Protocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{AffineCurve, PairingEngine};
-use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_std::{
+    collections::BTreeMap,
+    format,
+    io::{Read, Write},
+    rand::RngCore,
+    vec,
+    vec::Vec,
+};
 use digest::Digest;
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use saver::encryption::Ciphertext;
 
 /// Passed to the verifier during proof verification
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifierConfig {
     /// Uses `RandomizedPairingChecker` to speed up pairing checks.
-    pub use_randomized_pairing_checks: bool,
-    /// Uses lazy `RandomizedPairingChecker` that trades-off memory for compute time
-    pub lazy_randomized_pairing_checks: bool,
+    /// If true, uses lazy `RandomizedPairingChecker` that trades-off memory for compute time
+    pub use_lazy_randomized_pairing_checks: Option<bool>,
 }
 
 impl Default for VerifierConfig {
     fn default() -> Self {
         Self {
-            use_randomized_pairing_checks: false,
-            lazy_randomized_pairing_checks: true,
+            use_lazy_randomized_pairing_checks: None,
         }
     }
 }
@@ -48,12 +55,12 @@ where
         nonce: Option<Vec<u8>>,
         config: VerifierConfig,
     ) -> Result<(), ProofSystemError> {
-        if config.use_randomized_pairing_checks {
-            let pairing_checker =
-                RandomizedPairingChecker::new_using_rng(rng, config.lazy_randomized_pairing_checks);
-            self._verify::<R>(rng, proof_spec, nonce, Some(pairing_checker))
-        } else {
-            self._verify::<R>(rng, proof_spec, nonce, None)
+        match config.use_lazy_randomized_pairing_checks {
+            Some(b) => {
+                let pairing_checker = RandomizedPairingChecker::new_using_rng(rng, b);
+                self._verify::<R>(rng, proof_spec, nonce, Some(pairing_checker))
+            }
+            None => self._verify::<R>(rng, proof_spec, nonce, None),
         }
     }
 
@@ -75,7 +82,7 @@ where
             ));
         }
 
-        // TODO: Check SNARK SRSs compatible when aggregating and state proof compatible with proof spec when aggregating
+        // TODO: Check SNARK SRSs compatible when aggregating and statement proof compatible with proof spec when aggregating
 
         let aggregate_snarks =
             proof_spec.aggregate_groth16.is_some() || proof_spec.aggregate_legogroth16.is_some();
@@ -685,7 +692,7 @@ where
         }
 
         if aggregate_snarks {
-            // TODO: validate that statements are apt for aggregation and not being repeated
+            // The validity of `ProofSpec` ensures that statements are not being repeated
 
             let srs = match proof_spec.snark_aggregation_srs {
                 Some(SnarkpackSRS::VerifierSrs(srs)) => srs,
@@ -696,50 +703,76 @@ where
             let mut transcript = new_merlin_transcript(b"aggregation");
             transcript.append(b"challenge", &challenge);
 
-            // TODO: Remove unwrap
-
-            if proof_spec.aggregate_groth16.is_some() {
-                // TODO: Remove unwrap
-                let aggr_proofs = self.aggregated_groth16.unwrap();
-                for (i, a) in aggr_proofs.into_iter().enumerate() {
-                    let s_id = a.statements.into_iter().next().unwrap();
-                    let pvk = derived_saver_vk.get(s_id).unwrap();
-                    let ciphertexts = &agg_saver[i];
-                    SaverProtocol::verify_ciphertext_commitments_in_batch(
-                        rng,
-                        ciphertexts,
-                        derived_gens.get(s_id).unwrap(),
-                        derived_ek.get(s_id).unwrap(),
-                        &mut pairing_checker,
-                    )?;
-                    saver::saver_groth16::verify_aggregate_proof(
-                        &srs,
-                        pvk,
-                        &a.proof,
-                        ciphertexts,
-                        rng,
-                        &mut transcript,
-                        None,
-                    )?;
+            if let Some(to_aggregate) = proof_spec.aggregate_groth16 {
+                if let Some(aggr_proofs) = self.aggregated_groth16 {
+                    if to_aggregate.len() != aggr_proofs.len() {
+                        return Err(ProofSystemError::InvalidNumberOfAggregateGroth16Proofs(
+                            to_aggregate.len(),
+                            aggr_proofs.len(),
+                        ));
+                    }
+                    for (i, a) in aggr_proofs.into_iter().enumerate() {
+                        if to_aggregate[i] != a.statements {
+                            return Err(
+                                ProofSystemError::NotFoundAggregateGroth16ProofForRequiredStatements(
+                                    i,
+                                    to_aggregate[i].clone(),
+                                ),
+                            );
+                        }
+                        let s_id = a.statements.into_iter().next().unwrap();
+                        let pvk = derived_saver_vk.get(s_id).unwrap();
+                        let ciphertexts = &agg_saver[i];
+                        SaverProtocol::verify_ciphertext_commitments_in_batch(
+                            rng,
+                            ciphertexts,
+                            derived_gens.get(s_id).unwrap(),
+                            derived_ek.get(s_id).unwrap(),
+                            &mut pairing_checker,
+                        )?;
+                        saver::saver_groth16::verify_aggregate_proof(
+                            &srs,
+                            pvk,
+                            &a.proof,
+                            ciphertexts,
+                            rng,
+                            &mut transcript,
+                            None,
+                        )?;
+                    }
+                } else {
+                    return Err(ProofSystemError::NoAggregateGroth16ProofFound);
                 }
             }
 
-            if proof_spec.aggregate_legogroth16.is_some() {
-                let aggr_proofs = self.aggregated_legogroth16.unwrap();
-                for (i, a) in aggr_proofs.into_iter().enumerate() {
-                    let s_id = a.statements.into_iter().next().unwrap();
-                    let pvk = derived_lego_vk.get(s_id).unwrap();
-                    legogroth16::aggregation::legogroth16::using_groth16::verify_aggregate_proof(
-                        &srs,
-                        pvk,
-                        &agg_lego[i].1,
-                        &a.proof,
-                        &agg_lego[i].0,
-                        rng,
-                        &mut transcript,
-                        None,
-                    )
-                    .map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?
+            if let Some(to_aggregate) = proof_spec.aggregate_legogroth16 {
+                if let Some(aggr_proofs) = self.aggregated_legogroth16 {
+                    if to_aggregate.len() != aggr_proofs.len() {
+                        return Err(ProofSystemError::InvalidNumberOfAggregateLegoGroth16Proofs(
+                            to_aggregate.len(),
+                            aggr_proofs.len(),
+                        ));
+                    }
+                    for (i, a) in aggr_proofs.into_iter().enumerate() {
+                        if to_aggregate[i] != a.statements {
+                            return Err(ProofSystemError::NotFoundAggregateLegoGroth16ProofForRequiredStatements(i, to_aggregate[i].clone()));
+                        }
+                        let s_id = a.statements.into_iter().next().unwrap();
+                        let pvk = derived_lego_vk.get(s_id).unwrap();
+                        legogroth16::aggregation::legogroth16::using_groth16::verify_aggregate_proof(
+                            &srs,
+                            pvk,
+                            &agg_lego[i].1,
+                            &a.proof,
+                            &agg_lego[i].0,
+                            rng,
+                            &mut transcript,
+                            None,
+                        )
+                            .map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?
+                    }
+                } else {
+                    return Err(ProofSystemError::NoAggregateLegoGroth16ProofFound);
                 }
             }
         }
