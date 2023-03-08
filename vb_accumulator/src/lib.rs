@@ -56,13 +56,9 @@ pub mod tests {
     macro_rules! test_serialization {
         ($obj_type:ty, $obj: expr) => {
             let mut serz = vec![];
-            CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
-            let deserz: $obj_type = CanonicalDeserialize::deserialize(&serz[..]).unwrap();
-            assert_eq!(deserz, $obj);
-
-            let mut serz = vec![];
-            $obj.serialize_unchecked(&mut serz).unwrap();
-            let deserz: $obj_type = CanonicalDeserialize::deserialize_unchecked(&serz[..]).unwrap();
+            CanonicalSerialize::serialize_compressed(&$obj, &mut serz).unwrap();
+            let deserz: $obj_type =
+                CanonicalDeserialize::deserialize_compressed(&serz[..]).unwrap();
             assert_eq!(deserz, $obj);
 
             let mut serz = vec![];

@@ -26,16 +26,10 @@
 //! 5. Proof if valid if `c == c'`
 
 use crate::error::SchnorrError;
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    cfg_iter,
-    fmt::Debug,
-    io::{Read, Write},
-    ops::Add,
-    vec::Vec,
-};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{cfg_iter, fmt::Debug, io::Write, ops::Add, vec::Vec};
 use digest::Digest;
 use zeroize::Zeroize;
 
@@ -45,7 +39,6 @@ use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use dock_crypto_utils::msm::variable_base_msm;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -62,23 +55,23 @@ pub trait SchnorrChallengeContributor {
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct SchnorrCommitment<G: AffineCurve> {
+pub struct SchnorrCommitment<G: AffineRepr> {
     /// Randomness. 1 per discrete log
-    #[serde_as(as = "Vec<FieldBytes>")]
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub blindings: Vec<G::ScalarField>,
     /// The commitment to all the randomnesses, i.e. `bases[0] * blindings[0] + ... + bases[i] * blindings[i]`
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
 }
 
 impl<G> SchnorrCommitment<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Create commitment as `bases[0] * blindings[0] + bases[1] * blindings[1] + ... + bases[i] * blindings[i]`
     /// for step-1 of the protocol. Extra `bases` or `blindings` are ignored.
     pub fn new(bases: &[G], blindings: Vec<G::ScalarField>) -> Self {
-        let t = variable_base_msm(bases, &blindings).into_affine();
+        let t = G::Group::msm_unchecked(bases, &blindings).into_affine();
         Self { blindings, t }
     }
 
@@ -102,14 +95,14 @@ where
     }
 }
 
-impl<G: AffineCurve> Zeroize for SchnorrCommitment<G> {
+impl<G: AffineRepr> Zeroize for SchnorrCommitment<G> {
     fn zeroize(&mut self) {
         // Not zeroizing `self.t` as its public
         self.blindings.zeroize();
     }
 }
 
-impl<G: AffineCurve> Drop for SchnorrCommitment<G> {
+impl<G: AffineRepr> Drop for SchnorrCommitment<G> {
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -117,14 +110,14 @@ impl<G: AffineCurve> Drop for SchnorrCommitment<G> {
 
 impl<G> SchnorrChallengeContributor for SchnorrCommitment<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// The commitment's contribution to the overall challenge of the protocol, i.e. overall challenge is
     /// of form Hash({m_i}), and this function returns the bytecode for m_j for some j. Note that
     /// it does not include the bases or the commitment (`g_i`  and `y` in `{g_i} * {x_i} = y`) and
     /// they must be part of the challenge.
     fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
-        self.t.serialize_unchecked(writer).map_err(|e| e.into())
+        self.t.serialize_compressed(writer).map_err(|e| e.into())
     }
 }
 
@@ -133,13 +126,13 @@ where
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct SchnorrResponse<G: AffineCurve>(
-    #[serde_as(as = "Vec<FieldBytes>")] pub Vec<G::ScalarField>,
+pub struct SchnorrResponse<G: AffineRepr>(
+    #[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G::ScalarField>,
 );
 
 impl<G> SchnorrResponse<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Check if response is valid and thus validity of Schnorr proof
     /// `bases[0]*responses[0] + bases[0]*responses[0] + ... + bases[i]*responses[i] - y*challenge == t`
@@ -156,7 +149,10 @@ where
                 bases.len(),
             ));
         }
-        if (variable_base_msm(&bases, &self.0).add(y.mul(-*challenge))).into_affine() == *t {
+        if (G::Group::msm_unchecked(&bases, &self.0).add(y.mul_bigint((-*challenge).into_bigint())))
+            .into_affine()
+            == *t
+        {
             Ok(())
         } else {
             Err(SchnorrError::InvalidResponse)
@@ -195,12 +191,12 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
             Serialize,
             Deserialize,
         )]
-        pub struct $protocol_name<G: AffineCurve> {
-            #[serde_as(as = "AffineGroupBytes")]
+        pub struct $protocol_name<G: AffineRepr> {
+            #[serde_as(as = "ArkObjectBytes")]
             pub t: G,
-            #[serde_as(as = "FieldBytes")]
+            #[serde_as(as = "ArkObjectBytes")]
             blinding: G::ScalarField,
-            #[serde_as(as = "FieldBytes")]
+            #[serde_as(as = "ArkObjectBytes")]
             witness: G::ScalarField,
         }
 
@@ -215,19 +211,19 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
             Serialize,
             Deserialize,
         )]
-        pub struct $proof_name<G: AffineCurve> {
-            #[serde_as(as = "AffineGroupBytes")]
+        pub struct $proof_name<G: AffineRepr> {
+            #[serde_as(as = "ArkObjectBytes")]
             pub t: G,
-            #[serde_as(as = "FieldBytes")]
+            #[serde_as(as = "ArkObjectBytes")]
             pub response: G::ScalarField,
         }
 
         impl<G> $protocol_name<G>
         where
-            G: AffineCurve,
+            G: AffineRepr,
         {
             pub fn init(witness: G::ScalarField, blinding: G::ScalarField, base: &G) -> Self {
-                let t = base.mul(blinding.into_repr()).into_affine();
+                let t = base.mul_bigint(blinding.into_bigint()).into_affine();
                 Self {
                     t,
                     blinding,
@@ -258,13 +254,13 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
                 t: &G,
                 mut writer: W,
             ) -> Result<(), SchnorrError> {
-                base.serialize_unchecked(&mut writer)?;
-                y.serialize_unchecked(&mut writer)?;
-                t.serialize_unchecked(writer).map_err(|e| e.into())
+                base.serialize_compressed(&mut writer)?;
+                y.serialize_compressed(&mut writer)?;
+                t.serialize_compressed(writer).map_err(|e| e.into())
             }
         }
 
-        impl<G: AffineCurve> Zeroize for $protocol_name<G> {
+        impl<G: AffineRepr> Zeroize for $protocol_name<G> {
             fn zeroize(&mut self) {
                 // Not zeroizing `self.t` as its public
                 self.blinding.zeroize();
@@ -272,7 +268,7 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
             }
         }
 
-        impl<G: AffineCurve> Drop for $protocol_name<G> {
+        impl<G: AffineRepr> Drop for $protocol_name<G> {
             fn drop(&mut self) {
                 self.zeroize();
             }
@@ -280,7 +276,7 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
 
         impl<G> $proof_name<G>
         where
-            G: AffineCurve,
+            G: AffineRepr,
         {
             pub fn challenge_contribution<W: Write>(
                 &self,
@@ -293,8 +289,8 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
 
             /// base*response - y*challenge == t
             pub fn verify(&self, y: &G, base: &G, challenge: &G::ScalarField) -> bool {
-                let mut expected = base.mul(self.response.into_repr());
-                expected -= y.mul(challenge.into_repr());
+                let mut expected = base.mul_bigint(self.response.into_bigint());
+                expected -= y.mul_bigint(challenge.into_bigint());
                 expected.into_affine() == self.t
             }
         }
@@ -310,34 +306,29 @@ pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes
 mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::{msm::VariableBaseMSM, PairingEngine};
+    use ark_ec::{pairing::Pairing, VariableBaseMSM};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[macro_export]
     macro_rules! test_serialization {
         ($obj_type:ty, $obj: ident) => {
             // Test ark serialization
             let mut serz = vec![];
-            ark_serialize::CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
+            ark_serialize::CanonicalSerialize::serialize_compressed(&$obj, &mut serz).unwrap();
             let deserz: $obj_type =
-                ark_serialize::CanonicalDeserialize::deserialize(&serz[..]).unwrap();
+                ark_serialize::CanonicalDeserialize::deserialize_compressed(&serz[..]).unwrap();
             assert_eq!(deserz, $obj);
 
             let mut serz = vec![];
-            $obj.serialize_unchecked(&mut serz).unwrap();
-            let deserz: $obj_type = CanonicalDeserialize::deserialize_unchecked(&serz[..]).unwrap();
-            assert_eq!(deserz, $obj);
-
-            let mut serz = vec![];
-            $obj.serialize_uncompressed(&mut serz).unwrap();
+            $obj.serialize_compressed(&mut serz).unwrap();
             let deserz: $obj_type =
-                CanonicalDeserialize::deserialize_uncompressed(&serz[..]).unwrap();
+                CanonicalDeserialize::deserialize_compressed(&serz[..]).unwrap();
             assert_eq!(deserz, $obj);
 
             // Test JSON serialization with serde
@@ -358,20 +349,16 @@ mod tests {
             let count = 10;
             let bases = (0..count)
                 .into_iter()
-                .map(|_| {
-                    <Bls12_381 as PairingEngine>::$group_element_proj::rand(&mut rng).into_affine()
-                })
+                .map(|_| <Bls12_381 as Pairing>::$group_element_proj::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
             let witnesses = (0..count)
                 .into_iter()
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<Vec<_>>();
 
-            let y = VariableBaseMSM::multi_scalar_mul(
-                &bases,
-                &witnesses.iter().map(|w| w.into_repr()).collect::<Vec<_>>(),
-            )
-            .into_affine();
+            let y =
+                <<Bls12_381 as Pairing>::$group_element_proj>::msm_unchecked(&bases, &witnesses)
+                    .into_affine();
 
             let blindings = (0..count)
                 .into_iter()
@@ -380,7 +367,7 @@ mod tests {
 
             let comm = SchnorrCommitment::new(&bases, blindings);
             test_serialization!(
-                SchnorrCommitment<<Bls12_381 as PairingEngine>::$group_element_affine>,
+                SchnorrCommitment<<Bls12_381 as Pairing>::$group_element_affine>,
                 comm
             );
 
@@ -393,7 +380,7 @@ mod tests {
             drop(comm);
 
             test_serialization!(
-                SchnorrResponse<<Bls12_381 as PairingEngine>::$group_element_affine>,
+                SchnorrResponse<<Bls12_381 as Pairing>::$group_element_affine>,
                 resp
             );
         };
@@ -401,8 +388,8 @@ mod tests {
 
     #[test]
     fn schnorr_vector() {
-        test_schnorr_in_group!(G1Projective, G1Affine);
-        test_schnorr_in_group!(G2Projective, G2Affine);
+        test_schnorr_in_group!(G1, G1Affine);
+        test_schnorr_in_group!(G2, G2Affine);
     }
 
     #[test]
@@ -412,12 +399,11 @@ mod tests {
         macro_rules! check {
             ($protocol_name:ident, $proof_name: ident, $group_affine:ident, $group_projective:ident) => {
                 impl_proof_of_knowledge_of_discrete_log!($protocol_name, $proof_name);
-                let base =
-                    <Bls12_381 as PairingEngine>::$group_projective::rand(&mut rng).into_affine();
+                let base = <Bls12_381 as Pairing>::$group_projective::rand(&mut rng).into_affine();
                 let witness = Fr::rand(&mut rng);
-                let y = base.mul(witness.into_repr()).into_affine();
+                let y = base.mul_bigint(witness.into_bigint()).into_affine();
                 let blinding = Fr::rand(&mut rng);
-                let protocol = $protocol_name::<<Bls12_381 as PairingEngine>::$group_affine>::init(
+                let protocol = $protocol_name::<<Bls12_381 as Pairing>::$group_affine>::init(
                     witness, blinding, &base,
                 );
                 let mut chal_contrib_prover = vec![];
@@ -426,12 +412,12 @@ mod tests {
                     .unwrap();
 
                 test_serialization!(
-                    $protocol_name<<Bls12_381 as PairingEngine>::$group_affine>,
+                    $protocol_name<<Bls12_381 as Pairing>::$group_affine>,
                     protocol
                 );
 
                 let challenge_prover =
-                    compute_random_oracle_challenge::<Fr, Blake2b>(&chal_contrib_prover);
+                    compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib_prover);
                 let proof = protocol.gen_proof(&challenge_prover);
 
                 let mut chal_contrib_verifier = vec![];
@@ -440,19 +426,16 @@ mod tests {
                     .unwrap();
 
                 let challenge_verifier =
-                    compute_random_oracle_challenge::<Fr, Blake2b>(&chal_contrib_verifier);
+                    compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib_verifier);
                 assert!(proof.verify(&y, &base, &challenge_verifier));
                 assert_eq!(chal_contrib_prover, chal_contrib_verifier);
                 assert_eq!(challenge_prover, challenge_verifier);
 
-                test_serialization!(
-                    $proof_name<<Bls12_381 as PairingEngine>::$group_affine>,
-                    proof
-                );
+                test_serialization!($proof_name<<Bls12_381 as Pairing>::$group_affine>, proof);
             };
         }
 
-        check!(Protocol1, Proof1, G1Affine, G1Projective);
-        check!(Protocol2, Proof2, G2Affine, G2Projective);
+        check!(Protocol1, Proof1, G1Affine, G1);
+        check!(Protocol2, Proof2, G2Affine, G2);
     }
 }

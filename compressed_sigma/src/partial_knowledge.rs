@@ -1,10 +1,10 @@
 //! Proof of partial knowledge protocol as described in section 4 of the paper "Compressing Proofs of k-Out-Of-n".
 //! Implements both for single witness DLs and DLs involving witness vector
 
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{One, PrimeField};
 use ark_poly::{
-    polynomial::{univariate::DensePolynomial, UVPolynomial},
+    polynomial::{univariate::DensePolynomial, DenseUVPolynomial},
     Polynomial,
 };
 use ark_std::{
@@ -20,10 +20,7 @@ use crate::error::CompSigmaError;
 use crate::transforms::Homomorphism;
 use crate::utils::multiples_with_n_powers_of_i;
 
-use dock_crypto_utils::{
-    ec::batch_normalize_projective_into_affine, msm::variable_base_msm, poly::multiply_many_polys,
-};
-
+use dock_crypto_utils::poly::multiply_many_polys;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -54,7 +51,7 @@ fn create_poly<F: PrimeField>(x: Vec<F>) -> DensePolynomial<F> {
 fn create_y_from_t_and_poly<F: PrimeField>(mut t: Vec<F>, poly: DensePolynomial<F>) -> Vec<F> {
     let mut y = vec![];
     // Skip the constant of the polynomial
-    for c in poly.coeffs().iter().skip(1) {
+    for c in poly.coeffs.iter().skip(1) {
         y.push(*c);
     }
     y.append(&mut t);
@@ -62,32 +59,34 @@ fn create_y_from_t_and_poly<F: PrimeField>(mut t: Vec<F>, poly: DensePolynomial<
 }
 
 /// Create a random gamma and then P = gs * y + h * gamma
-fn create_P<R: RngCore, G: AffineCurve>(
+fn create_P<R: RngCore, G: AffineRepr>(
     rng: &mut R,
     y: &[G::ScalarField],
     gs: &[G],
     h: &G,
 ) -> (G::ScalarField, G) {
     let gamma = G::ScalarField::rand(rng);
-    let P = variable_base_msm(gs, &y) + h.mul(gamma.into_repr());
+    let P = G::Group::msm_unchecked(gs, &y) + h.mul_bigint(gamma.into_bigint());
     (gamma, P.into_affine())
 }
 
 macro_rules! impl_homomorphism {
     ($name: ident, $G: ident) => {
-        impl<$G: AffineCurve> Homomorphism<$G::ScalarField> for $name<$G> {
+        impl<$G: AffineRepr> Homomorphism<$G::ScalarField> for $name<$G> {
             type Output = $G;
             fn eval(&self, x: &[$G::ScalarField]) -> Result<Self::Output, CompSigmaError> {
                 if x.len() < self.size() {
                     return Err(CompSigmaError::VectorTooShort);
                 }
-                Ok(variable_base_msm(&self.0, &x[..self.size()]).into_affine())
+                Ok($G::Group::msm_unchecked(&self.0, &x[..self.size()]).into_affine())
             }
 
             fn scale(&self, scalar: &$G::ScalarField) -> Self {
-                let s = scalar.into_repr();
-                let f = cfg_iter!(self.0).map(|f| f.mul(s)).collect::<Vec<_>>();
-                Self(batch_normalize_projective_into_affine(f))
+                let s = scalar.into_bigint();
+                let f = cfg_iter!(self.0)
+                    .map(|f| f.mul_bigint(s))
+                    .collect::<Vec<_>>();
+                Self($G::Group::normalize_batch(&f))
             }
 
             fn add(&self, other: &Self) -> Result<Self, CompSigmaError> {
@@ -97,7 +96,7 @@ macro_rules! impl_homomorphism {
                 Ok(Self(
                     cfg_iter!(self.0)
                         .zip(cfg_iter!(other.0))
-                        .map(|(a, b)| a.add(*b))
+                        .map(|(a, b)| (*a + *b).into())
                         .collect::<Vec<_>>(),
                 ))
             }
@@ -151,7 +150,7 @@ pub mod single {
 
     /// Create the new witnesses and commit to them in a single commitment from the given witnesses and
     /// their individual commitments
-    pub fn create_new_witnesses_and_their_commitment<R: RngCore, G: AffineCurve>(
+    pub fn create_new_witnesses_and_their_commitment<R: RngCore, G: AffineRepr>(
         rng: &mut R,
         Ps: &[G],
         known_x: BTreeMap<usize, &G::ScalarField>,
@@ -174,13 +173,13 @@ pub mod single {
     }
 
     #[derive(Clone)]
-    pub struct Hom<G: AffineCurve>(
+    pub struct Hom<G: AffineRepr>(
         /// First `n-k` elements for multiples of `P_i` and next n for `g`. This holds the vector of
         /// bases such that the inner product of this vector and vector `Y` given `P_i`
         pub Vec<G>,
     );
 
-    impl<G: AffineCurve> Hom<G> {
+    impl<G: AffineRepr> Hom<G> {
         /// For `k` known openings of `n` total commitments, the homomorphism for the commitment at index `i` is
         /// `g * t_i + P_i * -\sum_{j in 1..n-k}(a_j*i^j)`
         /// For `g * t_i`, the bases will be a vector `[0, 0, ..., g, 0, ..., 0]` of size `n` with `g` at index `i` and rest as 0
@@ -208,7 +207,7 @@ pub mod single {
     impl_homomorphism!(Hom, G);
 
     /// Create a homomorphism for each commitment
-    pub fn create_homomorphisms<G: AffineCurve>(
+    pub fn create_homomorphisms<G: AffineRepr>(
         g: G,
         Ps: Vec<G>,
         n: usize,
@@ -261,7 +260,7 @@ pub mod multiple {
     }
 
     /// Size of every x_i vector involved in each P_i must be passed
-    pub fn create_new_witnesses_and_their_commitment<R: RngCore, G: AffineCurve>(
+    pub fn create_new_witnesses_and_their_commitment<R: RngCore, G: AffineRepr>(
         rng: &mut R,
         unknown_witness_sizes: BTreeMap<usize, usize>,
         Ps: &[G],
@@ -299,14 +298,14 @@ pub mod multiple {
     }
 
     #[derive(Clone)]
-    pub struct Hom<G: AffineCurve>(
+    pub struct Hom<G: AffineRepr>(
         /// First `n-k` elements for multiples of `P_i` and next `T` for corresponding elements of `g` where `T`
         /// is the total number of witnesses from all `P_i` combined.
         /// This holds the vector of bases such that the inner product of this vector and vector `Y` given `P_i`
         pub Vec<G>,
     );
 
-    impl<G: AffineCurve> Hom<G> {
+    impl<G: AffineRepr> Hom<G> {
         /// For `k` known openings of `n` total commitments, the homomorphism for the commitment at index `i` is
         /// `\sum_{l in 1..m}(g_l * t_i_l) + P_i * -\sum_{j in 1..n-k}(a_j*i^j)` where `m` is the size of witness vector `x_i`
         /// For `\sum_{l in 1..m}(g_l * t_i_l)`, the bases will be a vector `[0, 0, ..., g_1, g_2, ..., g_m, 0, ..., 0]` of size `T`
@@ -356,7 +355,7 @@ pub mod multiple {
 
     impl_homomorphism!(Hom, G);
 
-    pub fn create_homomorphisms<G: AffineCurve>(
+    pub fn create_homomorphisms<G: AffineRepr>(
         g: &[G],
         Ps: Vec<G>,
         n: usize,
@@ -379,17 +378,16 @@ mod tests {
     use super::*;
     use crate::amortized_homomorphisms::*;
     use ark_bls12_381::{Bls12_381, G1Affine};
-    use ark_ec::msm::VariableBaseMSM;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_ff::{One, Zero};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn polynomial() {
@@ -421,12 +419,12 @@ mod tests {
         fn check_hom(n: usize, known_indices: BTreeSet<usize>) {
             let mut rng = StdRng::seed_from_u64(0u64);
             let k = known_indices.len();
-            let g = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+            let g = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
             let x = (0..n).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
 
             let Ps = x
                 .iter()
-                .map(|x| g.mul(x.into_repr()).into_affine())
+                .map(|x| g.mul_bigint(x.into_bigint()).into_affine())
                 .collect::<Vec<_>>();
 
             let known_x = known_indices
@@ -452,11 +450,7 @@ mod tests {
             );
             assert_eq!(
                 f_rho.eval(&y).unwrap(),
-                VariableBaseMSM::multi_scalar_mul(
-                    &Ps,
-                    &scalars.iter().map(|r| r.into_repr()).collect::<Vec<_>>()
-                )
-                .into_affine()
+                <Bls12_381 as Pairing>::G1::msm_unchecked(&Ps, &scalars).into_affine()
             );
         }
 
@@ -484,11 +478,11 @@ mod tests {
         fn check_partial_know_single(n: usize, known_indices: BTreeSet<usize>) {
             let mut rng = StdRng::seed_from_u64(0u64);
             let k = known_indices.len();
-            let g = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+            let g = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
             let gs = (0..2 * n - k)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
-            let h = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+            let h = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
 
             let xs = (0..n).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
             let known_x = known_indices
@@ -497,7 +491,7 @@ mod tests {
                 .collect::<BTreeMap<_, _>>();
             let Ps = xs
                 .iter()
-                .map(|x| g.mul(x.into_repr()).into_affine())
+                .map(|x| g.mul_bigint(x.into_bigint()).into_affine())
                 .collect::<Vec<_>>();
 
             let start = Instant::now();
@@ -520,11 +514,12 @@ mod tests {
             new_y.push(gamma);
 
             let rand_comm =
-                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &Ps, &fs, None).unwrap();
+                RandomCommitment::new::<_, Blake2b512, _>(&mut rng, &new_gs, &Ps, &fs, None)
+                    .unwrap();
             let challenge = Fr::rand(&mut rng);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
-                .is_valid::<Blake2b, _>(
+                .is_valid::<Blake2b512, _>(
                     &new_gs,
                     &P,
                     &Ps,
@@ -572,12 +567,12 @@ mod tests {
             let k = known_indices.len();
 
             let g = (0..*witness_sizes.iter().reduce(|a, b| a.max(b)).unwrap())
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
             let gs = (0..(witness_sizes.iter().sum::<usize>() + n - k))
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
-            let h = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+            let h = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
 
             let xs = (0..n)
                 .map(|i| {
@@ -592,13 +587,7 @@ mod tests {
                 .collect::<BTreeMap<_, _>>();
             let Ps = xs
                 .iter()
-                .map(|x| {
-                    VariableBaseMSM::multi_scalar_mul(
-                        &g,
-                        &x.iter().map(|i| i.into_repr()).collect::<Vec<_>>(),
-                    )
-                    .into_affine()
-                })
+                .map(|x| <Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x).into_affine())
                 .collect::<Vec<_>>();
 
             let (y, gamma, P) = multiple::create_new_witnesses_and_their_commitment(
@@ -635,11 +624,12 @@ mod tests {
             new_y.push(gamma);
 
             let rand_comm =
-                RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &Ps, &fs, None).unwrap();
+                RandomCommitment::new::<_, Blake2b512, _>(&mut rng, &new_gs, &Ps, &fs, None)
+                    .unwrap();
             let challenge = Fr::rand(&mut rng);
             let response = rand_comm.response(&new_y, &challenge).unwrap();
             response
-                .is_valid::<Blake2b, _>(
+                .is_valid::<Blake2b512, _>(
                     &new_gs,
                     &P,
                     &Ps,
@@ -723,12 +713,12 @@ mod tests {
         let max_witness_size = *witness_sizes.iter().reduce(|a, b| a.max(b)).unwrap();
 
         let g = (0..max_witness_size)
-            .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+            .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
             .collect::<Vec<_>>();
         let gs = (0..total_witness_size)
-            .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+            .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
             .collect::<Vec<_>>();
-        let h = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+        let h = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
 
         let xs = (0..n)
             .map(|i| {
@@ -743,13 +733,7 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         let Ps = xs
             .iter()
-            .map(|x| {
-                VariableBaseMSM::multi_scalar_mul(
-                    &g,
-                    &x.iter().map(|i| i.into_repr()).collect::<Vec<_>>(),
-                )
-                .into_affine()
-            })
+            .map(|x| <Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x).into_affine())
             .collect::<Vec<_>>();
 
         let (y, gamma, P) = multiple::create_new_witnesses_and_their_commitment(
@@ -807,11 +791,11 @@ mod tests {
         }
 
         let rand_comm =
-            RandomCommitment::new::<_, Blake2b, _>(&mut rng, &new_gs, &Ps, &fs, None).unwrap();
+            RandomCommitment::new::<_, Blake2b512, _>(&mut rng, &new_gs, &Ps, &fs, None).unwrap();
         let challenge = Fr::rand(&mut rng);
         let response = rand_comm.response(&new_y, &challenge).unwrap();
         response
-            .is_valid::<Blake2b, _>(
+            .is_valid::<Blake2b512, _>(
                 &new_gs,
                 &P,
                 &Ps,
@@ -822,8 +806,8 @@ mod tests {
             )
             .unwrap();
 
-        let comp_resp = response.compress::<Blake2b, _>(&new_gs, &Ps, &fs);
-        Response::is_valid_compressed::<Blake2b, _>(
+        let comp_resp = response.compress::<Blake2b512, _>(&new_gs, &Ps, &fs);
+        Response::is_valid_compressed::<Blake2b512, _>(
             &new_gs,
             &fs,
             &P,

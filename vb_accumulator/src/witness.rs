@@ -98,17 +98,12 @@
 //!
 //! ```
 
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::fields::Field;
 use ark_ff::{batch_inversion, One, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    cfg_into_iter, cfg_iter,
-    fmt::Debug,
-    io::{Read, Write},
-    vec::Vec,
-};
-use dock_crypto_utils::{ec::batch_normalize_projective_into_affine, serde_utils::*};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{cfg_into_iter, cfg_iter, fmt::Debug, vec::Vec};
+use dock_crypto_utils::serde_utils::*;
 use zeroize::Zeroize;
 
 use serde::{Deserialize, Serialize};
@@ -119,12 +114,12 @@ use crate::batch_utils::{Poly_d, Poly_v_A, Poly_v_AD, Poly_v_D};
 use crate::error::VBAccumulatorError;
 use crate::setup::SecretKey;
 
-use dock_crypto_utils::msm::{variable_base_msm, WindowTable};
+use dock_crypto_utils::msm::WindowTable;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Trait to hold common functionality among both membership and non-membership witnesses
-pub trait Witness<G: AffineCurve> {
+pub trait Witness<G: AffineRepr> {
     /// Compute an update to the witness after adding a single element in the accumulator. Expects
     /// the accumulator value before the addition. Described in section 2 of the paper
     fn compute_update_after_addition(
@@ -135,8 +130,8 @@ pub trait Witness<G: AffineCurve> {
     ) -> (G::ScalarField, G) {
         // (addition - element) * C + V
         let d_factor = *addition - *element;
-        let mut new_witness = old_witness.mul(d_factor.into_repr());
-        new_witness.add_assign_mixed(old_accumulator);
+        let mut new_witness = old_witness.mul_bigint(d_factor.into_bigint());
+        new_witness += old_accumulator;
         (d_factor, new_witness.into_affine())
     }
 
@@ -154,8 +149,8 @@ pub trait Witness<G: AffineCurve> {
             .ok_or(VBAccumulatorError::NewElementSameAsCurrent)?;
 
         // 1/(removal - element) * (C - V)
-        let mut new_witness = old_witness.into_projective();
-        new_witness -= new_accumulator.into_projective();
+        let mut new_witness = old_witness.into_group();
+        new_witness -= new_accumulator.into_group();
         new_witness *= d_factor;
 
         Ok((d_factor, new_witness.into_affine()))
@@ -186,21 +181,18 @@ pub trait Witness<G: AffineCurve> {
             .unzip();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
-        let table = WindowTable::new(elements.len(), old_accumulator.into_projective());
+        let table = WindowTable::new(elements.len(), old_accumulator.into_group());
 
         // Calculate d_A(y)*C_y + v_A(y)*V for each y in `elements`
-        let new_wits: Vec<G::Projective> = cfg_iter!(d_A)
+        let new_wits: Vec<G::Group> = cfg_iter!(d_A)
             .zip(cfg_iter!(v_A))
             .enumerate()
             .map(|(i, (d, v))| {
                 // d*C + v*V
-                old_witnesses[i].mul(d.into_repr()) + table.multiply(v)
+                old_witnesses[i].mul_bigint(d.into_bigint()) + table.multiply(v)
             })
             .collect();
-        Ok((
-            d_A,
-            batch_normalize_projective_into_affine::<G::Projective>(new_wits),
-        ))
+        Ok((d_A, G::Group::normalize_batch(&new_wits)))
     }
 
     /// Compute an update to several witnesses after removing a batch of elements from the accumulator.
@@ -228,25 +220,22 @@ pub trait Witness<G: AffineCurve> {
             .unzip();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
-        let table = WindowTable::new(elements.len(), old_accumulator.into_projective());
+        let table = WindowTable::new(elements.len(), old_accumulator.into_group());
 
         // Calculate 1/d_D(y) * C_y - v_D(y)/d_D(y) * V for each y in `elements`
         // Invert all d_D(y) in a batch for efficiency
         batch_inversion(&mut d_D);
 
-        let new_wits: Vec<G::Projective> = cfg_iter!(d_D)
+        let new_wits: Vec<G::Group> = cfg_iter!(d_D)
             .zip(cfg_iter!(v_D))
             .enumerate()
             .map(|(i, (d_inv, v))| {
                 let v_d_inv = *v * d_inv;
                 // 1/d * C - v/d * V
-                old_witnesses[i].mul(d_inv.into_repr()) - table.multiply(&v_d_inv)
+                old_witnesses[i].mul_bigint(d_inv.into_bigint()) - table.multiply(&v_d_inv)
             })
             .collect();
-        Ok((
-            d_D,
-            batch_normalize_projective_into_affine::<G::Projective>(new_wits),
-        ))
+        Ok((d_D, G::Group::normalize_batch(&new_wits)))
     }
 
     /// Compute an update to several witnesses after adding and removing batches of elements from the accumulator.
@@ -279,14 +268,14 @@ pub trait Witness<G: AffineCurve> {
             .collect::<Vec<_>>();
 
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
-        let table = WindowTable::new(elements.len(), old_accumulator.into_projective());
+        let table = WindowTable::new(elements.len(), old_accumulator.into_group());
 
         let mut d_factors = Vec::with_capacity(elements.len());
 
         // Calculate d_A(y)/d_D(y) * C_y + v_{A,D}(y)/d_D(y) * V for each y in `elements`
         // Invert all d_D(y) in a batch for efficiency
         batch_inversion(&mut d_D);
-        let new_wits: Vec<G::Projective> = d_A
+        let new_wits: Vec<G::Group> = d_A
             .into_iter()
             .zip(d_D.into_iter())
             .zip(v_AD.into_iter())
@@ -295,16 +284,13 @@ pub trait Witness<G: AffineCurve> {
                 let d_A_times_d_D_inv = d_A_i * d_D_inv;
                 let v_d_inv = v * d_D_inv;
                 // d_A_i/d_D * C + v_{A,D}/d_D * V
-                let r =
-                    old_witnesses[i].mul(d_A_times_d_D_inv.into_repr()) + table.multiply(&v_d_inv);
+                let r = old_witnesses[i].mul_bigint(d_A_times_d_D_inv.into_bigint())
+                    + table.multiply(&v_d_inv);
                 d_factors.push(d_A_times_d_D_inv);
                 r
             })
             .collect();
-        Ok((
-            d_factors,
-            batch_normalize_projective_into_affine::<G::Projective>(new_wits),
-        ))
+        Ok((d_factors, G::Group::normalize_batch(&new_wits)))
     }
 
     // NOTE: There are no add-only or remove-only variants of `compute_update_using_public_info` as the
@@ -332,7 +318,7 @@ pub trait Witness<G: AffineCurve> {
         let y_omega_ip = omega.inner_product_with_scaled_powers_of_y(element, &d_D_inv);
 
         // d_A(x)/d_D(x) * C + 1/d_D(x) * <powers_of_y, omega>
-        let new_C = old_witness.mul(d_A_times_d_D_inv.into_repr()) + y_omega_ip;
+        let new_C = old_witness.mul_bigint(d_A_times_d_D_inv.into_bigint()) + y_omega_ip;
         Ok((d_A_times_d_D_inv, new_C.into_affine()))
     }
 
@@ -421,10 +407,10 @@ pub trait Witness<G: AffineCurve> {
             }
         }
         // <powers_of_y, omega> * 1/d_D(x)
-        let y_omega_ip = variable_base_msm(&bases, &scalars);
+        let y_omega_ip = G::Group::msm_unchecked(&bases, &scalars);
 
         // // Add all omega_t vectors
-        // let mut final_omega = Vec::<G::Projective>::with_capacity(max_omega_size);
+        // let mut final_omega = Vec::<G::Group>::with_capacity(max_omega_size);
         // for i in 0..max_omega_size {
         //     // Add ith coefficient of each `omega_t` after multiplying the coefficient by the factor in t_th position.
         //     let mut bases = Vec::new();
@@ -439,13 +425,13 @@ pub trait Witness<G: AffineCurve> {
         // }
         //
         // // <powers_of_y, omega>
-        // let final_omega = Omega(G::Projective::batch_normalization_into_affine(&final_omega));
+        // let final_omega = Omega(G::Group::batch_normalization_into_affine(&final_omega));
         // // <powers_of_y, omega> * 1/d_D(x)
         // let y_omega_ip = final_omega.inner_product_with_scaled_powers_of_y(element, d_D_ij_inv);
 
         let d_A_times_d_D_inv = d_A_ij * d_D_ij_inv;
 
-        let new_C = old_witness.mul(d_A_times_d_D_inv.into_repr()) + y_omega_ip;
+        let new_C = old_witness.mul_bigint(d_A_times_d_D_inv.into_bigint()) + y_omega_ip;
         Ok((d_A_times_d_D_inv, new_C.into_affine()))
     }
 }
@@ -463,7 +449,7 @@ pub trait Witness<G: AffineCurve> {
     Deserialize,
     Zeroize,
 )]
-pub struct MembershipWitness<G: AffineCurve>(#[serde_as(as = "AffineGroupBytes")] pub G);
+pub struct MembershipWitness<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
 
 /// Witness to check non-membership
 #[serde_as]
@@ -478,30 +464,30 @@ pub struct MembershipWitness<G: AffineCurve>(#[serde_as(as = "AffineGroupBytes")
     Deserialize,
     Zeroize,
 )]
-pub struct NonMembershipWitness<G: AffineCurve> {
-    #[serde_as(as = "FieldBytes")]
+pub struct NonMembershipWitness<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub d: G::ScalarField,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub C: G,
 }
 
-impl<G: AffineCurve> Drop for MembershipWitness<G> {
+impl<G: AffineRepr> Drop for MembershipWitness<G> {
     fn drop(&mut self) {
         self.zeroize();
     }
 }
 
-impl<G: AffineCurve> Drop for NonMembershipWitness<G> {
+impl<G: AffineRepr> Drop for NonMembershipWitness<G> {
     fn drop(&mut self) {
         self.zeroize();
     }
 }
 
-impl<G> Witness<G> for MembershipWitness<G> where G: AffineCurve {}
+impl<G> Witness<G> for MembershipWitness<G> where G: AffineRepr {}
 
 impl<G> MembershipWitness<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Update a membership witness after an element is added to the accumulator. Needs the
     /// accumulator before the addition was done.
@@ -627,9 +613,9 @@ where
     }
 
     pub fn projective_points_to_membership_witnesses(
-        wits: Vec<G::Projective>,
+        wits: Vec<G::Group>,
     ) -> Vec<MembershipWitness<G>> {
-        let wits_affine = batch_normalize_projective_into_affine::<G::Projective>(wits);
+        let wits_affine = G::Group::normalize_batch(&wits);
         Self::affine_points_to_membership_witnesses(wits_affine)
     }
 
@@ -638,11 +624,11 @@ where
     }
 }
 
-impl<G> Witness<G> for NonMembershipWitness<G> where G: AffineCurve {}
+impl<G> Witness<G> for NonMembershipWitness<G> where G: AffineRepr {}
 
 impl<G> NonMembershipWitness<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Update a non-membership witness after an element is added to the accumulator. Needs the
     /// accumulator before the addition was done.
@@ -812,7 +798,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
 
     use crate::persistence::State;
@@ -824,8 +810,8 @@ mod tests {
 
     use super::*;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
-    type G1 = <Bls12_381 as PairingEngine>::G1Affine;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
+    type G1 = <Bls12_381 as Pairing>::G1Affine;
 
     #[test]
     fn single_membership_witness_update_positive_accumulator() {
@@ -1304,7 +1290,7 @@ mod tests {
             accumulator_3.value(),
             &keypair.secret_key,
         );
-        test_serialization!(Omega<<Bls12_381 as PairingEngine>::G1Affine>, omega_both);
+        test_serialization!(Omega<<Bls12_381 as Pairing>::G1Affine>, omega_both);
 
         let omega_add_only = Omega::new(
             &additions_3,
@@ -1312,10 +1298,7 @@ mod tests {
             accumulator_3_cloned.value(),
             &keypair.secret_key,
         );
-        test_serialization!(
-            Omega<<Bls12_381 as PairingEngine>::G1Affine>,
-            omega_add_only
-        );
+        test_serialization!(Omega<<Bls12_381 as Pairing>::G1Affine>, omega_add_only);
 
         let omega_remove_only = Omega::new(
             &[],
@@ -1323,10 +1306,7 @@ mod tests {
             accumulator_4_new.value(),
             &keypair.secret_key,
         );
-        test_serialization!(
-            Omega<<Bls12_381 as PairingEngine>::G1Affine>,
-            omega_remove_only
-        );
+        test_serialization!(Omega<<Bls12_381 as Pairing>::G1Affine>, omega_remove_only);
 
         for i in 0..remaining.len() {
             let new_wit = witnesses_4[i]

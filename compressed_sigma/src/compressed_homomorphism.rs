@@ -1,18 +1,10 @@
 //! Compressed sigma protocol with homomorphism as described in section 3 of the paper "Compressing Proofs of k-Out-Of-n".
 
-use ark_ec::msm::VariableBaseMSM;
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, One, PrimeField, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::RngCore;
-use ark_std::{
-    cfg_iter,
-    io::{Read, Write},
-    ops::{Mul, MulAssign},
-    vec,
-    vec::Vec,
-    UniformRand,
-};
+use ark_std::{cfg_iter, ops::MulAssign, vec, vec::Vec, UniformRand};
 use digest::Digest;
 
 use crate::error::CompSigmaError;
@@ -20,7 +12,6 @@ use crate::transforms::Homomorphism;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
-use dock_crypto_utils::{ec::batch_normalize_projective_into_affine, msm::variable_base_msm};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -29,14 +20,14 @@ use rayon::prelude::*;
 // not be mandatory for the result of homomorphism to be of the same type
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RandomCommitment<G: AffineCurve> {
+pub struct RandomCommitment<G: AffineRepr> {
     pub r: Vec<G::ScalarField>,
     pub A_hat: G,
     pub t: G,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Response<G: AffineCurve> {
+pub struct Response<G: AffineRepr> {
     pub z_prime_0: G::ScalarField,
     pub z_prime_1: G::ScalarField,
     pub A: Vec<G>,
@@ -47,7 +38,7 @@ pub struct Response<G: AffineCurve> {
 
 impl<G> RandomCommitment<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     pub fn new<R: RngCore, F: Homomorphism<G::ScalarField, Output = G>>(
         rng: &mut R,
@@ -68,7 +59,7 @@ where
         };
         let t = homomorphism.eval(&r).unwrap();
 
-        let A_hat = variable_base_msm(g, &r);
+        let A_hat = G::Group::msm_unchecked(g, &r);
         Ok(Self {
             r,
             A_hat: A_hat.into_affine(),
@@ -127,23 +118,23 @@ where
             // Split `f` into 2 halves, `f_l` will be the 1st half and `f_r` will be the 2nd
             let (f_l, f_r) = f.split_in_half();
 
-            let A = variable_base_msm(&g_r, &z);
-            let B = variable_base_msm(&g, &z_r);
+            let A = G::Group::msm_unchecked(&g_r, &z);
+            let B = G::Group::msm_unchecked(&g, &z_r);
             let a = f_r.eval(&z).unwrap();
             let b = f_l.eval(&z_r).unwrap();
 
-            A.serialize(&mut bytes).unwrap();
-            B.serialize(&mut bytes).unwrap();
-            a.serialize(&mut bytes).unwrap();
-            b.serialize(&mut bytes).unwrap();
+            A.serialize_compressed(&mut bytes).unwrap();
+            B.serialize_compressed(&mut bytes).unwrap();
+            a.serialize_compressed(&mut bytes).unwrap();
+            b.serialize_compressed(&mut bytes).unwrap();
             let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-            let c_repr = c.into_repr();
+            let c_repr = c.into_bigint();
 
             // Set `g` as g' in the paper
             g = g
                 .iter()
                 .zip(g_r.iter())
-                .map(|(l, r)| l.mul(c_repr).add_mixed(r).into_affine())
+                .map(|(l, r)| (l.mul_bigint(c_repr) + r).into_affine())
                 .collect::<Vec<_>>();
             // Set `f` to f' in the paper
             f = f_l.scale(&c).add(&f_r).unwrap();
@@ -161,8 +152,8 @@ where
         Response {
             z_prime_0: z[0],
             z_prime_1: z[1],
-            A: batch_normalize_projective_into_affine(As),
-            B: batch_normalize_projective_into_affine(Bs),
+            A: G::Group::normalize_batch(&As),
+            B: G::Group::normalize_batch(&Bs),
             a: as_,
             b: bs,
         }
@@ -171,7 +162,7 @@ where
 
 impl<G> Response<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Check if response is valid. A naive and thus slower implementation than `is_valid`
     pub fn is_valid_recursive<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
@@ -213,8 +204,8 @@ where
         F: Homomorphism<G::ScalarField, Output = G> + Clone,
     >(
         &self,
-        mut Q: G::Projective,
-        mut Y: G::Projective,
+        mut Q: G::Group,
+        mut Y: G::Group,
         mut g: Vec<G>,
         mut f: F,
     ) -> Result<(), CompSigmaError> {
@@ -225,12 +216,12 @@ where
             let a = &self.a[i];
             let b = &self.b[i];
 
-            A.serialize(&mut bytes).unwrap();
-            B.serialize(&mut bytes).unwrap();
-            a.serialize(&mut bytes).unwrap();
-            b.serialize(&mut bytes).unwrap();
+            A.serialize_compressed(&mut bytes).unwrap();
+            B.serialize_compressed(&mut bytes).unwrap();
+            a.serialize_compressed(&mut bytes).unwrap();
+            b.serialize_compressed(&mut bytes).unwrap();
             let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-            let c_repr = c.into_repr();
+            let c_repr = c.into_bigint();
 
             let m = g.len();
             let g_r = g.split_off(m / 2);
@@ -238,33 +229,29 @@ where
             g = g
                 .iter()
                 .zip(g_r.iter())
-                .map(|(l, r)| l.mul(c_repr).add_mixed(r).into_affine())
+                .map(|(l, r)| (l.mul_bigint(c_repr) + r).into_affine())
                 .collect::<Vec<_>>();
 
             let (f_l, f_r) = f.split_in_half();
             f = f_l.scale(&c).add(&f_r).unwrap();
 
-            let c_sq = c.square().into_repr();
-            Q = A.into_projective() + Q.mul(c_repr) + B.mul(c_sq);
-            Y = a.into_projective() + Y.mul(c_repr) + b.mul(c_sq);
+            let c_sq = c.square().into_bigint();
+            Q = A.into_group() + Q.mul_bigint(c_repr) + B.mul_bigint(c_sq);
+            Y = a.into_group() + Y.mul_bigint(c_repr) + b.mul_bigint(c_sq);
         }
 
         if (g.len() != 2) || (f.size() != 2) {
             return Err(CompSigmaError::UncompressedNotPowerOf2);
         }
 
-        if VariableBaseMSM::multi_scalar_mul(
-            &g,
-            &[self.z_prime_0.into_repr(), self.z_prime_1.into_repr()],
-        ) != Q
-        {
+        if G::Group::msm_unchecked(&g, &[self.z_prime_0, self.z_prime_1]) != Q {
             return Err(CompSigmaError::InvalidResponse);
         }
 
         let f_prime_z_prime = f
             .eval(&[self.z_prime_0, self.z_prime_1])
             .unwrap()
-            .into_projective();
+            .into_group();
 
         if Y != f_prime_z_prime {
             return Err(CompSigmaError::InvalidResponse);
@@ -274,8 +261,8 @@ where
 
     pub fn validate_compressed<D: Digest, F: Homomorphism<G::ScalarField, Output = G> + Clone>(
         &self,
-        mut Q: G::Projective,
-        mut Y: G::Projective,
+        mut Q: G::Group,
+        mut Y: G::Group,
         g: Vec<G>,
         f: F,
     ) -> Result<(), CompSigmaError> {
@@ -290,10 +277,10 @@ where
             let a = &self.a[i];
             let b = &self.b[i];
 
-            A.serialize(&mut bytes).unwrap();
-            B.serialize(&mut bytes).unwrap();
-            a.serialize(&mut bytes).unwrap();
-            b.serialize(&mut bytes).unwrap();
+            A.serialize_compressed(&mut bytes).unwrap();
+            B.serialize_compressed(&mut bytes).unwrap();
+            a.serialize_compressed(&mut bytes).unwrap();
+            b.serialize_compressed(&mut bytes).unwrap();
             let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
 
             challenge_squares.push(c.square());
@@ -330,25 +317,22 @@ where
         // `B_multiples` is of form [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2]
         let B_multiples = cfg_iter!(challenge_products)
             .zip(cfg_iter!(challenge_squares))
-            .map(|(c, c_sqr)| (*c * c_sqr).into_repr())
+            .map(|(c, c_sqr)| (*c * c_sqr).into_bigint())
             .collect::<Vec<_>>();
 
         let challenges_repr = cfg_iter!(challenge_products)
-            .map(|c| c.into_repr())
+            .map(|c| c.into_bigint())
             .collect::<Vec<_>>();
 
         // Q' = A * [c_2*c_3*...*c_n, c_3*...*c_n, ..., c_{n-1}*c_n, c_n, 1] + B * [c_1^2*c_2*c_3*...*c_n, c_2^2*c_3...*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Q * c_1^2*c_2*c_3*...*c_n
         // Set Q to Q*(c_1*c_2*c_3*...*c_n)
         Q.mul_assign(all_challenges_product);
-        let Q_prime = VariableBaseMSM::multi_scalar_mul(&self.A, &challenges_repr)
-            + VariableBaseMSM::multi_scalar_mul(&self.B, &B_multiples)
+        let Q_prime = G::Group::msm_bigint(&self.A, &challenges_repr)
+            + G::Group::msm_bigint(&self.B, &B_multiples)
             + Q;
 
         // Check if g' * z' == Q'
-        let g_multiples_repr = cfg_iter!(g_multiples)
-            .map(|g| g.into_repr())
-            .collect::<Vec<_>>();
-        if VariableBaseMSM::multi_scalar_mul(&g, &g_multiples_repr) != Q_prime {
+        if G::Group::msm_unchecked(&g, &g_multiples) != Q_prime {
             return Err(CompSigmaError::InvalidResponse);
         }
 
@@ -358,10 +342,10 @@ where
         // Y' = a * [c_2*c_3*...*c_n, c_3*...*c_n, ..., c_{n-1}*c_n, c_n, 1] + b * [c_1^2*c_2*...*c_n, c_2^2*c_3*...*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Y
         // Set Y to Y*(c_1*c_2*...*c_n)
         Y.mul_assign(all_challenges_product);
-        let Y_prime = VariableBaseMSM::multi_scalar_mul(&self.a, &challenges_repr)
-            + VariableBaseMSM::multi_scalar_mul(&self.b, &B_multiples)
+        let Y_prime = G::Group::msm_bigint(&self.a, &challenges_repr)
+            + G::Group::msm_bigint(&self.b, &B_multiples)
             + Y;
-        let f_prime_z_prime = f.eval(&g_multiples).unwrap().into_projective();
+        let f_prime_z_prime = f.eval(&g_multiples).unwrap().into_group();
         if Y_prime != f_prime_z_prime {
             return Err(CompSigmaError::InvalidResponse);
         }
@@ -397,17 +381,17 @@ where
 
 /// Q = A + P * challenge
 /// Y = t + Y * challenge
-pub fn calculate_Q_and_Y<G: AffineCurve>(
+pub fn calculate_Q_and_Y<G: AffineRepr>(
     P: &G,
     Y: &G,
     A: &G,
     t: &G,
     challenge: &G::ScalarField,
-) -> (G::Projective, G::Projective) {
-    let challenge_repr = challenge.into_repr();
+) -> (G::Group, G::Group) {
+    let challenge_repr = challenge.into_bigint();
     (
-        P.mul(challenge_repr).add_mixed(A),
-        Y.mul(challenge_repr).add_mixed(t),
+        P.mul_bigint(challenge_repr) + A,
+        Y.mul_bigint(challenge_repr) + t,
     )
 }
 
@@ -415,19 +399,19 @@ pub fn calculate_Q_and_Y<G: AffineCurve>(
 mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
-    type G1 = <Bls12_381 as PairingEngine>::G1Affine;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
+    type G1 = <Bls12_381 as Pairing>::G1Affine;
 
     #[derive(Clone)]
-    struct TestHom<G: AffineCurve> {
+    struct TestHom<G: AffineRepr> {
         pub constants: Vec<G>,
     }
 
@@ -440,15 +424,13 @@ mod tests {
             // Setup
             let mut homomorphism = TestHom {
                 constants: (0..size)
-                    .map(|_| {
-                        <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine()
-                    })
+                    .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                     .collect::<Vec<_>>(),
             };
 
             let mut x = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
             let mut g = (0..size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
 
             // Pad if necessary
@@ -458,17 +440,11 @@ mod tests {
                 homomorphism = homomorphism.pad(new_size);
                 for _ in 0..pod_size {
                     x.push(Fr::zero());
-                    g.push(
-                        <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine(),
-                    );
+                    g.push(<Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine());
                 }
             }
 
-            let P = VariableBaseMSM::multi_scalar_mul(
-                &g,
-                &x.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-            )
-            .into_affine();
+            let P = <Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x).into_affine();
             let y = homomorphism.eval(&x).unwrap();
 
             let rand_comm = RandomCommitment::new(&mut rng, &g, &homomorphism, None).unwrap();
@@ -476,12 +452,12 @@ mod tests {
             let challenge = Fr::rand(&mut rng);
 
             let response = rand_comm
-                .response::<Blake2b, _>(&g, &homomorphism, &x, &challenge)
+                .response::<Blake2b512, _>(&g, &homomorphism, &x, &challenge)
                 .unwrap();
 
             let start = Instant::now();
             response
-                .is_valid_recursive::<Blake2b, _>(
+                .is_valid_recursive::<Blake2b512, _>(
                     &g,
                     &P,
                     &y,
@@ -499,7 +475,7 @@ mod tests {
 
             let start = Instant::now();
             response
-                .is_valid::<Blake2b, _>(
+                .is_valid::<Blake2b512, _>(
                     &g,
                     &P,
                     &y,

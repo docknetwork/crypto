@@ -1,6 +1,7 @@
 use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_std::collections::{BTreeMap, BTreeSet};
-use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
+use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
+use blake2::Blake2b512;
 use legogroth16::aggregation::srs;
 use proof_system::prelude::{generate_snark_srs_bound_check, SnarkpackSRS, VerifierConfig};
 use proof_system::prelude::{
@@ -134,7 +135,7 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
         witnesses.add(Witness::Saver(m));
     }
 
-    let (proof, _) = ProofG1::new(
+    let (proof, _) = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec.clone(),
         witnesses.clone(),
@@ -186,9 +187,10 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
 
     let updated_proof = proof.for_aggregate();
 
+    let start = Instant::now();
     updated_proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -197,10 +199,16 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
             },
         )
         .unwrap();
+    println!(
+        "Time taken to verify {} aggregated SAVER proofs with randomized pairing check: {:?}",
+        enc_msg_indices_1.len() + enc_msg_indices_2.len(),
+        start.elapsed()
+    );
 
+    let start = Instant::now();
     updated_proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -209,6 +217,11 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
             },
         )
         .unwrap();
+    println!(
+        "Time taken to verify {} aggregated SAVER proofs with lazy randomized pairing check: {:?}",
+        enc_msg_indices_1.len() + enc_msg_indices_2.len(),
+        start.elapsed()
+    );
 }
 
 #[test]
@@ -327,7 +340,7 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
         witnesses.add(Witness::BoundCheckLegoGroth16(m));
     }
 
-    let (proof, _) = ProofG1::new(
+    let (proof, _) = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec.clone(),
         witnesses.clone(),
@@ -376,9 +389,10 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
 
     let updated_proof = proof.for_aggregate();
 
+    let start = Instant::now();
     updated_proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -387,10 +401,16 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
             },
         )
         .unwrap();
+    println!(
+        "Time taken to verify {} aggregated bound check proofs with randomized pairing check: {:?}",
+        bounded_msg_indices_1.len() + bounded_msg_indices_2.len(),
+        start.elapsed()
+    );
 
+    let start = Instant::now();
     updated_proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -399,9 +419,9 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
             },
         )
         .unwrap();
-}
-
-#[test]
-fn pok_of_bbs_plus_sigs_with_bound_check_and_saver_aggregation() {
-    let mut rng = StdRng::seed_from_u64(0u64);
+    println!(
+        "Time taken to verify {} aggregated bound check proofs with lazy randomized pairing check: {:?}",
+        bounded_msg_indices_1.len() + bounded_msg_indices_2.len(),
+        start.elapsed()
+    );
 }

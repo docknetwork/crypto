@@ -1,31 +1,36 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::{PairingEngine, ProjectiveCurve};
+use ark_ec::pairing::Pairing;
+use ark_ec::CurveGroup;
 use ark_std::rand::{rngs::StdRng, SeedableRng};
 use ark_std::UniformRand;
-use blake2::Blake2b;
+use blake2::Blake2b512;
 use std::time::Instant;
 
 use super::known_signer::CredentialShowProtocol;
 use super::signer_hidden_with_decoys::CredentialShowProtocolWithHiddenPublicKey;
-use crate::accumulator::{Accumulator, NonMembershipWitness, PublicKey as RPk, SecretKey as RSk};
+use crate::accumulator::{
+    Accumulator, NonMembershipWitness, PreparedPublicKey as PRpk, PublicKey as RPk,
+    SecretKey as RSk,
+};
 use crate::one_of_n_proof::OneOfNSrs;
 use crate::protego::issuance::tests::{issuance_given_setup, setup};
-use crate::protego::keys::{IssuerPublicKey, IssuerSecretKey};
+use crate::protego::keys::{IssuerPublicKey, IssuerSecretKey, PreparedIssuerPublicKey};
 use crate::protego::show::signer_hidden_with_policy::{
     CredentialShowProtocolWithDelegationPolicy, DelegationPolicyPublicKey,
     DelegationPolicySecretKey,
 };
-use crate::set_commitment::SetCommitmentSRS;
+use crate::set_commitment::{PreparedSetCommitmentSRS, SetCommitmentSRS};
 use schnorr_pok::compute_random_oracle_challenge;
 
-type Fr = <Bls12_381 as PairingEngine>::Fr;
+type Fr = <Bls12_381 as Pairing>::ScalarField;
+type G2Prepared = <Bls12_381 as Pairing>::G2Prepared;
 
 pub fn init_accum(
     rng: &mut StdRng,
 ) -> (
     SetCommitmentSRS<Bls12_381>,
     Fr,
-    <Bls12_381 as PairingEngine>::G1Affine,
+    <Bls12_381 as Pairing>::G1Affine,
     RSk<Bls12_381>,
     RPk<Bls12_381>,
     Accumulator<Bls12_381>,
@@ -35,12 +40,14 @@ pub fn init_accum(
 ) {
     let (accum_srs, accum_trapdoor) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
         StdRng,
-        Blake2b,
+        Blake2b512,
     >(rng, 100, Some("Protego".as_bytes()));
 
     let rsk = RSk::new(rng);
     let rpk = RPk::new(&rsk, accum_srs.get_P2());
-    let Q = <Bls12_381 as PairingEngine>::G1Projective::rand(rng).into_affine();
+    let Q = <Bls12_381 as Pairing>::G1::rand(rng).into_affine();
+
+    let prpk = PRpk::from(rpk.clone());
 
     let nym = Fr::rand(rng);
     let members = vec![Fr::rand(rng), Fr::rand(rng)];
@@ -57,10 +64,10 @@ pub fn init_accum(
     assert!(non_mem_wit.verify(
         &nym,
         accum.accumulated(),
-        &rpk,
+        prpk,
         accum_srs.get_s_P1(),
         accum_srs.get_P1(),
-        accum_srs.get_P2()
+        G2Prepared::from(*accum_srs.get_P2())
     ));
     (
         accum_srs,
@@ -107,6 +114,10 @@ pub fn show(
         (None, None, None, None, None, None, None)
     };
 
+    let prep_set_comm_srs = PreparedSetCommitmentSRS::from(set_comm_srs.clone());
+    let prep_ipk = PreparedIssuerPublicKey::from(ipk.clone());
+    let prep_rpk = rpk.as_ref().map(|r| PRpk::from(r.clone()));
+
     let cred = issuance_given_setup(
         rng,
         attributes.clone(),
@@ -127,6 +138,7 @@ pub fn show(
     let nonce = vec![1, 2, 3];
 
     match signer_hidden {
+        // When credential signer (public key) is known
         0 => {
             let start = Instant::now();
             let show_proto = if supports_revocation {
@@ -166,7 +178,7 @@ pub fn show(
                     &mut chal_bytes,
                 )
                 .unwrap();
-            let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let show = show_proto
                 .gen_show((auditable || supports_revocation).then(|| &usk), &challenge)
@@ -182,21 +194,21 @@ pub fn show(
                 show.verify_with_revocation(
                     &challenge,
                     disclosed_attrs,
-                    &ipk,
+                    prep_ipk,
                     accum.unwrap().accumulated(),
                     &Q.unwrap(),
-                    &rpk.unwrap(),
+                    prep_rpk.unwrap(),
                     auditable.then(|| &apk),
-                    &set_comm_srs,
+                    prep_set_comm_srs,
                 )
                 .unwrap()
             } else {
                 show.verify(
                     &challenge,
                     disclosed_attrs,
-                    &ipk,
+                    prep_ipk,
                     auditable.then(|| &apk),
-                    &set_comm_srs,
+                    prep_set_comm_srs,
                 )
                 .unwrap()
             }
@@ -210,6 +222,7 @@ pub fn show(
                 assert_eq!(show.ct.unwrap().decrypt(&ask), upk.0)
             }
         }
+        // When credential signer (public key) is hidden among decoys
         1 => {
             let decoy_issuer_keys = (0..num_decoys)
                 .map(|_| {
@@ -270,7 +283,7 @@ pub fn show(
                     &mut chal_bytes,
                 )
                 .unwrap();
-            let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let show = show_proto
                 .gen_show((auditable || supports_revocation).then(|| &usk), &challenge)
@@ -287,10 +300,10 @@ pub fn show(
                     &possible_keys,
                     accum.unwrap().accumulated(),
                     &Q.unwrap(),
-                    &rpk.unwrap(),
+                    prep_rpk.unwrap(),
                     &one_of_n_srs,
                     auditable.then(|| &apk),
-                    &set_comm_srs,
+                    prep_set_comm_srs,
                 )
                 .unwrap()
             } else {
@@ -302,7 +315,7 @@ pub fn show(
                     &possible_keys,
                     &one_of_n_srs,
                     auditable.then(|| &apk),
-                    &set_comm_srs,
+                    prep_set_comm_srs,
                 )
                 .unwrap()
             }
@@ -316,6 +329,7 @@ pub fn show(
                 assert_eq!(show.credential_show.ct.unwrap().decrypt(&ask), upk.0)
             }
         }
+        // When credential signer (public key) is hidden using policy
         2 => {
             let policy_sk = DelegationPolicySecretKey::new(rng, ipk.public_key.size()).unwrap();
             let policy_pk = DelegationPolicyPublicKey::new(&policy_sk, set_comm_srs.get_P1());
@@ -365,7 +379,7 @@ pub fn show(
                     &mut chal_bytes,
                 )
                 .unwrap();
-            let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let show = show_proto
                 .gen_show((auditable || supports_revocation).then(|| &usk), &challenge)
@@ -380,9 +394,9 @@ pub fn show(
                     &policy_pk,
                     accum.unwrap().accumulated(),
                     &Q.unwrap(),
-                    &rpk.unwrap(),
+                    prep_rpk.unwrap(),
                     auditable.then(|| &apk),
-                    &set_comm_srs,
+                    prep_set_comm_srs,
                 )
                 .unwrap()
             } else {
@@ -391,7 +405,7 @@ pub fn show(
                     disclosed_attrs,
                     &policy_pk,
                     auditable.then(|| &apk),
-                    &set_comm_srs,
+                    prep_set_comm_srs,
                 )
                 .unwrap()
             }

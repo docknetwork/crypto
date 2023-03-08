@@ -3,22 +3,21 @@
 //! on the successful verification of the request. The user uses this signature and the original request to
 //! create a credential
 
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{One, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
-use ark_std::ops::{MulAssign, Neg};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_ff::{PrimeField, Zero};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::io::Write;
+use ark_std::ops::Neg;
 use ark_std::rand::RngCore;
 use ark_std::UniformRand;
 use ark_std::{vec, vec::Vec};
-use dock_crypto_utils::ec::pairing_product;
 use dock_crypto_utils::msm::WindowTable;
 use zeroize::Zeroize;
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use dock_crypto_utils::serde_utils::{AffineGroupBytes, FieldBytes};
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::error::SchnorrError;
 use schnorr_pok::impl_proof_of_knowledge_of_discrete_log;
 
@@ -26,31 +25,33 @@ use crate::auditor::AuditorPublicKey;
 use crate::error::DelegationError;
 use crate::mercurial_sig::Signature;
 use crate::protego::keys::{
-    IssuerPublicKey, IssuerSecretKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey,
+    IssuerSecretKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey,
 };
-use crate::set_commitment::{SetCommitment, SetCommitmentOpening, SetCommitmentSRS};
+use crate::set_commitment::{
+    PreparedSetCommitmentSRS, SetCommitment, SetCommitmentOpening, SetCommitmentSRS,
+};
 
 impl_proof_of_knowledge_of_discrete_log!(UserSecretKeyProtocol, UserSecretKeyProof);
 impl_proof_of_knowledge_of_discrete_log!(UserRevSecretKeyProtocol, UserRevSecretKeyProof);
 impl_proof_of_knowledge_of_discrete_log!(UserRevSecretKeyProtocolQ, UserRevSecretKeyProofQ);
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RevocationRequestProtocol<E: PairingEngine> {
+pub struct RevocationRequestProtocol<E: Pairing> {
     /// Schnorr protocol to prove knowledge of revocation secret key
     pub usk_rev_protocol: UserRevSecretKeyProtocol<E::G1Affine>,
     /// Schnorr protocol to prove knowledge of revocation secret key with base Q
     pub usk_rev_protocol_Q: UserRevSecretKeyProtocolQ<E::G1Affine>,
     pub C4: E::G1Affine,
     pub C5: E::G1Affine,
-    pub nym: E::Fr,
+    pub nym: E::ScalarField,
 }
 
 /// Part of signature request corresponding to revocation
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RevocationRequest<E: PairingEngine> {
+pub struct RevocationRequest<E: Pairing> {
     pub C4: E::G1Affine,
     pub C5: E::G1Affine,
-    pub nym: E::Fr,
+    pub nym: E::ScalarField,
     /// Schnorr proof to prove knowledge of revocation secret key
     pub usk_rev_proof: UserRevSecretKeyProof<E::G1Affine>,
     /// Schnorr proof to prove knowledge of revocation secret key with base Q
@@ -59,15 +60,15 @@ pub struct RevocationRequest<E: PairingEngine> {
 
 /// Part of credential corresponding to revocation
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RevocationCredential<E: PairingEngine> {
+pub struct RevocationCredential<E: Pairing> {
     pub C4: E::G1Affine,
     pub C5: E::G1Affine,
-    pub nym: E::Fr,
+    pub nym: E::ScalarField,
 }
 
 /// Protocol to request a signature from an issuer which will then be part of a credential.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SignatureRequestProtocol<E: PairingEngine> {
+pub struct SignatureRequestProtocol<E: Pairing> {
     /// Schnorr protocol to prove knowledge of secret key
     pub usk_protocol: UserSecretKeyProtocol<E::G1Affine>,
     pub rev: Option<RevocationRequestProtocol<E>>,
@@ -77,7 +78,7 @@ pub struct SignatureRequestProtocol<E: PairingEngine> {
 
 /// A request to obtain a signature from a credential issuer.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SignatureRequest<E: PairingEngine> {
+pub struct SignatureRequest<E: Pairing> {
     /// Commitment to all attributes
     pub C1: E::G1Affine,
     /// Randomized C1
@@ -91,15 +92,15 @@ pub struct SignatureRequest<E: PairingEngine> {
 }
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SignatureRequestOpening<E: PairingEngine> {
-    pub r4: E::Fr,
+pub struct SignatureRequestOpening<E: Pairing> {
+    pub r4: E::ScalarField,
     /// Opening to the commitment C1
     pub set_comm_opening: SetCommitmentOpening<E>,
 }
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Credential<E: PairingEngine> {
-    pub attributes: Vec<E::Fr>,
+pub struct Credential<E: Pairing> {
+    pub attributes: Vec<E::ScalarField>,
     /// Commitment to the attributes
     pub C1: E::G1Affine,
     pub opening: SignatureRequestOpening<E>,
@@ -110,7 +111,7 @@ pub struct Credential<E: PairingEngine> {
     pub auditable_sig: bool,
 }
 
-impl<E: PairingEngine> SignatureRequestProtocol<E> {
+impl<E: Pairing> SignatureRequestProtocol<E> {
     /// Initialize protocol for creating a signature request. The signature won't support revocation
     pub fn init<R: RngCore>(
         rng: &mut R,
@@ -118,7 +119,7 @@ impl<E: PairingEngine> SignatureRequestProtocol<E> {
         auditable_sig: bool,
         P1: &E::G1Affine,
     ) -> Self {
-        let r1 = E::Fr::rand(rng);
+        let r1 = E::ScalarField::rand(rng);
         Self {
             usk_protocol: UserSecretKeyProtocol::init(user_sk.0, r1, P1),
             rev: None,
@@ -129,7 +130,7 @@ impl<E: PairingEngine> SignatureRequestProtocol<E> {
     /// Initialize protocol for creating a signature request where the signature supports revocation
     pub fn init_with_revocation<R: RngCore>(
         rng: &mut R,
-        nym: E::Fr,
+        nym: E::ScalarField,
         user_sk: &UserSecretKey<E>,
         auditable_sig: bool,
         P1: &E::G1Affine,
@@ -139,12 +140,12 @@ impl<E: PairingEngine> SignatureRequestProtocol<E> {
         let usk2 = user_sk
             .1
             .ok_or_else(|| DelegationError::KeyDoesNotSupportRevocation)?;
-        let r1 = E::Fr::rand(rng);
-        let r2 = E::Fr::rand(rng);
+        let r1 = E::ScalarField::rand(rng);
+        let r2 = E::ScalarField::rand(rng);
         // C4 = P1*usk2*(s - nym) where s is the trapdoor of the set commitment SRS
-        let mut C4 = P1.mul(nym.into_repr()).neg();
-        C4.add_assign_mixed(&s_P1);
-        C4.mul_assign(usk2);
+        let mut C4 = P1.mul_bigint(nym.into_bigint()).neg();
+        C4 += s_P1;
+        C4 *= usk2;
         Ok(Self {
             usk_protocol: UserSecretKeyProtocol::init(user_sk.0, r1, P1),
             rev: Some(RevocationRequestProtocol {
@@ -155,7 +156,7 @@ impl<E: PairingEngine> SignatureRequestProtocol<E> {
                 usk_rev_protocol_Q: UserRevSecretKeyProtocolQ::init(usk2, r2, Q),
                 C4: C4.into_affine(),
                 // C5 = usk2*Q
-                C5: Q.mul(usk2.into_repr()).into_affine(),
+                C5: Q.mul_bigint(usk2.into_bigint()).into_affine(),
                 nym,
             }),
             auditable_sig,
@@ -198,7 +199,7 @@ impl<E: PairingEngine> SignatureRequestProtocol<E> {
         P1: &E::G1Affine,
         mut writer: W,
     ) -> Result<(), DelegationError> {
-        auditable_sig.serialize_unchecked(&mut writer)?;
+        auditable_sig.serialize_compressed(&mut writer)?;
         usk_protocol
             .challenge_contribution(P1, &user_pk.0, &mut writer)
             .map_err(|e| e.into())
@@ -229,9 +230,9 @@ impl<E: PairingEngine> SignatureRequestProtocol<E> {
     pub fn gen_request<R: RngCore>(
         self,
         rng: &mut R,
-        attributes: Vec<E::Fr>,
+        attributes: Vec<E::ScalarField>,
         user_sk: &UserSecretKey<E>,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(SignatureRequest<E>, SignatureRequestOpening<E>), DelegationError> {
         if attributes.len() > set_comm_srs.size() {
@@ -241,11 +242,11 @@ impl<E: PairingEngine> SignatureRequestProtocol<E> {
             ));
         }
         let attr_set = attributes.into_iter().collect();
-        let r4 = E::Fr::rand(rng);
+        let r4 = E::ScalarField::rand(rng);
 
         let (comm, opening) =
             SetCommitment::new_with_given_randomness(user_sk.0, attr_set, set_comm_srs)?;
-        let C2 = comm.0.mul(r4.into_repr()).into_affine();
+        let C2 = comm.0.mul_bigint(r4.into_bigint()).into_affine();
         let req = SignatureRequest {
             C1: comm.0,
             C2,
@@ -269,17 +270,19 @@ impl<E: PairingEngine> SignatureRequestProtocol<E> {
     }
 }
 
-impl<E: PairingEngine> SignatureRequest<E> {
+impl<E: Pairing> SignatureRequest<E> {
     /// Signer verifies the signature request before creating a signature
     pub fn verify(
         &self,
-        attributes: Vec<E::Fr>,
+        attributes: Vec<E::ScalarField>,
         user_public_key: &UserPublicKey<E>,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         Q: Option<&E::G1Affine>,
         s_P2_from_accumulator: Option<&E::G2Affine>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
+        let set_comm_srs = set_comm_srs.into();
+
         if attributes.len() > set_comm_srs.size() {
             return Err(DelegationError::InsufficientSetCommitmentSRSSize(
                 attributes.len(),
@@ -287,11 +290,8 @@ impl<E: PairingEngine> SignatureRequest<E> {
             ));
         }
 
-        let P1_table = WindowTable::new(
-            attributes.serialized_size(),
-            set_comm_srs.get_P1().into_projective(),
-        );
-        let s_P1 = set_comm_srs.get_s_P1().into_projective();
+        let P1_table = WindowTable::new(attributes.len(), set_comm_srs.get_P1().into_group());
+        let s_P1 = set_comm_srs.get_s_P1().into_group();
         for s in attributes.iter() {
             if P1_table.multiply(s) == s_P1 {
                 return Err(DelegationError::ShouldNotContainTrapdoor);
@@ -299,11 +299,17 @@ impl<E: PairingEngine> SignatureRequest<E> {
         }
 
         let upk = &user_public_key.0;
+        let prep_P2 = set_comm_srs.prepared_P2.clone();
 
         let attr_set = attributes.into_iter().collect();
-        let e = set_comm_srs.eval_P2(attr_set).into_affine();
+        let e = E::G2Prepared::from(set_comm_srs.eval_P2(attr_set));
         // Check if `e(C1, P2) == (upk, Ch(attr_set)*P2)`
-        if !pairing_product::<E>(&[self.C1, -*upk], &[*set_comm_srs.get_P2(), e]).is_one() {
+        if !E::multi_pairing(
+            [self.C1, (-upk.into_group()).into_affine()],
+            [prep_P2.clone(), e],
+        )
+        .is_zero()
+        {
             return Err(DelegationError::InvalidSignatureRequest);
         }
 
@@ -322,10 +328,15 @@ impl<E: PairingEngine> SignatureRequest<E> {
                 .1
                 .ok_or_else(|| DelegationError::KeyDoesNotSupportRevocation)?;
             // e2 = P2 * (s - nym)
-            let P2_nym = set_comm_srs.get_P2().mul(rev.nym.into_repr()).neg();
-            let e2 = P2_nym.add_mixed(s_P2).into_affine();
+            let P2_nym = set_comm_srs
+                .get_P2()
+                .mul_bigint(rev.nym.into_bigint())
+                .neg();
+            let e2 = E::G2Prepared::from(P2_nym + s_P2);
             // Check if e(C4, P2) == (upk2, P2 * (s - nym)) => e(C4, P2) * (-upk2, P2 * (s - nym)) == 1
-            if !pairing_product::<E>(&[rev.C4, -upk2], &[*set_comm_srs.get_P2(), e2]).is_one() {
+            if !E::multi_pairing([rev.C4, (-upk2.into_group()).into_affine()], [prep_P2, e2])
+                .is_zero()
+            {
                 return Err(DelegationError::InvalidRevocationRequest);
             }
 
@@ -401,40 +412,19 @@ impl<E: PairingEngine> SignatureRequest<E> {
     }
 }
 
-impl<E: PairingEngine> Credential<E> {
-    /// Create a new credential using the created signature request and the received credential
+impl<E: Pairing> Credential<E> {
+    /// Create a new credential using the created signature request and the received signature. It will
+    /// verify the signature before creating the credential.
     pub fn new(
         sig_req: SignatureRequest<E>,
         sig_req_opn: SignatureRequestOpening<E>,
         sig: Signature<E>,
-        attributes: Vec<E::Fr>,
-        issuer_pk: &IssuerPublicKey<E>,
+        attributes: Vec<E::ScalarField>,
+        issuer_pk: impl Into<PreparedIssuerPublicKey<E>>,
         user_pk: Option<&UserPublicKey<E>>,
         auditor_pk: Option<&AuditorPublicKey<E>>,
-        set_comm_srs: &SetCommitmentSRS<E>,
-    ) -> Result<Self, DelegationError> {
-        let ipk = issuer_pk.prepared();
-        Self::new_using_prepared_key(
-            sig_req,
-            sig_req_opn,
-            sig,
-            attributes,
-            &ipk,
-            user_pk,
-            auditor_pk,
-            set_comm_srs,
-        )
-    }
-
-    pub fn new_using_prepared_key(
-        sig_req: SignatureRequest<E>,
-        sig_req_opn: SignatureRequestOpening<E>,
-        sig: Signature<E>,
-        attributes: Vec<E::Fr>,
-        issuer_pk: &PreparedIssuerPublicKey<E>,
-        user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        P1: &E::G1Affine,
+        P2: impl Into<E::G2Prepared>,
     ) -> Result<Self, DelegationError> {
         let C1 = sig_req.C1;
         let rev = sig_req.rev.as_ref().map(|rev| RevocationCredential {
@@ -444,13 +434,8 @@ impl<E: PairingEngine> Credential<E> {
         });
         let auditable_sig = sig_req.auditable_sig;
 
-        let msgs = sig_req.create_msgs(user_pk, auditor_pk, *set_comm_srs.get_P1())?;
-        sig.verify_using_prepared_public_key(
-            &msgs,
-            &issuer_pk.public_key,
-            set_comm_srs.get_P1(),
-            set_comm_srs.get_P2(),
-        )?;
+        let msgs = sig_req.create_msgs(user_pk, auditor_pk, *P1)?;
+        sig.verify(&msgs, issuer_pk.into().public_key, P1, P2.into())?;
         Ok(Self {
             attributes,
             C1,
@@ -471,14 +456,15 @@ pub mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
 
     use crate::auditor::AuditorSecretKey;
+    use crate::protego::keys::IssuerPublicKey;
     use schnorr_pok::compute_random_oracle_challenge;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
-    type G1Affine = <Bls12_381 as PairingEngine>::G1Affine;
-    type G2Affine = <Bls12_381 as PairingEngine>::G2Affine;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
+    type G1Affine = <Bls12_381 as Pairing>::G1Affine;
+    type G2Affine = <Bls12_381 as Pairing>::G2Affine;
 
     pub fn keygen(
         rng: &mut StdRng,
@@ -523,7 +509,7 @@ pub mod tests {
     ) {
         let (set_comm_srs, trapdoor) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
             StdRng,
-            Blake2b,
+            Blake2b512,
         >(rng, max_attributes, Some("Protego".as_bytes()));
         let (ask, apk, isk, ipk, usk, upk) =
             keygen(rng, auditable, supports_revocation, &set_comm_srs);
@@ -579,6 +565,9 @@ pub mod tests {
         assert!((Q.is_some() && nym.is_some()) || (Q.is_none() && nym.is_none()));
         let supports_revocation = Q.is_some() && nym.is_some();
 
+        let prep_set_comm_srs = PreparedSetCommitmentSRS::from(set_comm_srs.clone());
+        let prep_ipk = PreparedIssuerPublicKey::from(ipk.clone());
+
         let sig_req_p = if supports_revocation {
             SignatureRequestProtocol::init_with_revocation(
                 rng,
@@ -598,7 +587,7 @@ pub mod tests {
         sig_req_p
             .challenge_contribution(&upk, set_comm_srs.get_P1(), Q, &mut chal_bytes)
             .unwrap();
-        let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+        let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
         let (sig_req, sig_req_opn) = sig_req_p
             .gen_request(rng, attributes.clone(), &usk, &challenge, &set_comm_srs)
             .unwrap();
@@ -609,7 +598,7 @@ pub mod tests {
                 &challenge,
                 Q,
                 s_P2_from_accumulator,
-                &set_comm_srs,
+                prep_set_comm_srs.clone(),
             )
             .unwrap();
         assert!(!(sig_req.supports_revocation() ^ supports_revocation));
@@ -631,10 +620,11 @@ pub mod tests {
             sig_req_opn,
             sig,
             attributes,
-            &ipk,
+            prep_ipk,
             auditable.then(|| upk),
             auditable.then(|| apk),
-            &set_comm_srs,
+            set_comm_srs.get_P1(),
+            prep_set_comm_srs.prepared_P2,
         )
         .unwrap();
         assert_eq!(cred.supports_revocation(), supports_revocation);
@@ -708,12 +698,12 @@ pub mod tests {
             .map(|_| Fr::rand(&mut rng))
             .collect::<Vec<_>>();
 
-        let Q = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+        let Q = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
         let nym = Fr::rand(&mut rng);
 
         let (accum_srs, _) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
             StdRng,
-            Blake2b,
+            Blake2b512,
         >(&mut rng, 100, Some("Protego".as_bytes()));
 
         issuance(

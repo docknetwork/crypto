@@ -37,3 +37,10 @@ pub fn powers<F: PrimeField>(s: &F, num: usize) -> Vec<F> {
     }
     powers
 }
+
+/// SUM of a geometric progression
+/// SUM a^i = (1 - a^n) / (1 - a) = -(1-a^n)/-(1-a)
+/// = (a^n - 1) / (a - 1)
+pub fn sum_of_powers<F: PrimeField>(r: &F, num: usize) -> F {
+    (r.pow(&[num as u64]) - &F::one()) * (*r - F::one()).inverse().unwrap()
+}

@@ -9,13 +9,11 @@
 //! - After each of the `n` participants has successfully runs a VSS, they generate their corresponding share of `s` by adding
 //! their shares of each `{s_i}_0` for `i` in 1 to `n`.
 
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::BTreeMap;
-use ark_std::io::{Read, Write};
-use ark_std::vec;
-use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
+use ark_std::{vec, vec::Vec};
 use zeroize::Zeroize;
 
 use crate::common::{CommitmentToCoefficients, ParticipantId, ShareId, VerifiableShare};
@@ -24,14 +22,14 @@ use crate::pedersen_vss::CommitmentKey;
 
 /// Used by a participant to store received shares and commitment coefficients.
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SharesAccumulator<G: AffineCurve> {
+pub struct SharesAccumulator<G: AffineRepr> {
     pub participant_id: ParticipantId,
     pub threshold: ShareId,
     pub shares: BTreeMap<ParticipantId, VerifiableShare<G::ScalarField>>,
     pub coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
 }
 
-impl<G: AffineCurve> SharesAccumulator<G> {
+impl<G: AffineRepr> SharesAccumulator<G> {
     pub fn new(id: ParticipantId, threshold: ShareId) -> Self {
         Self {
             participant_id: id,
@@ -81,7 +79,7 @@ impl<G: AffineCurve> SharesAccumulator<G> {
 
         let mut final_s_share = G::ScalarField::zero();
         let mut final_t_share = G::ScalarField::zero();
-        let mut final_comm_coeffs = vec![G::Projective::zero(); self.threshold as usize];
+        let mut final_comm_coeffs = vec![G::Group::zero(); self.threshold as usize];
 
         for (_, share) in self.shares {
             final_s_share += share.secret_share;
@@ -90,10 +88,10 @@ impl<G: AffineCurve> SharesAccumulator<G> {
 
         for (_, comm) in self.coeff_comms {
             for i in 0..self.threshold as usize {
-                final_comm_coeffs[i].add_assign_mixed(&comm.0[i]);
+                final_comm_coeffs[i] += comm.0[i];
             }
         }
-        let comm_coeffs = batch_normalize_projective_into_affine(final_comm_coeffs).into();
+        let comm_coeffs = G::Group::normalize_batch(&final_comm_coeffs).into();
         let final_share = VerifiableShare {
             id: self.participant_id,
             threshold: self.threshold,
@@ -147,20 +145,21 @@ pub mod tests {
     use crate::common::VerifiableShares;
     use crate::pedersen_vss::{deal_random_secret, CommitmentKey};
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
+    use ark_ec::Group;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
 
-    type G1 = <Bls12_381 as PairingEngine>::G1Affine;
-    type G2 = <Bls12_381 as PairingEngine>::G2Affine;
+    type G1 = <Bls12_381 as Pairing>::G1Affine;
+    type G2 = <Bls12_381 as Pairing>::G2Affine;
 
     #[test]
     fn pedersen_distributed_verifiable_secret_sharing() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let comm_key1 = CommitmentKey::<G1>::new::<Blake2b>(b"test");
-        let comm_key2 = CommitmentKey::<G2>::new::<Blake2b>(b"test");
+        let comm_key1 = CommitmentKey::<G1>::new::<Blake2b512>(b"test");
+        let comm_key2 = CommitmentKey::<G2>::new::<Blake2b512>(b"test");
 
-        fn check<G: AffineCurve>(rng: &mut StdRng, comm_key: &CommitmentKey<G>) {
+        fn check<G: AffineRepr>(rng: &mut StdRng, comm_key: &CommitmentKey<G>) {
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -239,10 +238,8 @@ pub mod tests {
                                 .is_err());
 
                             let mut wrong_commitments = commitments.clone();
-                            wrong_commitments.0[0] = wrong_commitments.0[0]
-                                .into_projective()
-                                .double()
-                                .into_affine();
+                            wrong_commitments.0[0] =
+                                wrong_commitments.0[0].into_group().double().into_affine();
                             assert!(accumulators[j - 1]
                                 .add_received_share(
                                     i as u16,

@@ -2,19 +2,11 @@
 macro_rules! test_serialization {
     ($obj_type:ty, $obj: ident, $Instant: ident) => {
         let mut serz = vec![];
-        CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
+        CanonicalSerialize::serialize_compressed(&$obj, &mut serz).unwrap();
         println!("Serialized byte size: {}", serz.len());
         let start = $Instant::now();
-        let deserz: $obj_type = CanonicalDeserialize::deserialize(&serz[..]).unwrap();
+        let deserz: $obj_type = CanonicalDeserialize::deserialize_compressed(&serz[..]).unwrap();
         println!("Deserialized time: {:?}", start.elapsed());
-        assert_eq!(deserz, $obj);
-
-        let mut serz = vec![];
-        $obj.serialize_unchecked(&mut serz).unwrap();
-        println!("Serialized byte size: {}", serz.len());
-        let start = $Instant::now();
-        let deserz: $obj_type = CanonicalDeserialize::deserialize_unchecked(&serz[..]).unwrap();
-        println!("Deserialized unchecked time: {:?}", start.elapsed());
         assert_eq!(deserz, $obj);
 
         let mut serz = vec![];
@@ -34,15 +26,9 @@ macro_rules! test_serialization {
     };
     ($obj_type:ty, $obj: ident) => {
         let mut serz = vec![];
-        CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
+        CanonicalSerialize::serialize_compressed(&$obj, &mut serz).unwrap();
         println!("Serialized byte size: {}", serz.len());
-        let deserz: $obj_type = CanonicalDeserialize::deserialize(&serz[..]).unwrap();
-        assert_eq!(deserz, $obj);
-
-        let mut serz = vec![];
-        $obj.serialize_unchecked(&mut serz).unwrap();
-        println!("Serialized byte size: {}", serz.len());
-        let deserz: $obj_type = CanonicalDeserialize::deserialize_unchecked(&serz[..]).unwrap();
+        let deserz: $obj_type = CanonicalDeserialize::deserialize_compressed(&serz[..]).unwrap();
         assert_eq!(deserz, $obj);
 
         let mut serz = vec![];

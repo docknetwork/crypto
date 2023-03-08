@@ -3,7 +3,7 @@ use crate::statement_proof::{
     BoundCheckLegoGroth16Proof, BoundCheckLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
 };
 use crate::sub_protocols::schnorr::SchnorrProtocol;
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     fields::fp::FpVar,
@@ -24,7 +24,7 @@ use legogroth16::{
 /// Runs the LegoGroth16 protocol for proving bounds of a witness and a Schnorr protocol for proving
 /// knowledge of the witness committed in the LegoGroth16 proof.
 #[derive(Clone, Debug, PartialEq)]
-pub struct BoundCheckProtocol<'a, E: PairingEngine> {
+pub struct BoundCheckProtocol<'a, E: Pairing> {
     pub id: usize,
     pub min: u64,
     pub max: u64,
@@ -36,7 +36,7 @@ pub struct BoundCheckProtocol<'a, E: PairingEngine> {
     pub sp: Option<SchnorrProtocol<'a, E::G1Affine>>,
 }
 
-impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
+impl<'a, E: Pairing> BoundCheckProtocol<'a, E> {
     /// Create an instance of this protocol for the prover.
     pub fn new_for_prover(id: usize, min: u64, max: u64, proving_key: &'a ProvingKey<E>) -> Self {
         Self {
@@ -74,8 +74,8 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         &mut self,
         rng: &mut R,
         comm_key: &'a [E::G1Affine],
-        message: E::Fr,
-        blinding: Option<E::Fr>,
+        message: E::ScalarField,
+        blinding: Option<E::ScalarField>,
     ) -> Result<(), ProofSystemError> {
         if self.sp.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -85,11 +85,11 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
             .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
 
         // blinding for the commitment in the snark proof
-        let v = E::Fr::rand(rng);
+        let v = E::ScalarField::rand(rng);
 
         let circuit = BoundCheckCircuit {
-            min: Some(E::Fr::from(self.min)),
-            max: Some(E::Fr::from(self.max)),
+            min: Some(E::ScalarField::from(self.min)),
+            max: Some(E::ScalarField::from(self.max)),
             value: Some(message),
         };
         let snark_proof = create_random_proof(circuit, v, proving_key, rng)?;
@@ -98,7 +98,7 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         // that this will be same as the one used proving knowledge of the corresponding message in BBS+
         // signature, thus allowing them to be proved equal.
         let blinding = if blinding.is_none() {
-            E::Fr::rand(rng)
+            E::ScalarField::rand(rng)
         } else {
             blinding.unwrap()
         };
@@ -117,9 +117,9 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         &mut self,
         rng: &mut R,
         comm_key: &'a [E::G1Affine],
-        message: E::Fr,
-        blinding: Option<E::Fr>,
-        old_v: E::Fr,
+        message: E::ScalarField,
+        blinding: Option<E::ScalarField>,
+        old_v: E::ScalarField,
         proof: Proof<E>,
     ) -> Result<(), ProofSystemError> {
         if self.sp.is_some() {
@@ -130,7 +130,7 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
             .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
 
         // new blinding for the commitment in the snark proof
-        let v = E::Fr::rand(rng);
+        let v = E::ScalarField::rand(rng);
 
         let snark_proof = rerandomize_proof_1(
             &proof,
@@ -158,9 +158,9 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
     }
 
     /// Generate responses for the Schnorr protocol
-    pub fn gen_proof_contribution<G: AffineCurve>(
+    pub fn gen_proof_contribution<G: AffineRepr>(
         &mut self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.sp.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
@@ -182,7 +182,7 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
     /// Verify that the snark proof and the Schnorr proof are valid.
     pub fn verify_proof_contribution(
         &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         proof: &BoundCheckLegoGroth16Proof<E>,
         comm_key: &[E::G1Affine],
     ) -> Result<(), ProofSystemError> {
@@ -195,18 +195,21 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
 
     pub fn verify_proof_contribution_using_prepared(
         &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         proof: &BoundCheckLegoGroth16Proof<E>,
         comm_key: &[E::G1Affine],
         pvk: &PreparedVerifyingKey<E>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
-        let pub_inp = &[E::Fr::from(self.min), E::Fr::from(self.max)];
+        let pub_inp = &[
+            E::ScalarField::from(self.min),
+            E::ScalarField::from(self.max),
+        ];
         let snark_proof = &proof.snark_proof;
         match pairing_checker {
             Some(c) => {
                 let d = calculate_d(pvk, snark_proof, pub_inp)?;
-                c.add_prepared_sources_and_target(
+                c.add_multiple_sources_and_target(
                     &[snark_proof.a, snark_proof.c, d],
                     vec![
                         snark_proof.b.into(),
@@ -227,7 +230,7 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
 
     pub fn verify_proof_contribution_using_prepared_when_aggregating_snark(
         &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         proof: &BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>,
         comm_key: &[E::G1Affine],
     ) -> Result<(), ProofSystemError> {
@@ -241,9 +244,9 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         proof: &BoundCheckLegoGroth16Proof<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
-        comm_key.serialize_unchecked(&mut writer)?;
-        proof.snark_proof.d.serialize_unchecked(&mut writer)?;
-        proof.sp.t.serialize_unchecked(&mut writer)?;
+        comm_key.serialize_compressed(&mut writer)?;
+        proof.snark_proof.d.serialize_compressed(&mut writer)?;
+        proof.sp.t.serialize_compressed(&mut writer)?;
         Ok(())
     }
 
@@ -252,9 +255,9 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         proof: &BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
-        comm_key.serialize_unchecked(&mut writer)?;
-        proof.commitment.serialize_unchecked(&mut writer)?;
-        proof.sp.t.serialize_unchecked(&mut writer)?;
+        comm_key.serialize_compressed(&mut writer)?;
+        proof.commitment.serialize_compressed(&mut writer)?;
+        proof.sp.t.serialize_compressed(&mut writer)?;
         Ok(())
     }
 
@@ -282,16 +285,16 @@ impl<'a, E: PairingEngine> BoundCheckProtocol<'a, E> {
         &mut self,
         rng: &mut R,
         comm_key: &'a [E::G1Affine],
-        message: E::Fr,
-        blinding: Option<E::Fr>,
-        v: E::Fr,
+        message: E::ScalarField,
+        blinding: Option<E::ScalarField>,
+        v: E::ScalarField,
         snark_proof: Proof<E>,
     ) -> Result<(), ProofSystemError> {
         // blinding used to prove knowledge of message in `snark_proof.d`. The caller of this method ensures
         // that this will be same as the one used proving knowledge of the corresponding message in BBS+
         // signature, thus allowing them to be proved equal.
         let blinding = if blinding.is_none() {
-            E::Fr::rand(rng)
+            E::ScalarField::rand(rng)
         } else {
             blinding.unwrap()
         };
@@ -355,10 +358,10 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
 /// `w` and public inputs `min` and `max`, `min <= w <= max`
 pub fn generate_snark_srs_bound_check<E, R>(rng: &mut R) -> Result<ProvingKey<E>, ProofSystemError>
 where
-    E: PairingEngine,
+    E: Pairing,
     R: Rng,
 {
-    let circuit = BoundCheckCircuit::<E::Fr> {
+    let circuit = BoundCheckCircuit::<E::ScalarField> {
         min: None,
         max: None,
         value: None,
@@ -372,7 +375,7 @@ mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn valid_bounds() {

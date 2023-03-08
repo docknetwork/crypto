@@ -2,23 +2,19 @@
 
 use crate::circuit::BitsizeCheckCircuit;
 use crate::error::SaverError;
-use crate::keygen::{
-    DecryptionKey, EncryptionKey, PreparedDecryptionKey, PreparedEncryptionKey, SecretKey,
-};
+use crate::keygen::{EncryptionKey, PreparedDecryptionKey, PreparedEncryptionKey, SecretKey};
 use crate::saver_groth16;
 use crate::saver_legogroth16;
-use crate::setup::{EncryptionGens, PreparedEncryptionGens};
+use crate::setup::PreparedEncryptionGens;
 use crate::utils;
-use ark_ec::msm::VariableBaseMSM;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{One, PrimeField, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::ops::Add;
+use ark_ec::pairing::PairingOutput;
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ff::{PrimeField, Zero};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     cfg_into_iter, cfg_iter,
-    io::{Read, Write},
     marker::PhantomData,
-    ops::Neg,
+    ops::{Add, Mul, Neg, Sub},
     rand::RngCore,
     vec,
     vec::Vec,
@@ -28,9 +24,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::utils::CHUNK_TYPE;
-use dock_crypto_utils::ec::{
-    batch_normalize_projective_into_affine, pairing_product_with_g2_prepared,
-};
 use dock_crypto_utils::ff::non_zero_random;
 use dock_crypto_utils::serde_utils::*;
 
@@ -42,19 +35,19 @@ use rayon::prelude::*;
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct Ciphertext<E: PairingEngine> {
-    #[serde_as(as = "AffineGroupBytes")]
+pub struct Ciphertext<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub X_r: E::G1Affine,
-    #[serde_as(as = "Vec<AffineGroupBytes>")]
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub enc_chunks: Vec<E::G1Affine>,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub commitment: E::G1Affine,
 }
 
 /// Ciphertext used with LegoGroth16 and the slightly modified SAVER protocol. See `saver_legogroth16::protocol_2` for more
 /// details.
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CiphertextAlt<E: PairingEngine> {
+pub struct CiphertextAlt<E: Pairing> {
     pub X_r: E::G1Affine,
     pub enc_chunks: Vec<E::G1Affine>,
     pub commitment: E::G1Affine,
@@ -66,43 +59,25 @@ macro_rules! impl_enc_funcs {
         /// Decrypt this ciphertext returning the plaintext and commitment to randomness
         pub fn decrypt(
             &self,
-            sk: &SecretKey<E::Fr>,
-            dk: &DecryptionKey<E>,
+            sk: &SecretKey<E::ScalarField>,
+            dk: impl Into<PreparedDecryptionKey<E>>,
             g_i: &[E::G1Affine],
             chunk_bit_size: u8,
-        ) -> crate::Result<(E::Fr, E::G1Affine)> {
+        ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
             Encryption::decrypt(&self.X_r, &self.enc_chunks, sk, dk, g_i, chunk_bit_size)
         }
 
-        /// Same as `Self::decrypt` but takes prepared decryption key for faster decryption
-        pub fn decrypt_given_prepared(
+        /// Same as `Self::decrypt` but takes pairing powers (see `PreparedDecryptionKey::pairing_powers`)
+        /// that can be precomputed for faster decryption
+        pub fn decrypt_given_pairing_powers(
             &self,
-            sk: &SecretKey<E::Fr>,
-            dk: &PreparedDecryptionKey<E>,
+            sk: &SecretKey<E::ScalarField>,
+            dk: impl Into<PreparedDecryptionKey<E>>,
             g_i: &[E::G1Affine],
             chunk_bit_size: u8,
-        ) -> crate::Result<(E::Fr, E::G1Affine)> {
-            Encryption::decrypt_given_prepared(
-                &self.X_r,
-                &self.enc_chunks,
-                sk,
-                dk,
-                g_i,
-                chunk_bit_size,
-            )
-        }
-
-        /// Same as `Self::decrypt` but takes prepared decryption key and pairing powers (see `PreparedDecryptionKey::pairing_powers`)
-        /// that can be precomputed for even faster decryption
-        pub fn decrypt_given_prepared_and_pairing_powers(
-            &self,
-            sk: &SecretKey<E::Fr>,
-            dk: &PreparedDecryptionKey<E>,
-            g_i: &[E::G1Affine],
-            chunk_bit_size: u8,
-            pairing_powers: &[Vec<E::Fqk>],
-        ) -> crate::Result<(E::Fr, E::G1Affine)> {
-            Encryption::decrypt_given_prepared_and_pairing_powers(
+            pairing_powers: &[Vec<PairingOutput<E>>],
+        ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
+            Encryption::decrypt_given_pairing_powers(
                 &self.X_r,
                 &self.enc_chunks,
                 sk,
@@ -116,25 +91,10 @@ macro_rules! impl_enc_funcs {
         /// Verify that the ciphertext correctly commits to the message
         pub fn verify_commitment(
             &self,
-            ek: &EncryptionKey<E>,
-            gens: &EncryptionGens<E>,
+            ek: impl Into<PreparedEncryptionKey<E>>,
+            gens: impl Into<PreparedEncryptionGens<E>>,
         ) -> crate::Result<()> {
             Encryption::verify_ciphertext_commitment(
-                &self.X_r,
-                &self.enc_chunks,
-                &self.commitment,
-                ek,
-                gens,
-            )
-        }
-
-        /// Same as `Self::verify_commitment_given_prepared` but takes prepared parameters for faster verification.
-        pub fn verify_commitment_given_prepared(
-            &self,
-            ek: &PreparedEncryptionKey<E>,
-            gens: &PreparedEncryptionGens<E>,
-        ) -> crate::Result<()> {
-            Encryption::verify_ciphertext_commitment_given_prepared(
                 &self.X_r,
                 &self.enc_chunks,
                 &self.commitment,
@@ -146,12 +106,12 @@ macro_rules! impl_enc_funcs {
         /// Verify that the decrypted message corresponds to original plaintext in the ciphertext
         pub fn verify_decryption(
             &self,
-            message: &E::Fr,
+            message: &E::ScalarField,
             nu: &E::G1Affine,
             chunk_bit_size: u8,
-            dk: &DecryptionKey<E>,
+            dk: impl Into<PreparedDecryptionKey<E>>,
             g_i: &[E::G1Affine],
-            gens: &EncryptionGens<E>,
+            gens: impl Into<PreparedEncryptionGens<E>>,
         ) -> crate::Result<()> {
             let decomposed = utils::decompose(message, chunk_bit_size)?;
             Encryption::verify_decryption(
@@ -164,45 +124,23 @@ macro_rules! impl_enc_funcs {
                 gens,
             )
         }
-
-        /// Same as `Self::verify_decryption` but uses prepared parameters
-        pub fn verify_decryption_given_prepared(
-            &self,
-            message: &E::Fr,
-            nu: &E::G1Affine,
-            chunk_bit_size: u8,
-            dk: &PreparedDecryptionKey<E>,
-            g_i: &[E::G1Affine],
-            gens: &PreparedEncryptionGens<E>,
-        ) -> crate::Result<()> {
-            let decomposed = utils::decompose(message, chunk_bit_size)?;
-            Encryption::verify_decryption_given_prepared(
-                &decomposed,
-                &self.X_r,
-                &self.enc_chunks,
-                nu,
-                dk,
-                g_i,
-                gens,
-            )
-        }
     };
 }
 
-pub struct Encryption<E: PairingEngine>(PhantomData<E>);
+pub struct Encryption<E: Pairing>(PhantomData<E>);
 
-impl<E: PairingEngine> Encryption<E> {
+impl<E: Pairing> Encryption<E> {
     /// Encrypt a message `m` in exponent-Elgamal after breaking it into chunks of `chunk_bit_size` bits.
     /// Returns the ciphertext, commitment and randomness created for encryption. This is "Enc" from algorithm
     /// 2 in the paper
     /// Ciphertext vector contains commitment `psi` as the last element
     pub fn encrypt<R: RngCore>(
         rng: &mut R,
-        message: &E::Fr,
+        message: &E::ScalarField,
         ek: &EncryptionKey<E>,
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
-    ) -> crate::Result<(Ciphertext<E>, E::Fr)> {
+    ) -> crate::Result<(Ciphertext<E>, E::ScalarField)> {
         let decomposed = utils::decompose(message, chunk_bit_size)?;
         let (mut ct, r) = Self::encrypt_decomposed_message(rng, decomposed, ek, g_i)?;
         Ok((
@@ -218,16 +156,16 @@ impl<E: PairingEngine> Encryption<E> {
     /// Return the encryption and Groth16 proof
     pub fn encrypt_with_proof<R: RngCore>(
         rng: &mut R,
-        message: &E::Fr,
+        message: &E::ScalarField,
         ek: &EncryptionKey<E>,
         snark_pk: &saver_groth16::ProvingKey<E>,
         chunk_bit_size: u8,
-    ) -> crate::Result<(Ciphertext<E>, E::Fr, ark_groth16::Proof<E>)> {
+    ) -> crate::Result<(Ciphertext<E>, E::ScalarField, ark_groth16::Proof<E>)> {
         let g_i = saver_groth16::get_gs_for_encryption(&snark_pk.pk.vk);
         let (ct, r) = Encryption::encrypt(rng, message, &ek, g_i, chunk_bit_size)?;
         let decomposed_message = utils::decompose(message, chunk_bit_size)?
             .into_iter()
-            .map(|m| E::Fr::from(m as u64))
+            .map(|m| E::ScalarField::from(m as u64))
             .collect::<Vec<_>>();
         let circuit =
             BitsizeCheckCircuit::new(chunk_bit_size, None, Some(decomposed_message.clone()), true);
@@ -241,28 +179,28 @@ impl<E: PairingEngine> Encryption<E> {
         snark_vk: &ark_groth16::VerifyingKey<E>,
         ek: &EncryptionKey<E>,
         rng: &mut R,
-    ) -> crate::Result<(Ciphertext<E>, E::Fr, ark_groth16::Proof<E>)> {
-        let r_prime = non_zero_random::<E::Fr, R>(rng);
-        let r_prime_repr = r_prime.into_repr();
+    ) -> crate::Result<(Ciphertext<E>, E::ScalarField, ark_groth16::Proof<E>)> {
+        let r_prime = non_zero_random::<E::ScalarField, R>(rng);
+        let r_prime_repr = r_prime.into_bigint();
         let xr = ek
             .X_0
-            .mul(r_prime_repr)
-            .add_mixed(&ciphertext.X_r)
+            .mul_bigint(r_prime_repr)
+            .add(&ciphertext.X_r)
             .into_affine();
         let enc = cfg_into_iter!(ciphertext.enc_chunks)
             .zip(cfg_iter!(ek.X))
-            .map(|(c, x)| x.mul(r_prime_repr).add_mixed(&c))
+            .map(|(c, x)| x.mul_bigint(r_prime_repr).add(&c))
             .collect::<Vec<_>>();
         let comm = ek
             .P_1
-            .mul(r_prime_repr)
-            .add_mixed(&ciphertext.commitment)
+            .mul_bigint(r_prime_repr)
+            .add(&ciphertext.commitment)
             .into_affine();
         let proof = saver_groth16::randomize_proof(proof, &r_prime, snark_vk, &ek, rng)?;
         let ct = Ciphertext {
             X_r: xr,
             commitment: comm,
-            enc_chunks: batch_normalize_projective_into_affine(enc),
+            enc_chunks: E::G1::normalize_batch(&enc),
         };
         Ok((ct, r_prime, proof))
     }
@@ -270,11 +208,11 @@ impl<E: PairingEngine> Encryption<E> {
     /// Same as `Self::encrypt` but takes the SNARK verification key instead of the generators used for Elgamal encryption
     pub fn encrypt_given_snark_vk<R: RngCore>(
         rng: &mut R,
-        message: &E::Fr,
+        message: &E::ScalarField,
         ek: &EncryptionKey<E>,
         snark_vk: &ark_groth16::VerifyingKey<E>,
         chunk_bit_size: u8,
-    ) -> crate::Result<(Ciphertext<E>, E::Fr)> {
+    ) -> crate::Result<(Ciphertext<E>, E::ScalarField)> {
         let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
         Self::encrypt(rng, message, ek, g_i, chunk_bit_size)
     }
@@ -283,17 +221,14 @@ impl<E: PairingEngine> Encryption<E> {
     // XXX: Is this secure?
     pub fn encrypt_alt<R: RngCore>(
         rng: &mut R,
-        message: &E::Fr,
+        message: &E::ScalarField,
         ek: &EncryptionKey<E>,
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
-    ) -> crate::Result<(CiphertextAlt<E>, E::Fr)> {
+    ) -> crate::Result<(CiphertextAlt<E>, E::ScalarField)> {
         let decomposed = utils::decompose(message, chunk_bit_size)?;
         let (mut ct, r) = Self::encrypt_decomposed_message(rng, decomposed, ek, g_i)?;
-        let x_r_sum =
-            ek.X.iter()
-                .fold(E::G1Affine::zero(), |a, &b| a.add(b))
-                .mul(r);
+        let x_r_sum = ek.X.iter().fold(E::G1::zero(), |a, &b| a.add(b)).mul(r);
         Ok((
             CiphertextAlt {
                 X_r: ct.remove(0),
@@ -308,11 +243,11 @@ impl<E: PairingEngine> Encryption<E> {
     /// Same as `Self::encrypt_alt` but takes the SNARK verification key instead of the generators used for Elgamal encryption
     pub fn encrypt_alt_given_snark_vk<R: RngCore>(
         rng: &mut R,
-        message: &E::Fr,
+        message: &E::ScalarField,
         ek: &EncryptionKey<E>,
         snark_vk: &legogroth16::VerifyingKey<E>,
         chunk_bit_size: u8,
-    ) -> crate::Result<(CiphertextAlt<E>, E::Fr)> {
+    ) -> crate::Result<(CiphertextAlt<E>, E::ScalarField)> {
         let g_i = saver_legogroth16::get_gs_for_encryption(&snark_vk);
         Self::encrypt_alt(rng, message, ek, g_i, chunk_bit_size)
     }
@@ -322,40 +257,26 @@ impl<E: PairingEngine> Encryption<E> {
     pub fn decrypt(
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &DecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
+    ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
         let (chunks, nu) = Self::decrypt_to_chunks(c_0, c, sk, dk, g_i, chunk_bit_size)?;
         Ok((utils::compose(&chunks, chunk_bit_size)?, nu))
     }
 
-    /// Same as `Self::decrypt` but expects the prepared decryption key for faster decryption
-    pub fn decrypt_given_prepared(
-        c_0: &E::G1Affine,
-        c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &PreparedDecryptionKey<E>,
-        g_i: &[E::G1Affine],
-        chunk_bit_size: u8,
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
-        let (chunks, nu) =
-            Self::decrypt_to_chunks_given_prepared(c_0, c, sk, dk, g_i, chunk_bit_size)?;
-        Ok((utils::compose(&chunks, chunk_bit_size)?, nu))
-    }
-
-    /// Same as `Self::decrypt_given_prepared` but expects pairing powers (see `PreparedDecryptionKey::pairing_powers`)
+    /// Same as `Self::decrypt` but expects pairing powers (see `PreparedDecryptionKey::pairing_powers`)
     /// that can be precomputed for even faster decryption
-    pub fn decrypt_given_prepared_and_pairing_powers(
+    pub fn decrypt_given_pairing_powers(
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &PreparedDecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
-        pairing_powers: &[Vec<E::Fqk>],
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
+        pairing_powers: &[Vec<PairingOutput<E>>],
+    ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
         let (chunks, nu) = Self::decrypt_to_chunks_given_pairing_powers(
             c_0,
             c,
@@ -363,7 +284,7 @@ impl<E: PairingEngine> Encryption<E> {
             dk,
             g_i,
             chunk_bit_size,
-            pairing_powers,
+            Some(pairing_powers),
         )?;
         Ok((utils::compose(&chunks, chunk_bit_size)?, nu))
     }
@@ -372,60 +293,39 @@ impl<E: PairingEngine> Encryption<E> {
     pub fn decrypt_given_groth16_vk(
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &DecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &ark_groth16::VerifyingKey<E>,
         chunk_bit_size: u8,
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
-        let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
+    ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
+        let g_i = saver_groth16::get_gs_for_encryption(snark_vk);
         Self::decrypt(c_0, c, sk, dk, g_i, chunk_bit_size)
     }
 
-    /// Same as `Self::decrypt` but takes Groth16's verification key and prepared decryption key
-    pub fn decrypt_given_groth16_vk_and_prepared(
-        c_0: &E::G1Affine,
-        c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &PreparedDecryptionKey<E>,
-        snark_vk: &ark_groth16::VerifyingKey<E>,
-        chunk_bit_size: u8,
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
-        let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
-        Self::decrypt_given_prepared(c_0, c, sk, dk, g_i, chunk_bit_size)
-    }
-
-    /// Same as `Self::decrypt` but takes Groth16's verification key, prepared decryption key and the
+    /// Same as `Self::decrypt` but takes Groth16's verification key and the
     /// precomputed pairing powers
-    pub fn decrypt_given_groth16_vk_and_prepared_pairing_powers(
+    pub fn decrypt_given_groth16_vk_and_pairing_powers(
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &PreparedDecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &ark_groth16::VerifyingKey<E>,
         chunk_bit_size: u8,
-        pairing_powers: &[Vec<E::Fqk>],
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
+        pairing_powers: &[Vec<PairingOutput<E>>],
+    ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
         let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
-        Self::decrypt_given_prepared_and_pairing_powers(
-            c_0,
-            c,
-            sk,
-            dk,
-            g_i,
-            chunk_bit_size,
-            pairing_powers,
-        )
+        Self::decrypt_given_pairing_powers(c_0, c, sk, dk, g_i, chunk_bit_size, pairing_powers)
     }
 
     /// Same as `Self::decrypt` but takes LegoGroth16's verification key instead of the generators used for Elgamal encryption
     pub fn decrypt_given_legogroth16_vk(
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &DecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &legogroth16::VerifyingKey<E>,
         chunk_bit_size: u8,
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
+    ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
         let g_i = saver_legogroth16::get_gs_for_encryption(&snark_vk);
         Self::decrypt(c_0, c, sk, dk, g_i, chunk_bit_size)
     }
@@ -436,27 +336,11 @@ impl<E: PairingEngine> Encryption<E> {
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
         commitment: &E::G1Affine,
-        ek: &EncryptionKey<E>,
-        gens: &EncryptionGens<E>,
+        ek: impl Into<PreparedEncryptionKey<E>>,
+        gens: impl Into<PreparedEncryptionGens<E>>,
     ) -> crate::Result<()> {
-        Self::verify_ciphertext_commitment_given_prepared(
-            c_0,
-            c,
-            commitment,
-            &ek.prepared(),
-            &gens.prepared(),
-        )
-    }
-
-    /// Same as `Self::verify_ciphertext_commitment` but takes prepared encryption key and prepared
-    /// generators for faster verification
-    pub fn verify_ciphertext_commitment_given_prepared(
-        c_0: &E::G1Affine,
-        c: &[E::G1Affine],
-        commitment: &E::G1Affine,
-        ek: &PreparedEncryptionKey<E>,
-        gens: &PreparedEncryptionGens<E>,
-    ) -> crate::Result<()> {
+        let ek = ek.into();
+        let gens = gens.into();
         let expected_count = ek.supported_chunks_count()? as usize;
         if c.len() != expected_count {
             return Err(SaverError::IncompatibleEncryptionKey(
@@ -467,9 +351,9 @@ impl<E: PairingEngine> Encryption<E> {
 
         let (a, b) = (
             Self::get_g1_for_ciphertext_commitment_pairing_checks(c_0, c, commitment),
-            Self::get_g2_for_ciphertext_commitment_pairing_checks(ek, gens),
+            Self::get_g2_for_ciphertext_commitment_pairing_checks(&ek, &gens),
         );
-        if pairing_product_with_g2_prepared::<E>(&a, &b).is_one() {
+        if E::multi_pairing(&a, b).is_zero() {
             Ok(())
         } else {
             return Err(SaverError::InvalidCommitment);
@@ -478,25 +362,13 @@ impl<E: PairingEngine> Encryption<E> {
 
     pub fn verify_commitments_in_batch(
         ciphertexts: &[Ciphertext<E>],
-        r_powers: &[E::Fr],
-        ek: &EncryptionKey<E>,
-        gens: &EncryptionGens<E>,
-    ) -> crate::Result<()> {
-        Self::verify_commitments_in_batch_given_prepared(
-            ciphertexts,
-            r_powers,
-            &ek.prepared(),
-            &gens.prepared(),
-        )
-    }
-
-    pub fn verify_commitments_in_batch_given_prepared(
-        ciphertexts: &[Ciphertext<E>],
-        r_powers: &[E::Fr],
-        ek: &PreparedEncryptionKey<E>,
-        gens: &PreparedEncryptionGens<E>,
+        r_powers: &[E::ScalarField],
+        ek: impl Into<PreparedEncryptionKey<E>>,
+        gens: impl Into<PreparedEncryptionGens<E>>,
     ) -> crate::Result<()> {
         assert_eq!(r_powers.len(), ciphertexts.len());
+        let ek = ek.into();
+        let gens = gens.into();
         let expected_count = ek.supported_chunks_count()? as usize;
         for c in ciphertexts {
             if c.enc_chunks.len() != expected_count {
@@ -509,8 +381,8 @@ impl<E: PairingEngine> Encryption<E> {
 
         let a =
             Self::get_g1_for_ciphertext_commitments_in_batch_pairing_checks(ciphertexts, r_powers);
-        let b = Self::get_g2_for_ciphertext_commitment_pairing_checks(ek, gens);
-        if pairing_product_with_g2_prepared::<E>(&a, &b).is_one() {
+        let b = Self::get_g2_for_ciphertext_commitment_pairing_checks(&ek, &gens);
+        if E::multi_pairing(&a, b).is_zero() {
             Ok(())
         } else {
             return Err(SaverError::InvalidCommitment);
@@ -523,32 +395,12 @@ impl<E: PairingEngine> Encryption<E> {
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
         nu: &E::G1Affine,
-        dk: &DecryptionKey<E>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         g_i: &[E::G1Affine],
-        gens: &EncryptionGens<E>,
+        gens: impl Into<PreparedEncryptionGens<E>>,
     ) -> crate::Result<()> {
-        Self::verify_decryption_given_prepared(
-            messages,
-            c_0,
-            c,
-            nu,
-            &dk.prepared(),
-            g_i,
-            &gens.prepared(),
-        )
-    }
-
-    /// Same as `Self::verify_decryption` but takes prepared decryption key and prepared
-    /// generators for faster verification
-    pub fn verify_decryption_given_prepared(
-        messages: &[CHUNK_TYPE],
-        c_0: &E::G1Affine,
-        c: &[E::G1Affine],
-        nu: &E::G1Affine,
-        dk: &PreparedDecryptionKey<E>,
-        g_i: &[E::G1Affine],
-        gens: &PreparedEncryptionGens<E>,
-    ) -> crate::Result<()> {
+        let dk = dk.into();
+        let gens = gens.into();
         if messages.len() != dk.supported_chunks_count()? as usize {
             return Err(SaverError::IncompatibleDecryptionKey(
                 messages.len(),
@@ -563,24 +415,24 @@ impl<E: PairingEngine> Encryption<E> {
         }
 
         let nu_prepared = E::G1Prepared::from(*nu);
-        let minus_nu_prepared = E::G1Prepared::from(nu.neg());
-        if !E::product_of_pairings(&[
-            (minus_nu_prepared, gens.H.clone()),
-            ((*c_0).into(), dk.V_0.clone()),
-        ])
-        .is_one()
+        let minus_nu_prepared = E::G1Prepared::from(nu.into_group().neg());
+        if !E::multi_pairing(
+            [minus_nu_prepared, (*c_0).into()],
+            [gens.H.clone(), dk.V_0.clone()],
+        )
+        .is_zero()
         {
             return Err(SaverError::InvalidDecryption);
         }
         for i in 0..messages.len() {
-            let g_i_m_i = g_i[i].mul(E::Fr::from(messages[i] as u64));
+            let g_i_m_i = g_i[i].mul(E::ScalarField::from(messages[i] as u64));
             // e(g_i * m_i, dk.V_2_i) * e(-c_i, dk.V_2_i) = e(g_i * m_i - c_i, dk.V_2_i)
-            let g_i_m_i_c_i = g_i_m_i.add_mixed(&c[i].neg());
-            if !E::product_of_pairings(&[
-                (g_i_m_i_c_i.into_affine().into(), dk.V_2[i].clone()),
-                (nu_prepared.clone(), dk.V_1[i].clone()),
-            ])
-            .is_one()
+            let g_i_m_i_c_i = g_i_m_i.sub(&c[i]);
+            if !E::multi_pairing(
+                [g_i_m_i_c_i.into_affine().into(), nu_prepared.clone()],
+                [dk.V_2[i].clone(), dk.V_1[i].clone()],
+            )
+            .is_zero()
             {
                 return Err(SaverError::InvalidDecryption);
             }
@@ -594,9 +446,9 @@ impl<E: PairingEngine> Encryption<E> {
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
         nu: &E::G1Affine,
-        dk: &DecryptionKey<E>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &ark_groth16::VerifyingKey<E>,
-        gens: &EncryptionGens<E>,
+        gens: impl Into<PreparedEncryptionGens<E>>,
     ) -> crate::Result<()> {
         let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
         Self::verify_decryption(messages, c_0, c, nu, dk, g_i, gens)
@@ -608,9 +460,9 @@ impl<E: PairingEngine> Encryption<E> {
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
         nu: &E::G1Affine,
-        dk: &DecryptionKey<E>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &legogroth16::VerifyingKey<E>,
-        gens: &EncryptionGens<E>,
+        gens: impl Into<PreparedEncryptionGens<E>>,
     ) -> crate::Result<()> {
         let g_i = saver_legogroth16::get_gs_for_encryption(&snark_vk);
         Self::verify_decryption(messages, c_0, c, nu, dk, g_i, gens)
@@ -620,66 +472,27 @@ impl<E: PairingEngine> Encryption<E> {
     pub fn decrypt_to_chunks(
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &DecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
     ) -> crate::Result<(Vec<CHUNK_TYPE>, E::G1Affine)> {
-        Self::decrypt_to_chunks_given_prepared(c_0, c, sk, &dk.prepared(), g_i, chunk_bit_size)
+        Self::decrypt_to_chunks_given_pairing_powers(c_0, c, sk, dk, g_i, chunk_bit_size, None)
     }
 
-    /// Same as `Self::decrypt_to_chunks` but takes prepared decryption key
-    pub fn decrypt_to_chunks_given_prepared(
-        c_0: &E::G1Affine,
-        c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &PreparedDecryptionKey<E>,
-        g_i: &[E::G1Affine],
-        chunk_bit_size: u8,
-    ) -> crate::Result<(Vec<CHUNK_TYPE>, E::G1Affine)> {
-        Self::decrypt_to_chunks_given_prepared_and_pairing_powers(
-            c_0,
-            c,
-            sk,
-            dk,
-            g_i,
-            chunk_bit_size,
-            None,
-        )
-    }
-
-    /// Same as `Self::decrypt_to_chunks` but takes prepared decryption key and precomputed pairing
+    /// Decrypt the ciphertext and return each chunk and "commitment" to the randomness.
+    /// Same as `Self::decrypt_to_chunks` but takes decryption key and precomputed pairing
     /// powers
     pub fn decrypt_to_chunks_given_pairing_powers(
         c_0: &E::G1Affine,
         c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &PreparedDecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         g_i: &[E::G1Affine],
         chunk_bit_size: u8,
-        pairing_powers: &[Vec<E::Fqk>],
+        pairing_powers: Option<&[Vec<PairingOutput<E>>]>,
     ) -> crate::Result<(Vec<CHUNK_TYPE>, E::G1Affine)> {
-        Self::decrypt_to_chunks_given_prepared_and_pairing_powers(
-            c_0,
-            c,
-            sk,
-            dk,
-            g_i,
-            chunk_bit_size,
-            Some(pairing_powers),
-        )
-    }
-
-    /// Decrypt the ciphertext and return each chunk and "commitment" to the randomness
-    pub fn decrypt_to_chunks_given_prepared_and_pairing_powers(
-        c_0: &E::G1Affine,
-        c: &[E::G1Affine],
-        sk: &SecretKey<E::Fr>,
-        dk: &PreparedDecryptionKey<E>,
-        g_i: &[E::G1Affine],
-        chunk_bit_size: u8,
-        pairing_powers: Option<&[Vec<E::Fqk>]>,
-    ) -> crate::Result<(Vec<CHUNK_TYPE>, E::G1Affine)> {
+        let dk = dk.into();
         let n = c.len();
         if n != dk.supported_chunks_count()? as usize {
             return Err(SaverError::IncompatibleDecryptionKey(
@@ -691,27 +504,24 @@ impl<E: PairingEngine> Encryption<E> {
             return Err(SaverError::VectorShorterThanExpected(n, g_i.len()));
         }
         // c_0 * -rho
-        let c_0_rho = c_0.mul((-sk.0).into_repr());
+        let c_0_rho = c_0.mul_bigint((-sk.0).into_bigint());
         let c_0_rho_prepared = E::G1Prepared::from(c_0_rho.into_affine());
         let mut decrypted_chunks = vec![];
         let chunk_max_val: u32 = (1 << chunk_bit_size) - 1;
         let pairing_powers = if let Some(p) = pairing_powers { p } else { &[] };
         for i in 0..n {
-            let p = E::product_of_pairings(&[
-                (c[i].into(), dk.V_2[i].clone()),
-                (c_0_rho_prepared.clone(), dk.V_1[i].clone()),
-            ]);
-            if p.is_one() {
+            let p = E::multi_pairing(
+                [c[i].into(), c_0_rho_prepared.clone()],
+                [dk.V_2[i].clone(), dk.V_1[i].clone()],
+            );
+            if p.is_zero() {
                 decrypted_chunks.push(0);
                 continue;
             }
 
             if pairing_powers.len() == 0 {
                 // Precomputed powers are not provided, compute the necessary pairings
-                let g_i_v_i = E::product_of_pairings(core::iter::once(&(
-                    E::G1Prepared::from(g_i[i]),
-                    dk.V_2[i].clone(),
-                )));
+                let g_i_v_i = E::pairing(E::G1Prepared::from(g_i[i]), dk.V_2[i].clone());
                 decrypted_chunks.push(Self::solve_discrete_log(
                     chunk_max_val as CHUNK_TYPE,
                     g_i_v_i,
@@ -735,7 +545,7 @@ impl<E: PairingEngine> Encryption<E> {
         message_chunks: Vec<CHUNK_TYPE>,
         ek: &EncryptionKey<E>,
         g_i: &[E::G1Affine],
-    ) -> crate::Result<(Vec<E::G1Affine>, E::Fr)> {
+    ) -> crate::Result<(Vec<E::G1Affine>, E::ScalarField)> {
         let expected_count = ek.supported_chunks_count()? as usize;
         if message_chunks.len() != expected_count {
             return Err(SaverError::IncompatibleEncryptionKey(
@@ -749,37 +559,37 @@ impl<E: PairingEngine> Encryption<E> {
                 g_i.len(),
             ));
         }
-        let r = E::Fr::rand(rng);
-        let r_repr = r.into_repr();
+        let r = E::ScalarField::rand(rng);
+        let r_repr = r.into_bigint();
         let mut ct = vec![];
-        ct.push(ek.X_0.mul(r_repr));
+        ct.push(ek.X_0.mul_bigint(r_repr));
         let mut m = cfg_into_iter!(message_chunks)
-            .map(|m_i| <E::Fr as PrimeField>::BigInt::from(m_i as u64))
+            .map(|m_i| <E::ScalarField as PrimeField>::BigInt::from(m_i as u64))
             .collect::<Vec<_>>();
         for i in 0..ek.X.len() {
-            ct.push(ek.X[i].mul(r_repr).add(g_i[i].mul(m[i])));
+            ct.push(ek.X[i].mul_bigint(r_repr).add(g_i[i].mul_bigint(m[i])));
         }
 
         // Commit to the message chunks with randomness `r`
-        m.push(r.into_repr());
-        let psi = VariableBaseMSM::multi_scalar_mul(&ek.commitment_key(), &m);
+        m.push(r.into_bigint());
+        let psi = E::G1::msm_bigint(&ek.commitment_key(), &m);
 
         ct.push(psi);
-        Ok((batch_normalize_projective_into_affine(ct), r))
+        Ok((E::G1::normalize_batch(&ct), r))
     }
 
     /// Does not use precomputation
     fn solve_discrete_log(
         chunk_max_val: CHUNK_TYPE,
-        g_i_v_i: E::Fqk,
-        p: E::Fqk,
+        g_i_v_i: PairingOutput<E>,
+        p: PairingOutput<E>,
     ) -> crate::Result<CHUNK_TYPE> {
         if p == g_i_v_i {
             return Ok(1);
         }
         let mut cur = g_i_v_i.clone();
         for j in 2..=chunk_max_val {
-            cur = cur * g_i_v_i;
+            cur = cur + g_i_v_i;
             if cur == p {
                 return Ok(j);
             }
@@ -791,8 +601,8 @@ impl<E: PairingEngine> Encryption<E> {
     fn solve_discrete_log_using_pairing_powers(
         chunk_index: usize,
         chunk_max_val: CHUNK_TYPE,
-        p: E::Fqk,
-        pairing_powers: &[Vec<E::Fqk>],
+        p: PairingOutput<E>,
+        pairing_powers: &[Vec<PairingOutput<E>>],
     ) -> crate::Result<CHUNK_TYPE> {
         if pairing_powers.len() < chunk_index {
             return Err(SaverError::InvalidPairingPowers);
@@ -815,44 +625,42 @@ impl<E: PairingEngine> Encryption<E> {
         commitment: &E::G1Affine,
     ) -> Vec<E::G1Affine> {
         let mut a = Vec::with_capacity(c.len() + 2);
-        a.push((*c_0).into());
-        for i in 0..c.len() {
-            a.push(c[i].into());
-        }
-        a.push(commitment.neg().into());
+        a.push(c_0.clone());
+        a.extend_from_slice(c);
+        a.push(commitment.into_group().neg().into_affine());
         a
     }
 
     pub fn get_g1_for_ciphertext_commitments_in_batch_pairing_checks(
         ciphertexts: &[Ciphertext<E>],
-        r_powers: &[E::Fr],
+        r_powers: &[E::ScalarField],
     ) -> Vec<E::G1Affine> {
         let mut a = Vec::with_capacity(ciphertexts[0].enc_chunks.len() + 2);
         let num = r_powers.len();
         let r_powers_repr = cfg_iter!(r_powers)
-            .map(|r| r.into_repr())
+            .map(|r| r.into_bigint())
             .collect::<Vec<_>>();
 
         let mut bases = vec![];
         for i in 0..num {
             bases.push(ciphertexts[i].X_r);
         }
-        a.push(VariableBaseMSM::multi_scalar_mul(&bases, &r_powers_repr));
+        a.push(E::G1::msm_bigint(&bases, &r_powers_repr));
 
         for j in 0..ciphertexts[0].enc_chunks.len() {
             let mut bases = vec![];
             for i in 0..num {
                 bases.push(ciphertexts[i].enc_chunks[j]);
             }
-            a.push(VariableBaseMSM::multi_scalar_mul(&bases, &r_powers_repr));
+            a.push(E::G1::msm_bigint(&bases, &r_powers_repr));
         }
 
         let mut bases = vec![];
         for i in 0..num {
             bases.push(ciphertexts[i].commitment);
         }
-        a.push(VariableBaseMSM::multi_scalar_mul(&bases, &r_powers_repr).neg());
-        batch_normalize_projective_into_affine(a)
+        a.push(E::G1::msm_bigint(&bases, &r_powers_repr).neg());
+        E::G1::normalize_batch(&a)
     }
 
     pub fn get_g2_for_ciphertext_commitment_pairing_checks(
@@ -869,105 +677,68 @@ impl<E: PairingEngine> Encryption<E> {
     }
 }
 
-impl<E: PairingEngine> Ciphertext<E> {
+impl<E: Pairing> Ciphertext<E> {
     impl_enc_funcs!();
 
     /// Verify ciphertext commitment and snark proof
     pub fn verify_commitment_and_proof(
         &self,
         proof: &ark_groth16::Proof<E>,
-        snark_vk: &ark_groth16::VerifyingKey<E>,
-        ek: &EncryptionKey<E>,
-        gens: &EncryptionGens<E>,
+        snark_vk: &ark_groth16::PreparedVerifyingKey<E>,
+        ek: impl Into<PreparedEncryptionKey<E>>,
+        gens: impl Into<PreparedEncryptionGens<E>>,
     ) -> crate::Result<()> {
         self.verify_commitment(ek, gens)?;
-        saver_groth16::verify_proof(&ark_groth16::prepare_verifying_key(&snark_vk), proof, self)
-    }
-
-    /// Same as `Self::verify_commitment_and_proof` but takes prepared encryption key and generators
-    /// for faster verification
-    pub fn verify_commitment_and_proof_given_prepared(
-        &self,
-        proof: &ark_groth16::Proof<E>,
-        snark_vk: &ark_groth16::PreparedVerifyingKey<E>,
-        ek: &PreparedEncryptionKey<E>,
-        gens: &PreparedEncryptionGens<E>,
-    ) -> crate::Result<()> {
-        self.verify_commitment_given_prepared(ek, gens)?;
-        saver_groth16::verify_proof(snark_vk, proof, self)
+        saver_groth16::verify_proof(&snark_vk, proof, self)
     }
 
     pub fn decrypt_given_groth16_vk(
         &self,
-        sk: &SecretKey<E::Fr>,
-        dk: &DecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &ark_groth16::VerifyingKey<E>,
         chunk_bit_size: u8,
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
-        let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
+    ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
+        let g_i = saver_groth16::get_gs_for_encryption(snark_vk);
         self.decrypt(sk, dk, g_i, chunk_bit_size)
     }
 
-    pub fn decrypt_given_groth16_vk_and_prepared_key(
+    pub fn decrypt_given_groth16_vk_and_pairing_powers(
         &self,
-        sk: &SecretKey<E::Fr>,
-        dk: &PreparedDecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &ark_groth16::VerifyingKey<E>,
         chunk_bit_size: u8,
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
+        pairing_powers: &[Vec<PairingOutput<E>>],
+    ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
         let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
-        self.decrypt_given_prepared(sk, dk, g_i, chunk_bit_size)
-    }
-
-    pub fn decrypt_given_groth16_vk_and_prepared_key_and_pairing_powers(
-        &self,
-        sk: &SecretKey<E::Fr>,
-        dk: &PreparedDecryptionKey<E>,
-        snark_vk: &ark_groth16::VerifyingKey<E>,
-        chunk_bit_size: u8,
-        pairing_powers: &[Vec<E::Fqk>],
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
-        let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
-        self.decrypt_given_prepared_and_pairing_powers(sk, dk, g_i, chunk_bit_size, pairing_powers)
+        self.decrypt_given_pairing_powers(sk, dk, g_i, chunk_bit_size, pairing_powers)
     }
 
     pub fn verify_decryption_given_groth16_vk(
         &self,
-        message: &E::Fr,
+        message: &E::ScalarField,
         nu: &E::G1Affine,
         chunk_bit_size: u8,
-        dk: &DecryptionKey<E>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &ark_groth16::VerifyingKey<E>,
-        gens: &EncryptionGens<E>,
+        gens: impl Into<PreparedEncryptionGens<E>>,
     ) -> crate::Result<()> {
         let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
         self.verify_decryption(message, nu, chunk_bit_size, dk, g_i, gens)
     }
-
-    pub fn verify_decryption_given_groth16_vk_and_prepared(
-        &self,
-        message: &E::Fr,
-        nu: &E::G1Affine,
-        chunk_bit_size: u8,
-        dk: &PreparedDecryptionKey<E>,
-        snark_vk: &ark_groth16::VerifyingKey<E>,
-        gens: &PreparedEncryptionGens<E>,
-    ) -> crate::Result<()> {
-        let g_i = saver_groth16::get_gs_for_encryption(&snark_vk);
-        self.verify_decryption_given_prepared(message, nu, chunk_bit_size, dk, g_i, gens)
-    }
 }
 
-impl<E: PairingEngine> CiphertextAlt<E> {
+impl<E: Pairing> CiphertextAlt<E> {
     impl_enc_funcs!();
 
     pub fn decrypt_given_legogroth16_vk(
         &self,
-        sk: &SecretKey<E::Fr>,
-        dk: &DecryptionKey<E>,
+        sk: &SecretKey<E::ScalarField>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &legogroth16::VerifyingKey<E>,
         chunk_bit_size: u8,
-    ) -> crate::Result<(E::Fr, E::G1Affine)> {
+    ) -> crate::Result<(E::ScalarField, E::G1Affine)> {
         Encryption::decrypt_given_legogroth16_vk(
             &self.X_r,
             &self.enc_chunks,
@@ -980,12 +751,12 @@ impl<E: PairingEngine> CiphertextAlt<E> {
 
     pub fn verify_decryption_given_legogroth16_vk(
         &self,
-        message: &E::Fr,
+        message: &E::ScalarField,
         chunk_bit_size: u8,
         nu: &E::G1Affine,
-        dk: &DecryptionKey<E>,
+        dk: impl Into<PreparedDecryptionKey<E>>,
         snark_vk: &legogroth16::VerifyingKey<E>,
-        gens: &EncryptionGens<E>,
+        gens: impl Into<PreparedEncryptionGens<E>>,
     ) -> crate::Result<()> {
         let decomposed = utils::decompose(message, chunk_bit_size)?;
         Encryption::verify_decryption_given_legogroth16_vk(
@@ -1005,33 +776,35 @@ pub(crate) mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
-    use crate::keygen::keygen;
+    use crate::keygen::{keygen, DecryptionKey};
+    use crate::setup::EncryptionGens;
     use crate::utils::{chunks_count, decompose};
     use ark_bls12_381::Bls12_381;
+    use ark_ff::One;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     pub fn enc_setup<R: RngCore>(
         chunk_bit_size: u8,
         rng: &mut R,
     ) -> (
         EncryptionGens<Bls12_381>,
-        Vec<<Bls12_381 as PairingEngine>::G1Affine>,
-        SecretKey<<Bls12_381 as PairingEngine>::Fr>,
+        Vec<<Bls12_381 as Pairing>::G1Affine>,
+        SecretKey<<Bls12_381 as Pairing>::ScalarField>,
         EncryptionKey<Bls12_381>,
         DecryptionKey<Bls12_381>,
     ) {
         let n = chunks_count::<Fr>(chunk_bit_size) as usize;
         let gens = EncryptionGens::<Bls12_381>::new_using_rng(rng);
         let g_i = (0..n)
-            .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(rng).into_affine())
+            .map(|_| <Bls12_381 as Pairing>::G1::rand(rng).into_affine())
             .collect::<Vec<_>>();
         let delta = Fr::rand(rng);
         let gamma = Fr::rand(rng);
-        let g_delta = gens.G.mul(delta.into_repr()).into_affine();
-        let g_gamma = gens.G.mul(gamma.into_repr()).into_affine();
+        let g_delta = gens.G.mul_bigint(delta.into_bigint()).into_affine();
+        let g_gamma = gens.G.mul_bigint(gamma.into_bigint()).into_affine();
         let (sk, ek, dk) = keygen(rng, chunk_bit_size, &gens, &g_i, &g_delta, &g_gamma).unwrap();
         (gens, g_i, sk, ek, dk)
     }
@@ -1055,9 +828,9 @@ pub(crate) mod tests {
             let m = gen_messages(&mut rng, n, chunk_bit_size);
             let (gens, g_i, sk, ek, dk) = enc_setup(chunk_bit_size, &mut rng);
 
-            let prepared_gens = gens.prepared();
-            let prepared_ek = ek.prepared();
-            let prepared_dk = dk.prepared();
+            let prepared_gens = PreparedEncryptionGens::from(gens.clone());
+            let prepared_ek = PreparedEncryptionKey::from(ek.clone());
+            let prepared_dk = PreparedDecryptionKey::from(dk.clone());
 
             let start = Instant::now();
             let (ct, _) =
@@ -1074,8 +847,8 @@ pub(crate) mod tests {
                 &ct[0],
                 &ct[1..m.len() + 1],
                 &ct[m.len() + 1],
-                &ek,
-                &gens,
+                ek.clone(),
+                gens.clone(),
             )
             .unwrap();
             println!(
@@ -1085,12 +858,12 @@ pub(crate) mod tests {
             );
 
             let start = Instant::now();
-            Encryption::verify_ciphertext_commitment_given_prepared(
+            Encryption::verify_ciphertext_commitment(
                 &ct[0],
                 &ct[1..m.len() + 1],
                 &ct[m.len() + 1],
-                &prepared_ek,
-                &prepared_gens,
+                prepared_ek.clone(),
+                prepared_gens.clone(),
             )
             .unwrap();
             println!(
@@ -1104,7 +877,7 @@ pub(crate) mod tests {
                 &ct[0],
                 &ct[1..m.len() + 1],
                 &sk,
-                &dk,
+                dk.clone(),
                 &g_i,
                 chunk_bit_size,
             )
@@ -1117,11 +890,11 @@ pub(crate) mod tests {
             assert_eq!(m_, m);
 
             let start = Instant::now();
-            let (m_, _) = Encryption::decrypt_to_chunks_given_prepared(
+            let (m_, _) = Encryption::decrypt_to_chunks(
                 &ct[0],
                 &ct[1..m.len() + 1],
                 &sk,
-                &prepared_dk,
+                prepared_dk.clone(),
                 &g_i,
                 chunk_bit_size,
             )
@@ -1135,11 +908,11 @@ pub(crate) mod tests {
 
             let pairing_powers = prepared_dk.pairing_powers(chunk_bit_size, &g_i).unwrap();
             let start = Instant::now();
-            let (m_, nu) = Encryption::decrypt_to_chunks_given_prepared_and_pairing_powers(
+            let (m_, nu) = Encryption::decrypt_to_chunks_given_pairing_powers(
                 &ct[0],
                 &ct[1..m.len() + 1],
                 &sk,
-                &prepared_dk,
+                prepared_dk.clone(),
                 &g_i,
                 chunk_bit_size,
                 Some(&pairing_powers),
@@ -1153,8 +926,16 @@ pub(crate) mod tests {
             assert_eq!(m_, m);
 
             let start = Instant::now();
-            Encryption::verify_decryption(&m_, &ct[0], &ct[1..m.len() + 1], &nu, &dk, &g_i, &gens)
-                .unwrap();
+            Encryption::verify_decryption(
+                &m_,
+                &ct[0],
+                &ct[1..m.len() + 1],
+                &nu,
+                dk.clone(),
+                &g_i,
+                gens.clone(),
+            )
+            .unwrap();
             println!(
                 "Time taken to verify decryption of {}-bit chunks {:?}",
                 chunk_bit_size,
@@ -1162,14 +943,14 @@ pub(crate) mod tests {
             );
 
             let start = Instant::now();
-            Encryption::verify_decryption_given_prepared(
+            Encryption::verify_decryption(
                 &m_,
                 &ct[0],
                 &ct[1..m.len() + 1],
                 &nu,
-                &prepared_dk,
+                prepared_dk.clone(),
                 &g_i,
-                &prepared_gens,
+                prepared_gens.clone(),
             )
             .unwrap();
             println!(
@@ -1189,9 +970,9 @@ pub(crate) mod tests {
         fn check(chunk_bit_size: u8, count: u8) {
             let mut rng = StdRng::seed_from_u64(0u64);
             let (gens, g_i, sk, ek, dk) = enc_setup(chunk_bit_size, &mut rng);
-            let prepared_ek = ek.prepared();
-            let prepared_dk = dk.prepared();
-            let prepared_gens = gens.prepared();
+            let prepared_gens = PreparedEncryptionGens::from(gens.clone());
+            let prepared_ek = PreparedEncryptionKey::from(ek.clone());
+            let prepared_dk = PreparedDecryptionKey::from(dk.clone());
             let pairing_powers = prepared_dk.pairing_powers(chunk_bit_size, &g_i).unwrap();
 
             let mut total_enc = Duration::default();
@@ -1211,11 +992,11 @@ pub(crate) mod tests {
                 total_enc += start.elapsed();
 
                 let start = Instant::now();
-                ct.verify_commitment(&ek, &gens).unwrap();
+                ct.verify_commitment(ek.clone(), gens.clone()).unwrap();
                 total_ver_com += start.elapsed();
 
                 let start = Instant::now();
-                ct.verify_commitment_given_prepared(&prepared_ek, &prepared_gens)
+                ct.verify_commitment(prepared_ek.clone(), prepared_gens.clone())
                     .unwrap();
                 total_ver_com_prep += start.elapsed();
 
@@ -1223,7 +1004,7 @@ pub(crate) mod tests {
                     &ct.X_r,
                     &ct.enc_chunks,
                     &sk,
-                    &dk,
+                    dk.clone(),
                     &g_i,
                     chunk_bit_size,
                 )
@@ -1233,14 +1014,14 @@ pub(crate) mod tests {
                 assert_eq!(decomposed, chunks);
 
                 let start = Instant::now();
-                let (m_, nu_) = ct.decrypt(&sk, &dk, &g_i, chunk_bit_size).unwrap();
+                let (m_, nu_) = ct.decrypt(&sk, dk.clone(), &g_i, chunk_bit_size).unwrap();
                 total_dec += start.elapsed();
                 assert_eq!(m, m_);
                 assert_eq!(nu, nu_);
 
                 let start = Instant::now();
                 let (m_, nu_) = ct
-                    .decrypt_given_prepared(&sk, &prepared_dk, &g_i, chunk_bit_size)
+                    .decrypt(&sk, prepared_dk.clone(), &g_i, chunk_bit_size)
                     .unwrap();
                 total_dec_prep += start.elapsed();
                 assert_eq!(m, m_);
@@ -1248,9 +1029,9 @@ pub(crate) mod tests {
 
                 let start = Instant::now();
                 let (m_, nu_) = ct
-                    .decrypt_given_prepared_and_pairing_powers(
+                    .decrypt_given_pairing_powers(
                         &sk,
-                        &prepared_dk,
+                        prepared_dk.clone(),
                         &g_i,
                         chunk_bit_size,
                         &pairing_powers,
@@ -1261,18 +1042,18 @@ pub(crate) mod tests {
                 assert_eq!(nu, nu_);
 
                 let start = Instant::now();
-                ct.verify_decryption(&m, &nu, chunk_bit_size, &dk, &g_i, &gens)
+                ct.verify_decryption(&m, &nu, chunk_bit_size, dk.clone(), &g_i, gens.clone())
                     .unwrap();
                 total_ver_dec += start.elapsed();
 
                 let start = Instant::now();
-                ct.verify_decryption_given_prepared(
+                ct.verify_decryption(
                     &m,
                     &nu,
                     chunk_bit_size,
-                    &prepared_dk,
+                    prepared_dk.clone(),
                     &g_i,
-                    &prepared_gens,
+                    prepared_gens.clone(),
                 )
                 .unwrap();
                 total_ver_dec_prep += start.elapsed();
@@ -1320,7 +1101,7 @@ pub(crate) mod tests {
                 let (ct, _) = Encryption::encrypt(&mut rng, &m, &ek, &g_i, chunk_bit_size).unwrap();
 
                 let start = Instant::now();
-                ct.verify_commitment(&ek, &gens).unwrap();
+                ct.verify_commitment(ek.clone(), gens.clone()).unwrap();
                 total_ver_com += start.elapsed();
 
                 cts.push(ct);
@@ -1333,7 +1114,8 @@ pub(crate) mod tests {
             }
 
             let start = Instant::now();
-            Encryption::verify_commitments_in_batch(&cts, &r_powers, &ek, &gens).unwrap();
+            Encryption::verify_commitments_in_batch(&cts, &r_powers, ek.clone(), gens.clone())
+                .unwrap();
             let t = start.elapsed();
 
             println!(

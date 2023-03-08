@@ -1,39 +1,40 @@
 use crate::error::ProofSystemError;
 use crate::statement_proof::StatementProof;
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::io::Write;
 use ark_std::rand::RngCore;
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use vb_accumulator::prelude::{
     MembershipProof, MembershipProofProtocol, MembershipProvingKey, NonMembershipProof,
-    NonMembershipProofProtocol, NonMembershipProvingKey, PublicKey, SetupParams as AccumParams,
+    NonMembershipProofProtocol, NonMembershipProvingKey, PreparedPublicKey, PreparedSetupParams,
+    PublicKey, SetupParams as AccumParams,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AccumulatorMembershipSubProtocol<'a, E: PairingEngine> {
+pub struct AccumulatorMembershipSubProtocol<'a, E: Pairing> {
     pub id: usize,
     pub params: &'a AccumParams<E>,
-    pub public_key: &'a PublicKey<E::G2Affine>,
+    pub public_key: &'a PublicKey<E>,
     pub proving_key: &'a MembershipProvingKey<E::G1Affine>,
     pub accumulator_value: E::G1Affine,
     pub protocol: Option<MembershipProofProtocol<E>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AccumulatorNonMembershipSubProtocol<'a, E: PairingEngine> {
+pub struct AccumulatorNonMembershipSubProtocol<'a, E: Pairing> {
     pub id: usize,
     pub params: &'a AccumParams<E>,
-    pub public_key: &'a PublicKey<E::G2Affine>,
+    pub public_key: &'a PublicKey<E>,
     pub proving_key: &'a NonMembershipProvingKey<E::G1Affine>,
     pub accumulator_value: E::G1Affine,
     pub protocol: Option<NonMembershipProofProtocol<E>>,
 }
 
-impl<'a, E: PairingEngine> AccumulatorMembershipSubProtocol<'a, E> {
+impl<'a, E: Pairing> AccumulatorMembershipSubProtocol<'a, E> {
     pub fn new(
         id: usize,
         params: &'a AccumParams<E>,
-        public_key: &'a PublicKey<E::G2Affine>,
+        public_key: &'a PublicKey<E>,
         proving_key: &'a MembershipProvingKey<E::G1Affine>,
         accumulator_value: E::G1Affine,
     ) -> Self {
@@ -50,7 +51,7 @@ impl<'a, E: PairingEngine> AccumulatorMembershipSubProtocol<'a, E> {
     pub fn init<R: RngCore>(
         &mut self,
         rng: &mut R,
-        blinding: Option<E::Fr>,
+        blinding: Option<E::ScalarField>,
         witness: crate::witness::Membership<E>,
     ) -> Result<(), ProofSystemError> {
         if self.protocol.is_some() {
@@ -85,9 +86,9 @@ impl<'a, E: PairingEngine> AccumulatorMembershipSubProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<G: AffineCurve>(
+    pub fn gen_proof_contribution<G: AffineRepr>(
         &mut self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
@@ -101,24 +102,26 @@ impl<'a, E: PairingEngine> AccumulatorMembershipSubProtocol<'a, E> {
 
     pub fn verify_proof_contribution(
         &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         proof: &MembershipProof<E>,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
         match pairing_checker {
             Some(c) => proof.verify_with_randomized_pairing_checker(
                 &self.accumulator_value,
                 challenge,
-                self.public_key,
-                self.params,
+                pk,
+                params,
                 self.proving_key,
                 c,
             )?,
             None => proof.verify(
                 &self.accumulator_value,
                 challenge,
-                self.public_key,
-                self.params,
+                pk,
+                params,
                 self.proving_key,
             )?,
         }
@@ -126,11 +129,11 @@ impl<'a, E: PairingEngine> AccumulatorMembershipSubProtocol<'a, E> {
     }
 }
 
-impl<'a, E: PairingEngine> AccumulatorNonMembershipSubProtocol<'a, E> {
+impl<'a, E: Pairing> AccumulatorNonMembershipSubProtocol<'a, E> {
     pub fn new(
         id: usize,
         params: &'a AccumParams<E>,
-        public_key: &'a PublicKey<E::G2Affine>,
+        public_key: &'a PublicKey<E>,
         proving_key: &'a NonMembershipProvingKey<E::G1Affine>,
         accumulator_value: E::G1Affine,
     ) -> Self {
@@ -147,7 +150,7 @@ impl<'a, E: PairingEngine> AccumulatorNonMembershipSubProtocol<'a, E> {
     pub fn init<R: RngCore>(
         &mut self,
         rng: &mut R,
-        blinding: Option<E::Fr>,
+        blinding: Option<E::ScalarField>,
         witness: crate::witness::NonMembership<E>,
     ) -> Result<(), ProofSystemError> {
         if self.protocol.is_some() {
@@ -182,9 +185,9 @@ impl<'a, E: PairingEngine> AccumulatorNonMembershipSubProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<G: AffineCurve>(
+    pub fn gen_proof_contribution<G: AffineRepr>(
         &mut self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
@@ -198,24 +201,26 @@ impl<'a, E: PairingEngine> AccumulatorNonMembershipSubProtocol<'a, E> {
 
     pub fn verify_proof_contribution(
         &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         proof: &NonMembershipProof<E>,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
         match pairing_checker {
             Some(c) => proof.verify_with_randomized_pairing_checker(
                 &self.accumulator_value,
                 challenge,
-                self.public_key,
-                self.params,
+                pk,
+                params,
                 self.proving_key,
                 c,
             )?,
             None => proof.verify(
                 &self.accumulator_value,
                 challenge,
-                self.public_key,
-                self.params,
+                pk,
+                params,
                 self.proving_key,
             )?,
         }

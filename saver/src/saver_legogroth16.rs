@@ -1,13 +1,13 @@
 //! Using SAVER with LegoGroth16
 
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::PrimeField;
 use ark_relations::r1cs::ConstraintSynthesizer;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::ops::AddAssign;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
-    io::{Read, Write},
+    ops::AddAssign,
     rand::{Rng, RngCore},
+    vec::Vec,
     UniformRand,
 };
 use legogroth16::{
@@ -19,7 +19,7 @@ use crate::keygen::EncryptionKey;
 use crate::setup::EncryptionGens;
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ProvingKey<E: PairingEngine> {
+pub struct ProvingKey<E: Pairing> {
     /// LegoGroth16's proving key
     pub pk: legogroth16::ProvingKey<E>,
     /// The element `-gamma * G` in `E::G1`.
@@ -27,24 +27,24 @@ pub struct ProvingKey<E: PairingEngine> {
 }
 
 /// These parameters are needed for setting up keys for encryption/decryption
-pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1Affine] {
+pub fn get_gs_for_encryption<E: Pairing>(vk: &VerifyingKey<E>) -> &[E::G1Affine] {
     &vk.gamma_abc_g1[1..]
 }
 
-pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr>>(
+pub fn generate_srs<E: Pairing, R: RngCore, C: ConstraintSynthesizer<E::ScalarField>>(
     circuit: C,
     gens: &EncryptionGens<E>,
     bit_blocks_count: u8,
     rng: &mut R,
 ) -> crate::Result<ProvingKey<E>> {
-    let alpha = E::Fr::rand(rng);
-    let beta = E::Fr::rand(rng);
-    let gamma = E::Fr::rand(rng);
-    let delta = E::Fr::rand(rng);
-    let eta = E::Fr::rand(rng);
+    let alpha = E::ScalarField::rand(rng);
+    let beta = E::ScalarField::rand(rng);
+    let gamma = E::ScalarField::rand(rng);
+    let delta = E::ScalarField::rand(rng);
+    let eta = E::ScalarField::rand(rng);
 
-    let g1_generator = gens.G.into_projective();
-    let neg_gamma_g1 = g1_generator.mul((-gamma).into_repr());
+    let g1_generator = gens.G.into_group();
+    let neg_gamma_g1 = g1_generator.mul_bigint((-gamma).into_bigint());
 
     let pk = generate_parameters_with_qap::<E, C, R, LibsnarkReduction>(
         circuit,
@@ -54,7 +54,7 @@ pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
         delta,
         eta,
         g1_generator,
-        gens.H.into_projective(),
+        gens.H.into_group(),
         bit_blocks_count as usize,
         rng,
     )?;
@@ -71,9 +71,10 @@ pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
 mod protocol_1 {
     use super::*;
     use crate::encryption::Ciphertext;
+    use ark_std::ops::Mul;
 
     #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-    pub struct Proof<E: PairingEngine> {
+    pub struct Proof<E: Pairing> {
         pub proof: legogroth16::Proof<E>,
         pub v_eta_gamma_inv: E::G1Affine,
     }
@@ -82,22 +83,22 @@ mod protocol_1 {
     #[allow(dead_code)]
     pub fn create_proof<E, C, R>(
         circuit: C,
-        v: E::Fr,
-        r: &E::Fr,
+        v: E::ScalarField,
+        r: &E::ScalarField,
         pk: &ProvingKey<E>,
         encryption_key: &EncryptionKey<E>,
         rng: &mut R,
     ) -> crate::Result<Proof<E>>
     where
-        E: PairingEngine,
-        C: ConstraintSynthesizer<E::Fr>,
+        E: Pairing,
+        C: ConstraintSynthesizer<E::ScalarField>,
         R: Rng,
     {
         let mut proof = create_random_proof(circuit, v, &pk.pk, rng)?;
 
         // proof.c = proof.c + r * P_2
-        let mut c = proof.c.into_projective();
-        c.add_assign(encryption_key.P_2.mul(r.into_repr()));
+        let mut c = proof.c.into_group();
+        c.add_assign(encryption_key.P_2.mul_bigint(r.into_bigint()));
         proof.c = c.into_affine();
 
         let proof = Proof {
@@ -108,19 +109,19 @@ mod protocol_1 {
     }
 
     #[allow(dead_code)]
-    pub fn verify_proof<E: PairingEngine>(
+    pub fn verify_proof<E: Pairing>(
         pvk: &PreparedVerifyingKey<E>,
         proof: &Proof<E>,
         ciphertext: &Ciphertext<E>,
     ) -> crate::Result<()> {
         // verify_link_proof(&pvk.vk, &proof.proof)?;
 
-        let mut d = ciphertext.X_r.into_projective();
+        let mut d = ciphertext.X_r.into_group();
         for c in ciphertext.enc_chunks.iter() {
-            d.add_assign(c.into_projective())
+            d.add_assign(c.into_group())
         }
-        d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
-        d.add_assign_mixed(&proof.v_eta_gamma_inv);
+        d.add_assign(&pvk.vk.gamma_abc_g1[0]);
+        d.add_assign(&proof.v_eta_gamma_inv);
 
         verify_qap_proof(
             pvk,
@@ -138,43 +139,44 @@ mod protocol_1 {
 mod protocol_2 {
     use super::*;
     use crate::encryption::CiphertextAlt;
+    use ark_std::ops::Add;
 
     /// `r` is the randomness used during the encryption
     #[allow(dead_code)]
     pub fn create_proof<E, C, R>(
         circuit: C,
-        v: E::Fr,
-        r: &E::Fr,
+        v: E::ScalarField,
+        r: &E::ScalarField,
         pk: &ProvingKey<E>,
         encryption_key: &EncryptionKey<E>,
         rng: &mut R,
     ) -> crate::Result<Proof<E>>
     where
-        E: PairingEngine,
-        C: ConstraintSynthesizer<E::Fr>,
+        E: Pairing,
+        C: ConstraintSynthesizer<E::ScalarField>,
         R: Rng,
     {
         let mut proof = create_random_proof(circuit, v, &pk.pk, rng)?;
 
         // proof.c = proof.c + r * P_2
-        let mut c = proof.c.into_projective();
-        c.add_assign(encryption_key.P_2.mul(r.into_repr()));
+        let mut c = proof.c.into_group();
+        c.add_assign(encryption_key.P_2.mul_bigint(r.into_bigint()));
         proof.c = c.into_affine();
 
         Ok(proof)
     }
 
     #[allow(dead_code)]
-    pub fn verify_proof<E: PairingEngine>(
+    pub fn verify_proof<E: Pairing>(
         pvk: &PreparedVerifyingKey<E>,
         proof: &Proof<E>,
         ciphertext: &CiphertextAlt<E>,
     ) -> crate::Result<()> {
         // verify_link_proof(&pvk.vk, &proof)?;
         // d = G[0] + r*X_1 + m1*G[1] + r*X_2 + m2*G[2] + .. + r*X_n + mn*G[n] + r * X_0 + v * (eta/gamma)*G
-        let mut d = proof.d.into_projective().add_mixed(&ciphertext.X_r_sum);
-        d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
-        d.add_assign_mixed(&ciphertext.X_r);
+        let mut d = proof.d.into_group().add(&ciphertext.X_r_sum);
+        d.add_assign(&pvk.vk.gamma_abc_g1[0]);
+        d.add_assign(&ciphertext.X_r);
         verify_qap_proof(pvk, proof.a, proof.b, proof.c, d.into_affine()).map_err(|e| e.into())
     }
 }
@@ -182,7 +184,7 @@ mod protocol_2 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ops::Add;
+    use std::ops::{Add, Mul};
     use std::time::Instant;
 
     use crate::circuit::BitsizeCheckCircuit;
@@ -196,7 +198,7 @@ mod tests {
     use legogroth16::prepare_verifying_key;
     use legogroth16::prover::verify_witness_commitment;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn encrypt_and_snark_verification() {
@@ -228,9 +230,7 @@ mod tests {
                 Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i).unwrap();
             let x_r_sum =
                 ek.X.iter()
-                    .fold(<Bls12_381 as PairingEngine>::G1Affine::zero(), |a, &b| {
-                        a.add(b)
-                    })
+                    .fold(<Bls12_381 as Pairing>::G1::zero(), |a, &b| a.add(b))
                     .mul(r)
                     .into_affine();
 
@@ -238,7 +238,7 @@ mod tests {
                 &ct[0],
                 &ct[1..n as usize + 1],
                 &sk,
-                &dk,
+                dk.clone(),
                 &g_i,
                 chunk_bit_size,
             )
@@ -272,8 +272,8 @@ mod tests {
                 &ct[0],
                 &ct[1..n as usize + 1],
                 &ct[n as usize + 1],
-                &ek,
-                &gens,
+                ek.clone(),
+                gens.clone(),
             )
             .unwrap();
             let ct2 = CiphertextAlt {
@@ -306,8 +306,8 @@ mod tests {
                 &ct[0],
                 &ct[1..n as usize + 1],
                 &ct[n as usize + 1],
-                &ek,
-                &gens,
+                ek.clone(),
+                gens.clone(),
             )
             .unwrap();
             let ct1 = Ciphertext {

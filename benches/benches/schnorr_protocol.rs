@@ -1,5 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::PairingEngine;
+use ark_ec::pairing::Pairing;
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
@@ -17,19 +17,19 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
-type Fr = <Bls12_381 as PairingEngine>::Fr;
+type Fr = <Bls12_381 as Pairing>::ScalarField;
 
 macro_rules! bench_single {
     ($group_affine:ident, $group_projective:ident, $c: ident) => {
         let mut rng = StdRng::seed_from_u64(0u64);
         impl_proof_of_knowledge_of_discrete_log!(Protocol, Proof);
-        let base = <Bls12_381 as PairingEngine>::$group_projective::rand(&mut rng).into_affine();
+        let base = <Bls12_381 as Pairing>::$group_projective::rand(&mut rng).into_affine();
         let witness = Fr::rand(&mut rng);
 
         $c.bench_function("Generate proof", |b| {
             b.iter(|| {
                 let blinding = Fr::rand(&mut rng);
-                let protocol = Protocol::<<Bls12_381 as PairingEngine>::$group_affine>::init(
+                let protocol = Protocol::<<Bls12_381 as Pairing>::$group_affine>::init(
                     black_box(witness),
                     blinding,
                     black_box(&base),
@@ -42,7 +42,7 @@ macro_rules! bench_single {
         let y = base.mul(witness.into_repr()).into_affine();
         let blinding = Fr::rand(&mut rng);
         let protocol =
-            Protocol::<<Bls12_381 as PairingEngine>::$group_affine>::init(witness, blinding, &base);
+            Protocol::<<Bls12_381 as Pairing>::$group_affine>::init(witness, blinding, &base);
         // Not benchmarking challenge contribution as that is just serialization
         let challenge = Fr::rand(&mut rng);
         let proof = protocol.gen_proof(&challenge);
@@ -65,9 +65,7 @@ macro_rules! bench_vector {
         for count in counts {
             let bases = (0..count)
                 .into_iter()
-                .map(|_| {
-                    <Bls12_381 as PairingEngine>::$group_projective::rand(&mut rng).into_affine()
-                })
+                .map(|_| <Bls12_381 as Pairing>::$group_projective::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
             let witnesses = (0..count)
                 .into_iter()

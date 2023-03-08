@@ -1,11 +1,14 @@
 use crate::circuit::BitsizeCheckCircuit;
 use crate::commitment::ChunkedCommitment;
 use crate::encryption::Encryption;
+use crate::keygen::{PreparedDecryptionKey, PreparedEncryptionKey};
 use crate::saver_groth16::{create_proof, verify_proof};
-use crate::setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens};
+use crate::setup::{
+    setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens,
+};
 use crate::utils::decompose;
 use ark_bls12_381::{Bls12_381, G1Affine};
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_groth16::prepare_verifying_key;
 use ark_std::rand::prelude::StdRng;
@@ -13,7 +16,7 @@ use ark_std::rand::{RngCore, SeedableRng};
 use ark_std::UniformRand;
 use bbs_plus::setup::{KeypairG2, SignatureParamsG1};
 use bbs_plus::signature::SignatureG1;
-use blake2::Blake2b;
+use blake2::Blake2b512;
 use proof_system::prelude::{
     EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statements, Witness,
     WitnessRef, Witnesses,
@@ -27,8 +30,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Add;
 use std::time::Instant;
 
-type Fr = <Bls12_381 as PairingEngine>::Fr;
-type ProofG1 = Proof<Bls12_381, G1Affine, Blake2b>;
+type Fr = <Bls12_381 as Pairing>::ScalarField;
+type ProofG1 = Proof<Bls12_381, G1Affine>;
 
 fn sig_setup<R: RngCore>(
     rng: &mut R,
@@ -71,18 +74,16 @@ fn bbs_plus_verifiably_encrypt_message() {
 
         // For transformed commitment to the message
         let chunked_comm_gens =
-            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
-                &mut rng,
-            );
+            ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>::new_using_rng(&mut rng);
 
         let (snark_srs, sk, ek, dk) =
             setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
         let chunks_count = ek.supported_chunks_count().unwrap();
 
         // Precomputation
-        let prepared_ek = ek.prepared();
-        let prepared_dk = dk.prepared();
-        let prepared_gens = enc_gens.prepared();
+        let prepared_gens = PreparedEncryptionGens::from(enc_gens.clone());
+        let prepared_ek = PreparedEncryptionKey::from(ek.clone());
+        let prepared_dk = PreparedDecryptionKey::from(dk.clone());
         let pairing_powers = prepared_dk
             .pairing_powers_given_groth16_vk(chunk_bit_size, &snark_srs.pk.vk)
             .unwrap();
@@ -112,9 +113,9 @@ fn bbs_plus_verifiably_encrypt_message() {
         let blinding = Fr::rand(&mut rng);
         let comm_single = chunked_comm_gens
             .G
-            .mul(messages[user_id_idx].into_repr())
-            .add(&(chunked_comm_gens.H.mul(blinding.into_repr())));
-        let comm_chunks = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
+            .mul_bigint(messages[user_id_idx].into_bigint())
+            .add(&(chunked_comm_gens.H.mul_bigint(blinding.into_bigint())));
+        let comm_chunks = ChunkedCommitment::<<Bls12_381 as Pairing>::G1Affine>::new(
             &messages[user_id_idx],
             &blinding,
             chunk_bit_size,
@@ -124,7 +125,7 @@ fn bbs_plus_verifiably_encrypt_message() {
         .0;
 
         let bases_comm_chunks =
-            ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
+            ChunkedCommitment::<<Bls12_381 as Pairing>::G1Affine>::commitment_key(
                 &chunked_comm_gens,
                 chunk_bit_size,
             );
@@ -188,7 +189,7 @@ fn bbs_plus_verifiably_encrypt_message() {
         witnesses.add(Witness::PedersenCommitment(wit_comm_ct));
 
         println!("Timing for {}-bit chunks", chunk_bit_size);
-        let proof = ProofG1::new(
+        let proof = ProofG1::new::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             witnesses.clone(),
@@ -203,7 +204,7 @@ fn bbs_plus_verifiably_encrypt_message() {
         assert_eq!(comm_chunks, comm_single);
         let start = Instant::now();
         proof
-            .verify::<StdRng>(&mut rng, proof_spec, None, Default::default())
+            .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, None, Default::default())
             .unwrap();
         println!("Time taken to verify proof {:?}", start.elapsed());
 
@@ -212,14 +213,14 @@ fn bbs_plus_verifiably_encrypt_message() {
         println!("Time taken to create Groth16 proof {:?}", start.elapsed());
 
         let start = Instant::now();
-        ct.verify_commitment(&ek, &enc_gens).unwrap();
+        ct.verify_commitment(ek.clone(), enc_gens.clone()).unwrap();
         println!(
             "Time taken to verify ciphertext commitment {:?}",
             start.elapsed()
         );
 
         let start = Instant::now();
-        ct.verify_commitment_given_prepared(&prepared_ek, &prepared_gens)
+        ct.verify_commitment(prepared_ek.clone(), prepared_gens.clone())
             .unwrap();
         println!(
             "Time taken to verify ciphertext commitment using prepared {:?}",
@@ -233,55 +234,50 @@ fn bbs_plus_verifiably_encrypt_message() {
 
         // Decryptor decrypts
         let (decrypted_message, nu) = ct
-            .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
+            .decrypt_given_groth16_vk(&sk, dk.clone(), &snark_srs.pk.vk, chunk_bit_size)
             .unwrap();
         assert_eq!(decrypted_message, messages[user_id_idx]);
         ct.verify_decryption_given_groth16_vk(
             &decrypted_message,
             &nu,
             chunk_bit_size,
-            &dk,
+            dk.clone(),
             &snark_srs.pk.vk,
-            &enc_gens,
+            enc_gens.clone(),
         )
         .unwrap();
 
         let (decrypted_message, nu) = ct
-            .decrypt_given_groth16_vk_and_prepared_key(
-                &sk,
-                &prepared_dk,
-                &snark_srs.pk.vk,
-                chunk_bit_size,
-            )
+            .decrypt_given_groth16_vk(&sk, prepared_dk.clone(), &snark_srs.pk.vk, chunk_bit_size)
             .unwrap();
         assert_eq!(decrypted_message, messages[user_id_idx]);
-        ct.verify_decryption_given_groth16_vk_and_prepared(
+        ct.verify_decryption_given_groth16_vk(
             &decrypted_message,
             &nu,
             chunk_bit_size,
-            &prepared_dk,
+            prepared_dk.clone(),
             &snark_srs.pk.vk,
-            &prepared_gens,
+            prepared_gens.clone(),
         )
         .unwrap();
 
         let (decrypted_message, nu) = ct
-            .decrypt_given_groth16_vk_and_prepared_key_and_pairing_powers(
+            .decrypt_given_groth16_vk_and_pairing_powers(
                 &sk,
-                &prepared_dk,
+                prepared_dk.clone(),
                 &snark_srs.pk.vk,
                 chunk_bit_size,
                 &pairing_powers,
             )
             .unwrap();
         assert_eq!(decrypted_message, messages[user_id_idx]);
-        ct.verify_decryption_given_groth16_vk_and_prepared(
+        ct.verify_decryption_given_groth16_vk(
             &decrypted_message,
             &nu,
             chunk_bit_size,
-            &prepared_dk,
+            prepared_dk.clone(),
             &snark_srs.pk.vk,
-            &prepared_gens,
+            prepared_gens.clone(),
         )
         .unwrap();
     }
@@ -309,18 +305,16 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
 
         // For transformed commitment to the message
         let chunked_comm_gens =
-            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
-                &mut rng,
-            );
+            ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>::new_using_rng(&mut rng);
 
         let (snark_srs, sk, ek, dk) =
             setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
         let chunks_count = ek.supported_chunks_count().unwrap();
 
         // Precomputation
-        let prepared_ek = ek.prepared();
-        let prepared_dk = dk.prepared();
-        let prepared_gens = enc_gens.prepared();
+        let prepared_gens = PreparedEncryptionGens::from(enc_gens.clone());
+        let prepared_ek = PreparedEncryptionKey::from(ek.clone());
+        let prepared_dk = PreparedDecryptionKey::from(dk.clone());
         let pairing_powers = prepared_dk
             .pairing_powers_given_groth16_vk(chunk_bit_size, &snark_srs.pk.vk)
             .unwrap();
@@ -359,9 +353,9 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         let blinding_1 = Fr::rand(&mut rng);
         let comm_single_1 = chunked_comm_gens
             .G
-            .mul(messages[m_idx_1].into_repr())
-            .add(&(chunked_comm_gens.H.mul(blinding_1.into_repr())));
-        let comm_chunks_1 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
+            .mul_bigint(messages[m_idx_1].into_bigint())
+            .add(&(chunked_comm_gens.H.mul_bigint(blinding_1.into_bigint())));
+        let comm_chunks_1 = ChunkedCommitment::<<Bls12_381 as Pairing>::G1Affine>::new(
             &messages[m_idx_1],
             &blinding_1,
             chunk_bit_size,
@@ -378,9 +372,9 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         let blinding_2 = Fr::rand(&mut rng);
         let comm_single_2 = chunked_comm_gens
             .G
-            .mul(messages[m_idx_2].into_repr())
-            .add(&(chunked_comm_gens.H.mul(blinding_2.into_repr())));
-        let comm_chunks_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
+            .mul_bigint(messages[m_idx_2].into_bigint())
+            .add(&(chunked_comm_gens.H.mul_bigint(blinding_2.into_bigint())));
+        let comm_chunks_2 = ChunkedCommitment::<<Bls12_381 as Pairing>::G1Affine>::new(
             &messages[m_idx_2],
             &blinding_2,
             chunk_bit_size,
@@ -397,9 +391,9 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         let blinding_3 = Fr::rand(&mut rng);
         let comm_single_3 = chunked_comm_gens
             .G
-            .mul(messages[m_idx_3].into_repr())
-            .add(&(chunked_comm_gens.H.mul(blinding_3.into_repr())));
-        let comm_chunks_3 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
+            .mul_bigint(messages[m_idx_3].into_bigint())
+            .add(&(chunked_comm_gens.H.mul_bigint(blinding_3.into_bigint())));
+        let comm_chunks_3 = ChunkedCommitment::<<Bls12_381 as Pairing>::G1Affine>::new(
             &messages[m_idx_3],
             &blinding_3,
             chunk_bit_size,
@@ -409,7 +403,7 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         .0;
 
         let bases_comm_chunks =
-            ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
+            ChunkedCommitment::<<Bls12_381 as Pairing>::G1Affine>::commitment_key(
                 &chunked_comm_gens,
                 chunk_bit_size,
             );
@@ -544,7 +538,7 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         witnesses.add(Witness::PedersenCommitment(wit_comm_chunks_3));
         witnesses.add(Witness::PedersenCommitment(wit_comm_ct_3));
 
-        let proof = ProofG1::new(
+        let proof = ProofG1::new::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             witnesses.clone(),
@@ -560,7 +554,7 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         assert_eq!(comm_chunks_3, comm_single_3);
         let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
         proof
-            .verify::<StdRng>(&mut rng, proof_spec, None, Default::default())
+            .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, None, Default::default())
             .unwrap();
 
         for (ct, proof, m_idx) in vec![
@@ -568,66 +562,64 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
             (&ct_2, &proof_2, m_idx_2),
             (&ct_3, &proof_3, m_idx_3),
         ] {
-            ct.verify_commitment_and_proof(proof, &snark_srs.pk.vk, &ek, &enc_gens)
+            ct.verify_commitment_and_proof(proof, &pvk, prepared_ek.clone(), prepared_gens.clone())
                 .unwrap();
-            ct.verify_commitment_and_proof_given_prepared(
-                proof,
-                &pvk,
-                &prepared_ek,
-                &prepared_gens,
-            )
-            .unwrap();
 
             let (decrypted_message, nu) = ct
-                .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
+                .decrypt_given_groth16_vk(
+                    &sk,
+                    prepared_dk.clone(),
+                    &snark_srs.pk.vk,
+                    chunk_bit_size,
+                )
                 .unwrap();
             assert_eq!(decrypted_message, messages[m_idx]);
             ct.verify_decryption_given_groth16_vk(
                 &decrypted_message,
                 &nu,
                 chunk_bit_size,
-                &dk,
+                prepared_dk.clone(),
                 &snark_srs.pk.vk,
-                &enc_gens,
+                prepared_gens.clone(),
             )
             .unwrap();
 
             let (decrypted_message, nu) = ct
-                .decrypt_given_groth16_vk_and_prepared_key(
+                .decrypt_given_groth16_vk(
                     &sk,
-                    &prepared_dk,
+                    prepared_dk.clone(),
                     &snark_srs.pk.vk,
                     chunk_bit_size,
                 )
                 .unwrap();
             assert_eq!(decrypted_message, messages[m_idx]);
-            ct.verify_decryption_given_groth16_vk_and_prepared(
+            ct.verify_decryption_given_groth16_vk(
                 &decrypted_message,
                 &nu,
                 chunk_bit_size,
-                &prepared_dk,
+                prepared_dk.clone(),
                 &snark_srs.pk.vk,
-                &prepared_gens,
+                prepared_gens.clone(),
             )
             .unwrap();
 
             let (decrypted_message, nu) = ct
-                .decrypt_given_groth16_vk_and_prepared_key_and_pairing_powers(
+                .decrypt_given_groth16_vk_and_pairing_powers(
                     &sk,
-                    &prepared_dk,
+                    prepared_dk.clone(),
                     &snark_srs.pk.vk,
                     chunk_bit_size,
                     &pairing_powers,
                 )
                 .unwrap();
             assert_eq!(decrypted_message, messages[m_idx]);
-            ct.verify_decryption_given_groth16_vk_and_prepared(
+            ct.verify_decryption_given_groth16_vk(
                 &decrypted_message,
                 &nu,
                 chunk_bit_size,
-                &prepared_dk,
+                prepared_dk.clone(),
                 &snark_srs.pk.vk,
-                &prepared_gens,
+                prepared_gens.clone(),
             )
             .unwrap();
         }
@@ -665,9 +657,7 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
 
         // For transformed commitment to the message
         let chunked_comm_gens =
-            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
-                &mut rng,
-            );
+            ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>::new_using_rng(&mut rng);
 
         let (snark_srs, sk, ek, dk) =
             setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
@@ -726,9 +716,9 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
 
         let comm_single_1 = chunked_comm_gens
             .G
-            .mul(messages_1[user_id_idx].into_repr())
-            .add(&(chunked_comm_gens.H.mul(blinding_1.into_repr())));
-        let comm_chunks_1 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
+            .mul_bigint(messages_1[user_id_idx].into_bigint())
+            .add(&(chunked_comm_gens.H.mul_bigint(blinding_1.into_bigint())));
+        let comm_chunks_1 = ChunkedCommitment::<<Bls12_381 as Pairing>::G1Affine>::new(
             &messages_1[user_id_idx],
             &blinding_1,
             chunk_bit_size,
@@ -739,9 +729,9 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
 
         let comm_single_2 = chunked_comm_gens
             .G
-            .mul(messages_2[user_id_idx].into_repr())
-            .add(&(chunked_comm_gens.H.mul(blinding_2.into_repr())));
-        let comm_chunks_2 = ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::new(
+            .mul_bigint(messages_2[user_id_idx].into_bigint())
+            .add(&(chunked_comm_gens.H.mul_bigint(blinding_2.into_bigint())));
+        let comm_chunks_2 = ChunkedCommitment::<<Bls12_381 as Pairing>::G1Affine>::new(
             &messages_2[user_id_idx],
             &blinding_2,
             chunk_bit_size,
@@ -751,7 +741,7 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         .0;
 
         let bases_comm_chunks =
-            ChunkedCommitment::<<Bls12_381 as PairingEngine>::G1Affine>::commitment_key(
+            ChunkedCommitment::<<Bls12_381 as Pairing>::G1Affine>::commitment_key(
                 &chunked_comm_gens,
                 chunk_bit_size,
             );
@@ -872,7 +862,7 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         witnesses.add(Witness::PedersenCommitment(wit_comm_chunks_2));
         witnesses.add(Witness::PedersenCommitment(wit_comm_ct_2));
 
-        let proof = ProofG1::new(
+        let proof = ProofG1::new::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             witnesses.clone(),
@@ -888,7 +878,7 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         assert_eq!(comm_chunks_2, comm_single_2);
         let start = Instant::now();
         proof
-            .verify::<StdRng>(&mut rng, proof_spec, None, Default::default())
+            .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, None, Default::default())
             .unwrap();
         println!("Time taken to verify proof {:?}", start.elapsed());
 
@@ -903,8 +893,10 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
 
         let start = Instant::now();
-        ct_1.verify_commitment(&ek, &enc_gens).unwrap();
-        ct_2.verify_commitment(&ek, &enc_gens).unwrap();
+        ct_1.verify_commitment(ek.clone(), enc_gens.clone())
+            .unwrap();
+        ct_2.verify_commitment(ek.clone(), enc_gens.clone())
+            .unwrap();
         println!(
             "Time taken to verify ciphertext commitment {:?}",
             start.elapsed()
@@ -920,12 +912,12 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
 
         // Decryptor decrypts
         let (decrypted_message_1, nu_1) = ct_1
-            .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
+            .decrypt_given_groth16_vk(&sk, dk.clone(), &snark_srs.pk.vk, chunk_bit_size)
             .unwrap();
         assert_eq!(decrypted_message_1, messages_1[user_id_idx]);
 
         let (decrypted_message_2, nu_2) = ct_2
-            .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
+            .decrypt_given_groth16_vk(&sk, dk.clone(), &snark_srs.pk.vk, chunk_bit_size)
             .unwrap();
         assert_eq!(decrypted_message_2, messages_2[user_id_idx]);
 
@@ -933,9 +925,9 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
             &decrypted_message_1,
             &nu_1,
             chunk_bit_size,
-            &dk,
+            dk.clone(),
             &snark_srs.pk.vk,
-            &enc_gens,
+            enc_gens.clone(),
         )
         .unwrap();
 
@@ -943,9 +935,9 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
             &decrypted_message_2,
             &nu_2,
             chunk_bit_size,
-            &dk,
+            dk.clone(),
             &snark_srs.pk.vk,
-            &enc_gens,
+            enc_gens.clone(),
         )
         .unwrap();
     }

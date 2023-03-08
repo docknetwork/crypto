@@ -1,7 +1,6 @@
-use ark_ec::AffineCurve;
+use ark_ec::AffineRepr;
 use ark_ff::PrimeField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 
 use zeroize::Zeroize;
@@ -42,7 +41,7 @@ pub struct VerifiableShares<F: PrimeField>(pub Vec<VerifiableShare<F>>);
 /// commitment (scalar multiplication of the coefficient with a public group element). The former is used
 /// in Pedersen secret sharing and the latter in Feldman
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommitmentToCoefficients<G: AffineCurve>(pub Vec<G>);
+pub struct CommitmentToCoefficients<G: AffineRepr>(pub Vec<G>);
 
 impl<F: PrimeField> Drop for Share<F> {
     fn drop(&mut self) {
@@ -73,13 +72,13 @@ impl<F: PrimeField> Shares<F> {
     }
 }
 
-impl<G: AffineCurve> From<Vec<G>> for CommitmentToCoefficients<G> {
+impl<G: AffineRepr> From<Vec<G>> for CommitmentToCoefficients<G> {
     fn from(coeffs: Vec<G>) -> Self {
         CommitmentToCoefficients(coeffs)
     }
 }
 
-impl<G: AffineCurve> CommitmentToCoefficients<G> {
+impl<G: AffineRepr> CommitmentToCoefficients<G> {
     /// The constant coefficient is the secret and thus returns the commitment to that.
     pub fn commitment_to_secret(&self) -> &G {
         &self.0[0]

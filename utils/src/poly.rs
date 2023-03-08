@@ -1,5 +1,5 @@
 use ark_ff::{PrimeField, Zero};
-use ark_poly::{univariate::DensePolynomial, Polynomial, UVPolynomial};
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
 use ark_std::{cfg_into_iter, vec::Vec};
 
 #[cfg(feature = "parallel")]

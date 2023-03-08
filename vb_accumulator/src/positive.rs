@@ -88,17 +88,11 @@
 //! // Similarly, `compute_new_post_remove`, `compute_new_post_add_batch`, `compute_membership_witness`, etc
 //! ```
 
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::fields::Field;
-use ark_ff::{batch_inversion, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    cfg_iter, cfg_iter_mut,
-    fmt::Debug,
-    io::{Read, Write},
-    vec::Vec,
-    One,
-};
+use ark_ff::{batch_inversion, PrimeField, Zero};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{cfg_iter, cfg_iter_mut, fmt::Debug, vec::Vec};
 use dock_crypto_utils::serde_utils::*;
 
 use serde::{Deserialize, Serialize};
@@ -122,9 +116,7 @@ use rayon::prelude::*;
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct PositiveAccumulator<E: PairingEngine>(
-    #[serde_as(as = "AffineGroupBytes")] pub E::G1Affine,
-);
+pub struct PositiveAccumulator<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub E::G1Affine);
 
 /// Trait to hold common functionality among both positive and universal accumulator
 /// Methods changing or reading accumulator state take a mutable or immutable reference to `State` which
@@ -141,7 +133,7 @@ pub struct PositiveAccumulator<E: PairingEngine>(
 /// a membership witness can be created for an element not present in the accumulator that will satisfy the
 /// verification (pairing) equation and thus make `verify_membership` return true. Thus, before creating
 /// a membership witness, `State` should be checked.
-pub trait Accumulator<E: PairingEngine> {
+pub trait Accumulator<E: Pairing> {
     /// The accumulated value of all the members. It is considered a digest of state of the accumulator
     fn value(&self) -> &E::G1Affine;
 
@@ -149,8 +141,8 @@ pub trait Accumulator<E: PairingEngine> {
     /// already being present
     fn check_before_add(
         &self,
-        element: &E::Fr,
-        state: &dyn State<E::Fr>,
+        element: &E::ScalarField,
+        state: &dyn State<E::ScalarField>,
     ) -> Result<(), VBAccumulatorError> {
         if state.has(element) {
             return Err(VBAccumulatorError::ElementPresent);
@@ -162,8 +154,8 @@ pub trait Accumulator<E: PairingEngine> {
     /// already being absent
     fn check_before_remove(
         &self,
-        element: &E::Fr,
-        state: &dyn State<E::Fr>,
+        element: &E::ScalarField,
+        state: &dyn State<E::ScalarField>,
     ) -> Result<(), VBAccumulatorError> {
         if !state.has(element) {
             return Err(VBAccumulatorError::ElementAbsent);
@@ -174,12 +166,15 @@ pub trait Accumulator<E: PairingEngine> {
     /// Compute new accumulated value after addition. Described in section 2 of the paper
     fn _compute_new_post_add(
         &self,
-        element: &E::Fr,
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         // (element + sk) * self.V
         let y_plus_alpha = *element + sk.0;
-        let newV = self.value().mul(y_plus_alpha.into_repr()).into_affine();
+        let newV = self
+            .value()
+            .mul_bigint(y_plus_alpha.into_bigint())
+            .into_affine();
         (y_plus_alpha, newV)
     }
 
@@ -187,10 +182,10 @@ pub trait Accumulator<E: PairingEngine> {
     /// in section 2 of the paper
     fn _add(
         &self,
-        element: E::Fr,
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
-    ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
+        element: E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
+    ) -> Result<(E::ScalarField, E::G1Affine), VBAccumulatorError> {
         self.check_before_add(&element, state)?;
         let t = self._compute_new_post_add(&element, sk);
         state.add(element);
@@ -200,13 +195,13 @@ pub trait Accumulator<E: PairingEngine> {
     /// Compute new accumulated value after batch addition. Described in section 3 of the paper
     fn _compute_new_post_add_batch(
         &self,
-        elements: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         // d_A(-alpha)
-        let d_alpha = Poly_d::<E::Fr>::eval_direct(elements, &-sk.0);
+        let d_alpha = Poly_d::<E::ScalarField>::eval_direct(elements, &-sk.0);
         // d_A(-alpha) * self.V
-        let newV = self.value().mul(d_alpha.into_repr()).into_affine();
+        let newV = self.value().mul_bigint(d_alpha.into_bigint()).into_affine();
         (d_alpha, newV)
     }
 
@@ -214,10 +209,10 @@ pub trait Accumulator<E: PairingEngine> {
     /// in section 3 of the paper
     fn _add_batch(
         &self,
-        elements: Vec<E::Fr>,
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
-    ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
+        elements: Vec<E::ScalarField>,
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
+    ) -> Result<(E::ScalarField, E::G1Affine), VBAccumulatorError> {
         for element in elements.iter() {
             self.check_before_add(element, state)?;
         }
@@ -231,13 +226,16 @@ pub trait Accumulator<E: PairingEngine> {
     /// Compute new accumulated value after removal. Described in section 2 of the paper
     fn _compute_new_post_remove(
         &self,
-        element: &E::Fr,
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         let mut y_plus_alpha = *element + sk.0;
         // 1/(element + sk) * self.V
         let y_plus_alpha_inv = y_plus_alpha.inverse().unwrap(); // Unwrap is fine as element has to equal secret key for it to panic
-        let newV = self.value().mul(y_plus_alpha_inv.into_repr()).into_affine();
+        let newV = self
+            .value()
+            .mul_bigint(y_plus_alpha_inv.into_bigint())
+            .into_affine();
         y_plus_alpha.zeroize();
         (y_plus_alpha_inv, newV)
     }
@@ -246,10 +244,10 @@ pub trait Accumulator<E: PairingEngine> {
     /// Described in section 2 of the paper
     fn _remove(
         &self,
-        element: &E::Fr,
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
-    ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
+    ) -> Result<(E::ScalarField, E::G1Affine), VBAccumulatorError> {
         self.check_before_remove(element, state)?;
         let t = self._compute_new_post_remove(element, sk);
         state.remove(&element);
@@ -259,13 +257,16 @@ pub trait Accumulator<E: PairingEngine> {
     /// Compute new accumulated value after batch removals. Described in section 3 of the paper
     fn _compute_new_post_remove_batch(
         &self,
-        elements: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         // 1/d_D(-alpha) * self.V
-        let mut d_alpha = Poly_d::<E::Fr>::eval_direct(elements, &-sk.0);
+        let mut d_alpha = Poly_d::<E::ScalarField>::eval_direct(elements, &-sk.0);
         let d_alpha_inv = d_alpha.inverse().unwrap(); // Unwrap is fine as 1 or more elements has to equal secret key for it to panic
-        let newV = self.value().mul(d_alpha_inv.into_repr()).into_affine();
+        let newV = self
+            .value()
+            .mul_bigint(d_alpha_inv.into_bigint())
+            .into_affine();
         d_alpha.zeroize();
         (d_alpha_inv, newV)
     }
@@ -274,10 +275,10 @@ pub trait Accumulator<E: PairingEngine> {
     /// Described in section 3 of the paper
     fn _remove_batch(
         &self,
-        elements: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
-    ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
+    ) -> Result<(E::ScalarField, E::G1Affine), VBAccumulatorError> {
         for element in elements {
             self.check_before_remove(element, state)?;
         }
@@ -291,20 +292,20 @@ pub trait Accumulator<E: PairingEngine> {
     /// Compute new accumulated value after batch additions and removals. Described in section 3 of the paper
     fn _compute_new_post_batch_updates(
         &self,
-        additions: &[E::Fr],
-        removals: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        additions: &[E::ScalarField],
+        removals: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         // d_A(-alpha)/d_D(-alpha) * self.V
-        let d_alpha_add = Poly_d::<E::Fr>::eval_direct(additions, &-sk.0);
+        let d_alpha_add = Poly_d::<E::ScalarField>::eval_direct(additions, &-sk.0);
         let d_alpha = if !removals.is_empty() {
-            let d_alpha_rem = Poly_d::<E::Fr>::eval_direct(removals, &-sk.0);
+            let d_alpha_rem = Poly_d::<E::ScalarField>::eval_direct(removals, &-sk.0);
             let d_alpha_rem_inv = d_alpha_rem.inverse().unwrap(); // Unwrap is fine as 1 or more elements has to equal secret key for it to panic
             d_alpha_add * d_alpha_rem_inv
         } else {
             d_alpha_add
         };
-        let newV = self.value().mul(d_alpha.into_repr()).into_affine();
+        let newV = self.value().mul_bigint(d_alpha.into_bigint()).into_affine();
         (d_alpha, newV)
     }
 
@@ -312,11 +313,11 @@ pub trait Accumulator<E: PairingEngine> {
     /// Reads and writes to state. Described in section 3 of the paper
     fn _batch_updates(
         &self,
-        additions: Vec<E::Fr>,
-        removals: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
-    ) -> Result<(E::Fr, E::G1Affine), VBAccumulatorError> {
+        additions: Vec<E::ScalarField>,
+        removals: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
+    ) -> Result<(E::ScalarField, E::G1Affine), VBAccumulatorError> {
         for element in additions.iter() {
             self.check_before_add(element, state)?;
         }
@@ -336,12 +337,12 @@ pub trait Accumulator<E: PairingEngine> {
     /// Compute membership witness
     fn compute_membership_witness(
         &self,
-        member: &E::Fr,
-        sk: &SecretKey<E::Fr>,
+        member: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
     ) -> MembershipWitness<E::G1Affine> {
         // 1/(element + sk) * self.V
         let mut y_plus_alpha_inv = (*member + sk.0).inverse().unwrap();
-        let witness = self.value().mul(y_plus_alpha_inv.into_repr());
+        let witness = self.value().mul_bigint(y_plus_alpha_inv.into_bigint());
         y_plus_alpha_inv.zeroize();
         MembershipWitness(witness.into_affine())
     }
@@ -349,9 +350,9 @@ pub trait Accumulator<E: PairingEngine> {
     /// Get membership witness for an element present in accumulator. Described in section 2 of the paper
     fn get_membership_witness(
         &self,
-        member: &E::Fr,
-        sk: &SecretKey<E::Fr>,
-        state: &dyn State<E::Fr>,
+        member: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+        state: &dyn State<E::ScalarField>,
     ) -> Result<MembershipWitness<E::G1Affine>, VBAccumulatorError> {
         if !state.has(member) {
             return Err(VBAccumulatorError::ElementAbsent);
@@ -362,16 +363,14 @@ pub trait Accumulator<E: PairingEngine> {
     /// Compute membership witness for batch
     fn compute_membership_witness_for_batch(
         &self,
-        members: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
+        members: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
     ) -> Vec<MembershipWitness<E::G1Affine>> {
         // For each element in `elements`, compute 1/(element + sk)
-        let mut y_sk: Vec<E::Fr> = cfg_iter!(members).map(|e| *e + sk.0).collect();
+        let mut y_sk: Vec<E::ScalarField> = cfg_iter!(members).map(|e| *e + sk.0).collect();
         batch_inversion(&mut y_sk);
-        let wits = multiply_field_elems_with_same_group_elem(
-            self.value().into_projective(),
-            y_sk.as_slice(),
-        );
+        let wits =
+            multiply_field_elems_with_same_group_elem(self.value().into_group(), y_sk.as_slice());
         cfg_iter_mut!(y_sk).for_each(|y| y.zeroize());
         MembershipWitness::projective_points_to_membership_witnesses(wits)
     }
@@ -381,9 +380,9 @@ pub trait Accumulator<E: PairingEngine> {
     /// it uses windowed multiplication and batch invert. Will throw error even if one element is not present
     fn get_membership_witnesses_for_batch(
         &self,
-        members: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-        state: &dyn State<E::Fr>,
+        members: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+        state: &dyn State<E::ScalarField>,
     ) -> Result<Vec<MembershipWitness<E::G1Affine>>, VBAccumulatorError> {
         for element in members {
             if !state.has(element) {
@@ -396,40 +395,34 @@ pub trait Accumulator<E: PairingEngine> {
     /// Check if element present in accumulator given the accumulated value. Described in section 2 of the paper
     fn verify_membership_given_accumulated(
         V: &E::G1Affine,
-        member: &E::Fr,
+        member: &E::ScalarField,
         witness: &MembershipWitness<E::G1Affine>,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
     ) -> bool {
         // e(witness, element*P_tilde + Q_tilde) == e(V, P_tilde) => e(witness, element*P_tilde + Q_tilde) * e(V, P_tilde)^-1 == 1
 
         // element * P_tilde
-        let mut P_tilde_times_y_plus_Q_tilde = params.P_tilde.into_projective();
+        let mut P_tilde_times_y_plus_Q_tilde = params.P_tilde.into_group();
         P_tilde_times_y_plus_Q_tilde *= *member;
 
         // element * P_tilde + Q_tilde
-        P_tilde_times_y_plus_Q_tilde.add_assign_mixed(&pk.0);
+        P_tilde_times_y_plus_Q_tilde += pk.0;
 
         // e(witness, element*P_tilde + Q_tilde) * e(V, -P_tilde) == 1
-        E::product_of_pairings(&[
-            (
-                E::G1Prepared::from(witness.0),
-                E::G2Prepared::from(P_tilde_times_y_plus_Q_tilde.into_affine()),
-            ),
-            (
-                E::G1Prepared::from(*V),
-                E::G2Prepared::from(-params.P_tilde),
-            ),
-        ])
-        .is_one()
+        E::multi_pairing(
+            [witness.0, *V],
+            [P_tilde_times_y_plus_Q_tilde, -params.P_tilde.into_group()],
+        )
+        .is_zero()
     }
 
     /// Check if element present in accumulator. Described in section 2 of the paper
     fn verify_membership(
         &self,
-        member: &E::Fr,
+        member: &E::ScalarField,
         witness: &MembershipWitness<E::G1Affine>,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
     ) -> bool {
         Self::verify_membership_given_accumulated(self.value(), member, witness, pk, params)
@@ -442,7 +435,7 @@ pub trait Accumulator<E: PairingEngine> {
 
 impl<E> Accumulator<E> for PositiveAccumulator<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     fn value(&self) -> &E::G1Affine {
         &self.0
@@ -457,7 +450,7 @@ where
 
 impl<E> PositiveAccumulator<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     /// Create a new positive accumulator
     pub fn initialize(setup_params: &SetupParams<E>) -> Self {
@@ -465,16 +458,20 @@ where
     }
 
     /// Compute new accumulated value after addition
-    pub fn compute_new_post_add(&self, element: &E::Fr, sk: &SecretKey<E::Fr>) -> E::G1Affine {
+    pub fn compute_new_post_add(
+        &self,
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> E::G1Affine {
         self._compute_new_post_add(element, sk).1
     }
 
     /// Add an element to the accumulator and state
     pub fn add(
         &self,
-        element: E::Fr,
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        element: E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._add(element, sk, state)?;
         Ok(Self(acc_pub))
@@ -483,8 +480,8 @@ where
     /// Compute new accumulated value after batch addition
     pub fn compute_new_post_add_batch(
         &self,
-        elements: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
     ) -> E::G1Affine {
         self._compute_new_post_add_batch(elements, sk).1
     }
@@ -492,25 +489,29 @@ where
     /// Add a batch of members in the accumulator
     pub fn add_batch(
         &self,
-        elements: Vec<E::Fr>,
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        elements: Vec<E::ScalarField>,
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._add_batch(elements, sk, state)?;
         Ok(Self(acc_pub))
     }
 
     /// Compute new accumulated value after removal
-    pub fn compute_new_post_remove(&self, element: &E::Fr, sk: &SecretKey<E::Fr>) -> E::G1Affine {
+    pub fn compute_new_post_remove(
+        &self,
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> E::G1Affine {
         self._compute_new_post_remove(element, sk).1
     }
 
     /// Remove an element from the accumulator and state
     pub fn remove(
         &self,
-        element: &E::Fr,
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._remove(element, sk, state)?;
         Ok(Self(acc_pub))
@@ -519,8 +520,8 @@ where
     /// Compute new accumulated value after batch removal
     pub fn compute_new_post_remove_batch(
         &self,
-        elements: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
     ) -> E::G1Affine {
         self._compute_new_post_remove_batch(elements, sk).1
     }
@@ -528,9 +529,9 @@ where
     /// Removing a batch of members from the accumulator
     pub fn remove_batch(
         &self,
-        elements: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._remove_batch(elements, sk, state)?;
         Ok(Self(acc_pub))
@@ -539,9 +540,9 @@ where
     /// Compute new accumulated value after batch additions and removals
     pub fn compute_new_post_batch_updates(
         &self,
-        additions: &[E::Fr],
-        removals: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
+        additions: &[E::ScalarField],
+        removals: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
     ) -> E::G1Affine {
         self._compute_new_post_batch_updates(additions, removals, sk)
             .1
@@ -550,10 +551,10 @@ where
     /// Adding and removing batches of elements from the accumulator
     pub fn batch_updates(
         &self,
-        additions: Vec<E::Fr>,
-        removals: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        additions: Vec<E::ScalarField>,
+        removals: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._batch_updates(additions, removals, sk, state)?;
         Ok(Self(acc_pub))
@@ -578,7 +579,7 @@ pub mod tests {
 
     use super::*;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     /// Setup a positive accumulator, its keys, params and state for testing.
     pub fn setup_positive_accum(
@@ -630,7 +631,7 @@ pub mod tests {
             let m_wit = accumulator
                 .get_membership_witness(&elem, &keypair.secret_key, &state)
                 .unwrap();
-            let mut expected_V = m_wit.0.into_projective();
+            let mut expected_V = m_wit.0.into_group();
             expected_V *= elem + keypair.secret_key.0;
             assert_eq!(expected_V, *accumulator.value());
 
@@ -640,10 +641,7 @@ pub mod tests {
             );
 
             // Witness can be serialized
-            test_serialization!(
-                MembershipWitness<<Bls12_381 as PairingEngine>::G1Affine>,
-                m_wit
-            );
+            test_serialization!(MembershipWitness<<Bls12_381 as Pairing>::G1Affine>, m_wit);
 
             let verification_accumulator =
                 PositiveAccumulator::from_accumulated(accumulator.value().clone());

@@ -1,11 +1,10 @@
 use crate::error::DelegationError;
 use crate::msbm::keys::{
-    PreparedRootIssuerPublicKey, RootIssuerPublicKey, RootIssuerSecretKey, UpdateKey,
-    UserPublicKey, UserSecretKey,
+    PreparedRootIssuerPublicKey, RootIssuerSecretKey, UpdateKey, UserPublicKey, UserSecretKey,
 };
 use crate::msbm::sps_eq_uc_sig::{RandCommitmentProof, Signature};
 use crate::set_commitment::{SetCommitment, SetCommitmentOpening, SetCommitmentSRS};
-use ark_ec::PairingEngine;
+use ark_ec::pairing::Pairing;
 use ark_std::rand::RngCore;
 use ark_std::vec::Vec;
 use ark_std::UniformRand;
@@ -13,9 +12,9 @@ use ark_std::UniformRand;
 /// Credential issued by a root or delegated issuer when it knows the randomness for set commitments
 /// of attributes
 #[derive(Clone, Debug)]
-pub struct Credential<E: PairingEngine> {
+pub struct Credential<E: Pairing> {
     pub max_attributes_per_commitment: usize,
-    pub attributes: Vec<Vec<E::Fr>>,
+    pub attributes: Vec<Vec<E::ScalarField>>,
     pub commitments: Vec<SetCommitment<E>>,
     pub openings: Vec<SetCommitmentOpening<E>>,
     pub signature: Signature<E>,
@@ -24,26 +23,26 @@ pub struct Credential<E: PairingEngine> {
 /// Credential issued by a root issuer when given only the commitment to the randomness for set commitments
 /// of attributes
 #[derive(Clone, Debug)]
-pub struct CredentialWithoutOpenings<E: PairingEngine> {
+pub struct CredentialWithoutOpenings<E: Pairing> {
     pub max_attributes_per_commitment: usize,
-    pub attributes: Vec<Vec<E::Fr>>,
+    pub attributes: Vec<Vec<E::ScalarField>>,
     pub commitments: Vec<SetCommitment<E>>,
     pub signature: Signature<E>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Pseudonym<E: PairingEngine> {
+pub struct Pseudonym<E: Pairing> {
     pub nym: UserPublicKey<E>,
     pub secret: UserSecretKey<E>,
 }
 
-impl<E: PairingEngine> Credential<E> {
+impl<E: Pairing> Credential<E> {
     /// Credential issued directly by the root issuer. The attributes are expected to be unique as the are committed
     /// using a set commitment scheme. One approach is to encode attributes as pairs with 1st element of the
     /// pair as an index and the 2nd element as the actual attribute value like `(0, attribute[0]), (1, attribute[1]), (2, attribute[2]), (n, attribute[n])`
     pub fn issue_root<R: RngCore>(
         rng: &mut R,
-        attributes: Vec<Vec<E::Fr>>,
+        attributes: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,
         update_key_index: Option<usize>,
         secret_key: &RootIssuerSecretKey<E>,
@@ -79,14 +78,14 @@ impl<E: PairingEngine> Credential<E> {
     pub fn delegate_with_new_attributes<R: RngCore>(
         mut self,
         rng: &mut R,
-        attributes: Vec<E::Fr>,
+        attributes: Vec<E::ScalarField>,
         user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        X_0: &E::G1Affine,
         new_update_key_index: Option<usize>,
         update_key: &UpdateKey<E>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
-        let rho = E::Fr::rand(rng);
+        let rho = E::ScalarField::rand(rng);
         let (new_sig, comm, o, new_uk) = self.signature.change_rel(
             attributes.clone(),
             self.attributes.len(),
@@ -98,7 +97,7 @@ impl<E: PairingEngine> Credential<E> {
         self.attributes.push(attributes);
         self.commitments.push(comm);
         self.openings.push(o);
-        self.signature = new_sig.to_orphan(user_secret_key, issuer_public_key);
+        self.signature = new_sig.to_orphan(user_secret_key, X_0);
         Ok((self, new_uk))
     }
 
@@ -107,7 +106,7 @@ impl<E: PairingEngine> Credential<E> {
     pub fn delegate_without_new_attributes(
         mut self,
         user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        X_0: &E::G1Affine,
         new_update_key_index: Option<usize>,
         update_key: &UpdateKey<E>,
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
@@ -116,7 +115,7 @@ impl<E: PairingEngine> Credential<E> {
             assert!(l <= (update_key.start_index + update_key.keys.len()));
             new_uk = Some(update_key.trim_key(self.attributes.len(), l));
         }
-        self.signature = self.signature.to_orphan(user_secret_key, issuer_public_key);
+        self.signature = self.signature.to_orphan(user_secret_key, X_0);
         Ok((self, new_uk))
     }
 
@@ -125,10 +124,23 @@ impl<E: PairingEngine> Credential<E> {
         rng: &mut R,
         user_public_key: &UserPublicKey<E>,
         update_key: Option<&UpdateKey<E>>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
-    ) -> Result<(Self, Option<UpdateKey<E>>, UserPublicKey<E>, E::Fr, E::Fr), DelegationError> {
-        let (mu, psi, chi) = (E::Fr::rand(rng), E::Fr::rand(rng), E::Fr::rand(rng));
+    ) -> Result<
+        (
+            Self,
+            Option<UpdateKey<E>>,
+            UserPublicKey<E>,
+            E::ScalarField,
+            E::ScalarField,
+        ),
+        DelegationError,
+    > {
+        let (mu, psi, chi) = (
+            E::ScalarField::rand(rng),
+            E::ScalarField::rand(rng),
+            E::ScalarField::rand(rng),
+        );
         let (cred, uk, upk) = self.randomize_with_given_randomness(
             &mu,
             psi,
@@ -141,36 +153,34 @@ impl<E: PairingEngine> Credential<E> {
         Ok((cred, uk, upk, psi, chi))
     }
 
-    pub fn randomize_with_given_commitment_randomness<R: RngCore>(
+    pub fn randomize_for_show<R: RngCore>(
         self,
         rng: &mut R,
-        commitment_randomness: &E::Fr,
+        commitment_randomness: &E::ScalarField,
         user_public_key: &UserPublicKey<E>,
-        update_key: Option<&UpdateKey<E>>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        X_0: &E::G1Affine,
         set_comm_srs: &SetCommitmentSRS<E>,
-    ) -> Result<(Self, Option<UpdateKey<E>>, UserPublicKey<E>, E::Fr, E::Fr), DelegationError> {
-        let (psi, chi) = (E::Fr::rand(rng), E::Fr::rand(rng));
-        let (cred, uk, upk) = self.randomize_with_given_randomness(
+    ) -> Result<(Self, UserPublicKey<E>, E::ScalarField, E::ScalarField), DelegationError> {
+        let (psi, chi) = (E::ScalarField::rand(rng), E::ScalarField::rand(rng));
+        let (cred, upk) = self.randomize_without_update_key_with_given_randomness(
             commitment_randomness,
             psi,
             chi,
             user_public_key,
-            update_key,
-            issuer_public_key,
+            X_0,
             set_comm_srs,
         )?;
-        Ok((cred, uk, upk, psi, chi))
+        Ok((cred, upk, psi, chi))
     }
 
     pub fn randomize_with_given_randomness(
         self,
-        mu: &E::Fr,
-        psi: E::Fr,
-        chi: E::Fr,
+        mu: &E::ScalarField,
+        psi: E::ScalarField,
+        chi: E::ScalarField,
         user_public_key: &UserPublicKey<E>,
         update_key: Option<&UpdateKey<E>>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Option<UpdateKey<E>>, UserPublicKey<E>), DelegationError> {
         let (signature, commitments, openings, uk, new_upk) = self.signature.change_rep(
@@ -198,34 +208,56 @@ impl<E: PairingEngine> Credential<E> {
         ))
     }
 
+    pub fn randomize_without_update_key_with_given_randomness(
+        self,
+        mu: &E::ScalarField,
+        psi: E::ScalarField,
+        chi: E::ScalarField,
+        user_public_key: &UserPublicKey<E>,
+        X_0: &E::G1Affine,
+        set_comm_srs: &SetCommitmentSRS<E>,
+    ) -> Result<(Self, UserPublicKey<E>), DelegationError> {
+        let (signature, commitments, openings, new_upk) =
+            self.signature.change_rep_without_update_key(
+                &self.commitments,
+                &self.openings,
+                user_public_key,
+                X_0,
+                &mu,
+                &psi,
+                &chi,
+                set_comm_srs,
+            )?;
+        Ok((
+            Self {
+                max_attributes_per_commitment: self.max_attributes_per_commitment,
+                attributes: self.attributes,
+                commitments,
+                openings,
+                signature,
+            },
+            new_upk,
+        ))
+    }
+
     pub fn verify(
         &self,
         update_key: Option<&UpdateKey<E>>,
         user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(), DelegationError> {
-        let pk = issuer_public_key.prepared();
-        self.verify_using_prepared_key(update_key, user_public_key, &pk, set_comm_srs)
-    }
-
-    pub fn verify_using_prepared_key(
-        &self,
-        update_key: Option<&UpdateKey<E>>,
-        user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &PreparedRootIssuerPublicKey<E>,
-        set_comm_srs: &SetCommitmentSRS<E>,
-    ) -> Result<(), DelegationError> {
-        self.signature.verify_using_prepared_key(
+        let issuer_public_key = issuer_public_key.into();
+        self.signature.verify(
             &self.commitments,
             self.attributes.clone(),
             &self.openings,
             user_public_key,
-            issuer_public_key,
+            issuer_public_key.clone(),
             set_comm_srs,
         )?;
         if let Some(uk) = update_key {
-            uk.verify_using_prepared_key(
+            uk.verify(
                 &self.signature,
                 issuer_public_key,
                 self.max_attributes_per_commitment,
@@ -238,11 +270,9 @@ impl<E: PairingEngine> Credential<E> {
     pub fn convert_orphan_signature(
         &mut self,
         user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        X_0: &E::G1Affine,
     ) {
-        self.signature = self
-            .signature
-            .from_orphan(user_secret_key, issuer_public_key);
+        self.signature = self.signature.from_orphan(user_secret_key, X_0);
     }
 
     /// Run by an entity after receiving a credential from the root issuer. See `Self::process_received` for more details.
@@ -252,7 +282,7 @@ impl<E: PairingEngine> Credential<E> {
         update_key: Option<&UpdateKey<E>>,
         user_public_key: &UserPublicKey<E>,
         user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Pseudonym<E>, Option<UpdateKey<E>>), DelegationError> {
         self.process_received(
@@ -267,13 +297,13 @@ impl<E: PairingEngine> Credential<E> {
 
     pub fn process_received_from_root_using_given_randomness(
         self,
-        mu: &E::Fr,
-        psi: E::Fr,
-        chi: E::Fr,
+        mu: &E::ScalarField,
+        psi: E::ScalarField,
+        chi: E::ScalarField,
         update_key: Option<&UpdateKey<E>>,
         user_public_key: &UserPublicKey<E>,
         user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Pseudonym<E>, Option<UpdateKey<E>>), DelegationError> {
         self.process_received_using_given_randomness(
@@ -296,10 +326,11 @@ impl<E: PairingEngine> Credential<E> {
         update_key: Option<&UpdateKey<E>>,
         user_public_key: &UserPublicKey<E>,
         user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Pseudonym<E>, Option<UpdateKey<E>>), DelegationError> {
-        self.convert_orphan_signature(user_secret_key, issuer_public_key);
+        let issuer_public_key = issuer_public_key.into();
+        self.convert_orphan_signature(user_secret_key, &issuer_public_key.X_0);
         self.process_received(
             rng,
             update_key,
@@ -312,16 +343,17 @@ impl<E: PairingEngine> Credential<E> {
 
     pub fn process_received_delegated_using_given_randomness(
         mut self,
-        mu: &E::Fr,
-        psi: E::Fr,
-        chi: E::Fr,
+        mu: &E::ScalarField,
+        psi: E::ScalarField,
+        chi: E::ScalarField,
         update_key: Option<&UpdateKey<E>>,
         user_public_key: &UserPublicKey<E>,
         user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Pseudonym<E>, Option<UpdateKey<E>>), DelegationError> {
-        self.convert_orphan_signature(user_secret_key, issuer_public_key);
+        let issuer_public_key = issuer_public_key.into();
+        self.convert_orphan_signature(user_secret_key, &issuer_public_key.X_0);
         self.process_received_using_given_randomness(
             mu,
             psi,
@@ -342,13 +374,14 @@ impl<E: PairingEngine> Credential<E> {
         update_key: Option<&UpdateKey<E>>,
         user_public_key: &UserPublicKey<E>,
         user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Pseudonym<E>, Option<UpdateKey<E>>), DelegationError> {
+        let issuer_public_key = issuer_public_key.into();
         self.verify(
             update_key,
             user_public_key,
-            issuer_public_key,
+            issuer_public_key.clone(),
             &set_comm_srs,
         )?;
         let (cred_rand, new_uk, nym, psi, chi) = self
@@ -366,19 +399,20 @@ impl<E: PairingEngine> Credential<E> {
 
     fn process_received_using_given_randomness(
         self,
-        mu: &E::Fr,
-        psi: E::Fr,
-        chi: E::Fr,
+        mu: &E::ScalarField,
+        psi: E::ScalarField,
+        chi: E::ScalarField,
         update_key: Option<&UpdateKey<E>>,
         user_public_key: &UserPublicKey<E>,
         user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Pseudonym<E>, Option<UpdateKey<E>>), DelegationError> {
+        let issuer_public_key = issuer_public_key.into();
         self.verify(
             update_key,
             user_public_key,
-            issuer_public_key,
+            issuer_public_key.clone(),
             &set_comm_srs,
         )?;
         let (cred_rand, new_uk, nym) = self
@@ -397,16 +431,16 @@ impl<E: PairingEngine> Credential<E> {
     }
 }
 
-impl<E: PairingEngine> CredentialWithoutOpenings<E> {
+impl<E: Pairing> CredentialWithoutOpenings<E> {
     /// This resembles the root issuance protocol from Fig 3 from the paper except that it commits to only 1 attribute
     /// set and not 2. The commitment to dummy attribute set is missing.
     pub fn issue_root_with_given_commitment_to_randomness<R: RngCore>(
         rng: &mut R,
-        trapdoor: &E::Fr,
+        trapdoor: &E::ScalarField,
         commitment_to_randomness: Vec<E::G1Affine>,
         commitment_to_randomness_proof: Vec<RandCommitmentProof<E::G1Affine>>,
-        challenge: &E::Fr,
-        attributes: Vec<Vec<E::Fr>>,
+        challenge: &E::ScalarField,
+        attributes: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,
         update_key_index: Option<usize>,
         secret_key: &RootIssuerSecretKey<E>,
@@ -452,16 +486,16 @@ impl<E: PairingEngine> CredentialWithoutOpenings<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::msbm::keys::UserSecretKey;
+    use crate::msbm::keys::{RootIssuerPublicKey, UserSecretKey};
     use crate::msbm::sps_eq_uc_sig::RandCommitmentProtocol;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::{AffineCurve, ProjectiveCurve};
+    use ark_ec::{AffineRepr, CurveGroup};
     use ark_ff::PrimeField;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
     use schnorr_pok::compute_random_oracle_challenge;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     pub fn setup(
         rng: &mut StdRng,
@@ -474,7 +508,7 @@ pub mod tests {
     ) {
         let (set_comm_srs, td) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
             StdRng,
-            Blake2b,
+            Blake2b512,
         >(rng, max_attributes + 20, None);
 
         let isk = RootIssuerSecretKey::<Bls12_381>::new::<StdRng>(rng, max_attributes).unwrap();
@@ -491,6 +525,8 @@ pub mod tests {
 
         let usk = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk = UserPublicKey::new(&usk, set_comm_srs.get_P1());
+
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
 
         let msgs_1 = (0..max_attributes - 2)
             .map(|_| Fr::rand(&mut rng))
@@ -518,14 +554,22 @@ pub mod tests {
                 &set_comm_srs,
             )
             .unwrap();
-            cred.verify(None, &upk, &ipk, &set_comm_srs).unwrap();
+            cred.verify(None, &upk, prep_ipk.clone(), &set_comm_srs)
+                .unwrap();
             assert_eq!(cred.commitments.len(), l);
 
             let (cred_rand, pseudonym, _) = cred
-                .process_received_from_root(&mut rng, None, &upk, &usk, &ipk, &set_comm_srs)
+                .process_received_from_root(
+                    &mut rng,
+                    None,
+                    &upk,
+                    &usk,
+                    prep_ipk.clone(),
+                    &set_comm_srs,
+                )
                 .unwrap();
             cred_rand
-                .verify(None, &pseudonym.nym, &ipk, &set_comm_srs)
+                .verify(None, &pseudonym.nym, prep_ipk.clone(), &set_comm_srs)
                 .unwrap();
             assert_eq!(cred_rand.commitments.len(), l);
 
@@ -545,7 +589,7 @@ pub mod tests {
             let P1 = set_comm_srs.get_P1();
 
             for i in 0..l {
-                commit_to_rands.push(P1.mul(randoms[i].into_repr()).into_affine());
+                commit_to_rands.push(P1.mul_bigint(randoms[i].into_bigint()).into_affine());
                 protocols.push(RandCommitmentProtocol::init(
                     randoms[i].clone(),
                     blindings[i].clone(),
@@ -556,7 +600,7 @@ pub mod tests {
                     .unwrap();
             }
 
-            let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&challenge_bytes);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&challenge_bytes);
             for proto in protocols.into_iter() {
                 proofs.push(proto.gen_proof(&challenge));
             }
@@ -581,7 +625,8 @@ pub mod tests {
                 .map(|r| SetCommitmentOpening::SetWithoutTrapdoor(r))
                 .collect::<Vec<_>>();
             let cred = cred.to_credential(openings);
-            cred.verify(None, &upk, &ipk, &set_comm_srs).unwrap();
+            cred.verify(None, &upk, prep_ipk.clone(), &set_comm_srs)
+                .unwrap();
             assert_eq!(cred.commitments.len(), l);
         }
     }
@@ -608,6 +653,8 @@ pub mod tests {
         let usk4 = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk4 = UserPublicKey::new(&usk4, set_comm_srs.get_P1());
 
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
+
         let msgs_1 = (0..max_attributes - 2)
             .map(|_| Fr::rand(&mut rng))
             .collect::<Vec<_>>();
@@ -627,25 +674,32 @@ pub mod tests {
         .unwrap();
         let uk = uk.unwrap();
         root_cred
-            .verify(Some(&uk), &upk, &ipk, &set_comm_srs)
+            .verify(Some(&uk), &upk, prep_ipk.clone(), &set_comm_srs)
             .unwrap();
         assert_eq!(root_cred.commitments.len(), 1);
 
         let (root_cred_rand, pseudonym, uk) = root_cred
-            .process_received_from_root(&mut rng, Some(&uk), &upk, &usk, &ipk, &set_comm_srs)
+            .process_received_from_root(
+                &mut rng,
+                Some(&uk),
+                &upk,
+                &usk,
+                prep_ipk.clone(),
+                &set_comm_srs,
+            )
             .unwrap();
 
         let uk = uk.unwrap();
         assert_eq!(uk.start_index, 1);
         assert_eq!(uk.keys.len(), 3);
         root_cred_rand
-            .verify(Some(&uk), &pseudonym.nym, &ipk, &set_comm_srs)
+            .verify(Some(&uk), &pseudonym.nym, prep_ipk.clone(), &set_comm_srs)
             .unwrap();
 
         // Delegate without attributes from root
         let (cred1, uk1) = root_cred_rand
             .clone()
-            .delegate_without_new_attributes(&pseudonym.secret, &ipk, Some(3), &uk)
+            .delegate_without_new_attributes(&pseudonym.secret, &ipk.X_0, Some(3), &uk)
             .unwrap();
         assert_eq!(cred1.commitments.len(), 1);
 
@@ -654,12 +708,19 @@ pub mod tests {
         assert_eq!(uk1.keys.len(), 3);
 
         let (cred1_rand, pseudonym1, uk1) = cred1
-            .process_received_delegated(&mut rng, Some(&uk1), &upk1, &usk1, &ipk, &set_comm_srs)
+            .process_received_delegated(
+                &mut rng,
+                Some(&uk1),
+                &upk1,
+                &usk1,
+                prep_ipk.clone(),
+                &set_comm_srs,
+            )
             .unwrap();
         let uk1 = uk1.unwrap();
 
         cred1_rand
-            .verify(Some(&uk1), &pseudonym1.nym, &ipk, &set_comm_srs)
+            .verify(Some(&uk1), &pseudonym1.nym, prep_ipk.clone(), &set_comm_srs)
             .unwrap();
 
         assert_eq!(uk1.start_index, 1);
@@ -672,7 +733,7 @@ pub mod tests {
                 &mut rng,
                 msgs_2.clone(),
                 &pseudonym.secret,
-                &ipk,
+                &ipk.X_0,
                 Some(3),
                 &uk,
                 &set_comm_srs,
@@ -685,13 +746,20 @@ pub mod tests {
         assert_eq!(uk2.keys.len(), 2);
 
         let (cred2_rand, pseudonym2, uk2) = cred2
-            .process_received_delegated(&mut rng, Some(&uk2), &upk2, &usk2, &ipk, &set_comm_srs)
+            .process_received_delegated(
+                &mut rng,
+                Some(&uk2),
+                &upk2,
+                &usk2,
+                prep_ipk.clone(),
+                &set_comm_srs,
+            )
             .unwrap();
 
         let uk2 = uk2.unwrap();
 
         cred2_rand
-            .verify(Some(&uk2), &pseudonym2.nym, &ipk, &set_comm_srs)
+            .verify(Some(&uk2), &pseudonym2.nym, prep_ipk.clone(), &set_comm_srs)
             .unwrap();
 
         assert_eq!(uk2.start_index, 2);
@@ -700,7 +768,7 @@ pub mod tests {
         // Delegate without attributes
         let (cred3, uk3) = cred1_rand
             .clone()
-            .delegate_without_new_attributes(&pseudonym1.secret, &ipk, Some(3), &uk1)
+            .delegate_without_new_attributes(&pseudonym1.secret, &ipk.X_0, Some(3), &uk1)
             .unwrap();
         assert_eq!(cred3.commitments.len(), 1);
 
@@ -709,13 +777,20 @@ pub mod tests {
         assert_eq!(uk3.keys.len(), 3);
 
         let (cred3_rand, pseudonym3, uk3) = cred3
-            .process_received_delegated(&mut rng, Some(&uk3), &upk3, &usk3, &ipk, &set_comm_srs)
+            .process_received_delegated(
+                &mut rng,
+                Some(&uk3),
+                &upk3,
+                &usk3,
+                prep_ipk.clone(),
+                &set_comm_srs,
+            )
             .unwrap();
 
         let uk3 = uk3.unwrap();
 
         cred3_rand
-            .verify(Some(&uk3), &pseudonym3.nym, &ipk, &set_comm_srs)
+            .verify(Some(&uk3), &pseudonym3.nym, prep_ipk.clone(), &set_comm_srs)
             .unwrap();
 
         assert_eq!(uk3.start_index, 1);
@@ -728,7 +803,7 @@ pub mod tests {
                 &mut rng,
                 msgs_2.clone(),
                 &pseudonym2.secret,
-                &ipk,
+                &ipk.X_0,
                 Some(3),
                 &uk2,
                 &set_comm_srs,
@@ -742,13 +817,20 @@ pub mod tests {
         assert_eq!(uk4.keys.len(), 1);
 
         let (cred4_rand, pseudonym4, uk4) = cred4
-            .process_received_delegated(&mut rng, Some(&uk4), &upk4, &usk4, &ipk, &set_comm_srs)
+            .process_received_delegated(
+                &mut rng,
+                Some(&uk4),
+                &upk4,
+                &usk4,
+                prep_ipk.clone(),
+                &set_comm_srs,
+            )
             .unwrap();
 
         let uk4 = uk4.unwrap();
 
         cred4_rand
-            .verify(Some(&uk4), &pseudonym4.nym, &ipk, &set_comm_srs)
+            .verify(Some(&uk4), &pseudonym4.nym, prep_ipk, &set_comm_srs)
             .unwrap();
 
         assert_eq!(uk4.start_index, 3);

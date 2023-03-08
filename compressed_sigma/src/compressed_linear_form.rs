@@ -1,12 +1,10 @@
 //! Compressed sigma protocol as described as Protocol 5 of the paper "Compressed Sigma Protocol Theory..."
 
-use ark_ec::msm::VariableBaseMSM;
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, One, PrimeField, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     cfg_iter,
-    io::{Read, Write},
     ops::{Add, MulAssign},
     rand::RngCore,
     vec,
@@ -17,17 +15,16 @@ use digest::Digest;
 
 use crate::error::CompSigmaError;
 use crate::transforms::LinearForm;
-use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};
-use dock_crypto_utils::msm::{variable_base_msm, WindowTable};
+use dock_crypto_utils::msm::WindowTable;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RandomCommitment<G: AffineCurve> {
+pub struct RandomCommitment<G: AffineRepr> {
     pub r: Vec<G::ScalarField>,
     pub rho: G::ScalarField,
     pub A_hat: G,
@@ -35,7 +32,7 @@ pub struct RandomCommitment<G: AffineCurve> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Response<G: AffineCurve> {
+pub struct Response<G: AffineRepr> {
     pub z_prime_0: G::ScalarField,
     pub z_prime_1: G::ScalarField,
     pub A: Vec<G>,
@@ -44,7 +41,7 @@ pub struct Response<G: AffineCurve> {
 
 impl<G> RandomCommitment<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     pub fn new<R: RngCore, L: LinearForm<G::ScalarField>>(
         rng: &mut R,
@@ -67,7 +64,7 @@ where
         let rho = G::ScalarField::rand(rng);
         let t = linear_form.eval(&r);
         // h * rho is done separately to avoid copying g
-        let A_hat = variable_base_msm(g, &r).add(&h.mul(rho.into_repr()));
+        let A_hat = G::Group::msm_unchecked(g, &r).add(&h.mul_bigint(rho.into_bigint()));
         Ok(Self {
             r,
             rho,
@@ -133,7 +130,7 @@ where
 
         // There are many multiplications done with `k`, so creating a table for it
         let lg2 = z_hat.len() & (z_hat.len() - 1);
-        let k_table = WindowTable::new(lg2, k.into_projective());
+        let k_table = WindowTable::new(lg2, k.into_group());
 
         // In each iteration of the loop, size of `z_hat`, `g_hat` and `L_tilde` is reduced by half
         while z_hat.len() > 2 {
@@ -146,22 +143,23 @@ where
             let (L_tilde_l, L_tilde_r) = L_tilde.split_in_half();
 
             // A = g_hat_r * z_hat_l + k * L_tilde_r(z_hat_l)
-            let A = variable_base_msm(&g_hat_r, &z_hat) + k_table.multiply(&L_tilde_r.eval(&z_hat));
+            let A = G::Group::msm_unchecked(&g_hat_r, &z_hat)
+                + k_table.multiply(&L_tilde_r.eval(&z_hat));
 
             // B = g_hat_l * z_hat_r + k * L_tilde_l(z_hat_r)
-            let B =
-                variable_base_msm(&g_hat, &z_hat_r) + k_table.multiply(&L_tilde_l.eval(&z_hat_r));
+            let B = G::Group::msm_unchecked(&g_hat, &z_hat_r)
+                + k_table.multiply(&L_tilde_l.eval(&z_hat_r));
 
-            A.serialize(&mut bytes).unwrap();
-            B.serialize(&mut bytes).unwrap();
+            A.serialize_compressed(&mut bytes).unwrap();
+            B.serialize_compressed(&mut bytes).unwrap();
             let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-            let c_repr = c.into_repr();
+            let c_repr = c.into_bigint();
 
             // Set `g_hat` as g' in the paper
             g_hat = g_hat
                 .iter()
                 .zip(g_hat_r.iter())
-                .map(|(l, r)| l.mul(c_repr).add_mixed(r).into_affine())
+                .map(|(l, r)| (l.mul_bigint(c_repr) + r).into_affine())
                 .collect::<Vec<_>>();
             // Set `L_tilde` to L' in the paper
             L_tilde = L_tilde_l.scale(&c).add(&L_tilde_r);
@@ -178,15 +176,15 @@ where
         Response {
             z_prime_0: z_hat[0],
             z_prime_1: z_hat[1],
-            A: batch_normalize_projective_into_affine(As),
-            B: batch_normalize_projective_into_affine(Bs),
+            A: G::Group::normalize_batch(&As),
+            B: G::Group::normalize_batch(&Bs),
         }
     }
 }
 
 impl<G> Response<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Validate the proof of knowledge in the recursive manner where the size of the various
     /// vectors is reduced to half in each iteration. This execution is similar to the prover's.
@@ -240,17 +238,17 @@ where
 
     pub fn recursively_validate_compressed<D: Digest, L: LinearForm<G::ScalarField>>(
         &self,
-        mut Q: G::Projective,
+        mut Q: G::Group,
         mut g_hat: Vec<G>,
         mut L_tilde: L,
         k: &G,
     ) -> Result<(), CompSigmaError> {
         let mut bytes = vec![];
         for (A, B) in self.A.iter().zip(self.B.iter()) {
-            A.serialize(&mut bytes).unwrap();
-            B.serialize(&mut bytes).unwrap();
+            A.serialize_compressed(&mut bytes).unwrap();
+            B.serialize_compressed(&mut bytes).unwrap();
             let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
-            let c_repr = c.into_repr();
+            let c_repr = c.into_bigint();
 
             let m = g_hat.len();
             let g_hat_r = g_hat.split_off(m / 2);
@@ -258,9 +256,9 @@ where
             g_hat = g_hat
                 .iter()
                 .zip(g_hat_r.iter())
-                .map(|(l, r)| l.mul(c_repr).add_mixed(r).into_affine())
+                .map(|(l, r)| (l.mul_bigint(c_repr) + r).into_affine())
                 .collect::<Vec<_>>();
-            Q = A.into_projective() + Q.mul(c_repr) + B.mul(c.square().into_repr());
+            Q = A.into_group() + Q.mul_bigint(c_repr) + B.mul_bigint(c.square().into_bigint());
             let (L_tilde_l, L_tilde_r) = L_tilde.split_in_half();
             L_tilde = L_tilde_l.scale(&c).add(&L_tilde_r);
         }
@@ -276,7 +274,7 @@ where
         let l_z = L_tilde.eval(&[self.z_prime_0, self.z_prime_1]);
         scalars.push(l_z);
 
-        if variable_base_msm(&g_hat, &scalars) == Q {
+        if G::Group::msm_unchecked(&g_hat, &scalars) == Q {
             Ok(())
         } else {
             Err(CompSigmaError::InvalidResponse)
@@ -285,7 +283,7 @@ where
 
     pub fn validate_compressed<D: Digest, L: LinearForm<G::ScalarField>>(
         &self,
-        mut Q: G::Projective,
+        mut Q: G::Group,
         mut g_hat: Vec<G>,
         mut L_tilde: L,
         k: &G,
@@ -296,8 +294,8 @@ where
         let mut challenge_squares = vec![];
         let mut bytes = vec![];
         for (A, B) in self.A.iter().zip(self.B.iter()) {
-            A.serialize(&mut bytes).unwrap();
-            B.serialize(&mut bytes).unwrap();
+            A.serialize_compressed(&mut bytes).unwrap();
+            B.serialize_compressed(&mut bytes).unwrap();
             let c = field_elem_from_try_and_incr::<G::ScalarField, D>(&bytes);
 
             let (L_tilde_l, L_tilde_r) = L_tilde.split_in_half();
@@ -335,14 +333,14 @@ where
         // `B_multiples` is of form [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*c_4..*c_n, ..., c_{n-1}^2*c_n, c_n^2]
         let B_multiples = cfg_iter!(challenge_products)
             .zip(cfg_iter!(challenge_squares))
-            .map(|(c, c_sqr)| (*c * c_sqr).into_repr())
+            .map(|(c, c_sqr)| (*c * c_sqr).into_bigint())
             .collect::<Vec<_>>();
 
         // Q' = A * [c_2*c_3*...*c_n, c_3*...*c_n, ..., c_{n-1}*c_n, c_n, 1] + B * [c_1^2*c_2*c_3*..*c_n, c_2^2*c_3*..*c_n, ..., c_{n-1}^2*c_n, c_n^2] + Q * c_1^2*c_2*c_3*..*c_n
         // Set Q to Q*(c_1*c_2*c_3*...*c_n)
         Q.mul_assign(all_challenges_product);
-        let Q_prime = variable_base_msm(&self.A, &challenge_products)
-            + VariableBaseMSM::multi_scalar_mul(&self.B, &B_multiples)
+        let Q_prime = G::Group::msm_unchecked(&self.A, &challenge_products)
+            + G::Group::msm_bigint(&self.B, &B_multiples)
             + Q;
 
         let l_z = L_tilde.eval(&[self.z_prime_0, self.z_prime_1]);
@@ -351,7 +349,7 @@ where
         g_hat_multiples.push(l_z);
 
         // Check if g' * z' + k * L'(z') == Q'
-        if variable_base_msm(&g_hat, &g_hat_multiples) == Q_prime {
+        if G::Group::msm_unchecked(&g_hat, &g_hat_multiples) == Q_prime {
             Ok(())
         } else {
             Err(CompSigmaError::InvalidResponse)
@@ -380,7 +378,7 @@ where
 }
 
 pub fn prepare_generators_and_linear_form_for_compression<
-    G: AffineCurve,
+    G: AffineRepr,
     L: LinearForm<G::ScalarField>,
 >(
     g: &[G],
@@ -399,7 +397,7 @@ pub fn prepare_generators_and_linear_form_for_compression<
 }
 
 /// Q = P*c_0 + k * (c_1*(c_0*y + t)) + A_hat
-fn calculate_Q<G: AffineCurve>(
+fn calculate_Q<G: AffineRepr>(
     k: &G,
     P: &G,
     y: &G::ScalarField,
@@ -407,24 +405,24 @@ fn calculate_Q<G: AffineCurve>(
     t: &G::ScalarField,
     c_0: &G::ScalarField,
     c_1: &G::ScalarField,
-) -> G::Projective {
-    (P.mul(c_0.into_repr()) + k.mul(*c_1 * (*c_0 * y + t))).add_mixed(A)
+) -> G::Group {
+    P.mul(c_0) + k.mul(*c_1 * (*c_0 * y + t)) + A
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_ff::Zero;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     struct TestLinearForm {
         pub constants: Vec<Fr>,
@@ -444,12 +442,14 @@ mod tests {
             let x = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
             let gamma = Fr::rand(&mut rng);
             let g = (0..size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
-            let h = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
-            let k = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+            let h = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
+            let k = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
 
-            let P = (variable_base_msm(&g, &x) + h.mul(gamma.into_repr())).into_affine();
+            let P = (<Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x)
+                + h.mul_bigint(gamma.into_bigint()))
+            .into_affine();
             let y = linear_form.eval(&x);
 
             let rand_comm = RandomCommitment::new(&mut rng, &g, &h, &linear_form, None).unwrap();
@@ -458,12 +458,12 @@ mod tests {
             let c_1 = Fr::rand(&mut rng);
 
             let response = rand_comm
-                .response::<Blake2b, _>(&g, &h, &k, &linear_form, &x, &gamma, &c_0, &c_1)
+                .response::<Blake2b512, _>(&g, &h, &k, &linear_form, &x, &gamma, &c_0, &c_1)
                 .unwrap();
 
             let start = Instant::now();
             response
-                .is_valid_recursive::<Blake2b, _>(
+                .is_valid_recursive::<Blake2b512, _>(
                     &g,
                     &h,
                     &k,
@@ -484,7 +484,7 @@ mod tests {
 
             let start = Instant::now();
             response
-                .is_valid::<Blake2b, _>(
+                .is_valid::<Blake2b512, _>(
                     &g,
                     &h,
                     &k,

@@ -1,10 +1,10 @@
 use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
-use ark_ec::msm::VariableBaseMSM;
-use ark_ec::ProjectiveCurve;
+use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::BTreeSet;
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
+use blake2::Blake2b512;
 use proof_system::prelude::{
     EqualWitnesses, MetaStatement, MetaStatements, Witness, WitnessRef, Witnesses,
 };
@@ -24,9 +24,12 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         .map(|_| G1Projective::rand(&mut rng).into_affine())
         .collect::<Vec<_>>();
     let scalars_1 = (0..5).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
-    let commitment_1 = VariableBaseMSM::multi_scalar_mul(
+    let commitment_1 = G1Projective::msm_bigint(
         &bases_1,
-        &scalars_1.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
+        &scalars_1
+            .iter()
+            .map(|s| s.into_bigint())
+            .collect::<Vec<_>>(),
     )
     .into_affine();
 
@@ -37,9 +40,12 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     // Make 2 of the scalars same
     scalars_2[1] = scalars_1[3].clone();
     scalars_2[4] = scalars_1[0].clone();
-    let commitment_2 = VariableBaseMSM::multi_scalar_mul(
+    let commitment_2 = G1Projective::msm_bigint(
         &bases_2,
-        &scalars_2.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
+        &scalars_2
+            .iter()
+            .map(|s| s.into_bigint())
+            .collect::<Vec<_>>(),
     )
     .into_affine();
 
@@ -86,7 +92,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let nonce = Some(b"test nonce".to_vec());
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -99,7 +105,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     test_serialization!(ProofG1, proof);
 
     proof
-        .verify::<StdRng>(&mut rng, proof_spec, nonce.clone(), Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce.clone(), Default::default())
         .unwrap();
 
     // Wrong commitment should fail to verify
@@ -122,7 +128,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     );
     proof_spec_invalid.validate().unwrap();
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_invalid.clone(),
         witnesses.clone(),
@@ -132,7 +138,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     .unwrap()
     .0;
     assert!(proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_invalid,
             nonce.clone(),
@@ -160,7 +166,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         context.clone(),
     );
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_invalid.clone(),
         witnesses.clone(),
@@ -171,7 +177,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     .0;
 
     assert!(proof
-        .verify::<StdRng>(&mut rng, proof_spec_invalid, nonce, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_invalid, nonce, Default::default())
         .is_err());
 }
 
@@ -192,19 +198,28 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     scalars_2[4] = scalars_1[0].clone();
     let scalars_3 = (0..count).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
 
-    let commitment_1 = VariableBaseMSM::multi_scalar_mul(
+    let commitment_1 = G1Projective::msm_bigint(
         &bases,
-        &scalars_1.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
+        &scalars_1
+            .iter()
+            .map(|s| s.into_bigint())
+            .collect::<Vec<_>>(),
     )
     .into_affine();
-    let commitment_2 = VariableBaseMSM::multi_scalar_mul(
+    let commitment_2 = G1Projective::msm_bigint(
         &bases,
-        &scalars_2.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
+        &scalars_2
+            .iter()
+            .map(|s| s.into_bigint())
+            .collect::<Vec<_>>(),
     )
     .into_affine();
-    let commitment_3 = VariableBaseMSM::multi_scalar_mul(
+    let commitment_3 = G1Projective::msm_bigint(
         &bases,
-        &scalars_3.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
+        &scalars_3
+            .iter()
+            .map(|s| s.into_bigint())
+            .collect::<Vec<_>>(),
     )
     .into_affine();
 
@@ -261,7 +276,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
     let nonce = Some(b"test nonce".to_vec());
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -274,6 +289,6 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     test_serialization!(ProofG1, proof);
 
     proof
-        .verify::<StdRng>(&mut rng, proof_spec, nonce.clone(), Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce.clone(), Default::default())
         .unwrap();
 }

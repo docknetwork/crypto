@@ -6,9 +6,9 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-bbs_plus = { version = "0.10.0", default-features = false, path = "../bbs_plus" }
-schnorr_pok = { version = "0.8.0", default-features = false, path = "../schnorr_pok" }
-vb_accumulator = { version = "0.11.0", default-features = false, path = "../vb_accumulator" }
+bbs_plus = { version = "0.11.0", default-features = false, path = "../bbs_plus" }
+schnorr_pok = { version = "0.9.0", default-features = false, path = "../schnorr_pok" }
+vb_accumulator = { version = "0.12.0", default-features = false, path = "../vb_accumulator" }
 test_utils = { version = "0.1.0", default-features = false, path = "../test_utils" }
 ark-ff.workspace = true
 ark-ec.workspace = true
@@ -21,7 +21,7 @@ zeroize.workspace = true
 
 [dev-dependencies]
 criterion = "0.3"
-ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
+ark-serialize = { version = "^0.4.1", default-features = false, features = [ "derive" ] }
 
 [[bench]]
 name = "schnorr"

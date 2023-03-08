@@ -18,10 +18,6 @@ pub fn sig_setup<R: RngCore>(
         .into_iter()
         .map(|_| Fr::rand(rng))
         .collect();
-    /*let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, message_count);
-    let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
-    let sig = SignatureG1::<Bls12_381>::new(rng, &messages, &keypair.secret_key, &params).unwrap();
-    sig.verify(&messages, &keypair.public_key, &params).unwrap();*/
     let (params, keypair, sig) = sig_setup_given_messages(rng, &messages);
     (messages, params, keypair, sig)
 }

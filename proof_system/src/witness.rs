@@ -1,13 +1,6 @@
-use ark_ec::PairingEngine;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    cmp,
-    collections::BTreeMap,
-    fmt::Debug,
-    io::{Read, Write},
-    string::String,
-    vec::Vec,
-};
+use ark_ec::pairing::Pairing;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{cmp, collections::BTreeMap, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::signature::SignatureG1 as BBSSignatureG1;
 use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
@@ -22,15 +15,15 @@ pub use serialization::*;
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub enum Witness<E: PairingEngine> {
+pub enum Witness<E: Pairing> {
     PoKBBSSignatureG1(PoKBBSSignatureG1<E>),
     AccumulatorMembership(Membership<E>),
     AccumulatorNonMembership(NonMembership<E>),
-    PedersenCommitment(#[serde_as(as = "Vec<FieldBytes>")] Vec<E::Fr>),
+    PedersenCommitment(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
     /// Message being encrypted
-    Saver(#[serde_as(as = "FieldBytes")] E::Fr),
+    Saver(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     /// Message whose bounds are checked
-    BoundCheckLegoGroth16(#[serde_as(as = "FieldBytes")] E::Fr),
+    BoundCheckLegoGroth16(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     R1CSLegoGroth16(R1CSCircomWitness<E>),
 }
 
@@ -40,7 +33,7 @@ pub enum Witness<E: PairingEngine> {
 #[serde(bound = "")]
 pub struct Witnesses<E>(pub Vec<Witness<E>>)
 where
-    E: PairingEngine;
+    E: Pairing;
 
 /// Secret data when proving knowledge of BBS+ sig
 #[serde_as]
@@ -48,13 +41,13 @@ where
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct PoKBBSSignatureG1<E: PairingEngine> {
+pub struct PoKBBSSignatureG1<E: Pairing> {
     pub signature: BBSSignatureG1<E>,
-    #[serde_as(as = "BTreeMap<Same, FieldBytes>")]
-    pub unrevealed_messages: BTreeMap<usize, E::Fr>,
+    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    pub unrevealed_messages: BTreeMap<usize, E::ScalarField>,
 }
 
-impl<E: PairingEngine> Zeroize for PoKBBSSignatureG1<E> {
+impl<E: Pairing> Zeroize for PoKBBSSignatureG1<E> {
     fn zeroize(&mut self) {
         self.signature.zeroize();
         self.unrevealed_messages
@@ -63,7 +56,7 @@ impl<E: PairingEngine> Zeroize for PoKBBSSignatureG1<E> {
     }
 }
 
-impl<E: PairingEngine> Drop for PoKBBSSignatureG1<E> {
+impl<E: Pairing> Drop for PoKBBSSignatureG1<E> {
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -75,20 +68,20 @@ impl<E: PairingEngine> Drop for PoKBBSSignatureG1<E> {
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct Membership<E: PairingEngine> {
-    #[serde_as(as = "FieldBytes")]
-    pub element: E::Fr,
+pub struct Membership<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub element: E::ScalarField,
     pub witness: MembershipWitness<E::G1Affine>,
 }
 
-impl<E: PairingEngine> Zeroize for Membership<E> {
+impl<E: Pairing> Zeroize for Membership<E> {
     fn zeroize(&mut self) {
         self.element.zeroize();
         self.witness.zeroize();
     }
 }
 
-impl<E: PairingEngine> Drop for Membership<E> {
+impl<E: Pairing> Drop for Membership<E> {
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -100,20 +93,20 @@ impl<E: PairingEngine> Drop for Membership<E> {
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct NonMembership<E: PairingEngine> {
-    #[serde_as(as = "FieldBytes")]
-    pub element: E::Fr,
+pub struct NonMembership<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub element: E::ScalarField,
     pub witness: NonMembershipWitness<E::G1Affine>,
 }
 
-impl<E: PairingEngine> Zeroize for NonMembership<E> {
+impl<E: Pairing> Zeroize for NonMembership<E> {
     fn zeroize(&mut self) {
         self.element.zeroize();
         self.witness.zeroize();
     }
 }
 
-impl<E: PairingEngine> Drop for NonMembership<E> {
+impl<E: Pairing> Drop for NonMembership<E> {
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -125,10 +118,10 @@ impl<E: PairingEngine> Drop for NonMembership<E> {
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct R1CSCircomWitness<E: PairingEngine> {
+pub struct R1CSCircomWitness<E: Pairing> {
     /// Map of name -> value(s) for all inputs including public and private
-    #[serde_as(as = "BTreeMap<Same, Vec<FieldBytes>>")]
-    pub inputs: BTreeMap<String, Vec<E::Fr>>,
+    #[serde_as(as = "BTreeMap<Same, Vec<ArkObjectBytes>>")]
+    pub inputs: BTreeMap<String, Vec<E::ScalarField>>,
     /// Names of the public inputs
     #[serde_as(as = "Vec<Same>")]
     pub public: Vec<String>,
@@ -140,13 +133,13 @@ pub struct R1CSCircomWitness<E: PairingEngine> {
     pub total_count: usize,
 }
 
-impl<E: PairingEngine> Zeroize for R1CSCircomWitness<E> {
+impl<E: Pairing> Zeroize for R1CSCircomWitness<E> {
     fn zeroize(&mut self) {
         self.inputs.values_mut().for_each(|v| v.zeroize());
     }
 }
 
-impl<E: PairingEngine> Drop for R1CSCircomWitness<E> {
+impl<E: Pairing> Drop for R1CSCircomWitness<E> {
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -154,7 +147,7 @@ impl<E: PairingEngine> Drop for R1CSCircomWitness<E> {
 
 impl<E> Witnesses<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     pub fn new() -> Self {
         Self(Vec::new())
@@ -174,11 +167,11 @@ where
     }
 }
 
-impl<E: PairingEngine> PoKBBSSignatureG1<E> {
+impl<E: Pairing> PoKBBSSignatureG1<E> {
     /// Create a `Witness` variant for proving knowledge of BBS+ signature
     pub fn new_as_witness(
         signature: BBSSignatureG1<E>,
-        unrevealed_messages: BTreeMap<usize, E::Fr>,
+        unrevealed_messages: BTreeMap<usize, E::ScalarField>,
     ) -> Witness<E> {
         Witness::PoKBBSSignatureG1(PoKBBSSignatureG1 {
             signature,
@@ -187,24 +180,27 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
     }
 }
 
-impl<E: PairingEngine> Membership<E> {
+impl<E: Pairing> Membership<E> {
     /// Create a `Witness` variant for proving membership in accumulator
-    pub fn new_as_witness(element: E::Fr, witness: MembershipWitness<E::G1Affine>) -> Witness<E> {
+    pub fn new_as_witness(
+        element: E::ScalarField,
+        witness: MembershipWitness<E::G1Affine>,
+    ) -> Witness<E> {
         Witness::AccumulatorMembership(Membership { element, witness })
     }
 }
 
-impl<E: PairingEngine> NonMembership<E> {
+impl<E: Pairing> NonMembership<E> {
     /// Create a `Witness` variant for proving non-membership in accumulator
     pub fn new_as_witness(
-        element: E::Fr,
+        element: E::ScalarField,
         witness: NonMembershipWitness<E::G1Affine>,
     ) -> Witness<E> {
         Witness::AccumulatorNonMembership(NonMembership { element, witness })
     }
 }
 
-impl<E: PairingEngine> R1CSCircomWitness<E> {
+impl<E: Pairing> R1CSCircomWitness<E> {
     pub fn new() -> Self {
         Self {
             inputs: BTreeMap::new(),
@@ -216,7 +212,7 @@ impl<E: PairingEngine> R1CSCircomWitness<E> {
         }
     }
 
-    pub fn set_public(&mut self, name: String, value: Vec<E::Fr>) {
+    pub fn set_public(&mut self, name: String, value: Vec<E::ScalarField>) {
         self.total_count += value.len();
         self.public_count += value.len();
         self.public.push(name.clone());
@@ -225,7 +221,7 @@ impl<E: PairingEngine> R1CSCircomWitness<E> {
 
     /// Set a private input signal. Ensure that this function is called for signals
     /// in the same order as they are declared in the circuit.
-    pub fn set_private(&mut self, name: String, value: Vec<E::Fr>) {
+    pub fn set_private(&mut self, name: String, value: Vec<E::ScalarField>) {
         self.total_count += value.len();
         self.private_count += value.len();
         self.private.push(name.clone());
@@ -234,7 +230,10 @@ impl<E: PairingEngine> R1CSCircomWitness<E> {
 
     /// Get the 1st `n` private inputs to the circuit. The order is determined by the order in which
     /// `Self::set_private` was called.
-    pub fn get_first_n_private_inputs(&self, n: usize) -> Result<Vec<E::Fr>, ProofSystemError> {
+    pub fn get_first_n_private_inputs(
+        &self,
+        n: usize,
+    ) -> Result<Vec<E::ScalarField>, ProofSystemError> {
         if self.private_count < n {
             return Err(ProofSystemError::R1CSInsufficientPrivateInputs(
                 self.private_count,
@@ -256,13 +255,129 @@ impl<E: PairingEngine> R1CSCircomWitness<E> {
 
 mod serialization {
     use super::*;
+    use ark_serialize::{
+        CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Valid, Validate,
+    };
+    use ark_std::io::{Read, Write};
 
-    impl<E: PairingEngine> CanonicalSerialize for Witness<E> {
-        impl_serialize_witness!();
+    impl<E: Pairing> Valid for Witness<E> {
+        fn check(&self) -> Result<(), SerializationError> {
+            match self {
+                Self::PoKBBSSignatureG1(s) => s.check(),
+                Self::AccumulatorMembership(s) => {
+                    s.element.check()?;
+                    s.witness.check()
+                }
+                Self::AccumulatorNonMembership(s) => {
+                    s.element.check()?;
+                    s.witness.check()
+                }
+                Self::PedersenCommitment(s) => s.check(),
+                Self::Saver(s) => s.check(),
+                Self::BoundCheckLegoGroth16(s) => s.check(),
+                Self::R1CSLegoGroth16(s) => s.check(),
+            }
+        }
     }
 
-    impl<E: PairingEngine> CanonicalDeserialize for Witness<E> {
-        impl_deserialize_witness!();
+    impl<E: Pairing> CanonicalSerialize for Witness<E> {
+        fn serialize_with_mode<W: Write>(
+            &self,
+            mut writer: W,
+            compress: Compress,
+        ) -> Result<(), SerializationError> {
+            match self {
+                Self::PoKBBSSignatureG1(s) => {
+                    CanonicalSerialize::serialize_with_mode(&0u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::AccumulatorMembership(s) => {
+                    CanonicalSerialize::serialize_with_mode(&1u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::AccumulatorNonMembership(s) => {
+                    CanonicalSerialize::serialize_with_mode(&2u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::PedersenCommitment(s) => {
+                    CanonicalSerialize::serialize_with_mode(&3u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::Saver(s) => {
+                    CanonicalSerialize::serialize_with_mode(&4u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::BoundCheckLegoGroth16(s) => {
+                    CanonicalSerialize::serialize_with_mode(&5u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::R1CSLegoGroth16(s) => {
+                    CanonicalSerialize::serialize_with_mode(&6u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+            }
+        }
+
+        fn serialized_size(&self, compress: Compress) -> usize {
+            match self {
+                Self::PoKBBSSignatureG1(s) => {
+                    0u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::AccumulatorMembership(s) => {
+                    1u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::AccumulatorNonMembership(s) => {
+                    2u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::PedersenCommitment(s) => {
+                    3u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::Saver(s) => 4u8.serialized_size(compress) + s.serialized_size(compress),
+                Self::BoundCheckLegoGroth16(s) => {
+                    5u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::R1CSLegoGroth16(s) => {
+                    6u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+            }
+        }
+    }
+
+    impl<E: Pairing> CanonicalDeserialize for Witness<E> {
+        fn deserialize_with_mode<R: Read>(
+            mut reader: R,
+            compress: Compress,
+            validate: Validate,
+        ) -> Result<Self, SerializationError> {
+            let t: u8 =
+                CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+            match t {
+                0u8 => Ok(Self::PoKBBSSignatureG1(
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
+                )),
+                1u8 => Ok(Self::AccumulatorMembership(
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
+                )),
+                2u8 => Ok(Self::AccumulatorNonMembership(
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
+                )),
+                3u8 => Ok(Self::PedersenCommitment(
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
+                )),
+                4u8 => Ok(Self::Saver(CanonicalDeserialize::deserialize_with_mode(
+                    &mut reader,
+                    compress,
+                    validate,
+                )?)),
+                5u8 => Ok(Self::BoundCheckLegoGroth16(
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
+                )),
+                6u8 => Ok(Self::R1CSLegoGroth16(
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
+                )),
+                _ => Err(SerializationError::InvalidData),
+            }
+        }
     }
 }
 
@@ -271,7 +386,7 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_bls12_381::{fr::Fr, g1::G1Projective as G1Proj};
-    use ark_ec::ProjectiveCurve;
+    use ark_ec::CurveGroup;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,

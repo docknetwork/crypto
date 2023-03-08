@@ -6,6 +6,7 @@ use ark_std::rand::SeedableRng;
 use ark_std::UniformRand;
 use bbs_plus::prelude::{PublicKeyG2, SignatureG1};
 use bbs_plus::setup::SignatureParamsG1;
+use blake2::Blake2b512;
 use legogroth16::circom::R1CS;
 use legogroth16::ProvingKey;
 use proof_system::prelude::{
@@ -99,7 +100,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -141,7 +142,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
 
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -171,7 +172,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     );
     verifier_proof_spec_1.validate().unwrap();
     assert!(proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec_1.clone(),
             None,
@@ -196,7 +197,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     );
     proof_spec_prover_1.validate().unwrap();
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover_1.clone(),
         witnesses.clone(),
@@ -214,7 +215,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     );
     proof_spec_verifier_2.validate().unwrap();
     assert!(proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_verifier_2.clone(),
             None,
@@ -319,7 +320,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-        let proof = ProofG1::new(
+        let proof = ProofG1::new::<StdRng, Blake2b512>(
             rng,
             proof_spec_prover.clone(),
             witnesses.clone(),
@@ -356,7 +357,12 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         proof
             .clone()
-            .verify::<StdRng>(rng, verifier_proof_spec.clone(), None, Default::default())
+            .verify::<StdRng, Blake2b512>(
+                rng,
+                verifier_proof_spec.clone(),
+                None,
+                Default::default(),
+            )
             .unwrap();
 
         // Proof with wrong public input fails
@@ -378,7 +384,12 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         );
         verifier_proof_spec_1.validate().unwrap();
         assert!(proof
-            .verify::<StdRng>(rng, verifier_proof_spec_1.clone(), None, Default::default())
+            .verify::<StdRng, Blake2b512>(
+                rng,
+                verifier_proof_spec_1.clone(),
+                None,
+                Default::default()
+            )
             .is_err());
 
         // -----------------------------------------------------------------------------
@@ -414,7 +425,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         r1cs_wit.set_private("b".to_string(), vec![msgs[l_msg_idx]]);
         witnesses_1.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-        let proof_1 = ProofG1::new(
+        let proof_1 = ProofG1::new::<StdRng, Blake2b512>(
             rng,
             proof_spec_prover_1.clone(),
             witnesses_1.clone(),
@@ -444,7 +455,12 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         verifier_proof_spec_2.validate().unwrap();
         proof_1
             .clone()
-            .verify::<StdRng>(rng, verifier_proof_spec_2.clone(), None, Default::default())
+            .verify::<StdRng, Blake2b512>(
+                rng,
+                verifier_proof_spec_2.clone(),
+                None,
+                Default::default(),
+            )
             .unwrap();
 
         // Proof with wrong public input fails
@@ -466,7 +482,12 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         );
         verifier_proof_spec_3.validate().unwrap();
         assert!(proof_1
-            .verify::<StdRng>(rng, verifier_proof_spec_3.clone(), None, Default::default())
+            .verify::<StdRng, Blake2b512>(
+                rng,
+                verifier_proof_spec_3.clone(),
+                None,
+                Default::default()
+            )
             .is_err());
     }
 
@@ -567,7 +588,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     r1cs_wit_2.set_private("b".to_string(), vec![msgs_1[3]]);
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit_2));
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -610,7 +631,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     verifier_proof_spec.validate().unwrap();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -644,7 +665,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     );
     verifier_proof_spec_1.validate().unwrap();
     assert!(proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec_1.clone(),
             None,
@@ -739,7 +760,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -777,7 +798,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -804,7 +825,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     verifier_proof_spec_1.validate().unwrap();
     assert!(proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec_1.clone(),
             None,
@@ -834,7 +855,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     proof_spec_prover_1.validate().unwrap();
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover_1.clone(),
         witnesses.clone(),
@@ -852,7 +873,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     proof_spec_verifier_2.validate().unwrap();
     assert!(proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_verifier_2.clone(),
             None,
@@ -907,7 +928,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -945,7 +966,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -972,7 +993,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     verifier_proof_spec_1.validate().unwrap();
     assert!(proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec_1.clone(),
             None,
@@ -997,7 +1018,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     proof_spec_prover_1.validate().unwrap();
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover_1.clone(),
         witnesses.clone(),
@@ -1015,7 +1036,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     proof_spec_verifier_2.validate().unwrap();
     assert!(proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_verifier_2.clone(),
             None,

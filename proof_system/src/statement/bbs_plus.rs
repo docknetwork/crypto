@@ -1,9 +1,7 @@
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    collections::BTreeMap,
-    io::{Read, Write},
-};
+use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::collections::BTreeMap;
+use ark_std::vec::Vec;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 
@@ -19,10 +17,10 @@ use dock_crypto_utils::serde_utils::*;
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct PoKBBSSignatureG1<E: PairingEngine> {
+pub struct PoKBBSSignatureG1<E: Pairing> {
     /// Messages being revealed.
-    #[serde_as(as = "BTreeMap<Same, FieldBytes>")]
-    pub revealed_messages: BTreeMap<usize, E::Fr>,
+    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    pub revealed_messages: BTreeMap<usize, E::ScalarField>,
     /// If the statement was created by passing the signature params directly, then it will not be None
     pub signature_params: Option<SignatureParamsG1<E>>,
     /// If the statement was created by passing the public key params directly, then it will not be None
@@ -33,12 +31,12 @@ pub struct PoKBBSSignatureG1<E: PairingEngine> {
     pub public_key_ref: Option<usize>,
 }
 
-impl<E: PairingEngine> PoKBBSSignatureG1<E> {
+impl<E: Pairing> PoKBBSSignatureG1<E> {
     /// Create a statement by passing the signature parameters and public key directly.
-    pub fn new_statement_from_params<G: AffineCurve>(
+    pub fn new_statement_from_params<G: AffineRepr>(
         signature_params: SignatureParamsG1<E>,
         public_key: PublicKeyG2<E>,
-        revealed_messages: BTreeMap<usize, E::Fr>,
+        revealed_messages: BTreeMap<usize, E::ScalarField>,
     ) -> Statement<E, G> {
         Statement::PoKBBSSignatureG1(Self {
             revealed_messages,
@@ -50,10 +48,10 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
     }
 
     /// Create a statement by passing the indices of signature parameters and public key in `SetupParams`.
-    pub fn new_statement_from_params_ref<G: AffineCurve>(
+    pub fn new_statement_from_params_ref<G: AffineRepr>(
         signature_params_ref: usize,
         public_key_ref: usize,
-        revealed_messages: BTreeMap<usize, E::Fr>,
+        revealed_messages: BTreeMap<usize, E::ScalarField>,
     ) -> Statement<E, G> {
         Statement::PoKBBSSignatureG1(Self {
             revealed_messages,
@@ -65,7 +63,7 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
     }
 
     /// Get signature params for the statement index `s_idx` either from `self` or from given `setup_params`.
-    pub fn get_sig_params<'a, G: AffineCurve>(
+    pub fn get_sig_params<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -81,7 +79,7 @@ impl<E: PairingEngine> PoKBBSSignatureG1<E> {
     }
 
     /// Get public key for the statement index `s_idx` either from `self` or from given `setup_params`.
-    pub fn get_public_key<'a, G: AffineCurve>(
+    pub fn get_public_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,

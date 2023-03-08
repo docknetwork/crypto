@@ -1,5 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::PairingEngine;
+use ark_ec::pairing::Pairing;
 use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
@@ -12,7 +12,7 @@ use vb_accumulator::batch_utils::Omega;
 use vb_accumulator::positive::Accumulator;
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
 
-type Fr = <Bls12_381 as PairingEngine>::Fr;
+type Fr = <Bls12_381 as Pairing>::ScalarField;
 
 fn get_member_counts(batch_size: usize) -> HashSet<usize> {
     let mut member_counts = HashSet::new();

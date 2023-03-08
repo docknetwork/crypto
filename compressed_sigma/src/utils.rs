@@ -1,14 +1,13 @@
-use ark_ec::AffineCurve;
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_std::{vec, vec::Vec};
-use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
 use crate::transforms::{Homomorphism, LinearForm};
 
 /// Pad given homomorphisms such that all have the same size after padding
 pub fn pad_homomorphisms_to_have_same_size<
-    G: AffineCurve,
+    G: AffineRepr,
     F: Homomorphism<G::ScalarField, Output = G>,
 >(
     fs: &[F],
@@ -65,7 +64,7 @@ pub fn get_n_powers<F: PrimeField>(elem: F, n: usize) -> Vec<F> {
 }
 
 /// Returns vector [g * i * coeff, g * i^2 * coeff, g * i^3 * coeff, ..., g * i^n * coeff]
-pub fn multiples_with_n_powers_of_i<G: AffineCurve>(
+pub fn multiples_with_n_powers_of_i<G: AffineRepr>(
     g: &G,
     i: G::ScalarField,
     n: usize,
@@ -75,8 +74,8 @@ pub fn multiples_with_n_powers_of_i<G: AffineCurve>(
     for j in 1..n {
         i_powers.push(i_powers[j - 1] * i);
     }
-    batch_normalize_projective_into_affine(multiply_field_elems_with_same_group_elem(
-        g.into_projective(),
+    G::Group::normalize_batch(&multiply_field_elems_with_same_group_elem(
+        g.into_group(),
         &i_powers,
     ))
 }
@@ -197,14 +196,21 @@ macro_rules! impl_simple_homomorphism {
         impl Homomorphism<$preimage_type> for $name<$image_type> {
             type Output = $image_type;
             fn eval(&self, x: &[$preimage_type]) -> Result<Self::Output, CompSigmaError> {
-                Ok(variable_base_msm(&self.constants, x).into_affine())
+                Ok(
+                    <$image_type as AffineRepr>::Group::msm_unchecked(&self.constants, x)
+                        .into_affine(),
+                )
             }
 
             fn scale(&self, scalar: &$preimage_type) -> Self {
-                let s = scalar.into_repr();
-                let scaled = self.constants.iter().map(|c| c.mul(s)).collect::<Vec<_>>();
+                let s = scalar.into_bigint();
+                let scaled = self
+                    .constants
+                    .iter()
+                    .map(|c| c.mul_bigint(s))
+                    .collect::<Vec<_>>();
                 Self {
-                    constants: batch_normalize_projective_into_affine(scaled),
+                    constants: <$image_type as AffineRepr>::Group::normalize_batch(&scaled),
                 }
             }
 
@@ -214,7 +220,7 @@ macro_rules! impl_simple_homomorphism {
                         .constants
                         .iter()
                         .zip(other.constants.iter())
-                        .map(|(a, b)| *a + *b)
+                        .map(|(a, b)| (*a + *b).into())
                         .collect::<Vec<_>>(),
                 })
             }

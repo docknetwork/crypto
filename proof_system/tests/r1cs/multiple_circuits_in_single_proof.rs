@@ -4,6 +4,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::rngs::StdRng;
 use ark_std::rand::SeedableRng;
 use ark_std::UniformRand;
+use blake2::Blake2b512;
 use proof_system::prelude::{
     EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, Statements, Witness,
     WitnessRef, Witnesses,
@@ -140,7 +141,7 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
         witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
     }
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -187,7 +188,7 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     verifier_proof_spec.validate().unwrap();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,

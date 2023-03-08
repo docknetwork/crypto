@@ -83,15 +83,10 @@
 //! ```
 
 use crate::error::BBSPlusError;
-use ark_ec::{group::Group, AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::{fields::Field, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    fmt::Debug,
-    io::{Read, Write},
-    rand::RngCore,
-    One, UniformRand, Zero,
-};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{fmt::Debug, rand::RngCore, vec::Vec, UniformRand, Zero};
 
 use crate::setup::{PublicKeyG1, PublicKeyG2, SecretKey, SignatureParamsG1, SignatureParamsG2};
 use ark_std::collections::BTreeMap;
@@ -114,16 +109,16 @@ macro_rules! impl_signature_struct {
             Serialize,
             Deserialize,
         )]
-        pub struct $name<E: PairingEngine> {
-            #[serde_as(as = "AffineGroupBytes")]
+        pub struct $name<E: Pairing> {
+            #[serde_as(as = "ArkObjectBytes")]
             pub A: E::$group,
-            #[serde_as(as = "FieldBytes")]
-            pub e: E::Fr,
-            #[serde_as(as = "FieldBytes")]
-            pub s: E::Fr,
+            #[serde_as(as = "ArkObjectBytes")]
+            pub e: E::ScalarField,
+            #[serde_as(as = "ArkObjectBytes")]
+            pub s: E::ScalarField,
         }
 
-        impl<E: PairingEngine> Zeroize for $name<E> {
+        impl<E: Pairing> Zeroize for $name<E> {
             fn zeroize(&mut self) {
                 self.A.zeroize();
                 self.e.zeroize();
@@ -131,7 +126,7 @@ macro_rules! impl_signature_struct {
             }
         }
 
-        impl<E: PairingEngine> Drop for $name<E> {
+        impl<E: Pairing> Drop for $name<E> {
             fn drop(&mut self) {
                 self.zeroize();
             }
@@ -145,34 +140,34 @@ impl_signature_struct!(SignatureG2, G2Affine);
 // Macro to do the pairing check in signature verification when signature is in group G1
 macro_rules! pairing_check_for_g1_sig {
     ($A:expr, $w:expr, $g2:expr, $k:expr) => {
-        E::product_of_pairings(&[
-            (E::G1Prepared::from($A), E::G2Prepared::from($w)),
-            (E::G1Prepared::from($k), E::G2Prepared::from($g2)),
-        ])
-        .is_one()
+        E::multi_pairing(
+            [E::G1Prepared::from($A), E::G1Prepared::from($k)],
+            [E::G2Prepared::from($w), E::G2Prepared::from($g2)],
+        )
+        .is_zero()
     };
 }
 
 // Macro to do the pairing check in signature verification when signature is in group G2
 macro_rules! pairing_check_for_g2_sig {
     ($A:expr, $w:expr, $g2:expr, $k:expr) => {
-        E::product_of_pairings(&[
-            (E::G1Prepared::from($w), E::G2Prepared::from($A)),
-            (E::G1Prepared::from($g2), E::G2Prepared::from($k)),
-        ])
-        .is_one()
+        E::multi_pairing(
+            [E::G1Prepared::from($w), E::G1Prepared::from($g2)],
+            [E::G2Prepared::from($A), E::G2Prepared::from($k)],
+        )
+        .is_zero()
     };
 }
 
 macro_rules! impl_signature_alg {
     ( $name:ident, $params:ident, $pk:ident, $sig_group_proj:ident, $sig_group_affine:ident, $pairing:tt ) => {
         /// Signature creation and verification
-        impl<E: PairingEngine> $name<E> {
+        impl<E: Pairing> $name<E> {
             /// Create a new signature with all messages known to the signer.
             pub fn new<R: RngCore>(
                 rng: &mut R,
-                messages: &[E::Fr],
-                sk: &SecretKey<E::Fr>,
+                messages: &[E::ScalarField],
+                sk: &SecretKey<E::ScalarField>,
                 params: &$params<E>,
             ) -> Result<Self, BBSPlusError> {
                 if messages.is_empty() {
@@ -185,7 +180,7 @@ macro_rules! impl_signature_alg {
                     ));
                 }
                 // Create map of msg index (0-based) -> message
-                let msg_map: BTreeMap<usize, &E::Fr> =
+                let msg_map: BTreeMap<usize, &E::ScalarField> =
                     messages.iter().enumerate().map(|(i, e)| (i, e)).collect();
                 // All messages are known so commitment is the zero element
                 Self::new_with_committed_messages(
@@ -207,8 +202,8 @@ macro_rules! impl_signature_alg {
             pub fn new_with_committed_messages<R: RngCore>(
                 rng: &mut R,
                 commitment: &E::$sig_group_affine,
-                uncommitted_messages: BTreeMap<usize, &E::Fr>,
-                sk: &SecretKey<E::Fr>,
+                uncommitted_messages: BTreeMap<usize, &E::ScalarField>,
+                sk: &SecretKey<E::ScalarField>,
                 params: &$params<E>,
             ) -> Result<Self, BBSPlusError> {
                 if uncommitted_messages.is_empty() {
@@ -223,18 +218,18 @@ macro_rules! impl_signature_alg {
                     ));
                 }
 
-                let s = E::Fr::rand(rng);
+                let s = E::ScalarField::rand(rng);
                 // `b` is the part of signature on uncommitted messages,
                 // i.e. partial_sig = g_1 + {h_0}*s + sum(h_i * m_i) for all i in uncommitted_messages
                 let b = params.b(uncommitted_messages, &s)?;
 
-                let e = E::Fr::rand(rng);
+                let e = E::ScalarField::rand(rng);
                 // 1/(e+x)
                 let e_plus_x_inv = (e + sk.0).inverse().ok_or(BBSPlusError::CannotInvert0)?;
 
                 // {commitment + b} * {1/(e+x)}
-                let commitment_plus_b = b.add_mixed(commitment);
-                let A = <E::$sig_group_proj as Group>::mul(&commitment_plus_b, &e_plus_x_inv);
+                let commitment_plus_b = b + commitment;
+                let A = commitment_plus_b.mul_bigint(e_plus_x_inv.into_bigint());
                 Ok(Self {
                     A: A.into_affine(),
                     e,
@@ -248,7 +243,7 @@ macro_rules! impl_signature_alg {
             }
 
             /// Used to unblind a blind signature from signer
-            pub fn unblind(self, blinding: &E::Fr) -> Self {
+            pub fn unblind(self, blinding: &E::ScalarField) -> Self {
                 Self {
                     A: self.A,
                     s: self.s + blinding,
@@ -260,7 +255,7 @@ macro_rules! impl_signature_alg {
             /// have been validated already.
             pub fn verify(
                 &self,
-                messages: &[E::Fr],
+                messages: &[E::ScalarField],
                 pk: &$pk<E>,
                 params: &$params<E>,
             ) -> Result<(), BBSPlusError> {
@@ -281,14 +276,14 @@ macro_rules! impl_signature_alg {
                     messages
                         .iter()
                         .enumerate()
-                        .collect::<BTreeMap<usize, &E::Fr>>(),
+                        .collect::<BTreeMap<usize, &E::ScalarField>>(),
                     &self.s,
                 )?;
-                let g2_e = params.g2.mul(self.e.into_repr());
+                let g2_e = params.g2.mul_bigint(self.e.into_bigint());
                 if !$pairing!(
                     self.A,
-                    (g2_e.add_mixed(&pk.0)).into_affine(), // g2*e + w
-                    -params.g2,
+                    (g2_e + pk.0).into_affine(), // g2*e + w
+                    (-(params.g2.into_group())).into_affine(),
                     b.into_affine()
                 ) {
                     return Err(BBSPlusError::InvalidSignature);
@@ -329,7 +324,7 @@ mod tests {
     use std::collections::HashSet;
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     macro_rules! test_sig_verif {
         ($keypair:ident, $params:ident, $sig:ident, $rng:ident, $message_count: ident, $messages: ident, $group: ident) => {

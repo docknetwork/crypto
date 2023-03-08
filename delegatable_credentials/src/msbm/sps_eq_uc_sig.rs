@@ -2,20 +2,17 @@
 //! of the [MSBM paper](https://eprint.iacr.org/2022/680). Builds on Mercurial signature
 
 use crate::error::DelegationError;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{Field, One, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
-use ark_std::ops::{Add, Neg};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
+use ark_ff::{Field, PrimeField, Zero};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::io::Write;
+use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::RngCore;
 use ark_std::{cfg_into_iter, cfg_iter, UniformRand};
 use ark_std::{collections::BTreeSet, vec::Vec};
-use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
-use dock_crypto_utils::ec::{
-    batch_normalize_projective_into_affine, pairing_product_with_g2_prepared,
-};
+use digest::Digest;
 
-use dock_crypto_utils::serde_utils::{AffineGroupBytes, FieldBytes};
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::error::SchnorrError;
 use schnorr_pok::impl_proof_of_knowledge_of_discrete_log;
 use serde::{Deserialize, Serialize};
@@ -24,11 +21,11 @@ use zeroize::Zeroize;
 
 use crate::mercurial_sig::Signature as MercurialSig;
 use crate::msbm::keys::{
-    PreparedRootIssuerPublicKey, RootIssuerPublicKey, RootIssuerSecretKey, UpdateKey,
-    UserPublicKey, UserSecretKey,
+    PreparedRootIssuerPublicKey, RootIssuerSecretKey, UpdateKey, UserPublicKey, UserSecretKey,
 };
 use crate::set_commitment::{
-    AggregateSubsetWitness, SetCommitment, SetCommitmentOpening, SetCommitmentSRS, SubsetWitness,
+    AggregateSubsetWitness, PreparedSetCommitmentSRS, SetCommitment, SetCommitmentOpening,
+    SetCommitmentSRS, SubsetWitness,
 };
 
 #[cfg(feature = "parallel")]
@@ -48,22 +45,22 @@ impl_proof_of_knowledge_of_discrete_log!(RandCommitmentProtocol, RandCommitmentP
     Deserialize,
     Zeroize,
 )]
-pub struct Signature<E: PairingEngine> {
+pub struct Signature<E: Pairing> {
     /// Signature on the set-commitments
     pub comm_sig: MercurialSig<E>,
     /// Tag that has the user's public key which can switched with another user's
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub T: E::G1Affine,
 }
 
-impl<E: PairingEngine> Signature<E> {
+impl<E: Pairing> Signature<E> {
     /// Generate a new signature and optionally an update key if `update_key_index` is provided.
     /// `messages` is a nested vector where each inner vector corresponds to one set of attributes and
     /// 1 set commitment will generated corresponding to each set. The commitments are then signed using mercurial
     /// signature. The maximum size of each inner vector must be `max_attributes_per_commitment`
     pub fn new<R: RngCore>(
         rng: &mut R,
-        messages: Vec<Vec<E::Fr>>,
+        messages: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,
         update_key_index: Option<usize>,
         secret_key: &RootIssuerSecretKey<E>,
@@ -99,7 +96,7 @@ impl<E: PairingEngine> Signature<E> {
                     set_comm_srs.size(),
                 ));
             }
-            let r = E::Fr::rand(rng);
+            let r = E::ScalarField::rand(rng);
             let (com, o) = SetCommitment::new_with_given_randomness(
                 r,
                 msgs.into_iter().collect(),
@@ -126,11 +123,11 @@ impl<E: PairingEngine> Signature<E> {
     /// randomness and a proof that of knowledge of those commitment openings
     pub fn new_with_given_commitment_to_randomness<R: RngCore>(
         rng: &mut R,
-        trapdoor_set_comm_srs: &E::Fr,
+        trapdoor_set_comm_srs: &E::ScalarField,
         commitment_to_randomness: Vec<E::G1Affine>,
         commitment_to_randomness_proof: Vec<RandCommitmentProof<E::G1Affine>>,
-        challenge: &E::Fr,
-        messages: Vec<Vec<E::Fr>>,
+        challenge: &E::ScalarField,
+        messages: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,
         update_key_index: Option<usize>,
         secret_key: &RootIssuerSecretKey<E>,
@@ -195,69 +192,6 @@ impl<E: PairingEngine> Signature<E> {
         Ok((sig, commitments, uk))
     }
 
-    /// Verify the signature given all messages and corresponding set commitments.
-    pub fn verify(
-        &self,
-        commitments: &[SetCommitment<E>],
-        message_sets: Vec<Vec<E::Fr>>,
-        openings: &[SetCommitmentOpening<E>],
-        user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
-        set_comm_srs: &SetCommitmentSRS<E>,
-    ) -> Result<(), DelegationError> {
-        self.verify_using_prepared_key(
-            commitments,
-            message_sets,
-            openings,
-            user_public_key,
-            &issuer_public_key.prepared(),
-            set_comm_srs,
-        )
-    }
-
-    /// Verify the signature given set commitments corresponding to the messages and subsets of those
-    /// messages and corresponding witnesses.
-    pub fn verify_for_subsets(
-        &self,
-        commitments: &[SetCommitment<E>],
-        subsets: Vec<Vec<E::Fr>>,
-        subset_witnesses: &[SubsetWitness<E>],
-        user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
-        set_comm_srs: &SetCommitmentSRS<E>,
-    ) -> Result<(), DelegationError> {
-        self.verify_for_subsets_using_prepared_key(
-            commitments,
-            subsets,
-            subset_witnesses,
-            user_public_key,
-            &issuer_public_key.prepared(),
-            set_comm_srs,
-        )
-    }
-
-    /// Similar to `Self::verify_for_subsets` but an aggregated witness is given for all subsets
-    pub fn verify_for_subsets_with_aggregated_witness<
-        D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
-    >(
-        &self,
-        commitments: Vec<SetCommitment<E>>,
-        subsets: Vec<Vec<E::Fr>>,
-        agg_witnesses: &AggregateSubsetWitness<E>,
-        user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
-        set_comm_srs: &SetCommitmentSRS<E>,
-    ) -> Result<(), DelegationError> {
-        self.verify_for_subsets_with_aggregated_witness_using_prepared_key::<D>(
-            commitments,
-            subsets,
-            agg_witnesses,
-            user_public_key,
-            &issuer_public_key.prepared(),
-            set_comm_srs,
-        )
-    }
-
     /// ChangeRep from the paper
     pub fn change_rep(
         &self,
@@ -265,10 +199,10 @@ impl<E: PairingEngine> Signature<E> {
         openings: &[SetCommitmentOpening<E>],
         user_public_key: &UserPublicKey<E>,
         update_key: Option<&UpdateKey<E>>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
-        mu: &E::Fr,
-        psi: &E::Fr,
-        chi: &E::Fr,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
+        mu: &E::ScalarField,
+        psi: &E::ScalarField,
+        chi: &E::ScalarField,
         max_attributes_per_credential: usize,
         srs: &SetCommitmentSRS<E>,
     ) -> Result<
@@ -281,55 +215,40 @@ impl<E: PairingEngine> Signature<E> {
         ),
         DelegationError,
     > {
-        let mut new_openings = openings.to_vec();
-        for o in &mut new_openings {
-            o.randomize(*mu);
-        }
-        let psi_inv = psi.inverse().unwrap();
-        let (new_comm_sig, new_comms) = self.comm_sig.change_rep_with_given_randomness(
+        let issuer_public_key = issuer_public_key.into();
+        let (new_sig, new_comms, new_openings, new_pk) = self.change_rep_without_update_key(
+            commitments,
+            openings,
+            user_public_key,
+            &issuer_public_key.X_0,
             mu,
-            &psi_inv,
-            &commitments.iter().map(|c| c.0).collect::<Vec<_>>(),
-        );
-        let new_T = self
-            .T
-            .mul(*psi)
-            .add(issuer_public_key.X_0.mul(*chi * *psi))
-            .into_affine();
-        let new_pk = user_public_key.randomize_using_given_randomness(psi, chi, srs.get_P1());
+            psi,
+            chi,
+            srs,
+        )?;
+
         let mut new_uk = None;
         if let Some(uk) = update_key {
             uk.verify(&self, issuer_public_key, max_attributes_per_credential, srs)?;
 
+            let psi_inv = psi.inverse().unwrap();
             // The paper says the following commented line but that seems wrong.
             // let m = *mu * psi_inv;
             // new_uk = Some(uk.randomize(&m));
 
             new_uk = Some(uk.randomize(&psi_inv));
         }
-        Ok((
-            Self {
-                comm_sig: new_comm_sig,
-                T: new_T,
-            },
-            new_comms
-                .into_iter()
-                .map(|c| SetCommitment(c))
-                .collect::<Vec<_>>(),
-            new_openings,
-            new_uk,
-            new_pk,
-        ))
+        Ok((new_sig, new_comms, new_openings, new_uk, new_pk))
     }
 
     /// ChangeRel from the paper. `insert_at_index` is the 0-based index where the commitment of the given messages should be inserted.
     pub fn change_rel(
         &self,
-        messages: Vec<E::Fr>,
+        messages: Vec<E::ScalarField>,
         insert_at_index: usize,
         new_update_key_index: Option<usize>,
         update_key: &UpdateKey<E>,
-        rho: E::Fr,
+        rho: E::ScalarField,
         srs: &SetCommitmentSRS<E>,
     ) -> Result<
         (
@@ -360,8 +279,8 @@ impl<E: PairingEngine> Signature<E> {
             msg_set.clone(),
             &update_key.get_key_for_index(insert_at_index),
         )
-        .mul(rho.into_repr());
-        new_z.add_assign_mixed(&self.comm_sig.Z);
+        .mul_bigint(rho.into_bigint());
+        new_z += self.comm_sig.Z;
         let mut new_sig = self.clone();
         new_sig.comm_sig.Z = new_z.into_affine();
 
@@ -381,15 +300,63 @@ impl<E: PairingEngine> Signature<E> {
         Ok((new_sig, com, o, uk))
     }
 
-    pub fn verify_using_prepared_key(
+    /// ChangeRep from the paper but does not change the update key. Used in credential show
+    pub fn change_rep_without_update_key(
         &self,
         commitments: &[SetCommitment<E>],
-        message_sets: Vec<Vec<E::Fr>>,
         openings: &[SetCommitmentOpening<E>],
         user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &PreparedRootIssuerPublicKey<E>,
+        X_0: &E::G1Affine,
+        mu: &E::ScalarField,
+        psi: &E::ScalarField,
+        chi: &E::ScalarField,
+        srs: &SetCommitmentSRS<E>,
+    ) -> Result<
+        (
+            Self,
+            Vec<SetCommitment<E>>,
+            Vec<SetCommitmentOpening<E>>,
+            UserPublicKey<E>,
+        ),
+        DelegationError,
+    > {
+        let mut new_openings = openings.to_vec();
+        for o in &mut new_openings {
+            o.randomize(*mu);
+        }
+        let psi_inv = psi.inverse().unwrap();
+        let (new_comm_sig, new_comms) = self.comm_sig.change_rep_with_given_randomness(
+            mu,
+            &psi_inv,
+            &commitments.iter().map(|c| c.0).collect::<Vec<_>>(),
+        );
+        let new_T = self.T.mul(*psi).add(X_0.mul(*chi * *psi)).into_affine();
+        let new_pk = user_public_key.randomize_using_given_randomness(psi, chi, srs.get_P1());
+        Ok((
+            Self {
+                comm_sig: new_comm_sig,
+                T: new_T,
+            },
+            new_comms
+                .into_iter()
+                .map(|c| SetCommitment(c))
+                .collect::<Vec<_>>(),
+            new_openings,
+            new_pk,
+        ))
+    }
+
+    /// Verify the signature given all messages and corresponding set commitments.
+    pub fn verify(
+        &self,
+        commitments: &[SetCommitment<E>],
+        message_sets: Vec<Vec<E::ScalarField>>,
+        openings: &[SetCommitmentOpening<E>],
+        user_public_key: &UserPublicKey<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(), DelegationError> {
+        let issuer_public_key = issuer_public_key.into();
         if commitments.len() != message_sets.len() {
             return Err(DelegationError::UnequalSizeOfSequence(
                 commitments.len(),
@@ -407,7 +374,8 @@ impl<E: PairingEngine> Signature<E> {
             commitments,
             user_public_key,
             issuer_public_key,
-            set_comm_srs,
+            set_comm_srs.get_P1(),
+            E::G2Prepared::from(*set_comm_srs.get_P2()),
         )?;
         for (i, msgs) in message_sets.into_iter().enumerate() {
             commitments[i].open_set(&openings[i], msgs.into_iter().collect(), set_comm_srs)?;
@@ -415,14 +383,16 @@ impl<E: PairingEngine> Signature<E> {
         Ok(())
     }
 
-    pub fn verify_for_subsets_using_prepared_key(
+    /// Verify the signature given set commitments corresponding to the messages and subsets of those
+    /// messages and corresponding witnesses.
+    pub fn verify_for_subsets(
         &self,
         commitments: &[SetCommitment<E>],
-        subsets: Vec<Vec<E::Fr>>,
+        subsets: Vec<Vec<E::ScalarField>>,
         subset_witnesses: &[SubsetWitness<E>],
         user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &PreparedRootIssuerPublicKey<E>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
+        set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         if commitments.len() != subsets.len() {
             return Err(DelegationError::UnequalSizeOfSequence(
@@ -436,32 +406,33 @@ impl<E: PairingEngine> Signature<E> {
                 subset_witnesses.len(),
             ));
         }
+        let set_comm_srs = set_comm_srs.into();
         self.verify_sig(
             commitments,
             user_public_key,
             issuer_public_key,
-            set_comm_srs,
+            set_comm_srs.get_P1(),
+            set_comm_srs.prepared_P2.clone(),
         )?;
         for (i, subset) in subsets.into_iter().enumerate() {
             subset_witnesses[i].verify(
                 subset.into_iter().collect(),
                 &commitments[i],
-                set_comm_srs,
+                &set_comm_srs,
             )?;
         }
         Ok(())
     }
 
-    pub fn verify_for_subsets_with_aggregated_witness_using_prepared_key<
-        D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
-    >(
+    /// Similar to `Self::verify_for_subsets` but an aggregated witness is given for all subsets
+    pub fn verify_for_subsets_with_aggregated_witness<D: Digest>(
         &self,
         commitments: Vec<SetCommitment<E>>,
-        subsets: Vec<Vec<E::Fr>>,
+        subsets: Vec<Vec<E::ScalarField>>,
         agg_witnesses: &AggregateSubsetWitness<E>,
         user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &PreparedRootIssuerPublicKey<E>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
+        set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         if commitments.len() != subsets.len() {
             return Err(DelegationError::UnequalSizeOfSequence(
@@ -469,11 +440,13 @@ impl<E: PairingEngine> Signature<E> {
                 subsets.len(),
             ));
         }
+        let set_comm_srs = set_comm_srs.into();
         self.verify_sig(
             &commitments,
             user_public_key,
             issuer_public_key,
-            set_comm_srs,
+            set_comm_srs.get_P1(),
+            set_comm_srs.prepared_P2.clone(),
         )?;
         agg_witnesses.verify::<D>(
             commitments,
@@ -481,33 +454,28 @@ impl<E: PairingEngine> Signature<E> {
                 .into_iter()
                 .map(|s| s.into_iter().collect())
                 .collect(),
-            set_comm_srs,
+            &SetCommitmentSRS {
+                P1: set_comm_srs.P1,
+                P2: set_comm_srs.P2,
+            },
         )?;
         Ok(())
     }
 
     /// Remove the user's public key from the signature making it orphan
-    pub fn to_orphan(
-        &self,
-        user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
-    ) -> Self {
+    pub fn to_orphan(&self, user_secret_key: &UserSecretKey<E>, X_0: &E::G1Affine) -> Self {
         let mut new_sig = self.clone();
-        let mut new_t = issuer_public_key.X_0.mul(user_secret_key.0.neg());
-        new_t.add_assign_mixed(&self.T);
+        let mut new_t = X_0.mul(user_secret_key.0.neg());
+        new_t += self.T;
         new_sig.T = new_t.into_affine();
         new_sig
     }
 
     /// Attach a user's public key to an orphan signature.
-    pub fn from_orphan(
-        &self,
-        user_secret_key: &UserSecretKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
-    ) -> Self {
+    pub fn from_orphan(&self, user_secret_key: &UserSecretKey<E>, X_0: &E::G1Affine) -> Self {
         let mut new_sig = self.clone();
-        let mut new_t = issuer_public_key.X_0.mul(user_secret_key.0);
-        new_t.add_assign_mixed(&self.T);
+        let mut new_t = X_0.mul(user_secret_key.0);
+        new_t += self.T;
         new_sig.T = new_t.into_affine();
         new_sig
     }
@@ -523,7 +491,7 @@ impl<E: PairingEngine> Signature<E> {
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
         let k = commitments.len();
 
-        let y = E::Fr::rand(rng);
+        let y = E::ScalarField::rand(rng);
         let y_inv = y.inverse().unwrap();
         // The implementation of following Mercurial sig has y multiplied by Z and 1/y multiplied by Y and Y_tilde but the algorithm mentioned in this paper assumes the opposite. So passing
         // 1/y to keep the rest of the implementation matching the paper
@@ -559,8 +527,8 @@ impl<E: PairingEngine> Signature<E> {
                 .map(|i| {
                     let p = cfg_iter!(powers)
                         .map(|p| p.mul(sk_merc[i] * y_inv))
-                        .collect();
-                    batch_normalize_projective_into_affine(p)
+                        .collect::<Vec<_>>();
+                    E::G1::normalize_batch(&p)
                 })
                 .collect::<Vec<_>>();
             uk = Some(UpdateKey {
@@ -576,25 +544,29 @@ impl<E: PairingEngine> Signature<E> {
         &self,
         commitments: &[SetCommitment<E>],
         user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &PreparedRootIssuerPublicKey<E>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
+        P1: &E::G1Affine,
+        P2: impl Into<E::G2Prepared>,
     ) -> Result<(), DelegationError> {
-        let P2 = set_comm_srs.get_P2();
-        self.comm_sig.verify_using_prepared_public_key(
+        let P2 = P2.into();
+        let issuer_public_key = issuer_public_key.into();
+        let x_1 = issuer_public_key.X.0[0].clone();
+        let x_0_hat = issuer_public_key.X_0_hat.clone();
+        self.comm_sig.verify(
             &commitments.iter().map(|c| c.0).collect::<Vec<_>>(),
-            &issuer_public_key.X,
-            set_comm_srs.get_P1(),
-            P2,
+            issuer_public_key.X,
+            P1,
+            P2.clone(),
         )?;
-        if !pairing_product_with_g2_prepared::<E>(
-            &[self.comm_sig.Y, user_public_key.0, self.T.neg()],
-            &[
-                issuer_public_key.X.0[0].clone(),
-                issuer_public_key.X_0_hat.clone(),
-                E::G2Prepared::from(*P2),
+        if !E::multi_pairing(
+            [
+                self.comm_sig.Y,
+                user_public_key.0,
+                (-self.T.into_group()).into_affine(),
             ],
+            [x_1, x_0_hat, P2],
         )
-        .is_one()
+        .is_zero()
         {
             return Err(DelegationError::InvalidSignature);
         }
@@ -605,12 +577,12 @@ impl<E: PairingEngine> Signature<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::msbm::keys::UserSecretKey;
+    use crate::msbm::keys::{RootIssuerPublicKey, UserSecretKey};
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn sign_verify() {
@@ -621,7 +593,7 @@ pub mod tests {
 
         let (set_comm_srs, _) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
             StdRng,
-            Blake2b,
+            Blake2b512,
         >(&mut rng, max_attributes, None);
 
         let isk = RootIssuerSecretKey::<Bls12_381>::new::<StdRng>(&mut rng, l).unwrap();
@@ -629,6 +601,8 @@ pub mod tests {
 
         let usk = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk = UserPublicKey::new(&usk, set_comm_srs.get_P1());
+
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
 
         let msgs_1 = (0..t - 2).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
         let msgs_2 = (0..t - 1).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
@@ -651,7 +625,7 @@ pub mod tests {
             vec![msgs_1.clone()],
             &opns,
             &upk,
-            &ipk,
+            prep_ipk.clone(),
             &set_comm_srs,
         )
         .unwrap();
@@ -664,7 +638,7 @@ pub mod tests {
                 &opns,
                 &upk,
                 None,
-                &ipk,
+                prep_ipk.clone(),
                 &mu,
                 &psi,
                 &chi,
@@ -678,7 +652,7 @@ pub mod tests {
             vec![msgs_1.clone()],
             &opns,
             &new_upk,
-            &ipk,
+            prep_ipk.clone(),
             &set_comm_srs,
         )
         .unwrap();
@@ -699,14 +673,14 @@ pub mod tests {
                 vec![msgs_1.clone()],
                 &opns,
                 &upk,
-                &ipk,
+                prep_ipk.clone(),
                 &set_comm_srs,
             )
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 1);
             assert_eq!(uk.keys.len(), j);
-            uk.verify(&sig, &ipk, t, &set_comm_srs).unwrap();
+            uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
 
             let (sig, comms, opns, uk, new_upk) = sig
                 .change_rep(
@@ -714,7 +688,7 @@ pub mod tests {
                     &opns,
                     &upk,
                     Some(&uk),
-                    &ipk,
+                    prep_ipk.clone(),
                     &mu,
                     &psi,
                     &chi,
@@ -727,14 +701,14 @@ pub mod tests {
                 vec![msgs_1.clone()],
                 &opns,
                 &new_upk,
-                &ipk,
+                prep_ipk.clone(),
                 &set_comm_srs,
             )
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 1);
             assert_eq!(uk.keys.len(), j - 1 + 1);
-            uk.verify(&sig, &ipk, t, &set_comm_srs).unwrap();
+            uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
         }
 
         let (sig, comms, opns, uk) = Signature::new(
@@ -753,7 +727,7 @@ pub mod tests {
             vec![msgs_1.clone(), msgs_2.clone()],
             &opns,
             &upk,
-            &ipk,
+            prep_ipk.clone(),
             &set_comm_srs,
         )
         .unwrap();
@@ -764,7 +738,7 @@ pub mod tests {
                 &opns,
                 &upk,
                 None,
-                &ipk,
+                prep_ipk.clone(),
                 &mu,
                 &psi,
                 &chi,
@@ -778,7 +752,7 @@ pub mod tests {
             vec![msgs_1.clone(), msgs_2.clone()],
             &opns,
             &new_upk,
-            &ipk,
+            prep_ipk.clone(),
             &set_comm_srs,
         )
         .unwrap();
@@ -799,14 +773,14 @@ pub mod tests {
                 vec![msgs_1.clone(), msgs_2.clone()],
                 &opns,
                 &upk,
-                &ipk,
+                prep_ipk.clone(),
                 &set_comm_srs,
             )
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 2);
             assert_eq!(uk.keys.len(), j - 2 + 1);
-            uk.verify(&sig, &ipk, t, &set_comm_srs).unwrap();
+            uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
 
             let (sig, comms, opns, uk, new_upk) = sig
                 .change_rep(
@@ -814,7 +788,7 @@ pub mod tests {
                     &opns,
                     &upk,
                     Some(&uk),
-                    &ipk,
+                    prep_ipk.clone(),
                     &mu,
                     &psi,
                     &chi,
@@ -827,14 +801,14 @@ pub mod tests {
                 vec![msgs_1.clone(), msgs_2.clone()],
                 &opns,
                 &new_upk,
-                &ipk,
+                prep_ipk.clone(),
                 &set_comm_srs,
             )
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 2);
             assert_eq!(uk.keys.len(), j - 2 + 1);
-            uk.verify(&sig, &ipk, t, &set_comm_srs).unwrap();
+            uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
         }
 
         let (sig, comms, opns, uk) = Signature::new(
@@ -853,7 +827,7 @@ pub mod tests {
             vec![msgs_1.clone(), msgs_2.clone(), msgs_3.clone()],
             &opns,
             &upk,
-            &ipk,
+            prep_ipk.clone(),
             &set_comm_srs,
         )
         .unwrap();
@@ -874,14 +848,14 @@ pub mod tests {
                 vec![msgs_1.clone(), msgs_2.clone(), msgs_3.clone()],
                 &opns,
                 &upk,
-                &ipk,
+                prep_ipk.clone(),
                 &set_comm_srs,
             )
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 3);
             assert_eq!(uk.keys.len(), j - 3 + 1);
-            uk.verify(&sig, &ipk, t, &set_comm_srs).unwrap();
+            uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
         }
 
         let (sig, comms, opns, uk) = Signature::new(
@@ -910,7 +884,7 @@ pub mod tests {
             ],
             &opns,
             &upk,
-            &ipk,
+            prep_ipk.clone(),
             &set_comm_srs,
         )
         .unwrap();
@@ -941,14 +915,14 @@ pub mod tests {
                 ],
                 &opns,
                 &upk,
-                &ipk,
+                prep_ipk.clone(),
                 &set_comm_srs,
             )
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 4);
             assert_eq!(uk.keys.len(), j - 4 + 1);
-            uk.verify(&sig, &ipk, t, &set_comm_srs).unwrap();
+            uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
         }
     }
 
@@ -961,11 +935,13 @@ pub mod tests {
 
         let (set_comm_srs, _) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
             StdRng,
-            Blake2b,
+            Blake2b512,
         >(&mut rng, max_attributes, None);
 
         let isk = RootIssuerSecretKey::<Bls12_381>::new::<StdRng>(&mut rng, l).unwrap();
         let ipk = RootIssuerPublicKey::new(&isk, set_comm_srs.get_P1(), set_comm_srs.get_P2());
+
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
 
         let usk = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk = UserPublicKey::new(&usk, set_comm_srs.get_P1());
@@ -990,14 +966,14 @@ pub mod tests {
             vec![msgs_1.clone()],
             &opns,
             &upk,
-            &ipk,
+            prep_ipk.clone(),
             &set_comm_srs,
         )
         .unwrap();
         let uk = uk.unwrap();
         assert_eq!(uk.start_index, 1);
         assert_eq!(uk.keys.len(), 3 - 1 + 1);
-        uk.verify(&sig, &ipk, t, &set_comm_srs).unwrap();
+        uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
 
         let rho = Fr::rand(&mut rng);
         let (new_sig, comm, o, uk1) = sig
@@ -1011,7 +987,7 @@ pub mod tests {
                 vec![msgs_1.clone(), msgs_2.clone()],
                 &opns,
                 &upk,
-                &ipk,
+                prep_ipk.clone(),
                 &set_comm_srs,
             )
             .unwrap();
@@ -1029,7 +1005,7 @@ pub mod tests {
                 vec![msgs_1.clone(), msgs_2.clone(), msgs_3.clone()],
                 &opns,
                 &upk,
-                &ipk,
+                prep_ipk.clone(),
                 &set_comm_srs,
             )
             .unwrap();
@@ -1052,7 +1028,7 @@ pub mod tests {
                 ],
                 &opns,
                 &upk,
-                &ipk,
+                prep_ipk.clone(),
                 &set_comm_srs,
             )
             .unwrap();
@@ -1068,7 +1044,7 @@ pub mod tests {
 
         let (set_comm_srs, _) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
             StdRng,
-            Blake2b,
+            Blake2b512,
         >(&mut rng, max_attributes, None);
 
         let isk = RootIssuerSecretKey::<Bls12_381>::new::<StdRng>(&mut rng, l).unwrap();
@@ -1079,6 +1055,8 @@ pub mod tests {
 
         let usk1 = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk1 = UserPublicKey::new(&usk1, set_comm_srs.get_P1());
+
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
 
         let msgs_1 = (0..t - 2).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
         let msgs_2 = (0..t - 1).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
@@ -1098,14 +1076,14 @@ pub mod tests {
             vec![msgs_1.clone(), msgs_2.clone()],
             &opns,
             &upk,
-            &ipk,
+            prep_ipk.clone(),
             &set_comm_srs,
         )
         .unwrap();
 
-        let orphan_sig = sig.to_orphan(&usk, &ipk);
+        let orphan_sig = sig.to_orphan(&usk, &ipk.X_0);
 
-        let new_sig = orphan_sig.from_orphan(&usk1, &ipk);
+        let new_sig = orphan_sig.from_orphan(&usk1, &ipk.X_0);
 
         new_sig
             .verify(
@@ -1113,7 +1091,7 @@ pub mod tests {
                 vec![msgs_1.clone(), msgs_2.clone()],
                 &opns,
                 &upk1,
-                &ipk,
+                prep_ipk,
                 &set_comm_srs,
             )
             .unwrap();

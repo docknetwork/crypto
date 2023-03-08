@@ -9,36 +9,38 @@ use crate::auditor::AuditorPublicKey;
 use crate::error::DelegationError;
 use crate::mercurial_sig::{PublicKey, PublicKeyG1, SecretKey, SignatureG2};
 use crate::protego::issuance::Credential;
-use crate::protego::keys::{IssuerPublicKey, UserPublicKey, UserSecretKey};
+use crate::protego::keys::{
+    IssuerPublicKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey,
+};
 use crate::protego::show::known_signer::{CredentialShow, CredentialShowProtocol};
-use crate::set_commitment::SetCommitmentSRS;
-use ark_ec::PairingEngine;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
+use crate::set_commitment::{PreparedSetCommitmentSRS, SetCommitmentSRS};
+use ark_ec::pairing::Pairing;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::io::Write;
 use ark_std::rand::RngCore;
 use ark_std::vec::Vec;
 use ark_std::UniformRand;
 use zeroize::Zeroize;
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize)]
-pub struct DelegationPolicySecretKey<E: PairingEngine>(pub SecretKey<E>);
+pub struct DelegationPolicySecretKey<E: Pairing>(pub SecretKey<E>);
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct DelegationPolicyPublicKey<E: PairingEngine>(pub PublicKeyG1<E>);
+pub struct DelegationPolicyPublicKey<E: Pairing>(pub PublicKeyG1<E>);
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct DelegationPolicyProof<E: PairingEngine> {
+pub struct DelegationPolicyProof<E: Pairing> {
     pub randomized_pk: IssuerPublicKey<E>,
     pub signature: SignatureG2<E>,
 }
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CredentialShowProtocolWithDelegationPolicy<E: PairingEngine> {
+pub struct CredentialShowProtocolWithDelegationPolicy<E: Pairing> {
     pub credential_show_protocol: CredentialShowProtocol<E>,
     pub pubkey_anonymity_proof: DelegationPolicyProof<E>,
 }
 
-impl<E: PairingEngine> DelegationPolicySecretKey<E> {
+impl<E: Pairing> DelegationPolicySecretKey<E> {
     pub fn new<R: RngCore>(
         rng: &mut R,
         max_public_key_size: usize,
@@ -59,17 +61,17 @@ impl<E: PairingEngine> DelegationPolicySecretKey<E> {
     }
 }
 
-impl<E: PairingEngine> DelegationPolicyPublicKey<E> {
+impl<E: Pairing> DelegationPolicyPublicKey<E> {
     pub fn new(secret_key: &DelegationPolicySecretKey<E>, P1: &E::G1Affine) -> Self {
         Self(PublicKeyG1::new(&secret_key.0, P1))
     }
 }
 
-impl<E: PairingEngine> CredentialShowProtocolWithDelegationPolicy<E> {
+impl<E: Pairing> CredentialShowProtocolWithDelegationPolicy<E> {
     pub fn init<R: RngCore>(
         rng: &mut R,
         credential: Credential<E>,
-        disclosed_attributes: Vec<E::Fr>,
+        disclosed_attributes: Vec<E::ScalarField>,
         issuer_public_key: &IssuerPublicKey<E>,
         signature: &SignatureG2<E>,
         user_pk: Option<&UserPublicKey<E>>,
@@ -104,7 +106,7 @@ impl<E: PairingEngine> CredentialShowProtocolWithDelegationPolicy<E> {
     pub fn init_with_revocation<R: RngCore>(
         rng: &mut R,
         credential: Credential<E>,
-        disclosed_attributes: Vec<E::Fr>,
+        disclosed_attributes: Vec<E::ScalarField>,
         accumulated: &E::G1Affine,
         non_mem_wit: &NonMembershipWitness<E>,
         issuer_public_key: &IssuerPublicKey<E>,
@@ -143,7 +145,7 @@ impl<E: PairingEngine> CredentialShowProtocolWithDelegationPolicy<E> {
     pub fn gen_show(
         self,
         user_secret_key: Option<&UserSecretKey<E>>,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
     ) -> Result<CredentialShowWithDelegationPolicy<E>, DelegationError> {
         Ok(CredentialShowWithDelegationPolicy {
             credential_show: self
@@ -177,8 +179,8 @@ impl<E: PairingEngine> CredentialShowProtocolWithDelegationPolicy<E> {
         rng: &mut R,
         signature: &SignatureG2<E>,
         issuer_public_key: &IssuerPublicKey<E>,
-    ) -> (E::Fr, DelegationPolicyProof<E>) {
-        let rho = E::Fr::rand(rng);
+    ) -> (E::ScalarField, DelegationPolicyProof<E>) {
+        let rho = E::ScalarField::rand(rng);
         let (new_sig, new_key) = signature.change_rep(rng, &rho, &issuer_public_key.public_key.0);
         let new_key = IssuerPublicKey {
             public_key: PublicKey(new_key),
@@ -195,15 +197,16 @@ impl<E: PairingEngine> CredentialShowProtocolWithDelegationPolicy<E> {
     }
 }
 
-impl<E: PairingEngine> CredentialShowWithDelegationPolicy<E> {
+impl<E: Pairing> CredentialShowWithDelegationPolicy<E> {
     pub fn verify(
         &self,
-        challenge: &E::Fr,
-        disclosed_attributes: Vec<E::Fr>,
+        challenge: &E::ScalarField,
+        disclosed_attributes: Vec<E::ScalarField>,
         policy_public_key: &DelegationPolicyPublicKey<E>,
         auditor_pk: Option<&AuditorPublicKey<E>>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
+        let set_comm_srs = set_comm_srs.into();
         self.pubkey_anonymity_proof.signature.verify(
             &self.pubkey_anonymity_proof.randomized_pk.public_key.0,
             &policy_public_key.0,
@@ -213,10 +216,10 @@ impl<E: PairingEngine> CredentialShowWithDelegationPolicy<E> {
         self.credential_show._verify(
             challenge,
             disclosed_attributes,
-            &self.pubkey_anonymity_proof.randomized_pk,
+            PreparedIssuerPublicKey::from(self.pubkey_anonymity_proof.randomized_pk.clone()),
             None,
             None,
-            None,
+            None::<crate::accumulator::PreparedPublicKey<E>>,
             auditor_pk,
             set_comm_srs,
         )
@@ -224,25 +227,26 @@ impl<E: PairingEngine> CredentialShowWithDelegationPolicy<E> {
 
     pub fn verify_with_revocation(
         &self,
-        challenge: &E::Fr,
-        disclosed_attributes: Vec<E::Fr>,
+        challenge: &E::ScalarField,
+        disclosed_attributes: Vec<E::ScalarField>,
         policy_public_key: &DelegationPolicyPublicKey<E>,
         accumulated: &E::G1Affine,
         Q: &E::G1Affine,
-        accumulator_pk: &crate::accumulator::PublicKey<E>,
+        accumulator_pk: impl Into<crate::accumulator::PreparedPublicKey<E>>,
         auditor_pk: Option<&AuditorPublicKey<E>>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
+        let set_comm_srs = set_comm_srs.into();
         self.pubkey_anonymity_proof.signature.verify(
             &self.pubkey_anonymity_proof.randomized_pk.public_key.0,
             &policy_public_key.0,
-            set_comm_srs.get_P2(),
+            set_comm_srs.prepared_P2.clone(),
             set_comm_srs.get_P1(),
         )?;
         self.credential_show._verify(
             challenge,
             disclosed_attributes,
-            &self.pubkey_anonymity_proof.randomized_pk,
+            PreparedIssuerPublicKey::from(self.pubkey_anonymity_proof.randomized_pk.clone()),
             Some(accumulated),
             Some(Q),
             Some(accumulator_pk),
@@ -261,7 +265,7 @@ impl<E: PairingEngine> CredentialShowWithDelegationPolicy<E> {
 }
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CredentialShowWithDelegationPolicy<E: PairingEngine> {
+pub struct CredentialShowWithDelegationPolicy<E: Pairing> {
     pub credential_show: CredentialShow<E>,
     pub pubkey_anonymity_proof: DelegationPolicyProof<E>,
 }

@@ -22,20 +22,20 @@ license = "Apache-2.0"
 repository = "https://github.com/docknetwork/crypto"
 
 [workspace.dependencies]
-ark-ff = { version = "^0.3.0", default-features = false }
-ark-ec = { version = "^0.3.0", default-features = false }
-ark-std = { version = "^0.3.0", default-features = false }
-ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
+ark-ff = { version = "^0.4.1", default-features = false }
+ark-ec = { version = "^0.4.1", default-features = false }
+ark-std = { version = "^0.4.0", default-features = false}
+ark-poly = { version = "^0.4.1", default-features = false }
+ark-serialize = { version = "^0.4.1", default-features = false, features = [ "derive" ] }
 rayon = { version = "1" }
-digest = "0.9"
+digest = { version = "0.10", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
 zeroize = { version = "1.5.5", features = ["derive"] }
-blake2 = { version = "0.9", default-features = false }
-ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
-ark-poly = { version = "^0.3.0", default-features = false }
+blake2 = { version = "0.10", default-features = false }
+ark-bls12-381 = { version = "^0.4.0", default-features = false, features = [ "curve" ] }
 merlin = { version = "^3.0", default-features = false }
-legogroth16 = { version = "0.4.0", default-features = false }
+legogroth16 = { version = "0.6.0" , default-features = false }
 
 [profile.release]
 lto = true

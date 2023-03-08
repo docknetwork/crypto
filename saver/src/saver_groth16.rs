@@ -1,12 +1,10 @@
 //! Using SAVER with Groth16
-
-use ark_ec::msm::VariableBaseMSM;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, PrimeField};
 use ark_relations::r1cs::{ConstraintSynthesizer, SynthesisError};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
-    io::{Read, Write},
+    ops::{AddAssign, Mul},
     rand::{Rng, RngCore},
     string::ToString,
     vec,
@@ -14,23 +12,21 @@ use ark_std::{
     UniformRand,
 };
 
-use dock_crypto_utils::impl_for_groth16_struct;
-use legogroth16::aggregation::{
-    groth16::AggregateProof, pairing_check::PairingCheck, srs::VerifierSRS, transcript::Transcript,
-};
+use legogroth16::aggregation::{groth16::AggregateProof, srs::VerifierSRS};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::encryption::Ciphertext;
 pub use ark_groth16::{
-    create_random_proof, generate_parameters, prepare_verifying_key, PreparedVerifyingKey, Proof,
-    ProvingKey as Groth16ProvingKey, VerifyingKey,
+    prepare_verifying_key, Groth16, PreparedVerifyingKey, Proof, ProvingKey as Groth16ProvingKey,
+    VerifyingKey,
 };
-use ark_std::ops::AddAssign;
-use dock_crypto_utils::ff::non_zero_random;
+use dock_crypto_utils::ff::{non_zero_random, powers, sum_of_powers};
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
 use crate::error::SaverError;
 use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::transcript::Transcript;
 
 use crate::keygen::EncryptionKey;
 use crate::setup::EncryptionGens;
@@ -39,45 +35,42 @@ use crate::setup::EncryptionGens;
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct ProvingKey<E: PairingEngine> {
+pub struct ProvingKey<E: Pairing> {
     /// Groth16's proving key
-    #[serde_as(as = "Groth16ProvingKeyBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub pk: Groth16ProvingKey<E>,
     /// The element `-gamma * G` in `E::G1`.
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub gamma_g1: E::G1Affine,
 }
 
-impl_for_groth16_struct!(Groth16ProvingKeyBytes);
-impl_for_groth16_struct!(Groth16VerifyingKeyBytes);
-
 /// These parameters are needed for setting up keys for encryption/decryption
-pub fn get_gs_for_encryption<E: PairingEngine>(vk: &VerifyingKey<E>) -> &[E::G1Affine] {
+pub fn get_gs_for_encryption<E: Pairing>(vk: &VerifyingKey<E>) -> &[E::G1Affine] {
     &vk.gamma_abc_g1[1..]
 }
 
 /// Generate Groth16 SRS
-pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr>>(
+pub fn generate_srs<E: Pairing, R: RngCore, C: ConstraintSynthesizer<E::ScalarField>>(
     circuit: C,
     gens: &EncryptionGens<E>,
     rng: &mut R,
 ) -> Result<ProvingKey<E>, SaverError> {
-    let alpha = E::Fr::rand(rng);
-    let beta = E::Fr::rand(rng);
-    let gamma = E::Fr::rand(rng);
-    let delta = E::Fr::rand(rng);
+    let alpha = E::ScalarField::rand(rng);
+    let beta = E::ScalarField::rand(rng);
+    let gamma = E::ScalarField::rand(rng);
+    let delta = E::ScalarField::rand(rng);
 
-    let g1_generator = gens.G.into_projective();
-    let neg_gamma_g1 = g1_generator.mul((-gamma).into_repr());
+    let g1_generator = gens.G.into_group();
+    let neg_gamma_g1 = g1_generator.mul_bigint((-gamma).into_bigint());
 
-    let pk = generate_parameters::<E, C, R>(
+    let pk = Groth16::<E>::generate_parameters_with_qap::<C>(
         circuit,
         alpha,
         beta,
         gamma,
         delta,
         g1_generator,
-        gens.H.into_projective(),
+        gens.H.into_group(),
         rng,
     )?;
 
@@ -90,21 +83,23 @@ pub fn generate_srs<E: PairingEngine, R: RngCore, C: ConstraintSynthesizer<E::Fr
 /// `r` is the randomness used during the encryption
 pub fn create_proof<E, C, R>(
     circuit: C,
-    r: &E::Fr,
+    r: &E::ScalarField,
     pk: &ProvingKey<E>,
     encryption_key: &EncryptionKey<E>,
     rng: &mut R,
 ) -> Result<Proof<E>, SaverError>
 where
-    E: PairingEngine,
-    C: ConstraintSynthesizer<E::Fr>,
+    E: Pairing,
+    C: ConstraintSynthesizer<E::ScalarField>,
     R: Rng,
 {
-    let mut proof = create_random_proof(circuit, &pk.pk, rng)?;
+    let t = E::ScalarField::rand(rng);
+    let s = E::ScalarField::rand(rng);
+    let mut proof = Groth16::<E>::create_proof_with_reduction(circuit, &pk.pk, t, s)?;
 
     // proof.c = proof.c + r * P_2
-    let mut c = proof.c.into_projective();
-    c.add_assign(encryption_key.P_2.mul(r.into_repr()));
+    let mut c = proof.c.into_group();
+    c.add_assign(encryption_key.P_2.mul_bigint(r.into_bigint()));
     proof.c = c.into_affine();
 
     Ok(proof)
@@ -114,38 +109,38 @@ where
 /// `rerandomize_proof` from `ark_groth16`
 pub fn randomize_proof<E, R>(
     mut proof: Proof<E>,
-    r_prime: &E::Fr,
+    r_prime: &E::ScalarField,
     vk: &VerifyingKey<E>,
     encryption_key: &EncryptionKey<E>,
     rng: &mut R,
 ) -> Result<Proof<E>, SaverError>
 where
-    E: PairingEngine,
+    E: Pairing,
     R: Rng,
 {
     let (z1, z2) = (
-        non_zero_random::<E::Fr, R>(rng),
-        non_zero_random::<E::Fr, R>(rng),
+        non_zero_random::<E::ScalarField, R>(rng),
+        non_zero_random::<E::ScalarField, R>(rng),
     );
     let z1_inv = z1.inverse().unwrap();
     let z1z2 = z1 * z2;
 
     // proof.c = proof.c + proof.A * z1z2 + r' * P_2
-    let mut c = proof.c.into_projective();
-    c.add_assign(proof.a.mul(z1z2.into_repr()));
-    c.add_assign(encryption_key.P_2.mul(r_prime.into_repr()));
+    let mut c = proof.c.into_group();
+    c.add_assign(proof.a.mul_bigint(z1z2.into_bigint()));
+    c.add_assign(encryption_key.P_2.mul_bigint(r_prime.into_bigint()));
     proof.c = c.into_affine();
 
-    let mut b = proof.b.mul(z1_inv.into_repr());
+    let mut b = proof.b.mul_bigint(z1_inv.into_bigint());
     b.add_assign(vk.delta_g2.mul(z2));
     proof.b = b.into_affine();
 
-    proof.a = proof.a.mul(z1.into_repr()).into_affine();
+    proof.a = proof.a.mul_bigint(z1.into_bigint()).into_affine();
 
     Ok(proof)
 }
 
-pub fn verify_proof<E: PairingEngine>(
+pub fn verify_proof<E: Pairing>(
     pvk: &PreparedVerifyingKey<E>,
     proof: &Proof<E>,
     ciphertext: &Ciphertext<E>,
@@ -159,35 +154,37 @@ pub fn verify_proof<E: PairingEngine>(
     )
 }
 
-pub fn calculate_d<E: PairingEngine>(
+pub fn calculate_d<E: Pairing>(
     pvk: &PreparedVerifyingKey<E>,
     ciphertext: &Ciphertext<E>,
 ) -> Result<E::G1Affine, SaverError> {
-    let mut d = ciphertext.X_r.into_projective();
+    let mut d = ciphertext.X_r.into_group();
     for c in ciphertext.enc_chunks.iter() {
-        d.add_assign(c.into_projective())
+        d.add_assign(c.into_group())
     }
-    d.add_assign_mixed(&pvk.vk.gamma_abc_g1[0]);
+    d.add_assign(&pvk.vk.gamma_abc_g1[0]);
     Ok(d.into_affine())
 }
 
-pub fn verify_qap_proof<E: PairingEngine>(
+pub fn verify_qap_proof<E: Pairing>(
     pvk: &PreparedVerifyingKey<E>,
     a: E::G1Affine,
     b: E::G2Affine,
     c: E::G1Affine,
     d: E::G1Affine,
 ) -> crate::Result<()> {
-    let qap = E::miller_loop(
+    let qap = E::multi_miller_loop(
+        [a, c, d],
         [
-            (a.into(), b.into()),
-            (c.into(), pvk.delta_g2_neg_pc.clone()),
-            (d.into(), pvk.gamma_g2_neg_pc.clone()),
-        ]
-        .iter(),
+            b.into(),
+            pvk.delta_g2_neg_pc.clone(),
+            pvk.gamma_g2_neg_pc.clone(),
+        ],
     );
 
-    if E::final_exponentiation(&qap).ok_or(SynthesisError::UnexpectedIdentity)?
+    if E::final_exponentiation(qap)
+        .ok_or(SynthesisError::UnexpectedIdentity)?
+        .0
         != pvk.alpha_g1_beta_g2
     {
         return Err(SaverError::PairingCheckFailed);
@@ -195,20 +192,16 @@ pub fn verify_qap_proof<E: PairingEngine>(
     Ok(())
 }
 
-pub fn verify_aggregate_proof<E: PairingEngine, R: Rng, T: Transcript>(
+pub fn verify_aggregate_proof<E: Pairing, R: Rng, T: Transcript>(
     ip_verifier_srs: &VerifierSRS<E>,
     pvk: &PreparedVerifyingKey<E>,
     proof: &AggregateProof<E>,
     ciphertexts: &[Ciphertext<E>],
     rng: &mut R,
     mut transcript: &mut T,
-    pairing_check: Option<&mut PairingCheck<E>>,
+    pairing_check: Option<&mut RandomizedPairingChecker<E>>,
 ) -> Result<(), SaverError> {
-    use legogroth16::aggregation::{
-        error::AggregationError,
-        groth16::verifier::verify_tipp_mipp,
-        utils::{powers, sum_of_powers},
-    };
+    use legogroth16::aggregation::{error::AggregationError, groth16::verifier::verify_tipp_mipp};
 
     let n = proof.tmipp.gipa.nproofs as usize;
     assert_eq!(ciphertexts.len(), n);
@@ -224,10 +217,10 @@ pub fn verify_aggregate_proof<E: PairingEngine, R: Rng, T: Transcript>(
     transcript.append(b"AB-commitment", &proof.com_ab);
     transcript.append(b"C-commitment", &proof.com_c);
 
-    let r = transcript.challenge_scalar::<E::Fr>(b"r-random-fiatshamir");
+    let r = transcript.challenge_scalar::<E::ScalarField>(b"r-random-fiatshamir");
 
-    let mut c = PairingCheck::new_using_rng(rng);
-    let mut checker = pairing_check.unwrap_or_else(|| &mut c);
+    let mut c = RandomizedPairingChecker::new_using_rng(rng, true);
+    let checker = pairing_check.unwrap_or_else(|| &mut c);
 
     let ver_srs_proj = ip_verifier_srs.to_projective();
     verify_tipp_mipp::<E, T>(
@@ -235,12 +228,12 @@ pub fn verify_aggregate_proof<E: PairingEngine, R: Rng, T: Transcript>(
         proof,
         &r, // we give the extra r as it's not part of the proof itself - it is simply used on top for the groth16 aggregation
         &mut transcript,
-        &mut checker,
+        checker,
     )
     .map_err(|e| SaverError::LegoGroth16Error(e.into()))?;
 
-    let r_powers = powers(n, &r);
-    let r_sum = sum_of_powers::<E::Fr>(n, &r);
+    let r_powers = powers(&r, n);
+    let r_sum = sum_of_powers::<E::ScalarField>(&r, n);
 
     let mut source1 = Vec::with_capacity(3);
     let mut source2 = Vec::with_capacity(3);
@@ -253,20 +246,20 @@ pub fn verify_aggregate_proof<E: PairingEngine, R: Rng, T: Transcript>(
     source2.push(pvk.vk.delta_g2);
 
     let mut bases = vec![pvk.vk.gamma_abc_g1[0]];
-    let mut scalars = vec![r_sum.into_repr()];
+    let mut scalars = vec![r_sum.into_bigint()];
     for (i, p) in r_powers.into_iter().enumerate() {
-        let mut d = ciphertexts[i].X_r.into_projective();
+        let mut d = ciphertexts[i].X_r.into_group();
         for c in ciphertexts[i].enc_chunks.iter() {
-            d.add_assign(c.into_projective())
+            d.add_assign(c.into_group())
         }
         bases.push(d.into_affine());
-        scalars.push(p.into_repr());
+        scalars.push(p.into_bigint());
     }
 
-    source1.push(VariableBaseMSM::multi_scalar_mul(&bases, &scalars).into_affine());
+    source1.push(E::G1::msm_bigint(&bases, &scalars).into_affine());
     source2.push(pvk.vk.gamma_g2);
 
-    checker.add_sources_and_target(&source1, &source2, &proof.z_ab, true);
+    checker.add_multiple_sources_and_target(&source1, &source2, &proof.z_ab);
 
     match checker.verify() {
         true => Ok(()),
@@ -290,10 +283,11 @@ mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
-    use legogroth16::aggregation::{srs, transcript::new_merlin_transcript};
+    use dock_crypto_utils::transcript::new_merlin_transcript;
+    use legogroth16::aggregation::srs;
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn encrypt_and_snark_verification() {
@@ -311,7 +305,7 @@ mod tests {
             println!(
                 "For chunk_bit_size {}, Snark SRS has compressed size {} and uncompressed size {}",
                 chunk_bit_size,
-                snark_srs.serialized_size(),
+                snark_srs.compressed_size(),
                 snark_srs.uncompressed_size()
             );
 
@@ -326,7 +320,7 @@ mod tests {
             )
             .unwrap();
 
-            println!("For chunk_bit_size {}, encryption key has compressed size {} and uncompressed size {}", chunk_bit_size, ek.serialized_size(), ek.uncompressed_size());
+            println!("For chunk_bit_size {}, encryption key has compressed size {} and uncompressed size {}", chunk_bit_size, ek.compressed_size(), ek.uncompressed_size());
 
             let (ct, r) =
                 Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i).unwrap();
@@ -335,7 +329,7 @@ mod tests {
                 &ct[0],
                 &ct[1..n as usize + 1],
                 &sk,
-                &dk,
+                dk.clone(),
                 &g_i,
                 chunk_bit_size,
             )
@@ -363,8 +357,8 @@ mod tests {
                 &ct[0],
                 &ct[1..n as usize + 1],
                 &ct[n as usize + 1],
-                &ek,
-                &gens,
+                ek.clone(),
+                gens.clone(),
             )
             .unwrap();
             let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
@@ -419,24 +413,24 @@ mod tests {
                 &ct.X_r,
                 &ct.enc_chunks,
                 &ct.commitment,
-                &ek,
-                &gens,
+                ek.clone(),
+                gens.clone(),
             )
             .unwrap();
 
             verify_proof(&pvk, &proof, &ct).unwrap();
 
             let (decrypted_message, nu) = ct
-                .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
+                .decrypt_given_groth16_vk(&sk, dk.clone(), &snark_srs.pk.vk, chunk_bit_size)
                 .unwrap();
             assert_eq!(decrypted_message, msg);
             ct.verify_decryption_given_groth16_vk(
                 &decrypted_message,
                 &nu,
                 chunk_bit_size,
-                &dk,
+                dk.clone(),
                 &snark_srs.pk.vk,
-                &gens,
+                gens.clone(),
             )
             .unwrap();
 
@@ -455,24 +449,24 @@ mod tests {
                 &ct.X_r,
                 &ct.enc_chunks,
                 &ct.commitment,
-                &ek,
-                &gens,
+                ek.clone(),
+                gens.clone(),
             )
             .unwrap();
 
             verify_proof(&pvk, &proof, &ct).unwrap();
 
             let (decrypted_message, nu) = ct
-                .decrypt_given_groth16_vk(&sk, &dk, &snark_srs.pk.vk, chunk_bit_size)
+                .decrypt_given_groth16_vk(&sk, dk.clone(), &snark_srs.pk.vk, chunk_bit_size)
                 .unwrap();
             assert_eq!(decrypted_message, msg);
             ct.verify_decryption_given_groth16_vk(
                 &decrypted_message,
                 &nu,
                 chunk_bit_size,
-                &dk,
+                dk.clone(),
                 &snark_srs.pk.vk,
-                &gens,
+                gens.clone(),
             )
             .unwrap();
 
@@ -511,8 +505,8 @@ mod tests {
                 &ct.X_r,
                 &ct.enc_chunks,
                 &ct.commitment,
-                &ek,
-                &enc_gens,
+                ek.clone(),
+                enc_gens.clone(),
             )
             .unwrap();
 
@@ -527,7 +521,7 @@ mod tests {
 
         let mut prover_transcript = new_merlin_transcript(b"test aggregation");
         let aggregate_proof = legogroth16::aggregation::groth16::aggregate_proofs(
-            &prover_srs,
+            prover_srs.clone(),
             &mut prover_transcript,
             &proofs,
         )

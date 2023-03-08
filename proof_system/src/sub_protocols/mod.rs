@@ -6,7 +6,7 @@ pub mod saver;
 pub mod schnorr;
 
 use crate::error::ProofSystemError;
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::io::Write;
 
 use crate::statement_proof::StatementProof;
@@ -17,7 +17,7 @@ use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubP
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to
 /// form a `Proof`
 #[derive(Clone, Debug, PartialEq)]
-pub enum SubProtocol<'a, E: PairingEngine, G: AffineCurve> {
+pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
     PoKBBSSignatureG1(self::bbs_plus::PoKBBSSigG1SubProtocol<'a, E>),
     AccumulatorMembership(AccumulatorMembershipSubProtocol<'a, E>),
     AccumulatorNonMembership(AccumulatorNonMembershipSubProtocol<'a, E>),
@@ -29,15 +29,15 @@ pub enum SubProtocol<'a, E: PairingEngine, G: AffineCurve> {
     R1CSLegogroth16Protocol(R1CSLegogroth16Protocol<'a, E>),
 }
 
-pub trait ProofSubProtocol<E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> {
+pub trait ProofSubProtocol<E: Pairing, G: AffineRepr<ScalarField = E::ScalarField>> {
     fn challenge_contribution(&self, target: &mut [u8]) -> Result<(), ProofSystemError>;
     fn gen_proof_contribution(
         &mut self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError>;
 }
 
-impl<'a, E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> SubProtocol<'a, E, G> {
+impl<'a, E: Pairing, G: AffineRepr<ScalarField = E::ScalarField>> SubProtocol<'a, E, G> {
     pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ProofSystemError> {
         match self {
             SubProtocol::PoKBBSSignatureG1(s) => s.challenge_contribution(writer),
@@ -52,7 +52,7 @@ impl<'a, E: PairingEngine, G: AffineCurve<ScalarField = E::Fr>> SubProtocol<'a, 
 
     pub fn gen_proof_contribution(
         &mut self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         match self {
             SubProtocol::PoKBBSSignatureG1(s) => s.gen_proof_contribution(challenge),

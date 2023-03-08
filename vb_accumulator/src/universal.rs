@@ -66,19 +66,13 @@ use crate::persistence::{InitialElementsStore, State, UniversalAccumulatorState}
 use crate::positive::Accumulator;
 use crate::setup::{PublicKey, SecretKey, SetupParams};
 use crate::witness::NonMembershipWitness;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::fields::Field;
 use ark_ff::{batch_inversion, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
-    cfg_into_iter, cfg_iter, cfg_iter_mut,
-    fmt::Debug,
-    io::{Read, Write},
-    iter::Iterator,
-    rand::RngCore,
-    vec,
-    vec::Vec,
-    One, UniformRand, Zero,
+    cfg_into_iter, cfg_iter, cfg_iter_mut, fmt::Debug, iter::Iterator, rand::RngCore, vec,
+    vec::Vec, One, UniformRand, Zero,
 };
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
@@ -100,21 +94,21 @@ use zeroize::Zeroize;
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct UniversalAccumulator<E: PairingEngine> {
+pub struct UniversalAccumulator<E: Pairing> {
     /// This is the accumulated value. It is considered a digest of state of the accumulator.
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub V: E::G1Affine,
     /// This is f_V(alpha) and is the discrete log of `V` wrt. P from setup parameters. Accumulator
     /// manager persists it for efficient computation of non-membership witnesses
-    #[serde_as(as = "FieldBytes")]
-    pub f_V: E::Fr,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub f_V: E::ScalarField,
     /// The maximum elements the accumulator can store
     pub max_size: u64,
 }
 
 impl<E> Accumulator<E> for UniversalAccumulator<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     fn value(&self) -> &E::G1Affine {
         &self.V
@@ -124,7 +118,7 @@ where
     /// purposes only
     fn from_accumulated(accumulated: E::G1Affine) -> Self {
         Self {
-            f_V: E::Fr::zero(),
+            f_V: E::ScalarField::zero(),
             V: accumulated,
             max_size: 0,
         }
@@ -133,7 +127,7 @@ where
 
 impl<E> UniversalAccumulator<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     /// Create a new universal accumulator. Given the max size, it generates `max_size-n+1` initial elements
     /// as mentioned in the paper. `n` elements are passed as argument `xs`. These are generated
@@ -145,11 +139,11 @@ where
         rng: &mut R,
         setup_params: &SetupParams<E>,
         max_size: u64,
-        sk: &SecretKey<E::Fr>,
-        xs: Vec<E::Fr>,
-        initial_elements_store: &mut dyn InitialElementsStore<E::Fr>,
+        sk: &SecretKey<E::ScalarField>,
+        xs: Vec<E::ScalarField>,
+        initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
     ) -> Self {
-        let mut f_V = E::Fr::one();
+        let mut f_V = E::ScalarField::one();
         for x in xs {
             f_V *= x + sk.0;
             initial_elements_store.add(x);
@@ -164,12 +158,12 @@ where
         // but as `xs.len <<< max_size` in practice, didn't feel right to make the function accept
         // one more argument and make caller decide one more thing.
         for _ in 0..(max_size + 1) {
-            let elem = E::Fr::rand(rng);
+            let elem = E::ScalarField::rand(rng);
             f_V *= elem + sk.0;
             initial_elements_store.add(elem);
         }
 
-        let V = setup_params.P.mul(f_V.into_repr()).into_affine();
+        let V = setup_params.P.mul_bigint(f_V.into_bigint()).into_affine();
 
         Self { V, f_V, max_size }
     }
@@ -182,19 +176,19 @@ where
         rng: &mut R,
         setup_params: &SetupParams<E>,
         max_size: u64,
-        sk: &SecretKey<E::Fr>,
-        initial_elements_store: &mut dyn InitialElementsStore<E::Fr>,
+        sk: &SecretKey<E::ScalarField>,
+        initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
     ) -> Self {
-        let mut f_V = E::Fr::one();
+        let mut f_V = E::ScalarField::one();
         for _ in 0..max_size + 1 {
             // Each of the random values should be preserved by the manager and should not be removed (check before removing)
             // from the accumulator
-            let elem = E::Fr::rand(rng);
+            let elem = E::ScalarField::rand(rng);
             f_V *= elem + sk.0;
             initial_elements_store.add(elem);
         }
 
-        let V = setup_params.P.mul(f_V.into_repr()).into_affine();
+        let V = setup_params.P.mul_bigint(f_V.into_bigint()).into_affine();
 
         Self { V, f_V, max_size }
     }
@@ -202,8 +196,12 @@ where
     /// Create a new universal accumulator but assumes that the initial elements have been already
     /// generated and `f_V = (y_1 + alpha) * (y_2 + alpha) *...*(y_n + alpha)` has been calculated
     /// where `y_i` are the initial elements and `alpha` is the secret key
-    pub fn initialize_given_f_V(f_V: E::Fr, setup_params: &SetupParams<E>, max_size: u64) -> Self {
-        let V = setup_params.P.mul(f_V.into_repr()).into_affine();
+    pub fn initialize_given_f_V(
+        f_V: E::ScalarField,
+        setup_params: &SetupParams<E>,
+        max_size: u64,
+    ) -> Self {
+        let V = setup_params.P.mul_bigint(f_V.into_bigint()).into_affine();
         Self { V, f_V, max_size }
     }
 
@@ -211,8 +209,11 @@ where
     /// and `alpha` is the secret key. If `initial_elements` is large enough to be not passed in a single
     /// invocation of this function, several evaluations of this function can be multiplied to get the
     /// final `f_V`
-    pub fn compute_initial_f_V(initial_elements: &[E::Fr], sk: &SecretKey<E::Fr>) -> E::Fr {
-        let mut f_V = E::Fr::one();
+    pub fn compute_initial_f_V(
+        initial_elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> E::ScalarField {
+        let mut f_V = E::ScalarField::one();
         for elem in initial_elements {
             // Each of the random values should be preserved by the manager and should not be removed (check before removing)
             // from the accumulator
@@ -233,14 +234,14 @@ where
     /// Check if element is part of the initial elements. Such elements should not be added or removed from the accumulator
     pub fn is_element_acceptable(
         &self,
-        element: &E::Fr,
-        initial_elements_store: &dyn InitialElementsStore<E::Fr>,
+        element: &E::ScalarField,
+        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
     ) -> bool {
         !initial_elements_store.has(element)
     }
 
     /// Update the accumulated values with the given ones
-    pub fn get_updated(&self, f_V: E::Fr, V: E::G1Affine) -> Self {
+    pub fn get_updated(&self, f_V: E::ScalarField, V: E::G1Affine) -> Self {
         Self {
             V,
             f_V,
@@ -251,9 +252,9 @@ where
     /// Compute new accumulated value after addition.
     pub fn compute_new_post_add(
         &self,
-        element: &E::Fr,
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         let (y_plus_alpha, V) = self._compute_new_post_add(element, sk);
         let f_V = y_plus_alpha * self.f_V;
         (f_V, V)
@@ -262,10 +263,10 @@ where
     /// Add an element to the accumulator and state. Reads and writes to state. Described in section 2 of the paper
     pub fn add(
         &self,
-        element: E::Fr,
-        sk: &SecretKey<E::Fr>,
-        initial_elements_store: &dyn InitialElementsStore<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        element: E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         if self.max_size() == state.size() {
             return Err(VBAccumulatorError::AccumulatorFull);
@@ -284,9 +285,9 @@ where
     /// Compute new accumulated value after batch addition.
     pub fn compute_new_post_add_batch(
         &self,
-        elements: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         let (mut d_alpha, V) = self._compute_new_post_add_batch(elements, sk);
         let f_V = d_alpha * self.f_V;
         d_alpha.zeroize();
@@ -296,10 +297,10 @@ where
     /// Add a batch of members in the accumulator. Reads and writes to state. Described in section 3 of the paper
     pub fn add_batch(
         &self,
-        elements: Vec<E::Fr>,
-        sk: &SecretKey<E::Fr>,
-        initial_elements_store: &dyn InitialElementsStore<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        elements: Vec<E::ScalarField>,
+        sk: &SecretKey<E::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         if self.max_size() < (state.size() + elements.len() as u64) {
             return Err(VBAccumulatorError::BatchExceedsAccumulatorCapacity);
@@ -318,9 +319,9 @@ where
     /// Compute new accumulated value after removal
     pub fn compute_new_post_remove(
         &self,
-        element: &E::Fr,
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         let (mut y_plus_alpha_inv, V) = self._compute_new_post_remove(element, sk);
         let f_V = y_plus_alpha_inv * self.f_V;
         y_plus_alpha_inv.zeroize();
@@ -330,10 +331,10 @@ where
     /// Remove an element from the accumulator and state. Reads and writes to state. Described in section 2 of the paper
     pub fn remove(
         &self,
-        element: &E::Fr,
-        sk: &SecretKey<E::Fr>,
-        initial_elements_store: &dyn InitialElementsStore<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         if !self.is_element_acceptable(element, initial_elements_store) {
             return Err(VBAccumulatorError::ProhibitedElement);
@@ -350,9 +351,9 @@ where
     /// Compute new accumulated value after batch removal
     pub fn compute_new_post_remove_batch(
         &self,
-        elements: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         let (mut d_alpha_inv, V) = self._compute_new_post_remove_batch(elements, sk);
         let f_V = d_alpha_inv * self.f_V;
         d_alpha_inv.zeroize();
@@ -362,10 +363,10 @@ where
     /// Removing a batch of members from the accumulator. Reads and writes to state. Described in section 3 of the paper
     pub fn remove_batch(
         &self,
-        elements: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-        initial_elements_store: &dyn InitialElementsStore<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         for element in elements.iter() {
             if !self.is_element_acceptable(element, initial_elements_store) {
@@ -381,10 +382,10 @@ where
     /// Compute new accumulated value after batch additions and removals
     pub fn compute_new_post_batch_updates(
         &self,
-        additions: &[E::Fr],
-        removals: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-    ) -> (E::Fr, E::G1Affine) {
+        additions: &[E::ScalarField],
+        removals: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::G1Affine) {
         let (mut d_alpha, V) = self._compute_new_post_batch_updates(additions, removals, sk);
         let f_V = d_alpha * self.f_V;
         d_alpha.zeroize();
@@ -394,11 +395,11 @@ where
     /// Adding and removing batches of elements from the accumulator. Reads and writes to state. Described in section 3 of the paper
     pub fn batch_updates(
         &self,
-        additions: Vec<E::Fr>,
-        removals: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
-        initial_elements_store: &dyn InitialElementsStore<E::Fr>,
-        state: &mut dyn State<E::Fr>,
+        additions: Vec<E::ScalarField>,
+        removals: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
+        state: &mut dyn State<E::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         if self.max_size() < (state.size() + additions.len() as u64 - removals.len() as u64) {
             return Err(VBAccumulatorError::BatchExceedsAccumulatorCapacity);
@@ -420,8 +421,11 @@ where
     /// In case the accumulator is of a large number of members such that it's not possible to pass all of
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
-    pub fn compute_d_given_members(non_member: &E::Fr, members: &[E::Fr]) -> E::Fr {
-        let mut d = E::Fr::one();
+    pub fn compute_d_given_members(
+        non_member: &E::ScalarField,
+        members: &[E::ScalarField],
+    ) -> E::ScalarField {
+        let mut d = E::ScalarField::one();
         for member in members {
             d *= *member - non_member;
         }
@@ -434,16 +438,16 @@ where
     /// Described in section 2 of the paper
     pub fn compute_non_membership_witness_given_d(
         &self,
-        d: E::Fr,
-        non_member: &E::Fr,
-        sk: &SecretKey<E::Fr>,
+        d: E::ScalarField,
+        non_member: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
         params: &SetupParams<E>,
     ) -> Result<NonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
         if d.is_zero() {
             return Err(VBAccumulatorError::CannotBeZero);
         }
         let mut y_plus_alpha_inv = (*non_member + sk.0).inverse().unwrap();
-        let mut C = params.P.into_projective();
+        let mut C = params.P.into_group();
         C *= (self.f_V - d) * y_plus_alpha_inv;
         y_plus_alpha_inv.zeroize();
         Ok(NonMembershipWitness {
@@ -455,12 +459,12 @@ where
     /// Get non-membership witness for an element absent from accumulator. Described in section 2 of the paper
     pub fn get_non_membership_witness<'a>(
         &self,
-        non_member: &E::Fr,
-        sk: &SecretKey<E::Fr>,
+        non_member: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
         state: &'a dyn UniversalAccumulatorState<
             'a,
-            E::Fr,
-            ElementIterator = impl Iterator<Item = &'a E::Fr>,
+            E::ScalarField,
+            ElementIterator = impl Iterator<Item = &'a E::ScalarField>,
         >,
         params: &SetupParams<E>,
     ) -> Result<NonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
@@ -472,7 +476,7 @@ where
         // d = f_V(-y).
         // This is expensive as a product involving all accumulated elements is needed. This can use parallelization.
         // But rayon will not work with wasm, look at https://github.com/GoogleChromeLabs/wasm-bindgen-rayon.
-        let mut d = E::Fr::one();
+        let mut d = E::ScalarField::one();
         for member in state.elements() {
             d *= *member - non_member;
         }
@@ -487,10 +491,10 @@ where
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
     pub fn compute_d_for_batch_given_members(
-        non_members: &[E::Fr],
-        members: &[E::Fr],
-    ) -> Vec<E::Fr> {
-        let mut ds = vec![E::Fr::one(); non_members.len()];
+        non_members: &[E::ScalarField],
+        members: &[E::ScalarField],
+    ) -> Vec<E::ScalarField> {
+        let mut ds = vec![E::ScalarField::one(); non_members.len()];
         for member in members {
             for (i, t) in cfg_into_iter!(non_members)
                 .map(|e| *member - *e)
@@ -508,17 +512,18 @@ where
     /// for each member `y_i`
     pub fn compute_non_membership_witness_for_batch_given_d(
         &self,
-        d: Vec<E::Fr>,
-        non_members: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
+        d: Vec<E::ScalarField>,
+        non_members: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
         params: &SetupParams<E>,
     ) -> Result<Vec<NonMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
         if cfg_iter!(d).any(|&x| x.is_zero()) {
             return Err(VBAccumulatorError::CannotBeZero);
         }
-        let f_V_alpha_minus_d: Vec<E::Fr> = cfg_iter!(d).map(|d| self.f_V - *d).collect();
+        let f_V_alpha_minus_d: Vec<E::ScalarField> = cfg_iter!(d).map(|d| self.f_V - *d).collect();
 
-        let mut y_plus_alpha_inv: Vec<E::Fr> = cfg_iter!(non_members).map(|y| *y + sk.0).collect();
+        let mut y_plus_alpha_inv: Vec<E::ScalarField> =
+            cfg_iter!(non_members).map(|y| *y + sk.0).collect();
         batch_inversion(&mut y_plus_alpha_inv);
 
         let P_multiple = f_V_alpha_minus_d
@@ -528,11 +533,9 @@ where
             .collect::<Vec<_>>();
 
         // The same group element (self.V) has to be multiplied by each element in P_multiple, so we create a window table
-        let mut wits = multiply_field_elems_with_same_group_elem(
-            params.P.into_projective(),
-            P_multiple.as_slice(),
-        );
-        let wits_affine = E::G1Projective::batch_normalization_into_affine(&wits);
+        let mut wits =
+            multiply_field_elems_with_same_group_elem(params.P.into_group(), P_multiple.as_slice());
+        let wits_affine = E::G1::normalize_batch(&wits);
         cfg_iter_mut!(y_plus_alpha_inv).for_each(|y| y.zeroize());
         wits.iter_mut().for_each(|w| w.zeroize());
         cfg_iter_mut!(wits).for_each(|y| y.zeroize());
@@ -548,12 +551,12 @@ where
     /// it uses windowed multiplication and batch invert. Will throw error even if one element is not present
     pub fn get_non_membership_witnesses_for_batch<'a>(
         &self,
-        non_members: &[E::Fr],
-        sk: &SecretKey<E::Fr>,
+        non_members: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
         state: &'a dyn UniversalAccumulatorState<
             'a,
-            E::Fr,
-            ElementIterator = impl Iterator<Item = &'a E::Fr>,
+            E::ScalarField,
+            ElementIterator = impl Iterator<Item = &'a E::ScalarField>,
         >,
         params: &SetupParams<E>,
     ) -> Result<Vec<NonMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
@@ -570,7 +573,7 @@ where
         // `(elements_{m-1} - member_0)*(elements_{m-1} - member_1)*..(elements_{m-1} - member_{n-1})*`
 
         // `d_for_witnesses` stores `d` corresponding to each of `elements`
-        let mut d_for_witnesses = vec![E::Fr::one(); non_members.len()];
+        let mut d_for_witnesses = vec![E::ScalarField::one(); non_members.len()];
         // Since iterating state is expensive, compute iteration over it once
         for member in state.elements() {
             for (i, t) in cfg_into_iter!(non_members)
@@ -595,9 +598,9 @@ where
     /// This takes `self` as an argument, but the secret `f_V` isn't used; thus it can be passed as 0.
     pub fn verify_non_membership_given_accumulated(
         V: &E::G1Affine,
-        non_member: &E::Fr,
+        non_member: &E::ScalarField,
         witness: &NonMembershipWitness<E::G1Affine>,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
     ) -> bool {
         if witness.d.is_zero() {
@@ -608,44 +611,38 @@ where
         // => e(witness.C, element*P_tilde + Q_tilde) * e(witness.d*P, P_tilde) * e(-V, P_tilde) == 1
 
         // element * P_tilde
-        let mut P_tilde_times_y_plus_Q_tilde = params.P_tilde.into_projective();
+        let mut P_tilde_times_y_plus_Q_tilde = params.P_tilde.into_group();
         P_tilde_times_y_plus_Q_tilde *= *non_member;
         // element*P_tilde + Q_tilde
-        P_tilde_times_y_plus_Q_tilde.add_assign_mixed(&pk.0);
+        P_tilde_times_y_plus_Q_tilde += pk.0;
 
         // witness.d * P
-        let mut P_times_d_minus_V = params.P.into_projective();
+        let mut P_times_d_minus_V = params.P.into_group();
         P_times_d_minus_V *= witness.d;
         // witness.d * P - V
-        P_times_d_minus_V.add_assign_mixed(&-*V);
+        P_times_d_minus_V -= *V;
 
         // e(witness.C, element*P_tilde + Q_tilde) * e(witness.d*P - V, P_tilde) == 1
-        E::product_of_pairings(&[
-            (
-                E::G1Prepared::from(witness.C),
-                E::G2Prepared::from(P_tilde_times_y_plus_Q_tilde.into_affine()),
-            ),
-            (
-                E::G1Prepared::from(P_times_d_minus_V.into_affine()),
-                E::G2Prepared::from(params.P_tilde),
-            ),
-        ])
-        .is_one()
+        E::multi_pairing(
+            [witness.C, P_times_d_minus_V.into_affine()],
+            [P_tilde_times_y_plus_Q_tilde.into_affine(), params.P_tilde],
+        )
+        .is_zero()
     }
 
     /// Check if element is absent in accumulator. Described in section 2 of the paper
     /// This takes `self` as an argument, but the secret `f_V` isn't used; thus it can be passed as 0.
     pub fn verify_non_membership(
         &self,
-        non_member: &E::Fr,
+        non_member: &E::ScalarField,
         witness: &NonMembershipWitness<E::G1Affine>,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
     ) -> bool {
         Self::verify_non_membership_given_accumulated(self.value(), non_member, witness, pk, params)
     }
 
-    pub fn from_value(f_V: E::Fr, V: E::G1Affine, max_size: u64) -> Self {
+    pub fn from_value(f_V: E::ScalarField, V: E::G1Affine, max_size: u64) -> Self {
         Self { f_V, V, max_size }
     }
 }
@@ -658,11 +655,11 @@ pub mod tests {
     use crate::test_serialization;
 
     use ark_bls12_381::Bls12_381;
-    use ark_ff::field_new;
+    use ark_ff::MontFp;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use std::time::{Duration, Instant};
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     /// Setup a universal accumulator, its keys, params and state for testing.
     pub fn setup_universal_accum(
@@ -791,7 +788,7 @@ pub mod tests {
             total_non_mem_check_time += start.elapsed();
 
             test_serialization!(
-                NonMembershipWitness<<Bls12_381 as PairingEngine>::G1Affine>,
+                NonMembershipWitness<<Bls12_381 as Pairing>::G1Affine>,
                 nm_wit
             );
 
@@ -819,7 +816,7 @@ pub mod tests {
             let m_wit = accumulator
                 .get_membership_witness(&elem, &keypair.secret_key, &state)
                 .unwrap();
-            let mut expected_V = m_wit.0.into_projective();
+            let mut expected_V = m_wit.0.into_group();
             expected_V *= elem + keypair.secret_key.0;
             assert_eq!(expected_V, accumulator.V);
 

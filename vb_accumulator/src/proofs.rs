@@ -92,19 +92,14 @@
 //! ```
 
 use crate::error::VBAccumulatorError;
-use crate::setup::{PublicKey, SetupParams};
+use crate::setup::{PreparedPublicKey, PreparedSetupParams, PublicKey, SetupParams};
 use crate::witness::{MembershipWitness, NonMembershipWitness};
-use ark_ec::wnaf::WnafContext;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{to_bytes, Field, PrimeField, SquareRootField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    fmt::Debug,
-    io::{Read, Write},
-    rand::RngCore,
-    vec::Vec,
-    UniformRand,
-};
+use ark_ec::pairing::PairingOutput;
+use ark_ec::scalar_mul::wnaf::WnafContext;
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
+use ark_ff::{Field, PrimeField};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
 use dock_crypto_utils::serde_utils::*;
@@ -112,7 +107,7 @@ use schnorr_pok::error::SchnorrError;
 use schnorr_pok::SchnorrChallengeContributor;
 use zeroize::Zeroize;
 
-use dock_crypto_utils::ec::pairing_product;
+use dock_crypto_utils::concat_slices;
 use dock_crypto_utils::msm::WindowTable;
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use serde::{Deserialize, Serialize};
@@ -128,12 +123,12 @@ use serde_with::serde_as;
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct ProvingKey<G: AffineCurve> {
-    #[serde_as(as = "AffineGroupBytes")]
+pub struct ProvingKey<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub X: G,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub Y: G,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub Z: G,
 }
 
@@ -143,7 +138,7 @@ pub struct ProvingKey<G: AffineCurve> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipProvingKey<G: AffineCurve>(
+pub struct MembershipProvingKey<G: AffineRepr>(
     #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
     pub  ProvingKey<G>,
 );
@@ -154,50 +149,43 @@ pub struct MembershipProvingKey<G: AffineCurve>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct NonMembershipProvingKey<G: AffineCurve> {
+pub struct NonMembershipProvingKey<G: AffineRepr> {
     #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
     pub XYZ: ProvingKey<G>,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub K: G,
 }
 
 impl<G> ProvingKey<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Generate using a random number generator
     fn generate_proving_key_using_rng<R: RngCore>(rng: &mut R) -> ProvingKey<G> {
         ProvingKey {
-            X: G::Projective::rand(rng).into(),
-            Y: G::Projective::rand(rng).into(),
-            Z: G::Projective::rand(rng).into(),
+            X: G::Group::rand(rng).into(),
+            Y: G::Group::rand(rng).into(),
+            Z: G::Group::rand(rng).into(),
         }
     }
 
     /// Generate by hashing known strings
     fn generate_proving_key_using_hash<D: Digest>(label: &[u8]) -> ProvingKey<G> {
         // 3 G1 elements
-        let mut elems: [G::Projective; 3] = [
-            projective_group_elem_from_try_and_incr::<G, D>(
-                &to_bytes![label, " : X".as_bytes()].unwrap(),
-            ),
-            projective_group_elem_from_try_and_incr::<G, D>(
-                &to_bytes![label, " : Y".as_bytes()].unwrap(),
-            ),
-            projective_group_elem_from_try_and_incr::<G, D>(
-                &to_bytes![label, " : Z".as_bytes()].unwrap(),
-            ),
-        ];
-        G::Projective::batch_normalization(&mut elems);
-        let [X, Y, Z] = [elems[0].into(), elems[1].into(), elems[2].into()];
-
-        ProvingKey { X, Y, Z }
+        ProvingKey {
+            X: projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : X"])
+                .into(),
+            Y: projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : Y"])
+                .into(),
+            Z: projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : Z"])
+                .into(),
+        }
     }
 }
 
 impl<G> MembershipProvingKey<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Generate using a random number generator
     pub fn generate_using_rng<R: RngCore>(rng: &mut R) -> Self {
@@ -212,14 +200,14 @@ where
 
 impl<G> NonMembershipProvingKey<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Generate using a random number generator
     pub fn generate_using_rng<R: RngCore>(rng: &mut R) -> Self {
         let XYZ = ProvingKey::generate_proving_key_using_rng(rng);
         Self {
             XYZ,
-            K: G::Projective::rand(rng).into(),
+            K: G::Group::rand(rng).into(),
         }
     }
 
@@ -228,10 +216,8 @@ where
         let XYZ = ProvingKey::generate_proving_key_using_hash::<D>(label);
         Self {
             XYZ,
-            K: projective_group_elem_from_try_and_incr::<G, D>(
-                &to_bytes![label, " : K".as_bytes()].unwrap(),
-            )
-            .into(),
+            K: projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : K"])
+                .into(),
         }
     }
 
@@ -246,12 +232,12 @@ where
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct RandomizedWitness<G: AffineCurve> {
-    #[serde_as(as = "AffineGroupBytes")]
+pub struct RandomizedWitness<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub E_C: G,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub T_sigma: G,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub T_rho: G,
 }
 
@@ -268,24 +254,24 @@ pub struct RandomizedWitness<G: AffineCurve> {
     Deserialize,
     Zeroize,
 )]
-pub struct Blindings<F: PrimeField + SquareRootField> {
-    #[serde_as(as = "FieldBytes")]
+pub struct Blindings<F: PrimeField> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub sigma: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub rho: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub delta_sigma: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub delta_rho: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub r_y: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub r_sigma: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub r_rho: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub r_delta_sigma: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub r_delta_rho: F,
 }
 
@@ -294,16 +280,16 @@ pub struct Blindings<F: PrimeField + SquareRootField> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct SchnorrCommit<E: PairingEngine> {
-    #[serde_as(as = "FieldBytes")]
-    pub R_E: E::Fqk,
-    #[serde_as(as = "AffineGroupBytes")]
+pub struct SchnorrCommit<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub R_E: PairingOutput<E>,
+    #[serde_as(as = "ArkObjectBytes")]
     pub R_sigma: E::G1Affine,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub R_rho: E::G1Affine,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub R_delta_sigma: E::G1Affine,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub R_delta_rho: E::G1Affine,
 }
 
@@ -312,16 +298,16 @@ pub struct SchnorrCommit<E: PairingEngine> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct SchnorrResponse<F: PrimeField + SquareRootField> {
-    #[serde_as(as = "FieldBytes")]
+pub struct SchnorrResponse<F: PrimeField> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub s_y: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub s_sigma: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub s_rho: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub s_delta_sigma: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub s_delta_rho: F,
 }
 
@@ -330,7 +316,7 @@ pub struct SchnorrResponse<F: PrimeField + SquareRootField> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipRandomizedWitness<G: AffineCurve>(
+pub struct MembershipRandomizedWitness<G: AffineRepr>(
     #[serde(
         bound = "RandomizedWitness<G>: Serialize, for<'a> RandomizedWitness<G>: Deserialize<'a>"
     )]
@@ -350,7 +336,7 @@ pub struct MembershipRandomizedWitness<G: AffineCurve>(
     Deserialize,
     Zeroize,
 )]
-pub struct MembershipBlindings<F: PrimeField + SquareRootField>(
+pub struct MembershipBlindings<F: PrimeField>(
     #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
     pub  Blindings<F>,
 );
@@ -360,7 +346,7 @@ pub struct MembershipBlindings<F: PrimeField + SquareRootField>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipSchnorrCommit<E: PairingEngine>(
+pub struct MembershipSchnorrCommit<E: Pairing>(
     #[serde(bound = "SchnorrCommit<E>: Serialize, for<'a> SchnorrCommit<E>: Deserialize<'a>")]
     pub  SchnorrCommit<E>,
 );
@@ -370,7 +356,7 @@ pub struct MembershipSchnorrCommit<E: PairingEngine>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipSchnorrResponse<F: PrimeField + SquareRootField>(
+pub struct MembershipSchnorrResponse<F: PrimeField>(
     #[serde(bound = "SchnorrResponse<F>: Serialize, for<'a> SchnorrResponse<F>: Deserialize<'a>")]
     pub SchnorrResponse<F>,
 );
@@ -380,7 +366,7 @@ pub struct MembershipSchnorrResponse<F: PrimeField + SquareRootField>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipProof<E: PairingEngine> {
+pub struct MembershipProof<E: Pairing> {
     #[serde(
         bound = "MembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> MembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
     )]
@@ -390,9 +376,9 @@ pub struct MembershipProof<E: PairingEngine> {
     )]
     pub schnorr_commit: MembershipSchnorrCommit<E>,
     #[serde(
-        bound = "MembershipSchnorrResponse<E::Fr>: Serialize, for<'a> MembershipSchnorrResponse<E::Fr>: Deserialize<'a>"
+        bound = "MembershipSchnorrResponse<E::ScalarField>: Serialize, for<'a> MembershipSchnorrResponse<E::ScalarField>: Deserialize<'a>"
     )]
-    pub schnorr_response: MembershipSchnorrResponse<E::Fr>,
+    pub schnorr_response: MembershipSchnorrResponse<E::ScalarField>,
 }
 
 /// Protocol for proving knowledge of the member and the membership witness
@@ -400,9 +386,9 @@ pub struct MembershipProof<E: PairingEngine> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipProofProtocol<E: PairingEngine> {
-    #[serde_as(as = "FieldBytes")]
-    pub element: E::Fr,
+pub struct MembershipProofProtocol<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub element: E::ScalarField,
     #[serde(
         bound = "MembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> MembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
     )]
@@ -412,9 +398,9 @@ pub struct MembershipProofProtocol<E: PairingEngine> {
     )]
     pub schnorr_commit: MembershipSchnorrCommit<E>,
     #[serde(
-        bound = "MembershipSchnorrResponse<E::Fr>: Serialize, for<'a> MembershipSchnorrResponse<E::Fr>: Deserialize<'a>"
+        bound = "MembershipSchnorrResponse<E::ScalarField>: Serialize, for<'a> MembershipSchnorrResponse<E::ScalarField>: Deserialize<'a>"
     )]
-    pub schnorr_blindings: MembershipBlindings<E::Fr>,
+    pub schnorr_blindings: MembershipBlindings<E::ScalarField>,
 }
 
 /// Randomized non-membership witness
@@ -422,14 +408,14 @@ pub struct MembershipProofProtocol<E: PairingEngine> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct NonMembershipRandomizedWitness<G: AffineCurve> {
+pub struct NonMembershipRandomizedWitness<G: AffineRepr> {
     #[serde(
         bound = "RandomizedWitness<G>: Serialize, for<'a> RandomizedWitness<G>: Deserialize<'a>"
     )]
     pub C: RandomizedWitness<G>,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub E_d: G,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub E_d_inv: G,
 }
 
@@ -446,18 +432,18 @@ pub struct NonMembershipRandomizedWitness<G: AffineCurve> {
     Deserialize,
     Zeroize,
 )]
-pub struct NonMembershipBlindings<F: PrimeField + SquareRootField> {
+pub struct NonMembershipBlindings<F: PrimeField> {
     #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
     pub C: Blindings<F>,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub tau: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub pi: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub r_u: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub r_v: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub r_w: F,
 }
 
@@ -466,12 +452,12 @@ pub struct NonMembershipBlindings<F: PrimeField + SquareRootField> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct NonMembershipSchnorrCommit<E: PairingEngine> {
+pub struct NonMembershipSchnorrCommit<E: Pairing> {
     #[serde(bound = "SchnorrCommit<E>: Serialize, for<'a> SchnorrCommit<E>: Deserialize<'a>")]
     pub C: SchnorrCommit<E>,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub R_A: E::G1Affine,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub R_B: E::G1Affine,
 }
 
@@ -480,14 +466,14 @@ pub struct NonMembershipSchnorrCommit<E: PairingEngine> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct NonMembershipSchnorrResponse<F: PrimeField + SquareRootField> {
+pub struct NonMembershipSchnorrResponse<F: PrimeField> {
     #[serde(bound = "SchnorrResponse<F>: Serialize, for<'a> SchnorrResponse<F>: Deserialize<'a>")]
     pub C: SchnorrResponse<F>,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub s_u: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub s_v: F,
-    #[serde_as(as = "FieldBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub s_w: F,
 }
 
@@ -496,7 +482,7 @@ pub struct NonMembershipSchnorrResponse<F: PrimeField + SquareRootField> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct NonMembershipProof<E: PairingEngine> {
+pub struct NonMembershipProof<E: Pairing> {
     #[serde(
         bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
     )]
@@ -506,9 +492,9 @@ pub struct NonMembershipProof<E: PairingEngine> {
     )]
     pub schnorr_commit: NonMembershipSchnorrCommit<E>,
     #[serde(
-        bound = "NonMembershipBlindings<E::Fr>: Serialize, for<'a> NonMembershipBlindings<E::Fr>: Deserialize<'a>"
+        bound = "NonMembershipBlindings<E::ScalarField>: Serialize, for<'a> NonMembershipBlindings<E::ScalarField>: Deserialize<'a>"
     )]
-    pub schnorr_response: NonMembershipSchnorrResponse<E::Fr>,
+    pub schnorr_response: NonMembershipSchnorrResponse<E::ScalarField>,
 }
 
 /// Protocol for proving knowledge of the non-member and the non-membership witness
@@ -516,11 +502,11 @@ pub struct NonMembershipProof<E: PairingEngine> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct NonMembershipProofProtocol<E: PairingEngine> {
-    #[serde_as(as = "FieldBytes")]
-    pub element: E::Fr,
-    #[serde_as(as = "FieldBytes")]
-    pub d: E::Fr,
+pub struct NonMembershipProofProtocol<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub element: E::ScalarField,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub d: E::ScalarField,
     #[serde(
         bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
     )]
@@ -530,42 +516,42 @@ pub struct NonMembershipProofProtocol<E: PairingEngine> {
     )]
     pub schnorr_commit: NonMembershipSchnorrCommit<E>,
     #[serde(
-        bound = "NonMembershipBlindings<E::Fr>: Serialize, for<'a> NonMembershipBlindings<E::Fr>: Deserialize<'a>"
+        bound = "NonMembershipBlindings<E::ScalarField>: Serialize, for<'a> NonMembershipBlindings<E::ScalarField>: Deserialize<'a>"
     )]
-    pub schnorr_blindings: NonMembershipBlindings<E::Fr>,
+    pub schnorr_blindings: NonMembershipBlindings<E::ScalarField>,
 }
 
 impl<G> SchnorrChallengeContributor for RandomizedWitness<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
-        self.E_C.serialize_unchecked(&mut writer)?;
-        self.T_sigma.serialize_unchecked(&mut writer)?;
+        self.E_C.serialize_compressed(&mut writer)?;
+        self.T_sigma.serialize_compressed(&mut writer)?;
         self.T_rho
-            .serialize_unchecked(&mut writer)
+            .serialize_compressed(&mut writer)
             .map_err(|e| e.into())
     }
 }
 
 impl<E> SchnorrChallengeContributor for SchnorrCommit<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
-        self.R_E.serialize_unchecked(&mut writer)?;
-        self.R_sigma.serialize_unchecked(&mut writer)?;
-        self.R_rho.serialize_unchecked(&mut writer)?;
-        self.R_delta_sigma.serialize_unchecked(&mut writer)?;
+        self.R_E.serialize_compressed(&mut writer)?;
+        self.R_sigma.serialize_compressed(&mut writer)?;
+        self.R_rho.serialize_compressed(&mut writer)?;
+        self.R_delta_sigma.serialize_compressed(&mut writer)?;
         self.R_delta_rho
-            .serialize_unchecked(&mut writer)
+            .serialize_compressed(&mut writer)
             .map_err(|e| e.into())
     }
 }
 
 impl<G> SchnorrChallengeContributor for MembershipRandomizedWitness<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
         self.0.challenge_contribution(writer)
@@ -574,7 +560,7 @@ where
 
 impl<E> SchnorrChallengeContributor for MembershipSchnorrCommit<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
         self.0.challenge_contribution(writer)
@@ -583,56 +569,56 @@ where
 
 impl<G> SchnorrChallengeContributor for NonMembershipRandomizedWitness<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
         self.C.challenge_contribution(&mut writer)?;
-        self.E_d.serialize_unchecked(&mut writer)?;
+        self.E_d.serialize_compressed(&mut writer)?;
         self.E_d_inv
-            .serialize_unchecked(&mut writer)
+            .serialize_compressed(&mut writer)
             .map_err(|e| e.into())
     }
 }
 
 impl<E> SchnorrChallengeContributor for NonMembershipSchnorrCommit<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
         self.C.challenge_contribution(&mut writer)?;
-        self.R_A.serialize_unchecked(&mut writer)?;
+        self.R_A.serialize_compressed(&mut writer)?;
         self.R_B
-            .serialize_unchecked(&mut writer)
+            .serialize_compressed(&mut writer)
             .map_err(|e| e.into())
     }
 }
 
-impl<G: AffineCurve> SchnorrChallengeContributor for ProvingKey<G> {
+impl<G: AffineRepr> SchnorrChallengeContributor for ProvingKey<G> {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
-        self.X.serialize_unchecked(&mut writer)?;
-        self.Y.serialize_unchecked(&mut writer)?;
+        self.X.serialize_compressed(&mut writer)?;
+        self.Y.serialize_compressed(&mut writer)?;
         self.Z
-            .serialize_unchecked(&mut writer)
+            .serialize_compressed(&mut writer)
             .map_err(|e| e.into())
     }
 }
 
-impl<G: AffineCurve> SchnorrChallengeContributor for MembershipProvingKey<G> {
+impl<G: AffineRepr> SchnorrChallengeContributor for MembershipProvingKey<G> {
     fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
         self.0.challenge_contribution(writer)
     }
 }
 
-impl<G: AffineCurve> SchnorrChallengeContributor for NonMembershipProvingKey<G> {
+impl<G: AffineRepr> SchnorrChallengeContributor for NonMembershipProvingKey<G> {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
         self.XYZ.challenge_contribution(&mut writer)?;
         self.K
-            .serialize_unchecked(&mut writer)
+            .serialize_compressed(&mut writer)
             .map_err(|e| e.into())
     }
 }
 
-impl<F: PrimeField + SquareRootField> SchnorrResponse<F> {
+impl<F: PrimeField> SchnorrResponse<F> {
     pub fn get_response_for_element(&self) -> &F {
         &self.s_y
     }
@@ -679,7 +665,7 @@ impl<F: PrimeField + SquareRootField> SchnorrResponse<F> {
 ///  be satisfied is
 ///   `e(E_c, P_tilde)^y * e(Z, P_tilde)^{-delta_sigma - delta_rho} * e(Z, Q_tilde)^{-sigma - rho} = e(V, P_tilde) / (e(E_c, Q_tilde)`
 ///   Note that there is no `E_d` or `E_{d^-1}` and thus relations proving knowledge of them are omitted
-pub(crate) trait ProofProtocol<E: PairingEngine> {
+pub(crate) trait ProofProtocol<E: Pairing> {
     /// Randomize the witness and compute commitments for step 1 of the Schnorr protocol.
     /// `element` is the accumulator (non)member about which the proof is being created.
     /// `element_blinding` is the randomness used for `element` in the Schnorr protocol and is useful
@@ -688,32 +674,32 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
     /// only because its efficient to do a multi-pairing.
     fn randomize_witness_and_compute_commitments<R: RngCore>(
         rng: &mut R,
-        element: &E::Fr,
-        element_blinding: Option<E::Fr>,
+        element: &E::ScalarField,
+        element_blinding: Option<E::ScalarField>,
         witness: &E::G1Affine,
-        pairing_extra: Option<E::G1Projective>,
-        pk: &PublicKey<E::G2Affine>,
+        pairing_extra: Option<E::G1>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
         prk: &ProvingKey<E::G1Affine>,
     ) -> (
         RandomizedWitness<E::G1Affine>,
         SchnorrCommit<E>,
-        Blindings<E::Fr>,
+        Blindings<E::ScalarField>,
     ) {
         // TODO: Since proving key is fixed, these tables can be created just once and stored.
         // There are multiple multiplications with X, Y and Z so create tables for them. 20 multiplications
         // is the upper bound
-        let X_table = WindowTable::new(20, prk.X.into_projective());
-        let Y_table = WindowTable::new(20, prk.Y.into_projective());
-        let Z_table = WindowTable::new(20, prk.Z.into_projective());
+        let X_table = WindowTable::new(20, prk.X.into_group());
+        let Y_table = WindowTable::new(20, prk.Y.into_group());
+        let Z_table = WindowTable::new(20, prk.Z.into_group());
 
         // To prove e(witness, element*P_tilde + Q_tilde) == e(accumulated, P_tilde)
-        let sigma = E::Fr::rand(rng);
-        let rho = E::Fr::rand(rng);
+        let sigma = E::ScalarField::rand(rng);
+        let rho = E::ScalarField::rand(rng);
         // Commitment to witness
         // E_C = witness + (sigma + rho) * prk.Z
         let mut E_C = Z_table.multiply(&(sigma + rho));
-        E_C.add_assign_mixed(witness);
+        E_C += witness;
 
         // T_sigma = sigma * prk.X
         let T_sigma = X_table.multiply(&sigma);
@@ -724,11 +710,11 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
 
         // Commit phase of Schnorr
         // Create blindings for pairing equation
-        let r_y = element_blinding.unwrap_or_else(|| E::Fr::rand(rng)); // blinding for proving knowledge of element
-        let r_sigma = E::Fr::rand(rng);
-        let r_delta_sigma = E::Fr::rand(rng);
-        let r_rho = E::Fr::rand(rng);
-        let r_delta_rho = E::Fr::rand(rng);
+        let r_y = element_blinding.unwrap_or_else(|| E::ScalarField::rand(rng)); // blinding for proving knowledge of element
+        let r_sigma = E::ScalarField::rand(rng);
+        let r_delta_sigma = E::ScalarField::rand(rng);
+        let r_rho = E::ScalarField::rand(rng);
+        let r_delta_rho = E::ScalarField::rand(rng);
 
         // Compute R_E using a multi-pairing
         // R_E = e(E_C, params.P_tilde)^r_y * e(prk.Z, params.P_tilde)^(-r_delta_sigma - r_delta_rho) * e(prk.Z, Q_tilde)^(-r_sigma - r_rho) * pairing_extra
@@ -737,7 +723,7 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         // Further simplifying, R_E = e(r_y * E_C + (-r_delta_sigma - r_delta_rho) * prk.Z + -r_v * K, params.P_tilde) * e((-r_sigma - r_rho) * prk.Z, Q_tilde)
 
         // r_y * E_C
-        let E_C_times_r_y = E_C.mul(r_y.into_repr());
+        let E_C_times_r_y = E_C.mul_bigint(r_y.into_bigint());
         // (-r_delta_sigma - r_delta_rho) * prk.Z
         let z_p = Z_table.multiply(&(-r_delta_sigma - r_delta_rho));
         let mut p = E_C_times_r_y + z_p;
@@ -747,17 +733,14 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         }
 
         let P_tilde_prepared = E::G2Prepared::from(params.P_tilde);
-        let R_E = E::product_of_pairings(
+        let R_E = E::multi_pairing(
             [
                 // e(r_y * E_C + (-r_delta_sigma - r_delta_rho) * prk.Z + -r_v * K, params.P_tilde)
-                (E::G1Prepared::from(p.into_affine()), P_tilde_prepared),
+                p.into_affine(),
                 // e((-r_sigma - r_rho) * prk.Z, Q_tilde)
-                (
-                    E::G1Prepared::from(Z_table.multiply(&(-r_sigma - r_rho)).into_affine()),
-                    E::G2Prepared::from(pk.0),
-                ),
-            ]
-            .iter(),
+                Z_table.multiply(&(-r_sigma - r_rho)).into_affine(),
+            ],
+            [P_tilde_prepared, E::G2Prepared::from(pk.0)],
         );
 
         // R_sigma = r_sigma * prk.X
@@ -806,27 +789,27 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         randomized_witness: &impl SchnorrChallengeContributor,
         schnorr_commit: &impl SchnorrChallengeContributor,
         accumulator_value: &E::G1Affine,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
         prk: &impl SchnorrChallengeContributor,
         mut writer: W,
     ) -> Result<(), VBAccumulatorError> {
         randomized_witness.challenge_contribution(&mut writer)?;
         schnorr_commit.challenge_contribution(&mut writer)?;
-        accumulator_value.serialize_unchecked(&mut writer)?;
-        pk.serialize_unchecked(&mut writer)?;
-        params.serialize_unchecked(&mut writer)?;
-        params.serialize_unchecked(&mut writer)?;
+        accumulator_value.serialize_compressed(&mut writer)?;
+        pk.serialize_compressed(&mut writer)?;
+        params.serialize_compressed(&mut writer)?;
+        params.serialize_compressed(&mut writer)?;
         prk.challenge_contribution(&mut writer)
             .map_err(|e| e.into())
     }
 
     /// Compute responses for the Schnorr protocols
     fn compute_responses(
-        element: &E::Fr,
-        blindings: &Blindings<E::Fr>,
-        challenge: &E::Fr,
-    ) -> SchnorrResponse<E::Fr> {
+        element: &E::ScalarField,
+        blindings: &Blindings<E::ScalarField>,
+        challenge: &E::ScalarField,
+    ) -> SchnorrResponse<E::ScalarField> {
         // Response phase of Schnorr
         let s_y = blindings.r_y + (*challenge * *element);
         let s_sigma = blindings.r_sigma + (*challenge * blindings.sigma);
@@ -849,12 +832,12 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
     fn verify_proof(
         randomized_witness: &RandomizedWitness<E::G1Affine>,
         schnorr_commit: &SchnorrCommit<E>,
-        schnorr_response: &SchnorrResponse<E::Fr>,
-        pairing_extra: Option<E::G1Projective>,
+        schnorr_response: &SchnorrResponse<E::ScalarField>,
+        pairing_extra: Option<E::G1>,
         accumulator_value: &E::G1Affine,
-        challenge: &E::Fr,
-        pk: &PublicKey<E::G2Affine>,
-        params: &SetupParams<E>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
         prk: &ProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
         let (p, q) = Self::verify_proof_except_pairings(
@@ -866,7 +849,7 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
             challenge,
             prk,
         )?;
-        let R_E = pairing_product::<E>(&[p, q], &[params.P_tilde, pk.0]);
+        let R_E = E::multi_pairing([p, q], [params.into().P_tilde, pk.into().0]);
         if R_E != schnorr_commit.R_E {
             return Err(VBAccumulatorError::PairingResponseInvalid);
         }
@@ -877,12 +860,12 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
     fn verify_proof_with_randomized_pairing_checker(
         randomized_witness: &RandomizedWitness<E::G1Affine>,
         schnorr_commit: &SchnorrCommit<E>,
-        schnorr_response: &SchnorrResponse<E::Fr>,
-        pairing_extra: Option<E::G1Projective>,
+        schnorr_response: &SchnorrResponse<E::ScalarField>,
+        pairing_extra: Option<E::G1>,
         accumulator_value: &E::G1Affine,
-        challenge: &E::Fr,
-        pk: &PublicKey<E::G2Affine>,
-        params: &SetupParams<E>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
         prk: &ProvingKey<E::G1Affine>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), VBAccumulatorError> {
@@ -897,7 +880,7 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         )?;
         pairing_checker.add_multiple_sources_and_target(
             &[p, q],
-            &[params.P_tilde, pk.0],
+            [params.into().P_tilde, pk.into().0],
             &schnorr_commit.R_E,
         );
         Ok(())
@@ -908,10 +891,10 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
     fn verify_proof_except_pairings(
         randomized_witness: &RandomizedWitness<E::G1Affine>,
         schnorr_commit: &SchnorrCommit<E>,
-        schnorr_response: &SchnorrResponse<E::Fr>,
-        pairing_extra: Option<E::G1Projective>,
+        schnorr_response: &SchnorrResponse<E::ScalarField>,
+        pairing_extra: Option<E::G1>,
         accumulator_value: &E::G1Affine,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         prk: &ProvingKey<E::G1Affine>,
     ) -> Result<(E::G1Affine, E::G1Affine), VBAccumulatorError> {
         let (context, X_table, Y_table, Z_table, T_sigma_table, T_rho_table, E_C_table) =
@@ -944,22 +927,22 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
         randomized_witness: &RandomizedWitness<E::G1Affine>,
     ) -> (
         WnafContext,
-        Vec<E::G1Projective>,
-        Vec<E::G1Projective>,
-        Vec<E::G1Projective>,
-        Vec<E::G1Projective>,
-        Vec<E::G1Projective>,
-        Vec<E::G1Projective>,
+        Vec<E::G1>,
+        Vec<E::G1>,
+        Vec<E::G1>,
+        Vec<E::G1>,
+        Vec<E::G1>,
+        Vec<E::G1>,
     ) {
         let context = WnafContext::new(4);
         // TODO: Since proving key is fixed, these tables can be created just once and stored.
-        let X_table = context.table(prk.X.into_projective());
-        let Y_table = context.table(prk.Y.into_projective());
-        let Z_table = context.table(prk.Z.into_projective());
+        let X_table = context.table(prk.X.into_group());
+        let Y_table = context.table(prk.Y.into_group());
+        let Z_table = context.table(prk.Z.into_group());
 
-        let T_sigma_table = context.table(randomized_witness.T_sigma.into_projective());
-        let T_rho_table = context.table(randomized_witness.T_rho.into_projective());
-        let E_C_table = context.table(randomized_witness.E_C.into_projective());
+        let T_sigma_table = context.table(randomized_witness.T_sigma.into_group());
+        let T_rho_table = context.table(randomized_witness.T_rho.into_group());
+        let E_C_table = context.table(randomized_witness.E_C.into_group());
         (
             context,
             X_table,
@@ -975,13 +958,13 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
     /// and compares them with the `R_`s from the proof for equality
     fn verify_schnorr_proofs(
         schnorr_commit: &SchnorrCommit<E>,
-        schnorr_response: &SchnorrResponse<E::Fr>,
-        challenge: &E::Fr,
+        schnorr_response: &SchnorrResponse<E::ScalarField>,
+        challenge: &E::ScalarField,
         context: &WnafContext,
-        X_table: &[E::G1Projective],
-        Y_table: &[E::G1Projective],
-        T_sigma_table: &[E::G1Projective],
-        T_rho_table: &[E::G1Projective],
+        X_table: &[E::G1],
+        Y_table: &[E::G1],
+        T_sigma_table: &[E::G1],
+        T_rho_table: &[E::G1],
     ) -> Result<(), VBAccumulatorError> {
         // R_sigma = schnorr_response.s_sigma * prk.X - challenge * randomized_witness.T_sigma
         let mut R_sigma = context
@@ -1026,13 +1009,13 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
     }
 
     fn get_g1_for_pairing_checks(
-        schnorr_response: &SchnorrResponse<E::Fr>,
-        pairing_extra: Option<E::G1Projective>,
+        schnorr_response: &SchnorrResponse<E::ScalarField>,
+        pairing_extra: Option<E::G1>,
         accumulator_value: &E::G1Affine,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         context: &WnafContext,
-        E_C_table: &[E::G1Projective],
-        Z_table: &[E::G1Projective],
+        E_C_table: &[E::G1],
+        Z_table: &[E::G1],
     ) -> (E::G1Affine, E::G1Affine) {
         // R_E = e(E_C, params.P_tilde)^s_y * e(prk.Z, params.P_tilde)^(-s_delta_sigma - s_delta_rho) * e(prk.Z, Q_tilde)^(-s_sigma - s_rho) * e(V, params.P_tilde)^-challenge * e(E_C, Q_tilde)^challenge * pairing_extra
         // Here `pairing_extra` refers to `E_d * -challenge` and `K * -s_v` and is used to for creating the pairings `e(E_d, P_tilde)^challenge` as `e(challenge * E_d, P_tilde)` and `e(K, P_tilde)^{-s_v}` as `e(-s_v * K, P_tilde)`
@@ -1051,7 +1034,7 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
             )
             .unwrap();
         // -challenge * V
-        let a = accumulator_value.mul((-*challenge).into_repr());
+        let a = accumulator_value.mul_bigint((-*challenge).into_bigint());
         let mut p = E_C_p + z_p + a;
         // In case of non-membership add challenge * E_d + -s_v * K
         if pairing_extra.is_some() {
@@ -1072,21 +1055,21 @@ pub(crate) trait ProofProtocol<E: PairingEngine> {
     }
 }
 
-impl<E> ProofProtocol<E> for MembershipProofProtocol<E> where E: PairingEngine {}
+impl<E> ProofProtocol<E> for MembershipProofProtocol<E> where E: Pairing {}
 
 impl<E> MembershipProofProtocol<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     /// Initialize a membership proof protocol. Delegates to [`randomize_witness_and_compute_commitments`]
     ///
     /// [`randomize_witness_and_compute_commitments`]: ProofProtocol::randomize_witness_and_compute_commitments
     pub fn init<R: RngCore>(
         rng: &mut R,
-        element: &E::Fr,
-        element_blinding: Option<E::Fr>,
+        element: &E::ScalarField,
+        element_blinding: Option<E::ScalarField>,
         witness: &MembershipWitness<E::G1Affine>,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
         prk: &MembershipProvingKey<E::G1Affine>,
     ) -> Self {
@@ -1115,7 +1098,7 @@ where
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &E::G1Affine,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
         prk: &MembershipProvingKey<E::G1Affine>,
         writer: W,
@@ -1134,7 +1117,7 @@ where
     /// Create membership proof once the overall challenge is ready. Delegates to [`compute_responses`]
     ///
     /// [`compute_responses`]: ProofProtocol::compute_responses
-    pub fn gen_proof(self, challenge: &E::Fr) -> MembershipProof<E> {
+    pub fn gen_proof(self, challenge: &E::ScalarField) -> MembershipProof<E> {
         let resp = Self::compute_responses(&self.element, &self.schnorr_blindings.0, challenge);
         MembershipProof {
             randomized_witness: self.randomized_witness.clone(),
@@ -1144,7 +1127,7 @@ where
     }
 }
 
-impl<E: PairingEngine> Zeroize for MembershipProofProtocol<E> {
+impl<E: Pairing> Zeroize for MembershipProofProtocol<E> {
     fn zeroize(&mut self) {
         // Other members of `self` are public anyway
         self.element.zeroize();
@@ -1152,17 +1135,17 @@ impl<E: PairingEngine> Zeroize for MembershipProofProtocol<E> {
     }
 }
 
-impl<E: PairingEngine> Drop for MembershipProofProtocol<E> {
+impl<E: Pairing> Drop for MembershipProofProtocol<E> {
     fn drop(&mut self) {
         self.zeroize();
     }
 }
 
-impl<E> ProofProtocol<E> for NonMembershipProofProtocol<E> where E: PairingEngine {}
+impl<E> ProofProtocol<E> for NonMembershipProofProtocol<E> where E: Pairing {}
 
 impl<E> NonMembershipProofProtocol<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     /// Initialize a non-membership proof protocol. Create blindings for proving `witness.d != 0` and
     /// then delegates to [`randomize_witness_and_compute_commitments`]
@@ -1170,22 +1153,22 @@ where
     /// [`randomize_witness_and_compute_commitments`]: ProofProtocol::randomize_witness_and_compute_commitments
     pub fn init<R: RngCore>(
         rng: &mut R,
-        element: &E::Fr,
-        element_blinding: Option<E::Fr>,
+        element: &E::ScalarField,
+        element_blinding: Option<E::ScalarField>,
         witness: &NonMembershipWitness<E::G1Affine>,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
     ) -> Self {
         // TODO: Since proving key is fixed, these tables can be created just once and stored.
         // There are multiple multiplications with P and K so create tables for them. 20 multiplications
         // is the upper bound
-        let P_table = WindowTable::new(20, params.P.into_projective());
-        let K_table = WindowTable::new(20, prk.K.into_projective());
+        let P_table = WindowTable::new(20, params.P.into_group());
+        let K_table = WindowTable::new(20, prk.K.into_group());
 
         // To prove non-zero d of witness
-        let tau = E::Fr::rand(rng); // blinding in commitment to d
-        let pi = E::Fr::rand(rng);
+        let tau = E::ScalarField::rand(rng); // blinding in commitment to d
+        let pi = E::ScalarField::rand(rng);
 
         // Commitment to d
         // E_d = witness.d * pk.P + tau * prk.K
@@ -1198,9 +1181,9 @@ where
         E_d_inv += K_table.multiply(&pi);
 
         // Create blindings for d != 0
-        let r_u = E::Fr::rand(rng); // blinding for proving knowledge of d
-        let r_v = E::Fr::rand(rng); // blinding for proving knowledge of tau
-        let r_w = E::Fr::rand(rng);
+        let r_u = E::ScalarField::rand(rng); // blinding for proving knowledge of d
+        let r_v = E::ScalarField::rand(rng); // blinding for proving knowledge of tau
+        let r_w = E::ScalarField::rand(rng);
 
         // R_A = r_u * pk.P + r_v * prk.K;
         let mut R_A = P_table.multiply(&r_u);
@@ -1256,7 +1239,7 @@ where
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &E::G1Affine,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
         mut writer: W,
@@ -1276,7 +1259,7 @@ where
     /// and then delegates to [`compute_responses`]
     ///
     /// [`compute_responses`]: ProofProtocol::compute_responses
-    pub fn gen_proof(self, challenge: &E::Fr) -> NonMembershipProof<E> {
+    pub fn gen_proof(self, challenge: &E::ScalarField) -> NonMembershipProof<E> {
         // For d != 0
         let challenge_times_d = *challenge * self.d;
         let s_u = self.schnorr_blindings.r_u + challenge_times_d;
@@ -1298,7 +1281,7 @@ where
     }
 }
 
-impl<E: PairingEngine> Zeroize for NonMembershipProofProtocol<E> {
+impl<E: Pairing> Zeroize for NonMembershipProofProtocol<E> {
     fn zeroize(&mut self) {
         // Other members of `self` are public anyway
         self.element.zeroize();
@@ -1307,7 +1290,7 @@ impl<E: PairingEngine> Zeroize for NonMembershipProofProtocol<E> {
     }
 }
 
-impl<E: PairingEngine> Drop for NonMembershipProofProtocol<E> {
+impl<E: Pairing> Drop for NonMembershipProofProtocol<E> {
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -1315,13 +1298,13 @@ impl<E: PairingEngine> Drop for NonMembershipProofProtocol<E> {
 
 impl<E> MembershipProof<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     /// Challenge contribution for this proof
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &E::G1Affine,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
         prk: &MembershipProvingKey<E::G1Affine>,
         writer: W,
@@ -1343,9 +1326,9 @@ where
     pub fn verify(
         &self,
         accumulator_value: &E::G1Affine,
-        challenge: &E::Fr,
-        pk: &PublicKey<E::G2Affine>,
-        params: &SetupParams<E>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
         prk: &MembershipProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
         <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof(
@@ -1364,9 +1347,9 @@ where
     pub fn verify_with_randomized_pairing_checker(
         &self,
         accumulator_value: &E::G1Affine,
-        challenge: &E::Fr,
-        pk: &PublicKey<E::G2Affine>,
-        params: &SetupParams<E>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
         prk: &MembershipProvingKey<E::G1Affine>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), VBAccumulatorError> {
@@ -1386,20 +1369,20 @@ where
 
     /// Get response for Schnorr protocol for the member. This is useful when the member is also used
     /// in another relation that is proven along this protocol.
-    pub fn get_schnorr_response_for_element(&self) -> &E::Fr {
+    pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
         self.schnorr_response.0.get_response_for_element()
     }
 }
 
 impl<E> NonMembershipProof<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     /// Challenge contribution for this proof
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &E::G1Affine,
-        pk: &PublicKey<E::G2Affine>,
+        pk: &PublicKey<E>,
         params: &SetupParams<E>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
         mut writer: W,
@@ -1422,17 +1405,13 @@ where
     pub fn verify(
         &self,
         accumulator_value: &E::G1Affine,
-        challenge: &E::Fr,
-        pk: &PublicKey<E::G2Affine>,
-        params: &SetupParams<E>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
-        /*let (context, K_table, P_table, E_d_table) =
-            Self::get_tables(prk, params, &self.randomized_witness.E_d);
-
-        self.verify_schnorr_proofs(challenge, &context, &K_table, &P_table, &E_d_table)?;
-        let pairing_extra = self.get_pairing_contribution(challenge, &context, &K_table, &E_d_table);*/
-        let pairing_extra = self.verify_except_pairings(challenge, params, prk)?;
+        let params = params.into();
+        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk)?;
 
         <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof(
             &self.randomized_witness.C,
@@ -1450,13 +1429,14 @@ where
     pub fn verify_with_randomized_pairing_checker(
         &self,
         accumulator_value: &E::G1Affine,
-        challenge: &E::Fr,
-        pk: &PublicKey<E::G2Affine>,
-        params: &SetupParams<E>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), VBAccumulatorError> {
-        let pairing_extra = self.verify_except_pairings(challenge, params, prk)?;
+        let params = params.into();
+        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk)?;
 
         <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof_with_randomized_pairing_checker(
             &self.randomized_witness.C,
@@ -1474,35 +1454,30 @@ where
 
     /// Get response for Schnorr protocol for the non-member. This is useful when the non-member is also used
     /// in another relation that is proven along this protocol.
-    pub fn get_schnorr_response_for_element(&self) -> &E::Fr {
+    pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
         self.schnorr_response.C.get_response_for_element()
     }
 
     /// There are multiple multiplications with K, P and E_d which can be done in variable time so use wNAF.
     pub fn get_tables(
         prk: &NonMembershipProvingKey<E::G1Affine>,
-        params: &SetupParams<E>,
+        P: &E::G1Affine,
         E_d: &E::G1Affine,
-    ) -> (
-        WnafContext,
-        Vec<E::G1Projective>,
-        Vec<E::G1Projective>,
-        Vec<E::G1Projective>,
-    ) {
+    ) -> (WnafContext, Vec<E::G1>, Vec<E::G1>, Vec<E::G1>) {
         let context = WnafContext::new(4);
-        let K_table = context.table(prk.K.into_projective());
-        let P_table = context.table(params.P.into_projective());
-        let E_d_table = context.table(E_d.into_projective());
+        let K_table = context.table(prk.K.into_group());
+        let P_table = context.table(P.into_group());
+        let E_d_table = context.table(E_d.into_group());
         (context, K_table, P_table, E_d_table)
     }
 
     pub fn verify_schnorr_proofs(
         &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         context: &WnafContext,
-        K_table: &[E::G1Projective],
-        P_table: &[E::G1Projective],
-        E_d_table: &[E::G1Projective],
+        K_table: &[E::G1],
+        P_table: &[E::G1],
+        E_d_table: &[E::G1],
     ) -> Result<(), VBAccumulatorError> {
         // R_A = schnorr_response.s_u * params.P + schnorr_response.s_v * prk.K - challenge * randomized_witness.E_d;
         let mut R_A = context
@@ -1524,7 +1499,7 @@ where
         R_B += self
             .randomized_witness
             .E_d_inv
-            .mul(self.schnorr_response.s_u.into_repr());
+            .mul_bigint(self.schnorr_response.s_u.into_bigint());
         R_B -= context.mul_with_table(&P_table, challenge).unwrap();
 
         if R_B.into_affine() != self.schnorr_commit.R_B {
@@ -1535,11 +1510,11 @@ where
 
     pub fn get_pairing_contribution(
         &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         context: &WnafContext,
-        K_table: &[E::G1Projective],
-        E_d_table: &[E::G1Projective],
-    ) -> E::G1Projective {
+        K_table: &[E::G1],
+        E_d_table: &[E::G1],
+    ) -> E::G1 {
         // -schnorr_response.s_v * prk.K + challenge * randomized_witness.E_d
         context
             .mul_with_table(&K_table, &-self.schnorr_response.s_v)
@@ -1551,12 +1526,12 @@ where
     /// protocol or others) and the pairing equations are combined in a randomized pairing check.
     fn verify_except_pairings(
         &self,
-        challenge: &E::Fr,
-        params: &SetupParams<E>,
+        challenge: &E::ScalarField,
+        P: &E::G1Affine,
         prk: &NonMembershipProvingKey<E::G1Affine>,
-    ) -> Result<E::G1Projective, VBAccumulatorError> {
+    ) -> Result<E::G1, VBAccumulatorError> {
         let (context, K_table, P_table, E_d_table) =
-            Self::get_tables(prk, params, &self.randomized_witness.E_d);
+            Self::get_tables(prk, P, &self.randomized_witness.E_d);
 
         self.verify_schnorr_proofs(challenge, &context, &K_table, &P_table, &E_d_table)?;
         Ok(self.get_pairing_contribution(challenge, &context, &K_table, &E_d_table))
@@ -1572,11 +1547,11 @@ mod tests {
 
     use ark_bls12_381::Bls12_381;
     use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
     use schnorr_pok::compute_random_oracle_challenge;
     use std::time::{Duration, Instant};
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn membership_proof_positive_accumulator() {
@@ -1585,11 +1560,10 @@ mod tests {
 
         let (params, keypair, mut accumulator, mut state) = setup_positive_accum(&mut rng);
         let prk = MembershipProvingKey::generate_using_rng(&mut rng);
+        let prepared_params = PreparedSetupParams::from(params.clone());
+        let prepared_pk = PreparedPublicKey::from(keypair.public_key.clone());
 
-        test_serialization!(
-            MembershipProvingKey<<Bls12_381 as PairingEngine>::G1Affine>,
-            prk
-        );
+        test_serialization!(MembershipProvingKey<<Bls12_381 as Pairing>::G1Affine>, prk);
 
         let mut elems = vec![];
         let mut witnesses = vec![];
@@ -1613,7 +1587,9 @@ mod tests {
 
         let mut proof_create_duration = Duration::default();
         let mut proof_verif_duration = Duration::default();
+        let mut proof_verif_with_prepared_duration = Duration::default();
         let mut proof_verif_with_rand_pair_check_duration = Duration::default();
+        let mut proof_verif__with_prepared_and_rand_pair_check_duration = Duration::default();
 
         let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
 
@@ -1643,7 +1619,7 @@ mod tests {
                 )
                 .unwrap();
             let challenge_prover =
-                compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_prover);
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
             let start = Instant::now();
             let proof = protocol.gen_proof(&challenge_prover);
@@ -1663,7 +1639,7 @@ mod tests {
                 )
                 .unwrap();
             let challenge_verifier =
-                compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_verifier);
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
 
             assert_eq!(challenge_prover, challenge_verifier);
 
@@ -1672,8 +1648,8 @@ mod tests {
                 .verify(
                     &accumulator.value(),
                     &challenge_verifier,
-                    &keypair.public_key,
-                    &params,
+                    keypair.public_key.clone(),
+                    params.clone(),
                     &prk,
                 )
                 .unwrap();
@@ -1681,16 +1657,41 @@ mod tests {
 
             let start = Instant::now();
             proof
+                .verify(
+                    &accumulator.value(),
+                    &challenge_verifier,
+                    prepared_pk.clone(),
+                    prepared_params.clone(),
+                    &prk,
+                )
+                .unwrap();
+            proof_verif_with_prepared_duration += start.elapsed();
+
+            let start = Instant::now();
+            proof
                 .verify_with_randomized_pairing_checker(
                     &accumulator.value(),
                     &challenge_verifier,
-                    &keypair.public_key,
-                    &params,
+                    keypair.public_key.clone(),
+                    params.clone(),
                     &prk,
                     &mut pairing_checker,
                 )
                 .unwrap();
             proof_verif_with_rand_pair_check_duration += start.elapsed();
+
+            let start = Instant::now();
+            proof
+                .verify_with_randomized_pairing_checker(
+                    &accumulator.value(),
+                    &challenge_verifier,
+                    prepared_pk.clone(),
+                    prepared_params.clone(),
+                    &prk,
+                    &mut pairing_checker,
+                )
+                .unwrap();
+            proof_verif__with_prepared_and_rand_pair_check_duration += start.elapsed();
         }
 
         let start = Instant::now();
@@ -1706,8 +1707,16 @@ mod tests {
             count, proof_verif_duration
         );
         println!(
+            "Time to verify {} membership proofs using prepared params is {:?}",
+            count, proof_verif_with_prepared_duration
+        );
+        println!(
             "Time to verify {} membership proofs using randomized pairing checker is {:?}",
             count, proof_verif_with_rand_pair_check_duration
+        );
+        println!(
+            "Time to verify {} membership proofs using prepared params and randomized pairing checker is {:?}",
+            count, proof_verif__with_prepared_and_rand_pair_check_duration
         );
     }
 
@@ -1721,8 +1730,11 @@ mod tests {
             setup_universal_accum(&mut rng, max);
         let prk = NonMembershipProvingKey::generate_using_rng(&mut rng);
 
+        let prepared_params = PreparedSetupParams::from(params.clone());
+        let prepared_pk = PreparedPublicKey::from(keypair.public_key.clone());
+
         test_serialization!(
-            NonMembershipProvingKey<<Bls12_381 as PairingEngine>::G1Affine>,
+            NonMembershipProvingKey<<Bls12_381 as Pairing>::G1Affine>,
             prk
         );
 
@@ -1753,7 +1765,9 @@ mod tests {
 
         let mut proof_create_duration = Duration::default();
         let mut proof_verif_duration = Duration::default();
+        let mut proof_verif_with_prepared_duration = Duration::default();
         let mut proof_verif_with_rand_pair_check_duration = Duration::default();
+        let mut proof_verif__with_prepared_and_rand_pair_check_duration = Duration::default();
 
         let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
 
@@ -1783,7 +1797,7 @@ mod tests {
                 )
                 .unwrap();
             let challenge_prover =
-                compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_prover);
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
             let start = Instant::now();
             let proof = protocol.gen_proof(&challenge_prover);
@@ -1800,7 +1814,7 @@ mod tests {
                 )
                 .unwrap();
             let challenge_verifier =
-                compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_verifier);
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
 
             assert_eq!(challenge_prover, challenge_verifier);
 
@@ -1811,8 +1825,8 @@ mod tests {
                 .verify(
                     &accumulator.value(),
                     &challenge_verifier,
-                    &keypair.public_key,
-                    &params,
+                    keypair.public_key.clone(),
+                    params.clone(),
                     &prk,
                 )
                 .unwrap();
@@ -1820,16 +1834,41 @@ mod tests {
 
             let start = Instant::now();
             proof
+                .verify(
+                    &accumulator.value(),
+                    &challenge_verifier,
+                    prepared_pk.clone(),
+                    prepared_params.clone(),
+                    &prk,
+                )
+                .unwrap();
+            proof_verif_with_prepared_duration += start.elapsed();
+
+            let start = Instant::now();
+            proof
                 .verify_with_randomized_pairing_checker(
                     &accumulator.value(),
                     &challenge_verifier,
-                    &keypair.public_key,
-                    &params,
+                    keypair.public_key.clone(),
+                    params.clone(),
                     &prk,
                     &mut pairing_checker,
                 )
                 .unwrap();
             proof_verif_with_rand_pair_check_duration += start.elapsed();
+
+            let start = Instant::now();
+            proof
+                .verify_with_randomized_pairing_checker(
+                    &accumulator.value(),
+                    &challenge_verifier,
+                    prepared_pk.clone(),
+                    prepared_params.clone(),
+                    &prk,
+                    &mut pairing_checker,
+                )
+                .unwrap();
+            proof_verif__with_prepared_and_rand_pair_check_duration += start.elapsed();
         }
 
         let start = Instant::now();
@@ -1845,8 +1884,16 @@ mod tests {
             count, proof_verif_duration
         );
         println!(
+            "Time to verify {} non-membership proofs using prepared params is {:?}",
+            count, proof_verif_with_prepared_duration
+        );
+        println!(
             "Time to verify {} non-membership proofs using randomized pairing checker is {:?}",
             count, proof_verif_with_rand_pair_check_duration
+        );
+        println!(
+            "Time to verify {} non-membership proofs using prepared params and randomized pairing checker is {:?}",
+            count, proof_verif__with_prepared_and_rand_pair_check_duration
         );
     }
 }

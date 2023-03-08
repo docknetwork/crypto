@@ -1,32 +1,32 @@
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::BTreeSet;
-use ark_std::io::{Read, Write};
+use ark_std::io::Write;
 use ark_std::rand::RngCore;
 use ark_std::vec::Vec;
 use ark_std::UniformRand;
-use digest::{BlockInput, Digest, FixedOutput, Reset, Update};
+use digest::Digest;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
-use dock_crypto_utils::serde_utils::{AffineGroupBytes, FieldBytes};
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::error::SchnorrError;
 use schnorr_pok::impl_proof_of_knowledge_of_discrete_log;
 
 use crate::error::DelegationError;
 use crate::msbm::issuance::Credential;
-use crate::msbm::keys::{
-    PreparedRootIssuerPublicKey, RootIssuerPublicKey, UserPublicKey, UserSecretKey,
-};
+use crate::msbm::keys::{PreparedRootIssuerPublicKey, UserPublicKey, UserSecretKey};
 use crate::msbm::sps_eq_uc_sig::Signature;
-use crate::set_commitment::{AggregateSubsetWitness, SetCommitment, SetCommitmentSRS};
+use crate::set_commitment::{
+    AggregateSubsetWitness, PreparedSetCommitmentSRS, SetCommitment, SetCommitmentSRS,
+};
 
 impl_proof_of_knowledge_of_discrete_log!(NymOwnershipProtocol, NymOwnership);
 
 #[derive(Clone, Debug)]
-pub struct CredentialShow<E: PairingEngine> {
+pub struct CredentialShow<E: Pairing> {
     /// Commitment to each attribute set
     pub commitments: Vec<SetCommitment<E>>,
     /// Signature on the commitments
@@ -40,7 +40,7 @@ pub struct CredentialShow<E: PairingEngine> {
 
 /// Protocol to create `CredentialShow`
 #[derive(Clone, Debug)]
-pub struct CredentialShowProtocol<E: PairingEngine> {
+pub struct CredentialShowProtocol<E: Pairing> {
     pub commitments: Vec<SetCommitment<E>>,
     pub signature: Signature<E>,
     pub disclosed_attributes_witness: AggregateSubsetWitness<E>,
@@ -49,17 +49,14 @@ pub struct CredentialShowProtocol<E: PairingEngine> {
     pub schnorr: NymOwnershipProtocol<E::G1Affine>,
 }
 
-impl<E: PairingEngine> CredentialShowProtocol<E> {
-    pub fn init<
-        R: RngCore,
-        D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
-    >(
+impl<E: Pairing> CredentialShowProtocol<E> {
+    pub fn init<R: RngCore, D: Digest>(
         rng: &mut R,
         credential: Credential<E>,
-        disclose_attrs: Vec<Vec<E::Fr>>,
+        disclose_attrs: Vec<Vec<E::ScalarField>>,
         user_secret_key: &UserSecretKey<E>,
         user_public_key: &UserPublicKey<E>,
-        issuer_public_key: &RootIssuerPublicKey<E>,
+        X_0: &E::G1Affine,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<Self, DelegationError> {
         if credential.commitments.len() != disclose_attrs.len() {
@@ -68,17 +65,10 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
                 disclose_attrs.len(),
             ));
         }
-        let mu = E::Fr::rand(rng);
+        let mu = E::ScalarField::rand(rng);
 
-        let (rand_cred, _, new_upk, psi, chi) = credential
-            .randomize_with_given_commitment_randomness(
-                rng,
-                &mu,
-                user_public_key,
-                None,
-                issuer_public_key,
-                set_comm_srs,
-            )?;
+        let (rand_cred, new_upk, psi, chi) =
+            credential.randomize_for_show(rng, &mu, user_public_key, X_0, set_comm_srs)?;
         let new_usk = user_secret_key.randomize(&psi, &chi);
 
         // TODO: Use mem::replace to move commitments and attributes out of credential and avoid clones
@@ -102,7 +92,7 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
             witnesses,
         )?;
 
-        let blinding = E::Fr::rand(rng);
+        let blinding = E::ScalarField::rand(rng);
         let schnorr = NymOwnershipProtocol::init(new_usk.0, blinding, set_comm_srs.get_P1());
         Ok(Self {
             commitments: rand_cred.commitments.clone(),
@@ -124,7 +114,7 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
             .map_err(|e| e.into())
     }
 
-    pub fn gen_show(self, challenge: &E::Fr) -> CredentialShow<E> {
+    pub fn gen_show(self, challenge: &E::ScalarField) -> CredentialShow<E> {
         let schnorr = self.schnorr.gen_proof(challenge);
         CredentialShow {
             commitments: self.commitments,
@@ -136,33 +126,18 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
     }
 }
 
-impl<E: PairingEngine> CredentialShow<E> {
-    pub fn verify<D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone>(
+impl<E: Pairing> CredentialShow<E> {
+    pub fn verify<D: Digest>(
         &self,
-        disclose_attrs: Vec<Vec<E::Fr>>,
-        challenge: &E::Fr,
-        issuer_public_key: &RootIssuerPublicKey<E>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        disclose_attrs: Vec<Vec<E::ScalarField>>,
+        challenge: &E::ScalarField,
+        issuer_public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
+        set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
-        self.verify_using_prepared_key::<D>(
-            disclose_attrs,
-            challenge,
-            &issuer_public_key.prepared(),
-            set_comm_srs,
-        )
-    }
-
-    pub fn verify_using_prepared_key<
-        D: Digest + Update + BlockInput + FixedOutput + Reset + Default + Clone,
-    >(
-        &self,
-        disclose_attrs: Vec<Vec<E::Fr>>,
-        challenge: &E::Fr,
-        issuer_public_key: &PreparedRootIssuerPublicKey<E>,
-        set_comm_srs: &SetCommitmentSRS<E>,
-    ) -> Result<(), DelegationError> {
+        let set_comm_srs = set_comm_srs.into();
+        let P1 = set_comm_srs.get_P1().clone();
         self.signature
-            .verify_for_subsets_with_aggregated_witness_using_prepared_key::<D>(
+            .verify_for_subsets_with_aggregated_witness::<D>(
                 self.commitments.to_vec(),
                 disclose_attrs,
                 &self.disclosed_attributes_witness,
@@ -170,10 +145,7 @@ impl<E: PairingEngine> CredentialShow<E> {
                 issuer_public_key,
                 set_comm_srs,
             )?;
-        if !self
-            .schnorr
-            .verify(&self.pseudonym.0, set_comm_srs.get_P1(), challenge)
-        {
+        if !self.schnorr.verify(&self.pseudonym.0, &P1, challenge) {
             return Err(DelegationError::InvalidSchnorrProof);
         }
         Ok(())
@@ -194,14 +166,14 @@ impl<E: PairingEngine> CredentialShow<E> {
 pub mod tests {
     use super::*;
     use crate::msbm::issuance::tests::setup;
-    use crate::msbm::keys::{RootIssuerSecretKey, UserSecretKey};
+    use crate::msbm::keys::{RootIssuerPublicKey, RootIssuerSecretKey, UserSecretKey};
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
     use schnorr_pok::compute_random_oracle_challenge;
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn show_from_root_credential() {
@@ -212,6 +184,9 @@ pub mod tests {
 
         let usk = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk = UserPublicKey::new(&usk, set_comm_srs.get_P1());
+
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
+        let prep_set_comm_srs = PreparedSetCommitmentSRS::from(set_comm_srs.clone());
 
         let msgs_1 = (0..max_attributes - 2)
             .map(|_| Fr::rand(&mut rng))
@@ -231,17 +206,17 @@ pub mod tests {
         )
         .unwrap();
         let (cred_rand, pseudonym, _) = cred
-            .process_received_from_root(&mut rng, None, &upk, &usk, &ipk, &set_comm_srs)
+            .process_received_from_root(&mut rng, None, &upk, &usk, prep_ipk.clone(), &set_comm_srs)
             .unwrap();
 
         let disclosed = vec![vec![], vec![]];
-        let show_p = CredentialShowProtocol::init::<_, Blake2b>(
+        let show_p = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
             cred_rand.clone(),
             disclosed.clone(),
             &pseudonym.secret,
             &pseudonym.nym,
-            &ipk,
+            &ipk.X_0,
             &set_comm_srs,
         )
         .unwrap();
@@ -250,23 +225,28 @@ pub mod tests {
         show_p
             .challenge_contribution(set_comm_srs.get_P1(), &mut chal_bytes)
             .unwrap();
-        let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+        let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let show = show_p.gen_show(&challenge);
-        show.verify::<Blake2b>(disclosed, &challenge, &ipk, &set_comm_srs)
-            .unwrap();
+        show.verify::<Blake2b512>(
+            disclosed,
+            &challenge,
+            prep_ipk.clone(),
+            prep_set_comm_srs.clone(),
+        )
+        .unwrap();
 
         let disclosed = vec![
             vec![msgs_1[0].clone(), msgs_1[1].clone()],
             vec![msgs_2[2].clone()],
         ];
-        let show_p = CredentialShowProtocol::init::<_, Blake2b>(
+        let show_p = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
             cred_rand.clone(),
             disclosed.clone(),
             &pseudonym.secret,
             &pseudonym.nym,
-            &ipk,
+            &ipk.X_0,
             &set_comm_srs,
         )
         .unwrap();
@@ -275,20 +255,25 @@ pub mod tests {
         show_p
             .challenge_contribution(set_comm_srs.get_P1(), &mut chal_bytes)
             .unwrap();
-        let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+        let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let show = show_p.gen_show(&challenge);
-        show.verify::<Blake2b>(disclosed, &challenge, &ipk, &set_comm_srs)
-            .unwrap();
+        show.verify::<Blake2b512>(
+            disclosed,
+            &challenge,
+            prep_ipk.clone(),
+            prep_set_comm_srs.clone(),
+        )
+        .unwrap();
 
         let disclosed = vec![vec![msgs_1[0].clone(), msgs_1[1].clone()], vec![]];
-        let show_p = CredentialShowProtocol::init::<_, Blake2b>(
+        let show_p = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
             cred_rand.clone(),
             disclosed.clone(),
             &pseudonym.secret,
             &pseudonym.nym,
-            &ipk,
+            &ipk.X_0,
             &set_comm_srs,
         )
         .unwrap();
@@ -297,11 +282,16 @@ pub mod tests {
         show_p
             .challenge_contribution(set_comm_srs.get_P1(), &mut chal_bytes)
             .unwrap();
-        let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+        let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let show = show_p.gen_show(&challenge);
-        show.verify::<Blake2b>(disclosed, &challenge, &ipk, &set_comm_srs)
-            .unwrap();
+        show.verify::<Blake2b512>(
+            disclosed,
+            &challenge,
+            prep_ipk.clone(),
+            prep_set_comm_srs.clone(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -316,6 +306,9 @@ pub mod tests {
 
         let usk1 = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk1 = UserPublicKey::new(&usk1, set_comm_srs.get_P1());
+
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
+        let prep_set_comm_srs = PreparedSetCommitmentSRS::from(set_comm_srs.clone());
 
         let msgs_1 = (0..max_attributes - 2)
             .map(|_| Fr::rand(&mut rng))
@@ -340,7 +333,14 @@ pub mod tests {
         let uk = uk.unwrap();
 
         let (root_cred_rand, pseudonym, uk) = root_cred
-            .process_received_from_root(&mut rng, Some(&uk), &upk, &usk, &ipk, &set_comm_srs)
+            .process_received_from_root(
+                &mut rng,
+                Some(&uk),
+                &upk,
+                &usk,
+                prep_ipk.clone(),
+                &set_comm_srs,
+            )
             .unwrap();
         let uk = uk.unwrap();
 
@@ -351,7 +351,7 @@ pub mod tests {
                 &mut rng,
                 msgs_3.clone(),
                 &pseudonym.secret,
-                &ipk,
+                &ipk.X_0,
                 Some(2),
                 &uk,
                 &set_comm_srs,
@@ -360,19 +360,26 @@ pub mod tests {
         let uk1 = uk1.unwrap();
 
         let (cred1_rand, pseudonym1, _) = cred1
-            .process_received_delegated(&mut rng, Some(&uk1), &upk1, &usk1, &ipk, &set_comm_srs)
+            .process_received_delegated(
+                &mut rng,
+                Some(&uk1),
+                &upk1,
+                &usk1,
+                prep_ipk.clone(),
+                &set_comm_srs,
+            )
             .unwrap();
 
         // Show
 
         let disclosed = vec![vec![], vec![], vec![]];
-        let show_p = CredentialShowProtocol::init::<_, Blake2b>(
+        let show_p = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
             cred1_rand.clone(),
             disclosed.clone(),
             &pseudonym1.secret,
             &pseudonym1.nym,
-            &ipk,
+            &ipk.X_0,
             &set_comm_srs,
         )
         .unwrap();
@@ -381,24 +388,29 @@ pub mod tests {
         show_p
             .challenge_contribution(set_comm_srs.get_P1(), &mut chal_bytes)
             .unwrap();
-        let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+        let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let show = show_p.gen_show(&challenge);
-        show.verify::<Blake2b>(disclosed, &challenge, &ipk, &set_comm_srs)
-            .unwrap();
+        show.verify::<Blake2b512>(
+            disclosed,
+            &challenge,
+            prep_ipk.clone(),
+            prep_set_comm_srs.clone(),
+        )
+        .unwrap();
 
         let disclosed = vec![
             vec![],
             vec![msgs_2[1].clone()],
             vec![msgs_3[0].clone(), msgs_3[3].clone()],
         ];
-        let show_p = CredentialShowProtocol::init::<_, Blake2b>(
+        let show_p = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
             cred1_rand.clone(),
             disclosed.clone(),
             &pseudonym1.secret,
             &pseudonym1.nym,
-            &ipk,
+            &ipk.X_0,
             &set_comm_srs,
         )
         .unwrap();
@@ -407,11 +419,16 @@ pub mod tests {
         show_p
             .challenge_contribution(set_comm_srs.get_P1(), &mut chal_bytes)
             .unwrap();
-        let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+        let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let show = show_p.gen_show(&challenge);
-        show.verify::<Blake2b>(disclosed, &challenge, &ipk, &set_comm_srs)
-            .unwrap();
+        show.verify::<Blake2b512>(
+            disclosed,
+            &challenge,
+            prep_ipk.clone(),
+            prep_set_comm_srs.clone(),
+        )
+        .unwrap();
 
         for i in 0..6 {
             let disclosed = vec![
@@ -421,13 +438,13 @@ pub mod tests {
             ];
 
             let start = Instant::now();
-            let show_p = CredentialShowProtocol::init::<_, Blake2b>(
+            let show_p = CredentialShowProtocol::init::<_, Blake2b512>(
                 &mut rng,
                 cred1_rand.clone(),
                 disclosed.clone(),
                 &pseudonym1.secret,
                 &pseudonym1.nym,
-                &ipk,
+                &ipk.X_0,
                 &set_comm_srs,
             )
             .unwrap();
@@ -436,8 +453,13 @@ pub mod tests {
             let show_time = start.elapsed();
 
             let start = Instant::now();
-            show.verify::<Blake2b>(disclosed, &challenge, &ipk, &set_comm_srs)
-                .unwrap();
+            show.verify::<Blake2b512>(
+                disclosed,
+                &challenge,
+                prep_ipk.clone(),
+                prep_set_comm_srs.clone(),
+            )
+            .unwrap();
             let verify_time = start.elapsed();
 
             println!("For credential with 3 commitments with {} attributes in total and {} disclosed attributes", msgs_1.len() + msgs_2.len() + msgs_3.len(), (i+1)*3);
@@ -462,6 +484,10 @@ pub mod tests {
 
         let usk2 = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk2 = UserPublicKey::new(&usk2, set_comm_srs.get_P1());
+
+        let prep_ipk1 = PreparedRootIssuerPublicKey::from(ipk1.clone());
+        let prep_ipk2 = PreparedRootIssuerPublicKey::from(ipk2.clone());
+        let prep_set_comm_srs = PreparedSetCommitmentSRS::from(set_comm_srs.clone());
 
         let msgs_1 = (0..max_attributes - 2)
             .map(|_| Fr::rand(&mut rng))
@@ -491,7 +517,14 @@ pub mod tests {
         .unwrap();
         let uk = uk.unwrap();
         let (root_cred_rand, pseudonym, uk) = root_cred
-            .process_received_from_root(&mut rng, Some(&uk), &upk1, &usk1, &ipk1, &set_comm_srs)
+            .process_received_from_root(
+                &mut rng,
+                Some(&uk),
+                &upk1,
+                &usk1,
+                prep_ipk1.clone(),
+                &set_comm_srs,
+            )
             .unwrap();
         let uk = uk.unwrap();
 
@@ -502,7 +535,7 @@ pub mod tests {
                 &mut rng,
                 msgs_3.clone(),
                 &pseudonym.secret,
-                &ipk1,
+                &ipk1.X_0,
                 Some(2),
                 &uk,
                 &set_comm_srs,
@@ -519,7 +552,7 @@ pub mod tests {
                 Some(&uk1),
                 &upk2,
                 &usk2,
-                &ipk1,
+                prep_ipk1.clone(),
                 &set_comm_srs,
             )
             .unwrap();
@@ -545,7 +578,7 @@ pub mod tests {
                 Some(&uk2),
                 &upk2,
                 &usk2,
-                &ipk2,
+                prep_ipk2.clone(),
                 &set_comm_srs,
             )
             .unwrap();
@@ -554,24 +587,24 @@ pub mod tests {
 
         let disclosed_1 = vec![vec![], vec![], vec![]];
         let disclosed_2 = vec![vec![], vec![]];
-        let show_p1 = CredentialShowProtocol::init::<_, Blake2b>(
+        let show_p1 = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
             cred1_rand.clone(),
             disclosed_1.clone(),
             &pseudonym1.secret,
             &pseudonym1.nym,
-            &ipk1,
+            &ipk1.X_0,
             &set_comm_srs,
         )
         .unwrap();
 
-        let show_p2 = CredentialShowProtocol::init::<_, Blake2b>(
+        let show_p2 = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
             root_cred2_rand.clone(),
             disclosed_2.clone(),
             &pseudonym2.secret,
             &pseudonym2.nym,
-            &ipk2,
+            &ipk2.X_0,
             &set_comm_srs,
         )
         .unwrap();
@@ -583,16 +616,21 @@ pub mod tests {
         show_p2
             .challenge_contribution(set_comm_srs.get_P1(), &mut chal_bytes)
             .unwrap();
-        let challenge = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes);
+        let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let show_1 = show_p1.gen_show(&challenge);
         show_1
-            .verify::<Blake2b>(disclosed_1, &challenge, &ipk1, &set_comm_srs)
+            .verify::<Blake2b512>(
+                disclosed_1,
+                &challenge,
+                prep_ipk1,
+                prep_set_comm_srs.clone(),
+            )
             .unwrap();
 
         let show_2 = show_p2.gen_show(&challenge);
         show_2
-            .verify::<Blake2b>(disclosed_2, &challenge, &ipk2, &set_comm_srs)
+            .verify::<Blake2b512>(disclosed_2, &challenge, prep_ipk2, prep_set_comm_srs)
             .unwrap();
     }
 }

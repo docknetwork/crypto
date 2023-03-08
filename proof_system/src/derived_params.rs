@@ -2,8 +2,13 @@
 //! creating these parameters.
 
 use crate::sub_protocols::saver::SaverProtocol;
-use ark_ec::PairingEngine;
+use ark_ec::pairing::Pairing;
 use ark_std::{collections::BTreeMap, marker::PhantomData, vec, vec::Vec};
+use bbs_plus::setup::{
+    PreparedPublicKeyG2 as PreparedBBSPlusPk,
+    PreparedSignatureParamsG1 as PreparedBBSPlusSigParams, PublicKeyG2 as BBSPlusPk,
+    SignatureParamsG1 as BBSPlusSigParams,
+};
 use legogroth16::{
     PreparedVerifyingKey as LegoPreparedVerifyingKey, VerifyingKey as LegoVerifyingKey,
 };
@@ -13,6 +18,10 @@ use saver::prelude::{
 };
 use saver::saver_groth16::{
     PreparedVerifyingKey as SaverPreparedVerifyingKey, VerifyingKey as SaverVerifyingKey,
+};
+use vb_accumulator::setup::{
+    PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,
+    PublicKey as AccumPk, SetupParams as AccumParams,
 };
 
 /// Allows creating a new derived parameter from reference to original parameter
@@ -84,7 +93,7 @@ impl<DP> StatementDerivedParams<DP> {
     }
 }
 
-impl<'a, E: PairingEngine> DerivedParams<'a, LegoVerifyingKey<E>, Vec<E::G1Affine>>
+impl<'a, E: Pairing> DerivedParams<'a, LegoVerifyingKey<E>, Vec<E::G1Affine>>
     for DerivedParamsTracker<'a, LegoVerifyingKey<E>, Vec<E::G1Affine>, E>
 {
     fn new_derived(vk: &LegoVerifyingKey<E>) -> Vec<E::G1Affine> {
@@ -92,7 +101,7 @@ impl<'a, E: PairingEngine> DerivedParams<'a, LegoVerifyingKey<E>, Vec<E::G1Affin
     }
 }
 
-impl<'a, E: PairingEngine> DerivedParams<'a, EncryptionKey<E>, Vec<E::G1Affine>>
+impl<'a, E: Pairing> DerivedParams<'a, EncryptionKey<E>, Vec<E::G1Affine>>
     for DerivedParamsTracker<'a, EncryptionKey<E>, Vec<E::G1Affine>, E>
 {
     fn new_derived(ek: &EncryptionKey<E>) -> Vec<E::G1Affine> {
@@ -100,7 +109,7 @@ impl<'a, E: PairingEngine> DerivedParams<'a, EncryptionKey<E>, Vec<E::G1Affine>>
     }
 }
 
-impl<'a, E: PairingEngine>
+impl<'a, E: Pairing>
     DerivedParams<
         'a,
         (&ChunkedCommitmentGens<E::G1Affine>, u8),
@@ -120,23 +129,23 @@ impl<'a, E: PairingEngine>
     }
 }
 
-impl<'a, E: PairingEngine> DerivedParams<'a, EncryptionGens<E>, PreparedEncryptionGens<E>>
+impl<'a, E: Pairing> DerivedParams<'a, EncryptionGens<E>, PreparedEncryptionGens<E>>
     for DerivedParamsTracker<'a, EncryptionGens<E>, PreparedEncryptionGens<E>, E>
 {
     fn new_derived(gens: &EncryptionGens<E>) -> PreparedEncryptionGens<E> {
-        gens.prepared()
+        PreparedEncryptionGens::from(gens.clone())
     }
 }
 
-impl<'a, E: PairingEngine> DerivedParams<'a, EncryptionKey<E>, PreparedEncryptionKey<E>>
+impl<'a, E: Pairing> DerivedParams<'a, EncryptionKey<E>, PreparedEncryptionKey<E>>
     for DerivedParamsTracker<'a, EncryptionKey<E>, PreparedEncryptionKey<E>, E>
 {
     fn new_derived(ek: &EncryptionKey<E>) -> PreparedEncryptionKey<E> {
-        ek.prepared()
+        PreparedEncryptionKey::from(ek.clone())
     }
 }
 
-impl<'a, E: PairingEngine> DerivedParams<'a, SaverVerifyingKey<E>, SaverPreparedVerifyingKey<E>>
+impl<'a, E: Pairing> DerivedParams<'a, SaverVerifyingKey<E>, SaverPreparedVerifyingKey<E>>
     for DerivedParamsTracker<'a, SaverVerifyingKey<E>, SaverPreparedVerifyingKey<E>, E>
 {
     fn new_derived(vk: &SaverVerifyingKey<E>) -> SaverPreparedVerifyingKey<E> {
@@ -144,10 +153,42 @@ impl<'a, E: PairingEngine> DerivedParams<'a, SaverVerifyingKey<E>, SaverPrepared
     }
 }
 
-impl<'a, E: PairingEngine> DerivedParams<'a, LegoVerifyingKey<E>, LegoPreparedVerifyingKey<E>>
+impl<'a, E: Pairing> DerivedParams<'a, LegoVerifyingKey<E>, LegoPreparedVerifyingKey<E>>
     for DerivedParamsTracker<'a, LegoVerifyingKey<E>, LegoPreparedVerifyingKey<E>, E>
 {
     fn new_derived(vk: &LegoVerifyingKey<E>) -> LegoPreparedVerifyingKey<E> {
         legogroth16::prepare_verifying_key(vk)
+    }
+}
+
+impl<'a, E: Pairing> DerivedParams<'a, BBSPlusSigParams<E>, PreparedBBSPlusSigParams<E>>
+    for DerivedParamsTracker<'a, BBSPlusSigParams<E>, PreparedBBSPlusSigParams<E>, E>
+{
+    fn new_derived(p: &BBSPlusSigParams<E>) -> PreparedBBSPlusSigParams<E> {
+        PreparedBBSPlusSigParams::from(p.clone())
+    }
+}
+
+impl<'a, E: Pairing> DerivedParams<'a, BBSPlusPk<E>, PreparedBBSPlusPk<E>>
+    for DerivedParamsTracker<'a, BBSPlusPk<E>, PreparedBBSPlusPk<E>, E>
+{
+    fn new_derived(p: &BBSPlusPk<E>) -> PreparedBBSPlusPk<E> {
+        PreparedBBSPlusPk::from(p.clone())
+    }
+}
+
+impl<'a, E: Pairing> DerivedParams<'a, AccumParams<E>, PreparedAccumParams<E>>
+    for DerivedParamsTracker<'a, AccumParams<E>, PreparedAccumParams<E>, E>
+{
+    fn new_derived(p: &AccumParams<E>) -> PreparedAccumParams<E> {
+        PreparedAccumParams::from(p.clone())
+    }
+}
+
+impl<'a, E: Pairing> DerivedParams<'a, AccumPk<E>, PreparedAccumPk<E>>
+    for DerivedParamsTracker<'a, AccumPk<E>, PreparedAccumPk<E>, E>
+{
+    fn new_derived(p: &AccumPk<E>) -> PreparedAccumPk<E> {
+        PreparedAccumPk::from(p.clone())
     }
 }

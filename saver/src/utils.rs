@@ -4,7 +4,7 @@ use ark_std::vec::Vec;
 
 /// Return number of chunks given the bit size of chunk. Considers the size of the field.
 pub fn chunks_count<F: PrimeField>(chunk_bit_size: u8) -> u8 {
-    let scalar_size = F::size_in_bits();
+    let scalar_size = F::MODULUS_BIT_SIZE as usize;
     let bit_size = chunk_bit_size as usize;
     // ceil(scalar_size / bit_size)
     ((scalar_size + bit_size - 1) / bit_size) as u8
@@ -15,7 +15,7 @@ pub type CHUNK_TYPE = u16;
 /// Given an element `F`, break it into chunks where each chunk is of `chunk_bit_size` bits. This is
 /// essentially an n-ary representation where n is `chunk_bit_size`. Returns big-endian representation.
 pub fn decompose<F: PrimeField>(message: &F, chunk_bit_size: u8) -> crate::Result<Vec<CHUNK_TYPE>> {
-    let bytes = message.into_repr().to_bytes_be();
+    let bytes = message.into_bigint().to_bytes_be();
     let mut decomposition = Vec::<CHUNK_TYPE>::new();
     match chunk_bit_size {
         4 => {
@@ -77,13 +77,8 @@ pub fn compose<F: PrimeField>(decomposed: &[CHUNK_TYPE], chunk_bit_size: u8) -> 
 macro_rules! test_serialization {
     ($obj_type:ty, $obj: ident) => {
         let mut serz = vec![];
-        CanonicalSerialize::serialize(&$obj, &mut serz).unwrap();
-        let deserz: $obj_type = CanonicalDeserialize::deserialize(&serz[..]).unwrap();
-        assert_eq!(deserz, $obj);
-
-        let mut serz = vec![];
-        $obj.serialize_unchecked(&mut serz).unwrap();
-        let deserz: $obj_type = CanonicalDeserialize::deserialize_unchecked(&serz[..]).unwrap();
+        CanonicalSerialize::serialize_compressed(&$obj, &mut serz).unwrap();
+        let deserz: $obj_type = CanonicalDeserialize::deserialize_compressed(&serz[..]).unwrap();
         assert_eq!(deserz, $obj);
 
         let mut serz = vec![];
@@ -107,12 +102,12 @@ macro_rules! test_serialization {
 pub(crate) mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
     use ark_std::UniformRand;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn compose_decompose() {

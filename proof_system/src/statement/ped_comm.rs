@@ -1,9 +1,6 @@
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    io::{Read, Write},
-    vec::Vec,
-};
+use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::vec::Vec;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -18,22 +15,19 @@ use dock_crypto_utils::serde_utils::*;
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct PedersenCommitment<G: AffineCurve> {
+pub struct PedersenCommitment<G: AffineRepr> {
     /// The Pedersen commitment `C` in `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub commitment: G,
     /// Commitment key `g_i` in `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`
-    #[serde_as(as = "Option<Vec<AffineGroupBytes>>")]
+    #[serde_as(as = "Option<Vec<ArkObjectBytes>>")]
     pub key: Option<Vec<G>>,
     pub key_ref: Option<usize>,
 }
 
 /// Create a `Statement` variant for proving knowledge of committed elements in a Pedersen commitment
-impl<G: AffineCurve> PedersenCommitment<G> {
-    pub fn new_statement_from_params<E: PairingEngine>(
-        key: Vec<G>,
-        commitment: G,
-    ) -> Statement<E, G> {
+impl<G: AffineRepr> PedersenCommitment<G> {
+    pub fn new_statement_from_params<E: Pairing>(key: Vec<G>, commitment: G) -> Statement<E, G> {
         Statement::PedersenCommitment(Self {
             commitment,
             key: Some(key),
@@ -41,7 +35,7 @@ impl<G: AffineCurve> PedersenCommitment<G> {
         })
     }
 
-    pub fn new_statement_from_params_refs<E: PairingEngine>(
+    pub fn new_statement_from_params_refs<E: Pairing>(
         key_ref: usize,
         commitment: G,
     ) -> Statement<E, G> {
@@ -52,7 +46,7 @@ impl<G: AffineCurve> PedersenCommitment<G> {
         })
     }
 
-    pub fn get_commitment_key<'a, E: PairingEngine>(
+    pub fn get_commitment_key<'a, E: Pairing>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,

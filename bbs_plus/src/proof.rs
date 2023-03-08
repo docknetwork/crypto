@@ -55,18 +55,17 @@
 //!
 //! // See tests for more examples
 //! ```
-
 use crate::error::BBSPlusError;
-use crate::setup::{PublicKeyG2, SignatureParamsG1};
+use crate::prelude::PreparedPublicKeyG2;
+use crate::setup::{PreparedSignatureParamsG1, SignatureParamsG1};
 use crate::signature::SignatureG1;
-use ark_ec::msm::VariableBaseMSM;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, PrimeField, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Debug,
-    io::{Read, Write},
+    io::Write,
     rand::RngCore,
     vec,
     vec::Vec,
@@ -77,7 +76,6 @@ use dock_crypto_utils::serde_utils::*;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-pub use serialization::*;
 use zeroize::Zeroize;
 
 /// Proof of knowledge of BBS+ signature in group G1
@@ -90,22 +88,24 @@ use zeroize::Zeroize;
 /// the protocol can be used together where the pre-challenge phase of all protocols is used to create a combined challenge
 /// and then that challenge is used in post-challenge phase of all protocols.
 #[serde_as]
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct PoKOfSignatureG1Protocol<E: PairingEngine> {
-    #[serde_as(as = "AffineGroupBytes")]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct PoKOfSignatureG1Protocol<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub A_prime: E::G1Affine,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
     /// For proving relation `A_bar - d = A_prime * -e + h_0 * r2`
     pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
-    #[serde_as(as = "[FieldBytes; 2]")]
-    sc_wits_1: [E::Fr; 2],
+    #[serde_as(as = "(ArkObjectBytes, ArkObjectBytes)")]
+    sc_wits_1: (E::ScalarField, E::ScalarField),
     /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + sum_{j notin D}(h_j*m_j)`
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
-    #[serde_as(as = "Vec<FieldBytes>")]
-    sc_wits_2: Vec<E::Fr>,
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    sc_wits_2: Vec<E::ScalarField>,
 }
 
 /// Proof of knowledge of the signature in G1. It contains the randomized signature, commitment (Schnorr step 1)
@@ -114,27 +114,24 @@ pub struct PoKOfSignatureG1Protocol<E: PairingEngine> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct PoKOfSignatureG1Proof<E: PairingEngine> {
-    #[serde_as(as = "AffineGroupBytes")]
+pub struct PoKOfSignatureG1Proof<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub A_prime: E::G1Affine,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
     /// Proof of relation `A_bar - d = A_prime * -e + h_0 * r2`
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub T1: E::G1Affine,
     pub sc_resp_1: SchnorrResponse<E::G1Affine>,
     /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub T2: E::G1Affine,
     pub sc_resp_2: SchnorrResponse<E::G1Affine>,
 }
 
-impl<E> PoKOfSignatureG1Protocol<E>
-where
-    E: PairingEngine,
-{
+impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     /// Initiate the protocol, i.e. pre-challenge phase. This will generate the randomized signature and execute
     /// the commit-to-randomness step (Step 1) of both Schnorr protocols. Accepts the indices of the
     /// multi-message which are revealed to the verifier and thus their knowledge is not proven.
@@ -148,8 +145,8 @@ where
         rng: &mut R,
         signature: &SignatureG1<E>,
         params: &SignatureParamsG1<E>,
-        messages: &[E::Fr],
-        mut blindings: BTreeMap<usize, E::Fr>,
+        messages: &[E::ScalarField],
+        mut blindings: BTreeMap<usize, E::ScalarField>,
         revealed_msg_indices: BTreeSet<usize>,
     ) -> Result<Self, BBSPlusError> {
         if messages.len() != params.supported_message_count() {
@@ -170,12 +167,12 @@ where
         // a blinding for every message whose knowledge is to be proven
         for i in 0..messages.len() {
             if !revealed_msg_indices.contains(&i) && !blindings.contains_key(&i) {
-                blindings.insert(i, E::Fr::rand(rng));
+                blindings.insert(i, E::ScalarField::rand(rng));
             }
         }
 
-        let r1 = E::Fr::rand(rng);
-        let r2 = E::Fr::rand(rng);
+        let r1 = E::ScalarField::rand(rng);
+        let r2 = E::ScalarField::rand(rng);
         let r3 = r1.inverse().ok_or(BBSPlusError::CannotInvert0)?;
 
         // b = (e+x) * A = g1 + h_0*s + sum(h_i*m_i) for all i in I
@@ -183,19 +180,19 @@ where
             messages
                 .iter()
                 .enumerate()
-                .collect::<BTreeMap<usize, &E::Fr>>(),
+                .collect::<BTreeMap<usize, &E::ScalarField>>(),
             &signature.s,
         )?;
 
         // A' = A * r1
-        let A_prime = signature.A.mul(r1.into_repr());
+        let A_prime = signature.A.mul_bigint(r1.into_bigint());
         let A_prime_affine = A_prime.into_affine();
         // A_bar = r1 * b - e * A'
         let mut b_r1 = b;
         b_r1 *= r1;
-        let A_bar = b_r1 - (A_prime_affine.mul(signature.e.into_repr()));
+        let A_bar = b_r1 - (A_prime_affine.mul_bigint(signature.e.into_bigint()));
         // d = r1 * b - r2 * h_0
-        let d = b_r1 - params.h_0.mul(r2.into_repr());
+        let d = b_r1 - params.h_0.mul_bigint(r2.into_bigint());
         let d_affine = d.into_affine();
         // s' = s - r2*r3
         let s_prime = signature.s - (r2 * r3);
@@ -209,8 +206,8 @@ where
         // of `(e, r2)`, and the second of `(r3, s', {m_j}_{j \notin D})`. The secret knowledge items are
         // referred to as witnesses, and the public items as instances.
         let bases_1 = [A_prime_affine, params.h_0];
-        let randomness_1 = vec![E::Fr::rand(rng), E::Fr::rand(rng)];
-        let wits_1 = [-signature.e, r2];
+        let randomness_1 = vec![E::ScalarField::rand(rng), E::ScalarField::rand(rng)];
+        let wits_1 = (-signature.e, r2);
 
         // Commit to randomness with `h_0` and `A'`, i.e. `bases_1[0]*randomness_1[0] + bases_1[1]*randomness_1[1]`
         let sc_comm_1 = SchnorrCommitment::new(&bases_1, randomness_1);
@@ -231,10 +228,10 @@ where
         let mut randomness_2 = Vec::with_capacity(2 + blindings.len());
         let mut wits_2 = Vec::with_capacity(2 + blindings.len());
         bases_2.push(d_affine);
-        randomness_2.push(E::Fr::rand(rng));
+        randomness_2.push(E::ScalarField::rand(rng));
         wits_2.push(-r3);
         bases_2.push(h_0);
-        randomness_2.push(E::Fr::rand(rng));
+        randomness_2.push(E::ScalarField::rand(rng));
         wits_2.push(s_prime);
 
         // Capture all unrevealed messages `m_j` and corresponding `h_j`
@@ -262,7 +259,7 @@ where
     /// Get the contribution of this protocol towards the challenge, i.e. bytecode of items that will be hashed
     pub fn challenge_contribution<W: Write>(
         &self,
-        revealed_msgs: &BTreeMap<usize, E::Fr>,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
         params: &SignatureParamsG1<E>,
         writer: W,
     ) -> Result<(), BBSPlusError> {
@@ -279,9 +276,14 @@ where
     }
 
     /// Generate proof. Post-challenge phase of the protocol.
-    pub fn gen_proof(self, challenge: &E::Fr) -> Result<PoKOfSignatureG1Proof<E>, BBSPlusError> {
+    pub fn gen_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<PoKOfSignatureG1Proof<E>, BBSPlusError> {
         // Schnorr response for relation `A_bar - d == A'*{-e} + h_0*r2`
-        let resp_1 = self.sc_comm_1.response(&self.sc_wits_1, challenge)?;
+        let resp_1 = self
+            .sc_comm_1
+            .response(&[self.sc_wits_1.0, self.sc_wits_1.1], challenge)?;
         // Schnorr response for relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + \sum_{j not in D}(h_j*{-m_j})`
         let resp_2 = self.sc_comm_2.response(&self.sc_wits_2, challenge)?;
 
@@ -304,22 +306,22 @@ where
         d: &E::G1Affine,
         T1: &E::G1Affine,
         T2: &E::G1Affine,
-        revealed_msgs: &BTreeMap<usize, E::Fr>,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
         params: &SignatureParamsG1<E>,
         mut writer: W,
     ) -> Result<(), BBSPlusError> {
         // NOTE: Using `_unchecked` variants for serialization for speed
-        A_bar.serialize_unchecked(&mut writer)?;
+        A_bar.serialize_compressed(&mut writer)?;
 
         // For 1st Schnorr
-        A_prime.serialize_unchecked(&mut writer)?;
-        params.h_0.serialize_unchecked(&mut writer)?;
+        A_prime.serialize_compressed(&mut writer)?;
+        params.h_0.serialize_compressed(&mut writer)?;
         // A_bar - d
-        let mut A_bar_minus_d = A_bar.into_projective();
-        A_bar_minus_d -= d.into_projective();
+        let mut A_bar_minus_d = A_bar.into_group();
+        A_bar_minus_d -= d.into_group();
         let A_bar_minus_d = A_bar_minus_d.into_affine();
-        A_bar_minus_d.serialize_unchecked(&mut writer)?;
-        T1.serialize_unchecked(&mut writer)?;
+        A_bar_minus_d.serialize_compressed(&mut writer)?;
+        T1.serialize_compressed(&mut writer)?;
 
         // For 2nd Schnorr
         // `bases_revealed` and `exponents` below are used to create g1 + \sum_{i in D}(h_i*m_i)
@@ -327,26 +329,24 @@ where
         let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
         let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
 
-        params.g1.serialize_unchecked(&mut writer)?;
+        params.g1.serialize_compressed(&mut writer)?;
         bases_revealed.push(params.g1);
-        let r = E::Fr::one().into_repr();
-        r.serialize_unchecked(&mut writer)?;
+        let r = E::ScalarField::one();
+        r.serialize_compressed(&mut writer)?;
         exponents.push(r);
         for (i, msg) in revealed_msgs {
             assert!(*i < params.h.len());
-            params.h[*i].serialize_unchecked(&mut writer)?;
+            params.h[*i].serialize_compressed(&mut writer)?;
             bases_revealed.push(params.h[*i]);
-            let r = msg.into_repr();
-            r.serialize_unchecked(&mut writer)?;
-            exponents.push(r);
+            msg.serialize_compressed(&mut writer)?;
+            exponents.push(msg.clone());
         }
-        VariableBaseMSM::multi_scalar_mul(&bases_revealed, &exponents)
-            .serialize_unchecked(&mut writer)?;
-        T2.serialize_unchecked(&mut writer).map_err(|e| e.into())
+        E::G1::msm_unchecked(&bases_revealed, &exponents).serialize_compressed(&mut writer)?;
+        T2.serialize_compressed(&mut writer).map_err(|e| e.into())
     }
 }
 
-impl<E: PairingEngine> Zeroize for PoKOfSignatureG1Protocol<E> {
+impl<E: Pairing> Zeroize for PoKOfSignatureG1Protocol<E> {
     fn zeroize(&mut self) {
         // Other members of `self` are public anyway
         self.sc_comm_1.zeroize();
@@ -356,7 +356,7 @@ impl<E: PairingEngine> Zeroize for PoKOfSignatureG1Protocol<E> {
     }
 }
 
-impl<E: PairingEngine> Drop for PoKOfSignatureG1Protocol<E> {
+impl<E: Pairing> Drop for PoKOfSignatureG1Protocol<E> {
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -364,28 +364,33 @@ impl<E: PairingEngine> Drop for PoKOfSignatureG1Protocol<E> {
 
 impl<E> PoKOfSignatureG1Proof<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     /// Verify if the proof is valid. Assumes that the public key and parameters have been
     /// validated already.
     pub fn verify(
         &self,
-        revealed_msgs: &BTreeMap<usize, E::Fr>,
-        challenge: &E::Fr,
-        pk: &PublicKeyG2<E>,
-        params: &SignatureParamsG1<E>,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParamsG1<E>>,
     ) -> Result<(), BBSPlusError> {
-        self.verify_except_pairings(revealed_msgs, challenge, params)?;
+        let params = params.into();
+        let g1 = params.g1;
+        let g2 = params.g2;
+        let h0 = params.h_0;
+        let h = params.h;
+        self.verify_except_pairings(revealed_msgs, challenge, g1, h0, h)?;
 
         // Verify the randomized signature
-        if !E::product_of_pairings(&[
-            (E::G1Prepared::from(self.A_prime), E::G2Prepared::from(pk.0)),
-            (
-                E::G1Prepared::from(-self.A_bar),
-                E::G2Prepared::from(params.g2),
-            ),
-        ])
-        .is_one()
+        if !E::multi_pairing(
+            [
+                E::G1Prepared::from(self.A_prime),
+                E::G1Prepared::from(-(self.A_bar.into_group())),
+            ],
+            [pk.into().0, g2],
+        )
+        .is_zero()
         {
             return Err(BBSPlusError::PairingCheckFailed);
         }
@@ -394,21 +399,26 @@ where
 
     pub fn verify_with_randomized_pairing_checker(
         &self,
-        revealed_msgs: &BTreeMap<usize, E::Fr>,
-        challenge: &E::Fr,
-        pk: &PublicKeyG2<E>,
-        params: &SignatureParamsG1<E>,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParamsG1<E>>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), BBSPlusError> {
-        self.verify_except_pairings(revealed_msgs, challenge, params)?;
-        pairing_checker.add_sources(self.A_prime, pk.0, self.A_bar, params.g2);
+        let params = params.into();
+        let g1 = params.g1;
+        let g2 = params.g2;
+        let h0 = params.h_0;
+        let h = params.h;
+        self.verify_except_pairings(revealed_msgs, challenge, g1, h0, h)?;
+        pairing_checker.add_sources(&self.A_prime, pk.into().0, &self.A_bar, g2);
         Ok(())
     }
 
     /// For the verifier to independently calculate the challenge
     pub fn challenge_contribution<W: Write>(
         &self,
-        revealed_msgs: &BTreeMap<usize, E::Fr>,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
         params: &SignatureParamsG1<E>,
         writer: W,
     ) -> Result<(), BBSPlusError> {
@@ -430,7 +440,7 @@ where
         &self,
         msg_idx: usize,
         revealed_msg_ids: &BTreeSet<usize>,
-    ) -> Result<&E::Fr, BBSPlusError> {
+    ) -> Result<&E::ScalarField, BBSPlusError> {
         // Revealed messages are not part of Schnorr protocol
         if revealed_msg_ids.contains(&msg_idx) {
             return Err(BBSPlusError::InvalidMsgIdxForResponse(msg_idx));
@@ -449,15 +459,17 @@ where
 
     pub fn verify_schnorr_proofs(
         &self,
-        revealed_msgs: &BTreeMap<usize, E::Fr>,
-        challenge: &E::Fr,
-        params: &SignatureParamsG1<E>,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        g1: E::G1Affine,
+        h_0: E::G1Affine,
+        h: Vec<E::G1Affine>,
     ) -> Result<(), BBSPlusError> {
         // Verify the 1st Schnorr proof
-        let bases_1 = [self.A_prime, params.h_0];
+        let bases_1 = [self.A_prime, h_0];
         // A_bar - d
-        let mut A_bar_minus_d = self.A_bar.into_projective();
-        A_bar_minus_d -= self.d.into_projective();
+        let mut A_bar_minus_d = self.A_bar.into_group();
+        A_bar_minus_d -= self.d.into_group();
         let A_bar_minus_d = A_bar_minus_d.into_affine();
         match self
             .sc_resp_1
@@ -471,26 +483,25 @@ where
         }
 
         // Verify the 2nd Schnorr proof
-        let mut bases_2 =
-            Vec::with_capacity(2 + params.supported_message_count() - revealed_msgs.len());
+        let mut bases_2 = Vec::with_capacity(2 + h.len() - revealed_msgs.len());
         bases_2.push(self.d);
-        bases_2.push(params.h_0);
+        bases_2.push(h_0);
 
         let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
         let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
-        bases_revealed.push(params.g1);
-        exponents.push(E::Fr::one().into_repr());
-        for i in 0..params.supported_message_count() {
+        bases_revealed.push(g1);
+        exponents.push(E::ScalarField::one());
+        for i in 0..h.len() {
             if revealed_msgs.contains_key(&i) {
                 let message = revealed_msgs.get(&i).unwrap();
-                bases_revealed.push(params.h[i]);
-                exponents.push(message.into_repr());
+                bases_revealed.push(h[i]);
+                exponents.push(message.clone());
             } else {
-                bases_2.push(params.h[i]);
+                bases_2.push(h[i]);
             }
         }
         // pr = -g1 + \sum_{i in D}(h_i*{-m_i}) = -(g1 + \sum_{i in D}(h_i*{m_i}))
-        let pr = -VariableBaseMSM::multi_scalar_mul(&bases_revealed, &exponents);
+        let pr = -E::G1::msm_unchecked(&bases_revealed, &exponents);
         let pr = pr.into_affine();
         match self.sc_resp_2.is_valid(&bases_2, &pr, &self.T2, challenge) {
             Ok(()) => (),
@@ -507,148 +518,16 @@ where
     /// protocol or others) and the pairing equations are combined in a randomized pairing check.
     fn verify_except_pairings(
         &self,
-        revealed_msgs: &BTreeMap<usize, E::Fr>,
-        challenge: &E::Fr,
-        params: &SignatureParamsG1<E>,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        g1: E::G1Affine,
+        h_0: E::G1Affine,
+        h: Vec<E::G1Affine>,
     ) -> Result<(), BBSPlusError> {
         if self.A_prime.is_zero() {
             return Err(BBSPlusError::ZeroSignature);
         }
-        self.verify_schnorr_proofs(revealed_msgs, challenge, params)
-    }
-}
-
-mod serialization {
-    use super::*;
-
-    impl<E: PairingEngine> CanonicalSerialize for PoKOfSignatureG1Protocol<E> {
-        fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            self.A_prime.serialize(&mut writer)?;
-            self.A_bar.serialize(&mut writer)?;
-            self.d.serialize(&mut writer)?;
-            ark_serialize::CanonicalSerialize::serialize(&self.sc_comm_1, &mut writer)?;
-            self.sc_wits_1[0].serialize(&mut writer)?;
-            self.sc_wits_1[1].serialize(&mut writer)?;
-            ark_serialize::CanonicalSerialize::serialize(&self.sc_comm_2, &mut writer)?;
-            self.sc_wits_2.serialize(&mut writer)
-        }
-
-        fn serialized_size(&self) -> usize {
-            self.A_prime.serialized_size()
-                + self.A_bar.serialized_size()
-                + self.d.serialized_size()
-                + self.sc_comm_1.serialized_size()
-                + self.sc_wits_1[0].serialized_size()
-                + self.sc_wits_1[1].serialized_size()
-                + self.sc_comm_2.serialized_size()
-                + self.sc_wits_2.serialized_size()
-        }
-
-        fn serialize_uncompressed<W: Write>(
-            &self,
-            mut writer: W,
-        ) -> Result<(), SerializationError> {
-            self.A_prime.serialize_uncompressed(&mut writer)?;
-            self.A_bar.serialize_uncompressed(&mut writer)?;
-            self.d.serialize_uncompressed(&mut writer)?;
-            self.sc_comm_1.serialize_uncompressed(&mut writer)?;
-            self.sc_wits_1[0].serialize(&mut writer)?;
-            self.sc_wits_1[1].serialize(&mut writer)?;
-            self.sc_comm_2.serialize_uncompressed(&mut writer)?;
-            self.sc_wits_2.serialize(&mut writer)
-        }
-
-        fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            self.A_prime.serialize_unchecked(&mut writer)?;
-            self.A_bar.serialize_unchecked(&mut writer)?;
-            self.d.serialize_unchecked(&mut writer)?;
-            self.sc_comm_1.serialize_unchecked(&mut writer)?;
-            self.sc_wits_1[0].serialize(&mut writer)?;
-            self.sc_wits_1[1].serialize(&mut writer)?;
-            self.sc_comm_2.serialize_unchecked(&mut writer)?;
-            self.sc_wits_2.serialize_unchecked(&mut writer)
-        }
-
-        fn uncompressed_size(&self) -> usize {
-            self.A_prime.uncompressed_size()
-                + self.A_bar.uncompressed_size()
-                + self.d.uncompressed_size()
-                + self.sc_comm_1.uncompressed_size()
-                + self.sc_wits_1[0].serialized_size()
-                + self.sc_wits_1[1].serialized_size()
-                + self.sc_comm_2.uncompressed_size()
-                + self.sc_wits_2.serialized_size()
-        }
-    }
-
-    impl<E: PairingEngine> CanonicalDeserialize for PoKOfSignatureG1Protocol<E> {
-        fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            let A_prime = E::G1Affine::deserialize(&mut reader)?;
-            let A_bar = E::G1Affine::deserialize(&mut reader)?;
-            let d = E::G1Affine::deserialize(&mut reader)?;
-            let sc_comm_1 = ark_serialize::CanonicalDeserialize::deserialize(&mut reader)?;
-            let sc_wits_1 = [
-                E::Fr::deserialize(&mut reader)?,
-                E::Fr::deserialize(&mut reader)?,
-            ];
-            let sc_comm_2 = ark_serialize::CanonicalDeserialize::deserialize(&mut reader)?;
-            let sc_wits_2 = <Vec<E::Fr>>::deserialize(&mut reader)?;
-            Ok(Self {
-                A_prime,
-                A_bar,
-                d,
-                sc_comm_1,
-                sc_wits_1,
-                sc_comm_2,
-                sc_wits_2,
-            })
-        }
-
-        fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            let A_prime = E::G1Affine::deserialize_uncompressed(&mut reader)?;
-            let A_bar = E::G1Affine::deserialize_uncompressed(&mut reader)?;
-            let d = E::G1Affine::deserialize_uncompressed(&mut reader)?;
-            let sc_comm_1 =
-                <SchnorrCommitment<E::G1Affine>>::deserialize_uncompressed(&mut reader)?;
-            let sc_wits_1 = [
-                E::Fr::deserialize(&mut reader)?,
-                E::Fr::deserialize(&mut reader)?,
-            ];
-            let sc_comm_2 =
-                <SchnorrCommitment<E::G1Affine>>::deserialize_uncompressed(&mut reader)?;
-            let sc_wits_2 = <Vec<E::Fr>>::deserialize(&mut reader)?;
-            Ok(Self {
-                A_prime,
-                A_bar,
-                d,
-                sc_comm_1,
-                sc_wits_1,
-                sc_comm_2,
-                sc_wits_2,
-            })
-        }
-
-        fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            let A_prime = E::G1Affine::deserialize_unchecked(&mut reader)?;
-            let A_bar = E::G1Affine::deserialize_unchecked(&mut reader)?;
-            let d = E::G1Affine::deserialize_unchecked(&mut reader)?;
-            let sc_comm_1 = <SchnorrCommitment<E::G1Affine>>::deserialize_unchecked(&mut reader)?;
-            let sc_wits_1 = [
-                E::Fr::deserialize(&mut reader)?,
-                E::Fr::deserialize(&mut reader)?,
-            ];
-            let sc_comm_2 = <SchnorrCommitment<E::G1Affine>>::deserialize_unchecked(&mut reader)?;
-            let sc_wits_2 = <Vec<E::Fr>>::deserialize(&mut reader)?;
-            Ok(Self {
-                A_prime,
-                A_bar,
-                d,
-                sc_comm_1,
-                sc_wits_1,
-                sc_comm_2,
-                sc_wits_2,
-            })
-        }
+        self.verify_schnorr_proofs(revealed_msgs, challenge, g1, h_0, h)
     }
 }
 
@@ -663,11 +542,11 @@ mod tests {
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
     use schnorr_pok::compute_random_oracle_challenge;
     use std::time::{Duration, Instant};
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     fn sig_setup<R: RngCore>(
         rng: &mut R,
@@ -721,17 +600,12 @@ mod tests {
 
         // Protocol can be serialized
         test_serialization!(PoKOfSignatureG1Protocol<Bls12_381>, pok);
-        let pok_json = serde_json::to_string(&pok).unwrap();
-        println!("serde pok ser={:?}", pok_json);
-        let pok_json_deser =
-            serde_json::from_str::<PoKOfSignatureG1Protocol<Bls12_381>>(&pok_json).unwrap();
-        println!("serde pok deser={:?}", pok_json_deser);
-        assert_eq!(pok_json_deser, pok);
 
         let mut chal_bytes_prover = vec![];
         pok.challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_prover)
             .unwrap();
-        let challenge_prover = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_prover);
+        let challenge_prover =
+            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
         let start = Instant::now();
         let proof = pok.gen_proof(&challenge_prover).unwrap();
@@ -746,14 +620,19 @@ mod tests {
             .challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_verifier)
             .unwrap();
         let challenge_verifier =
-            compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_verifier);
+            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
 
         assert_eq!(chal_bytes_prover, chal_bytes_verifier);
 
         let mut proof_verif_duration = Duration::default();
         let start = Instant::now();
         proof
-            .verify(&revealed_msgs, &challenge_verifier, public_key, &params)
+            .verify(
+                &revealed_msgs,
+                &challenge_verifier,
+                public_key.clone(),
+                params.clone(),
+            )
             .unwrap();
         proof_verif_duration += start.elapsed();
 
@@ -783,9 +662,9 @@ mod tests {
         let message_1_count = 10;
         let message_2_count = 7;
         let params_1 =
-            SignatureParamsG1::<Bls12_381>::new::<Blake2b>("test".as_bytes(), message_1_count);
+            SignatureParamsG1::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_1_count);
         let params_2 =
-            SignatureParamsG1::<Bls12_381>::new::<Blake2b>("test-1".as_bytes(), message_2_count);
+            SignatureParamsG1::<Bls12_381>::new::<Blake2b512>("test-1".as_bytes(), message_2_count);
         let keypair_1 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_1);
         let keypair_2 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_2);
 
@@ -868,7 +747,8 @@ mod tests {
         pok_2
             .challenge_contribution(&BTreeMap::new(), &params_2, &mut chal_bytes_prover)
             .unwrap();
-        let challenge_prover = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_prover);
+        let challenge_prover =
+            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
         let proof_1 = pok_1.gen_proof(&challenge_prover).unwrap();
         let proof_2 = pok_2.gen_proof(&challenge_prover).unwrap();
@@ -882,7 +762,7 @@ mod tests {
             .challenge_contribution(&BTreeMap::new(), &params_2, &mut chal_bytes_verifier)
             .unwrap();
         let challenge_verifier =
-            compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_verifier);
+            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
 
         // Response for the same message should be same (this check is made by the verifier)
         assert_eq!(
@@ -898,16 +778,16 @@ mod tests {
             .verify(
                 &BTreeMap::new(),
                 &challenge_verifier,
-                &keypair_1.public_key,
-                &params_1,
+                keypair_1.public_key.clone(),
+                params_1,
             )
             .unwrap();
         proof_2
             .verify(
                 &BTreeMap::new(),
                 &challenge_verifier,
-                &keypair_2.public_key,
-                &params_2,
+                keypair_2.public_key.clone(),
+                params_2,
             )
             .unwrap();
     }
@@ -1074,8 +954,14 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
         let message_count = 5;
         let params =
-            SignatureParamsG1::<Bls12_381>::new::<Blake2b>("test".as_bytes(), message_count);
+            SignatureParamsG1::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_count);
         let keypair = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params);
+
+        let prepared_pk = PreparedPublicKeyG2::from(keypair.public_key.clone());
+        let prepared_params = PreparedSignatureParamsG1::from(params.clone());
+
+        test_serialization!(PreparedPublicKeyG2<Bls12_381>, prepared_pk);
+        test_serialization!(PreparedSignatureParamsG1<Bls12_381>, prepared_params);
 
         let sig_count = 10;
         let mut msgs = vec![];
@@ -1108,7 +994,8 @@ mod tests {
             poks.push(pok);
         }
 
-        let challenge_prover = compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_prover);
+        let challenge_prover =
+            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
         for pok in poks {
             proofs.push(pok.gen_proof(&challenge_prover).unwrap());
@@ -1123,7 +1010,7 @@ mod tests {
         }
 
         let challenge_verifier =
-            compute_random_oracle_challenge::<Fr, Blake2b>(&chal_bytes_verifier);
+            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
 
         let start = Instant::now();
         for proof in proofs.clone() {
@@ -1131,12 +1018,29 @@ mod tests {
                 .verify(
                     &BTreeMap::new(),
                     &challenge_verifier,
-                    &keypair.public_key,
-                    &params,
+                    keypair.public_key.clone(),
+                    params.clone(),
                 )
                 .unwrap();
         }
         println!("Time to verify {} sigs: {:?}", sig_count, start.elapsed());
+
+        let start = Instant::now();
+        for proof in proofs.clone() {
+            proof
+                .verify(
+                    &BTreeMap::new(),
+                    &challenge_verifier,
+                    prepared_pk.clone(),
+                    prepared_params.clone(),
+                )
+                .unwrap();
+        }
+        println!(
+            "Time to verify {} sigs using prepared public key and params: {:?}",
+            sig_count,
+            start.elapsed()
+        );
 
         let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
         let start = Instant::now();
@@ -1145,8 +1049,8 @@ mod tests {
                 .verify_with_randomized_pairing_checker(
                     &BTreeMap::new(),
                     &challenge_verifier,
-                    &keypair.public_key,
-                    &params,
+                    keypair.public_key.clone(),
+                    params.clone(),
                     &mut pairing_checker,
                 )
                 .unwrap();
@@ -1154,6 +1058,26 @@ mod tests {
         assert!(pairing_checker.verify());
         println!(
             "Time to verify {} sigs using randomized pairing checker: {:?}",
+            sig_count,
+            start.elapsed()
+        );
+
+        let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
+        let start = Instant::now();
+        for proof in proofs.clone() {
+            proof
+                .verify_with_randomized_pairing_checker(
+                    &BTreeMap::new(),
+                    &challenge_verifier,
+                    prepared_pk.clone(),
+                    prepared_params.clone(),
+                    &mut pairing_checker,
+                )
+                .unwrap();
+        }
+        assert!(pairing_checker.verify());
+        println!(
+            "Time to verify {} sigs using prepared public key and params and randomized pairing checker: {:?}",
             sig_count,
             start.elapsed()
         );

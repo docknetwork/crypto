@@ -3,12 +3,17 @@ use crate::error::ProofSystemError;
 use crate::meta_statement::{MetaStatement, MetaStatements};
 use crate::setup_params::SetupParams;
 use crate::statement::{Statement, Statements};
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
     io::{Read, Write},
     vec::Vec,
+};
+use bbs_plus::setup::{
+    PreparedPublicKeyG2 as PreparedBBSPlusPk,
+    PreparedSignatureParamsG1 as PreparedBBSPlusSigParams, PublicKeyG2 as BBSPlusPk,
+    SignatureParamsG1 as BBSPlusSigParams,
 };
 use legogroth16::{
     aggregation::srs::{ProverSRS, VerifierSRS},
@@ -20,11 +25,15 @@ use saver::prelude::{
     VerifyingKey as SaverVerifyingKey,
 };
 use serde::{Deserialize, Serialize};
+use vb_accumulator::setup::{
+    PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,
+    PublicKey as AccumPk, SetupParams as AccumParams,
+};
 
 // TODO: Serialize snarkpack params
 /// SRS used for Groth16 and LegoGroth16 proof aggregation using SnarkPack.
 #[derive(Clone, Debug, PartialEq)]
-pub enum SnarkpackSRS<E: PairingEngine> {
+pub enum SnarkpackSRS<E: Pairing> {
     /// SRS used by prover
     ProverSrs(ProverSRS<E>),
     /// SRS used by verifier
@@ -38,7 +47,7 @@ pub enum SnarkpackSRS<E: PairingEngine> {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
+pub struct ProofSpec<E: Pairing, G: AffineRepr> {
     pub statements: Statements<E, G>,
     pub meta_statements: MetaStatements,
     pub setup_params: Vec<SetupParams<E, G>>,
@@ -60,8 +69,8 @@ pub struct ProofSpec<E: PairingEngine, G: AffineCurve> {
 
 impl<E, G> ProofSpec<E, G>
 where
-    E: PairingEngine,
-    G: AffineCurve,
+    E: Pairing,
+    G: AffineRepr,
 {
     /// Create a new `ProofSpec`
     pub fn new(
@@ -306,23 +315,55 @@ where
             StatementDerivedParams<PreparedEncryptionGens<E>>,
             StatementDerivedParams<PreparedEncryptionKey<E>>,
             StatementDerivedParams<SaverPreparedVerifyingKey<E>>,
+            StatementDerivedParams<PreparedBBSPlusSigParams<E>>,
+            StatementDerivedParams<PreparedBBSPlusPk<E>>,
+            StatementDerivedParams<PreparedAccumParams<E>>,
+            StatementDerivedParams<PreparedAccumPk<E>>,
         ),
         ProofSystemError,
     > {
         let mut derived_lego_vk =
             DerivedParamsTracker::<LegoVerifyingKey<E>, LegoPreparedVerifyingKey<E>, E>::new();
-        let mut derived_gens =
+        let mut derived_enc_gens =
             DerivedParamsTracker::<EncryptionGens<E>, PreparedEncryptionGens<E>, E>::new();
         let mut derived_ek =
             DerivedParamsTracker::<EncryptionKey<E>, PreparedEncryptionKey<E>, E>::new();
         let mut derived_saver_vk =
             DerivedParamsTracker::<SaverVerifyingKey<E>, SaverPreparedVerifyingKey<E>, E>::new();
+        let mut derived_bbs_p =
+            DerivedParamsTracker::<BBSPlusSigParams<E>, PreparedBBSPlusSigParams<E>, E>::new();
+        let mut derived_bbs_pk =
+            DerivedParamsTracker::<BBSPlusPk<E>, PreparedBBSPlusPk<E>, E>::new();
+        let mut derived_accum_p =
+            DerivedParamsTracker::<AccumParams<E>, PreparedAccumParams<E>, E>::new();
+        let mut derived_accum_pk = DerivedParamsTracker::<AccumPk<E>, PreparedAccumPk<E>, E>::new();
 
         for (s_idx, statement) in self.statements.0.iter().enumerate() {
             match statement {
+                Statement::PoKBBSSignatureG1(s) => {
+                    let params = s.get_sig_params(&self.setup_params, s_idx)?;
+                    derived_bbs_p.on_new_statement_idx(params, s_idx);
+
+                    let pk = s.get_public_key(&self.setup_params, s_idx)?;
+                    derived_bbs_pk.on_new_statement_idx(pk, s_idx);
+                }
+                Statement::AccumulatorMembership(s) => {
+                    let params = s.get_params(&self.setup_params, s_idx)?;
+                    derived_accum_p.on_new_statement_idx(params, s_idx);
+
+                    let pk = s.get_public_key(&self.setup_params, s_idx)?;
+                    derived_accum_pk.on_new_statement_idx(pk, s_idx);
+                }
+                Statement::AccumulatorNonMembership(s) => {
+                    let params = s.get_params(&self.setup_params, s_idx)?;
+                    derived_accum_p.on_new_statement_idx(params, s_idx);
+
+                    let pk = s.get_public_key(&self.setup_params, s_idx)?;
+                    derived_accum_pk.on_new_statement_idx(pk, s_idx);
+                }
                 Statement::SaverVerifier(s) => {
                     let gens = s.get_encryption_gens(&self.setup_params, s_idx)?;
-                    derived_gens.on_new_statement_idx(gens, s_idx);
+                    derived_enc_gens.on_new_statement_idx(gens, s_idx);
 
                     let enc_key = s.get_encryption_key(&self.setup_params, s_idx)?;
                     derived_ek.on_new_statement_idx(enc_key, s_idx);
@@ -343,17 +384,21 @@ where
         }
         Ok((
             derived_lego_vk.finish(),
-            derived_gens.finish(),
+            derived_enc_gens.finish(),
             derived_ek.finish(),
             derived_saver_vk.finish(),
+            derived_bbs_p.finish(),
+            derived_bbs_pk.finish(),
+            derived_accum_p.finish(),
+            derived_accum_pk.finish(),
         ))
     }
 }
 
 impl<E, G> Default for ProofSpec<E, G>
 where
-    E: PairingEngine,
-    G: AffineCurve,
+    E: Pairing,
+    G: AffineRepr,
 {
     fn default() -> Self {
         Self {
@@ -370,98 +415,57 @@ where
 
 mod serialization {
     use super::*;
+    use ark_serialize::{Compress, Valid, Validate};
 
-    impl<E: PairingEngine> CanonicalSerialize for SnarkpackSRS<E> {
-        fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+    impl<E: Pairing> Valid for SnarkpackSRS<E> {
+        fn check(&self) -> Result<(), SerializationError> {
             match self {
-                Self::ProverSrs(s) => {
-                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::VerifierSrs(s) => {
-                    CanonicalSerialize::serialize(&1u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-            }
-        }
-
-        fn serialized_size(&self) -> usize {
-            match self {
-                Self::ProverSrs(s) => 0u8.serialized_size() + s.serialized_size(),
-                Self::VerifierSrs(s) => 1u8.serialized_size() + s.serialized_size(),
-            }
-        }
-
-        fn serialize_uncompressed<W: Write>(
-            &self,
-            mut writer: W,
-        ) -> Result<(), SerializationError> {
-            match self {
-                Self::ProverSrs(s) => {
-                    0u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::VerifierSrs(s) => {
-                    1u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-            }
-        }
-
-        fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            match self {
-                Self::ProverSrs(s) => {
-                    0u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::VerifierSrs(s) => {
-                    1u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-            }
-        }
-
-        fn uncompressed_size(&self) -> usize {
-            match self {
-                Self::ProverSrs(s) => 0u8.uncompressed_size() + s.uncompressed_size(),
-                Self::VerifierSrs(s) => 1u8.uncompressed_size() + s.uncompressed_size(),
+                Self::ProverSrs(s) => s.check(),
+                Self::VerifierSrs(s) => s.check(),
             }
         }
     }
 
-    impl<E: PairingEngine> CanonicalDeserialize for SnarkpackSRS<E> {
-        fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
+    impl<E: Pairing> CanonicalSerialize for SnarkpackSRS<E> {
+        fn serialize_with_mode<W: Write>(
+            &self,
+            mut writer: W,
+            compress: Compress,
+        ) -> Result<(), SerializationError> {
+            match self {
+                Self::ProverSrs(s) => {
+                    CanonicalSerialize::serialize_with_mode(&0u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::VerifierSrs(s) => {
+                    CanonicalSerialize::serialize_with_mode(&1u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+            }
+        }
+
+        fn serialized_size(&self, compress: Compress) -> usize {
+            match self {
+                Self::ProverSrs(s) => 0u8.serialized_size(compress) + s.serialized_size(compress),
+                Self::VerifierSrs(s) => 1u8.serialized_size(compress) + s.serialized_size(compress),
+            }
+        }
+    }
+
+    impl<E: Pairing> CanonicalDeserialize for SnarkpackSRS<E> {
+        fn deserialize_with_mode<R: Read>(
+            mut reader: R,
+            compress: Compress,
+            validate: Validate,
+        ) -> Result<Self, SerializationError> {
+            let t: u8 =
+                CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
             match t {
-                0u8 => Ok(Self::ProverSrs(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                1u8 => Ok(Self::VerifierSrs(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_uncompressed(&mut reader)? {
                 0u8 => Ok(Self::ProverSrs(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 1u8 => Ok(Self::VerifierSrs(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_unchecked(&mut reader)? {
-                0u8 => Ok(Self::ProverSrs(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                1u8 => Ok(Self::VerifierSrs(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
             }

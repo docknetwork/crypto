@@ -2,6 +2,7 @@ use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
+use blake2::Blake2b512;
 use proof_system::prelude::{generate_snark_srs_bound_check, ProverConfig, VerifierConfig};
 use proof_system::prelude::{
     EqualWitnesses, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
@@ -15,10 +16,12 @@ use proof_system::statement::{
     saver::SaverProver as SaverProverStmt, saver::SaverVerifier as SaverVerifierStmt, Statements,
 };
 use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
-use saver::keygen::{DecryptionKey, EncryptionKey, SecretKey};
+use saver::keygen::{DecryptionKey, EncryptionKey, PreparedDecryptionKey, SecretKey};
 use saver::prelude::VerifyingKey;
 use saver::saver_groth16::ProvingKey;
-use saver::setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens};
+use saver::setup::{
+    setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens,
+};
 use std::time::Instant;
 
 use test_utils::bbs_plus::*;
@@ -30,13 +33,15 @@ pub fn decrypt_and_verify(
     snark_vk: &VerifyingKey<Bls12_381>,
     decrypted: Fr,
     sk: &SecretKey<Fr>,
-    dk: &DecryptionKey<Bls12_381>,
-    enc_gens: &EncryptionGens<Bls12_381>,
+    dk: impl Into<PreparedDecryptionKey<Bls12_381>>,
+    enc_gens: impl Into<PreparedEncryptionGens<Bls12_381>>,
     chunk_bit_size: u8,
 ) {
+    let dk = dk.into();
+    let enc_gens = enc_gens.into();
     let ct = proof.get_saver_ciphertext_and_proof(stmt_idx).unwrap().0;
     let (decrypted_message, nu) = ct
-        .decrypt_given_groth16_vk(sk, dk, snark_vk, chunk_bit_size)
+        .decrypt_given_groth16_vk(sk, dk.clone(), snark_vk, chunk_bit_size)
         .unwrap();
     assert_eq!(decrypted_message, decrypted);
     ct.verify_decryption_given_groth16_vk(
@@ -67,6 +72,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let chunk_bit_size = 16;
 
     let (snark_pk, sk, ek, dk) = setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
+    let prepared_dk = PreparedDecryptionKey::from(dk.clone());
+    let prepared_enc_gens = PreparedEncryptionGens::from(enc_gens.clone());
 
     // Message with index `enc_msg_idx` is verifiably encrypted
     let enc_msg_idx = 1;
@@ -124,7 +131,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let start = Instant::now();
-    let (proof, comm_rand) = ProofG1::new(
+    let (proof, comm_rand) = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec.clone(),
         witnesses.clone(),
@@ -172,7 +179,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let start = Instant::now();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -187,7 +194,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -205,7 +212,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -227,8 +234,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         &snark_pk.pk.vk,
         msgs[enc_msg_idx].clone(),
         &sk,
-        &dk,
-        &enc_gens,
+        prepared_dk.clone(),
+        prepared_enc_gens.clone(),
         chunk_bit_size,
     );
     println!(
@@ -248,7 +255,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         reuse_saver_proofs: Some(m),
         reuse_legogroth16_proofs: None,
     };
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec.clone(),
         witnesses.clone(),
@@ -264,7 +271,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     );
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -277,8 +284,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         &snark_pk.pk.vk,
         msgs[enc_msg_idx].clone(),
         &sk,
-        &dk,
-        &enc_gens,
+        prepared_dk.clone(),
+        prepared_enc_gens.clone(),
         chunk_bit_size,
     );
 
@@ -297,7 +304,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     );
     prover_proof_spec.validate().unwrap();
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec.clone(),
         witnesses.clone(),
@@ -315,7 +322,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     );
     verifier_proof_spec.validate().unwrap();
     assert!(proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -335,7 +342,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
     prover_proof_spec.validate().unwrap();
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec.clone(),
         witnesses_wrong,
@@ -350,7 +357,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     verifier_proof_spec.validate().unwrap();
     assert!(proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -358,7 +365,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         )
         .is_err());
     assert!(proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec,
             None,
@@ -459,7 +466,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
         }
 
         let start = Instant::now();
-        let (proof, comm_rand) = ProofG1::new(
+        let (proof, comm_rand) = ProofG1::new::<StdRng, Blake2b512>(
             &mut rng,
             prover_proof_spec.clone(),
             witnesses.clone(),
@@ -525,7 +532,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
         let start = Instant::now();
         proof
             .clone()
-            .verify::<StdRng>(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -542,7 +549,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
         let start = Instant::now();
         proof
             .clone()
-            .verify(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -561,7 +568,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
         let start = Instant::now();
         proof
             .clone()
-            .verify(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -585,8 +592,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
                 &snark_pk.pk.vk,
                 msgs[*j].clone(),
                 &sk,
-                &dk,
-                &enc_gens,
+                dk.clone(),
+                enc_gens.clone(),
                 chunk_bit_size,
             );
         }
@@ -610,7 +617,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
             reuse_saver_proofs: Some(m),
             reuse_legogroth16_proofs: None,
         };
-        let proof = ProofG1::new(
+        let proof = ProofG1::new::<StdRng, Blake2b512>(
             &mut rng,
             prover_proof_spec.clone(),
             witnesses.clone(),
@@ -626,7 +633,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
             start.elapsed()
         );
         proof
-            .verify::<StdRng>(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -847,7 +854,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         witnesses.add(Witness::Saver(enc_msg_3));
 
         let start = Instant::now();
-        let (proof, comm_rand) = ProofG1::new(
+        let (proof, comm_rand) = ProofG1::new::<StdRng, Blake2b512>(
             &mut rng,
             prover_proof_spec.clone(),
             witnesses.clone(),
@@ -986,7 +993,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         let start = Instant::now();
         proof
             .clone()
-            .verify::<StdRng>(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -1001,7 +1008,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         let start = Instant::now();
         proof
             .clone()
-            .verify(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -1018,7 +1025,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         let start = Instant::now();
         proof
             .clone()
-            .verify(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -1038,8 +1045,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             &snark_pk_1.pk.vk,
             msgs[enc_msg_idx_1].clone(),
             &sk_1,
-            &dk_1,
-            &enc_gens_1,
+            dk_1.clone(),
+            enc_gens_1.clone(),
             chunk_bit_size,
         );
         decrypt_and_verify(
@@ -1048,8 +1055,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             &snark_pk_2.pk.vk,
             msgs[enc_msg_idx_1].clone(),
             &sk_2,
-            &dk_2,
-            &enc_gens_2,
+            dk_2.clone(),
+            enc_gens_2.clone(),
             chunk_bit_size,
         );
         decrypt_and_verify(
@@ -1058,8 +1065,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             &snark_pk_1.pk.vk,
             msgs[enc_msg_idx_2].clone(),
             &sk_1,
-            &dk_1,
-            &enc_gens_1,
+            dk_1.clone(),
+            enc_gens_1.clone(),
             chunk_bit_size,
         );
         decrypt_and_verify(
@@ -1068,8 +1075,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             &snark_pk_2.pk.vk,
             msgs[enc_msg_idx_3].clone(),
             &sk_2,
-            &dk_2,
-            &enc_gens_2,
+            dk_2.clone(),
+            enc_gens_2.clone(),
             chunk_bit_size,
         );
 
@@ -1086,7 +1093,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             reuse_saver_proofs: Some(m),
             reuse_legogroth16_proofs: None,
         };
-        let proof = ProofG1::new(
+        let proof = ProofG1::new::<StdRng, Blake2b512>(
             &mut rng,
             prover_proof_spec.clone(),
             witnesses.clone(),
@@ -1101,7 +1108,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         );
 
         proof
-            .verify::<StdRng>(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -1255,7 +1262,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let start = Instant::now();
-    let (proof, comm_rand) = ProofG1::new(
+    let (proof, comm_rand) = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec.clone(),
         witnesses.clone(),
@@ -1311,7 +1318,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     let start = Instant::now();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -1326,7 +1333,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -1346,8 +1353,8 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         &snark_pk.pk.vk,
         msgs[enc_msg_idx].clone(),
         &sk,
-        &dk,
-        &enc_gens,
+        dk.clone(),
+        enc_gens.clone(),
         chunk_bit_size,
     );
 
@@ -1374,7 +1381,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         reuse_legogroth16_proofs: Some(l),
     };
     let start = Instant::now();
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec.clone(),
         witnesses.clone(),
@@ -1389,7 +1396,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         start.elapsed()
     );
     proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,

@@ -1,9 +1,9 @@
 use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
 use crate::statement::Statement;
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
+use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::vec::Vec;
 use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -18,11 +18,11 @@ use vb_accumulator::prelude::{
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct AccumulatorMembership<E: PairingEngine> {
-    #[serde_as(as = "AffineGroupBytes")]
+pub struct AccumulatorMembership<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub accumulator_value: E::G1Affine,
     pub params: Option<AccumParams<E>>,
-    pub public_key: Option<PublicKey<E::G2Affine>>,
+    pub public_key: Option<PublicKey<E>>,
     pub proving_key: Option<MembershipProvingKey<E::G1Affine>>,
     pub params_ref: Option<usize>,
     pub public_key_ref: Option<usize>,
@@ -36,22 +36,22 @@ pub struct AccumulatorMembership<E: PairingEngine> {
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct AccumulatorNonMembership<E: PairingEngine> {
-    #[serde_as(as = "AffineGroupBytes")]
+pub struct AccumulatorNonMembership<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub accumulator_value: E::G1Affine,
     pub params: Option<AccumParams<E>>,
-    pub public_key: Option<PublicKey<E::G2Affine>>,
+    pub public_key: Option<PublicKey<E>>,
     pub proving_key: Option<NonMembershipProvingKey<E::G1Affine>>,
     pub params_ref: Option<usize>,
     pub public_key_ref: Option<usize>,
     pub proving_key_ref: Option<usize>,
 }
 
-impl<E: PairingEngine> AccumulatorMembership<E> {
+impl<E: Pairing> AccumulatorMembership<E> {
     /// Create a statement by passing the accumulator params, public key and proving key directly.
-    pub fn new_statement_from_params<G: AffineCurve>(
+    pub fn new_statement_from_params<G: AffineRepr>(
         params: AccumParams<E>,
-        public_key: PublicKey<E::G2Affine>,
+        public_key: PublicKey<E>,
         proving_key: MembershipProvingKey<E::G1Affine>,
         accumulator_value: E::G1Affine,
     ) -> Statement<E, G> {
@@ -67,7 +67,7 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
     }
 
     /// Create a statement by passing the indices of accumulator params, public key and proving key in `SetupParams`.
-    pub fn new_statement_from_params_ref<G: AffineCurve>(
+    pub fn new_statement_from_params_ref<G: AffineRepr>(
         params_ref: usize,
         public_key_ref: usize,
         proving_key_ref: usize,
@@ -85,7 +85,7 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
     }
 
     /// Get accumulator params for the statement index `s_idx` either from `self` or from given `setup_params`
-    pub fn get_params<'a, G: AffineCurve>(
+    pub fn get_params<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -101,11 +101,11 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
     }
 
     /// Get publci key for the statement index `s_idx` either from `self` or from given `setup_params`
-    pub fn get_public_key<'a, G: AffineCurve>(
+    pub fn get_public_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
-    ) -> Result<&'a PublicKey<E::G2Affine>, ProofSystemError> {
+    ) -> Result<&'a PublicKey<E>, ProofSystemError> {
         extract_param!(
             setup_params,
             &self.public_key,
@@ -117,7 +117,7 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
     }
 
     /// Get membership proving key for the statement index `s_idx` either from `self` or from given `setup_params`
-    pub fn get_proving_key<'a, G: AffineCurve>(
+    pub fn get_proving_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -133,10 +133,10 @@ impl<E: PairingEngine> AccumulatorMembership<E> {
     }
 }
 
-impl<E: PairingEngine> AccumulatorNonMembership<E> {
-    pub fn new_statement_from_params<G: AffineCurve>(
+impl<E: Pairing> AccumulatorNonMembership<E> {
+    pub fn new_statement_from_params<G: AffineRepr>(
         params: AccumParams<E>,
-        public_key: PublicKey<E::G2Affine>,
+        public_key: PublicKey<E>,
         proving_key: NonMembershipProvingKey<E::G1Affine>,
         accumulator_value: E::G1Affine,
     ) -> Statement<E, G> {
@@ -151,7 +151,7 @@ impl<E: PairingEngine> AccumulatorNonMembership<E> {
         })
     }
 
-    pub fn new_statement_from_params_ref<G: AffineCurve>(
+    pub fn new_statement_from_params_ref<G: AffineRepr>(
         params_ref: usize,
         public_key_ref: usize,
         proving_key_ref: usize,
@@ -168,7 +168,7 @@ impl<E: PairingEngine> AccumulatorNonMembership<E> {
         })
     }
 
-    pub fn get_params<'a, G: AffineCurve>(
+    pub fn get_params<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -183,11 +183,11 @@ impl<E: PairingEngine> AccumulatorNonMembership<E> {
         )
     }
 
-    pub fn get_public_key<'a, G: AffineCurve>(
+    pub fn get_public_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
-    ) -> Result<&'a PublicKey<E::G2Affine>, ProofSystemError> {
+    ) -> Result<&'a PublicKey<E>, ProofSystemError> {
         extract_param!(
             setup_params,
             &self.public_key,
@@ -198,7 +198,7 @@ impl<E: PairingEngine> AccumulatorNonMembership<E> {
         )
     }
 
-    pub fn get_proving_key<'a, G: AffineCurve>(
+    pub fn get_proving_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,

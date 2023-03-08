@@ -3,7 +3,7 @@ use crate::statement_proof::{
     R1CSLegoGroth16Proof, R1CSLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
 };
 use crate::sub_protocols::schnorr::SchnorrProtocol;
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
 use ark_std::collections::BTreeMap;
 use ark_std::io::Write;
@@ -18,7 +18,7 @@ use legogroth16::{
 };
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct R1CSLegogroth16Protocol<'a, E: PairingEngine> {
+pub struct R1CSLegogroth16Protocol<'a, E: Pairing> {
     pub id: usize,
     /// The SNARK proving key, will be `None` if invoked by verifier.
     pub proving_key: Option<&'a ProvingKey<E>>,
@@ -28,7 +28,7 @@ pub struct R1CSLegogroth16Protocol<'a, E: PairingEngine> {
     pub sp: Option<SchnorrProtocol<'a, E::G1Affine>>,
 }
 
-impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
+impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
     /// Create an instance of this protocol for the prover.
     pub fn new_for_prover(id: usize, proving_key: &'a ProvingKey<E>) -> Self {
         Self {
@@ -58,7 +58,7 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
         wasm_bytes: &[u8],
         comm_key: &'a [E::G1Affine],
         witness: crate::witness::R1CSCircomWitness<E>,
-        blindings: BTreeMap<usize, E::Fr>,
+        blindings: BTreeMap<usize, E::ScalarField>,
     ) -> Result<(), ProofSystemError> {
         if self.sp.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -68,7 +68,7 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
             .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
 
         // blinding for the commitment in the snark proof
-        let v = E::Fr::rand(rng);
+        let v = E::ScalarField::rand(rng);
 
         let mut wits_calc = WitnessCalculator::<E>::from_wasm_bytes(wasm_bytes)?;
         let wires = wits_calc.calculate_witnesses(witness.inputs.clone().into_iter(), true)?;
@@ -103,8 +103,8 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
         rng: &mut R,
         comm_key: &'a [E::G1Affine],
         witness: crate::witness::R1CSCircomWitness<E>,
-        blindings: BTreeMap<usize, E::Fr>,
-        old_v: E::Fr,
+        blindings: BTreeMap<usize, E::ScalarField>,
+        old_v: E::ScalarField,
         proof: Proof<E>,
     ) -> Result<(), ProofSystemError> {
         if self.sp.is_some() {
@@ -115,7 +115,7 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
             .ok_or(ProofSystemError::LegoGroth16ProvingKeyNotProvided)?;
 
         // new blinding for the commitment in the snark proof
-        let v = E::Fr::rand(rng);
+        let v = E::ScalarField::rand(rng);
 
         let snark_proof = rerandomize_proof_1(
             &proof,
@@ -151,9 +151,9 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
     }
 
     /// Generate responses for the Schnorr protocol
-    pub fn gen_proof_contribution<G: AffineCurve>(
+    pub fn gen_proof_contribution<G: AffineRepr>(
         &mut self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.sp.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
@@ -173,8 +173,8 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
     /// Verify that the snark proof and the Schnorr proof are valid.
     pub fn verify_proof_contribution(
         &self,
-        challenge: &E::Fr,
-        inputs: &[E::Fr],
+        challenge: &E::ScalarField,
+        inputs: &[E::ScalarField],
         proof: &R1CSLegoGroth16Proof<E>,
         comm_key: &[E::G1Affine],
     ) -> Result<(), ProofSystemError> {
@@ -189,8 +189,8 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
 
     pub fn verify_proof_contribution_using_prepared(
         &self,
-        challenge: &E::Fr,
-        inputs: &[E::Fr],
+        challenge: &E::ScalarField,
+        inputs: &[E::ScalarField],
         proof: &R1CSLegoGroth16Proof<E>,
         comm_key: &[E::G1Affine],
         pvk: &PreparedVerifyingKey<E>,
@@ -200,7 +200,7 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
         match pairing_checker {
             Some(c) => {
                 let d = calculate_d(pvk, snark_proof, inputs)?;
-                c.add_prepared_sources_and_target(
+                c.add_multiple_sources_and_target(
                     &[snark_proof.a, snark_proof.c, d],
                     vec![
                         snark_proof.b.into(),
@@ -221,7 +221,7 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
 
     pub fn verify_proof_contribution_using_prepared_when_aggregating_snark(
         &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         proof: &R1CSLegoGroth16ProofWhenAggregatingSnarks<E>,
         comm_key: &[E::G1Affine],
     ) -> Result<(), ProofSystemError> {
@@ -235,9 +235,9 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
         proof: &R1CSLegoGroth16Proof<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
-        comm_key.serialize_unchecked(&mut writer)?;
-        proof.snark_proof.d.serialize_unchecked(&mut writer)?;
-        proof.sp.t.serialize_unchecked(&mut writer)?;
+        comm_key.serialize_compressed(&mut writer)?;
+        proof.snark_proof.d.serialize_compressed(&mut writer)?;
+        proof.sp.t.serialize_compressed(&mut writer)?;
         Ok(())
     }
 
@@ -246,9 +246,9 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
         proof: &R1CSLegoGroth16ProofWhenAggregatingSnarks<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
-        comm_key.serialize_unchecked(&mut writer)?;
-        proof.commitment.serialize_unchecked(&mut writer)?;
-        proof.sp.t.serialize_unchecked(&mut writer)?;
+        comm_key.serialize_compressed(&mut writer)?;
+        proof.commitment.serialize_compressed(&mut writer)?;
+        proof.sp.t.serialize_compressed(&mut writer)?;
         Ok(())
     }
 
@@ -261,9 +261,9 @@ impl<'a, E: PairingEngine> R1CSLegogroth16Protocol<'a, E> {
         rng: &mut R,
         comm_key: &'a [E::G1Affine],
         witness: crate::witness::R1CSCircomWitness<E>,
-        blindings: BTreeMap<usize, E::Fr>,
+        blindings: BTreeMap<usize, E::ScalarField>,
         commit_witness_count: usize,
-        v: E::Fr,
+        v: E::ScalarField,
         snark_proof: Proof<E>,
     ) -> Result<(), ProofSystemError> {
         // NOTE: value of id is dummy

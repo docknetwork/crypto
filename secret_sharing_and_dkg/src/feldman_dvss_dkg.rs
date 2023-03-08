@@ -2,29 +2,26 @@
 
 use crate::common::{lagrange_basis_at_0, CommitmentToCoefficients, ParticipantId, Share, ShareId};
 use crate::error::SSError;
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{PrimeField, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::BTreeMap;
-use ark_std::io::{Read, Write};
 use ark_std::{cfg_iter, vec, vec::Vec};
-use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 use zeroize::Zeroize;
 
-use dock_crypto_utils::msm::variable_base_msm;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Used by a participant to store received shares and commitment coefficients.
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SharesAccumulator<G: AffineCurve> {
+pub struct SharesAccumulator<G: AffineRepr> {
     pub participant_id: ParticipantId,
     pub threshold: ShareId,
     pub shares: BTreeMap<ParticipantId, Share<G::ScalarField>>,
     pub coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
 }
 
-impl<G: AffineCurve> SharesAccumulator<G> {
+impl<G: AffineRepr> SharesAccumulator<G> {
     pub fn new(id: ParticipantId, threshold: ShareId) -> Self {
         Self {
             participant_id: id,
@@ -88,21 +85,21 @@ impl<G: AffineCurve> SharesAccumulator<G> {
         // here and accepts a participant size s with threshold < s <= total
 
         let mut final_share = G::ScalarField::zero();
-        let mut final_comm_coeffs = vec![G::Projective::zero(); threshold as usize];
+        let mut final_comm_coeffs = vec![G::Group::zero(); threshold as usize];
 
         for (_, share) in shares {
             final_share += share.share;
         }
 
-        let mut threshold_pk = G::Projective::zero();
+        let mut threshold_pk = G::Group::zero();
         for comm in coeff_comms.values() {
             for i in 0..threshold as usize {
-                final_comm_coeffs[i].add_assign_mixed(&comm.0[i]);
+                final_comm_coeffs[i] += comm.0[i];
             }
-            threshold_pk.add_assign_mixed(comm.commitment_to_secret());
+            threshold_pk += comm.commitment_to_secret();
         }
-        let comm_coeffs = batch_normalize_projective_into_affine(final_comm_coeffs).into();
-        let pk = ck.mul(final_share.into_repr()).into_affine();
+        let comm_coeffs = G::Group::normalize_batch(&final_comm_coeffs).into();
+        let pk = ck.mul_bigint(final_share.into_bigint()).into_affine();
         let final_share = Share {
             id: participant_id,
             threshold,
@@ -151,7 +148,7 @@ impl<G: AffineCurve> SharesAccumulator<G> {
 
 /// Reconstruct threshold key using the individual public keys. Multiplies each public key with its
 /// Lagrange coefficient and adds the result
-pub fn reconstruct_threshold_public_key<G: AffineCurve>(
+pub fn reconstruct_threshold_public_key<G: AffineRepr>(
     public_keys: Vec<(ShareId, G)>,
     threshold: ShareId,
 ) -> Result<G, SSError> {
@@ -165,7 +162,7 @@ pub fn reconstruct_threshold_public_key<G: AffineCurve>(
     let lcs = cfg_iter!(pk_ids)
         .map(|i| lagrange_basis_at_0::<G::ScalarField>(&pk_ids, *i))
         .collect::<Vec<_>>();
-    Ok(variable_base_msm(&pks, &lcs).into_affine())
+    Ok(G::Group::msm_unchecked(&pks, &lcs).into_affine())
 }
 
 #[cfg(test)]
@@ -174,17 +171,18 @@ pub mod tests {
     use crate::common::Shares;
     use crate::feldman_vss::deal_random_secret;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
+    use ark_ec::Group;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use ark_std::UniformRand;
 
     #[test]
     fn feldman_distributed_verifiable_secret_sharing() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let g1 = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
-        let g2 = <Bls12_381 as PairingEngine>::G2Projective::rand(&mut rng).into_affine();
+        let g1 = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
+        let g2 = <Bls12_381 as Pairing>::G2::rand(&mut rng).into_affine();
 
-        fn check<G: AffineCurve>(rng: &mut StdRng, g: &G) {
+        fn check<G: AffineRepr>(rng: &mut StdRng, g: &G) {
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -257,10 +255,8 @@ pub mod tests {
                                 .is_err());
 
                             let mut wrong_commitments = commitments.clone();
-                            wrong_commitments.0[0] = wrong_commitments.0[0]
-                                .into_projective()
-                                .double()
-                                .into_affine();
+                            wrong_commitments.0[0] =
+                                wrong_commitments.0[0].into_group().double().into_affine();
                             assert!(accumulators[j - 1]
                                 .add_received_share(
                                     i as ParticipantId,
@@ -312,7 +308,7 @@ pub mod tests {
                 // Each participant computes its share of the final secret
                 for accumulator in accumulators {
                     let (share, pk, t_pk) = accumulator.finalize(g).unwrap();
-                    assert_eq!(g.mul(share.share.into_repr()).into_affine(), pk);
+                    assert_eq!(g.mul_bigint(share.share.into_bigint()).into_affine(), pk);
                     if tk.is_none() {
                         tk = Some(t_pk);
                     } else {

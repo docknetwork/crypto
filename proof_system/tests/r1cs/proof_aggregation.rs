@@ -3,6 +3,7 @@ use ark_ff::{One, Zero};
 use ark_std::rand::rngs::StdRng;
 use ark_std::rand::SeedableRng;
 use ark_std::UniformRand;
+use blake2::Blake2b512;
 use legogroth16::aggregation::srs;
 use legogroth16::circom::{CircomCircuit, R1CS};
 use proof_system::prelude::{
@@ -121,7 +122,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
         witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
     }
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -177,7 +178,31 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
     let updated_proof = proof.for_aggregate();
 
     updated_proof
-        .verify::<StdRng>(
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            VerifierConfig {
+                use_lazy_randomized_pairing_checks: None,
+            },
+        )
+        .unwrap();
+
+    updated_proof
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            verifier_proof_spec.clone(),
+            None,
+            VerifierConfig {
+                use_lazy_randomized_pairing_checks: Some(true),
+            },
+        )
+        .unwrap();
+
+    updated_proof
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,

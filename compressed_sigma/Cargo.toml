@@ -1,6 +1,6 @@
 [package]
 name = "compressed_sigma"
-version = "0.0.2"
+version = "0.0.3"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -11,11 +11,10 @@ ark-serialize.workspace = true
 ark-ff.workspace = true
 ark-ec.workspace = true
 ark-std.workspace = true
-ark-sponge = { version = "^0.3.0", default-features = false }
-ark-poly = { version = "^0.3.0", default-features = false }
+ark-poly.workspace = true
 rayon = {workspace = true, optional = true}
 digest.workspace = true
-dock_crypto_utils = { version = "0.8.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.9.0", default-features = false }
 
 [dev-dependencies]
 blake2.workspace = true
@@ -23,6 +22,6 @@ ark-bls12-381.workspace = true
 
 [features]
 default = [ "std", "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "ark-sponge/std", "ark-poly/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "ark-poly/std"]
 print-trace = [ "ark-std/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "ark-poly/parallel", "rayon" ]

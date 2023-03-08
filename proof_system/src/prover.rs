@@ -1,23 +1,15 @@
 //! Code for the prover to generate a `Proof`
 
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    collections::BTreeMap,
-    format,
-    io::{Read, Write},
-    marker::PhantomData,
-    rand::RngCore,
-    vec,
-    vec::Vec,
-    UniformRand,
-};
+use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec, UniformRand};
 
 use crate::statement::Statement;
 use crate::sub_protocols::SubProtocol;
 use crate::witness::Witness;
 use crate::{error::ProofSystemError, witness::Witnesses};
 use digest::Digest;
+use legogroth16::aggregation::srs::PreparedProverSRS;
 
 use crate::meta_statement::WitnessRef;
 use crate::prelude::SnarkpackSRS;
@@ -33,25 +25,30 @@ use crate::sub_protocols::r1cs_legogorth16::R1CSLegogroth16Protocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
+use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
 use saver::encryption::Ciphertext;
 
 /// The SAVER randomness, ciphertext and proof to reuse when creating the composite proof. This is more
 /// efficient than generating a new ciphertext and proof.
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct OldSaverProof<E: PairingEngine>(pub E::Fr, pub Ciphertext<E>, pub ark_groth16::Proof<E>);
+pub struct OldSaverProof<E: Pairing>(
+    pub E::ScalarField,
+    pub Ciphertext<E>,
+    pub ark_groth16::Proof<E>,
+);
 /// The LegoGroth16 randomness and proof to reuse when creating the composite proof. This is more
 /// efficient than generating a new proof.
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct OldLegoGroth16Proof<E: PairingEngine>(pub E::Fr, pub legogroth16::Proof<E>);
+pub struct OldLegoGroth16Proof<E: Pairing>(pub E::ScalarField, pub legogroth16::Proof<E>);
 
 /// Passed to the prover during proof creation
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ProverConfig<E: PairingEngine> {
+pub struct ProverConfig<E: Pairing> {
     pub reuse_saver_proofs: Option<BTreeMap<usize, OldSaverProof<E>>>,
     pub reuse_legogroth16_proofs: Option<BTreeMap<usize, OldLegoGroth16Proof<E>>>,
 }
 
-impl<E: PairingEngine> Default for ProverConfig<E> {
+impl<E: Pairing> Default for ProverConfig<E> {
     fn default() -> Self {
         Self {
             reuse_saver_proofs: None,
@@ -60,7 +57,7 @@ impl<E: PairingEngine> Default for ProverConfig<E> {
     }
 }
 
-impl<E: PairingEngine> ProverConfig<E> {
+impl<E: Pairing> ProverConfig<E> {
     /// Get SAVER randomness, ciphertext and proof to reuse for the given statement id
     fn get_saver_proof(&mut self, statement_id: &usize) -> Option<OldSaverProof<E>> {
         self.reuse_saver_proofs
@@ -76,11 +73,10 @@ impl<E: PairingEngine> ProverConfig<E> {
     }
 }
 
-impl<E, G, D> Proof<E, G, D>
+impl<E, G> Proof<E, G>
 where
-    E: PairingEngine,
-    G: AffineCurve<ScalarField = E::Fr>,
-    D: Digest,
+    E: Pairing,
+    G: AffineRepr<ScalarField = E::ScalarField>,
 {
     /// Create a new proof. `nonce` is random data that needs to be hashed into the proof and
     /// it must be kept same while creating and verifying the proof. One use of `nonce` is for replay
@@ -89,13 +85,13 @@ where
     /// Also returns the randomness used by statements using SAVER and LegoGroth16 proofs which can
     /// then be used as helpers in subsequent proof creations where these proofs are reused than
     /// creating fresh proofs.
-    pub fn new<R: RngCore>(
+    pub fn new<R: RngCore, D: Digest>(
         rng: &mut R,
         proof_spec: ProofSpec<E, G>,
         witnesses: Witnesses<E>,
         nonce: Option<Vec<u8>>,
         mut config: ProverConfig<E>,
-    ) -> Result<(Self, BTreeMap<usize, E::Fr>), ProofSystemError> {
+    ) -> Result<(Self, BTreeMap<usize, E::ScalarField>), ProofSystemError> {
         proof_spec.validate()?;
 
         // There should be a witness for each statement
@@ -109,13 +105,13 @@ where
         // Keep blinding for each witness reference that is part of an equality. This means that for
         // any 2 witnesses that are equal, same blinding will be stored. This will be drained during
         // proof creation and should be empty by the end.
-        let mut blindings = BTreeMap::<WitnessRef, E::Fr>::new();
+        let mut blindings = BTreeMap::<WitnessRef, E::ScalarField>::new();
 
         // Prepare blindings for any witnesses that need to be proven equal.
         if !proof_spec.meta_statements.is_empty() {
             let disjoint_equalities = proof_spec.meta_statements.disjoint_witness_equalities();
             for eq_wits in disjoint_equalities {
-                let blinding = E::Fr::rand(rng);
+                let blinding = E::ScalarField::rand(rng);
                 for wr in eq_wits.0 {
                     // Duplicating the same blinding for faster search
                     blindings.insert(wr, blinding);
@@ -130,7 +126,7 @@ where
         let mut sub_protocols =
             Vec::<SubProtocol<E, G>>::with_capacity(proof_spec.statements.0.len());
 
-        let mut commitment_randomness = BTreeMap::<usize, E::Fr>::new();
+        let mut commitment_randomness = BTreeMap::<usize, E::ScalarField>::new();
 
         // Initialize sub-protocols for each statement
         for (s_idx, (statement, witness)) in proof_spec
@@ -411,7 +407,7 @@ where
         }
 
         // Generate the challenge
-        let challenge = Self::generate_challenge_from_bytes(&challenge_bytes);
+        let challenge = Self::generate_challenge_from_bytes::<D>(&challenge_bytes);
 
         // Get each sub-protocol's proof
         let mut statement_proofs = Vec::with_capacity(sub_protocols.len());
@@ -436,8 +432,7 @@ where
                 Some(SnarkpackSRS::ProverSrs(srs)) => srs,
                 _ => return Err(ProofSystemError::SnarckpackSrsNotProvided),
             };
-
-            use legogroth16::aggregation::transcript::{new_merlin_transcript, Transcript};
+            let prepared_srs = PreparedProverSRS::from(srs);
 
             let mut transcript = new_merlin_transcript(b"aggregation");
             transcript.append(b"challenge", &challenge);
@@ -454,7 +449,7 @@ where
                         proofs.push(p.clone());
                     }
                     let ag_proof = legogroth16::aggregation::groth16::aggregate_proofs(
-                        &srs,
+                        prepared_srs.clone(),
                         &mut transcript,
                         &proofs,
                     )
@@ -480,7 +475,7 @@ where
                     }
                     let (ag_proof, _) =
                         legogroth16::aggregation::legogroth16::using_groth16::aggregate_proofs(
-                            &srs,
+                            prepared_srs.clone(),
                             &mut transcript,
                             &proofs,
                         )
@@ -507,7 +502,6 @@ where
                 } else {
                     None
                 },
-                _phantom: PhantomData,
             },
             commitment_randomness,
         ))
@@ -529,8 +523,8 @@ where
 
     /// Hash bytes to a field element. This is vulnerable to timing attack and is only used input
     /// is public anyway like when generating setup parameters or challenge
-    pub fn generate_challenge_from_bytes(bytes: &[u8]) -> E::Fr {
-        field_elem_from_try_and_incr::<E::Fr, D>(bytes)
+    pub fn generate_challenge_from_bytes<D: Digest>(bytes: &[u8]) -> E::ScalarField {
+        field_elem_from_try_and_incr::<E::ScalarField, D>(bytes)
     }
 
     pub fn get_saver_ciphertext_and_proof(
@@ -577,7 +571,6 @@ where
             nonce: self.nonce.clone(),
             aggregated_groth16: self.aggregated_groth16.clone(),
             aggregated_legogroth16: self.aggregated_legogroth16.clone(),
-            _phantom: PhantomData,
         }
     }
 }

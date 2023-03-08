@@ -1,8 +1,7 @@
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
+use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
-use dock_crypto_utils::serde_utils::FieldBytes;
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 pub use legogroth16::{circom::R1CS, PreparedVerifyingKey, ProvingKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -10,20 +9,19 @@ use serde_with::serde_as;
 use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
 use crate::statement::Statement;
-use crate::util::{LegoProvingKeyBytes, LegoVerifyingKeyBytes, R1CSBytes};
 
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct R1CSCircomProver<E: PairingEngine> {
-    #[serde_as(as = "Option<R1CSBytes>")]
+pub struct R1CSCircomProver<E: Pairing> {
+    #[serde_as(as = "Option<ArkObjectBytes>")]
     pub r1cs: Option<R1CS<E>>,
     pub r1cs_ref: Option<usize>,
     pub wasm_bytes: Option<Vec<u8>>,
     pub wasm_bytes_ref: Option<usize>,
-    #[serde_as(as = "Option<LegoProvingKeyBytes>")]
+    #[serde_as(as = "Option<ArkObjectBytes>")]
     pub snark_proving_key: Option<ProvingKey<E>>,
     pub snark_proving_key_ref: Option<usize>,
 }
@@ -33,17 +31,17 @@ pub struct R1CSCircomProver<E: PairingEngine> {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct R1CSCircomVerifier<E: PairingEngine> {
-    #[serde_as(as = "Option<Vec<FieldBytes>>")]
-    pub public_inputs: Option<Vec<E::Fr>>,
+pub struct R1CSCircomVerifier<E: Pairing> {
+    #[serde_as(as = "Option<Vec<ArkObjectBytes>>")]
+    pub public_inputs: Option<Vec<E::ScalarField>>,
     pub public_inputs_ref: Option<usize>,
-    #[serde_as(as = "Option<LegoVerifyingKeyBytes>")]
+    #[serde_as(as = "Option<ArkObjectBytes>")]
     pub snark_verifying_key: Option<VerifyingKey<E>>,
     pub snark_verifying_key_ref: Option<usize>,
 }
 
-impl<E: PairingEngine> R1CSCircomProver<E> {
-    pub fn new_statement_from_params<G: AffineCurve>(
+impl<E: Pairing> R1CSCircomProver<E> {
+    pub fn new_statement_from_params<G: AffineRepr>(
         r1cs: R1CS<E>,
         wasm_bytes: Vec<u8>,
         snark_proving_key: ProvingKey<E>,
@@ -58,7 +56,7 @@ impl<E: PairingEngine> R1CSCircomProver<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineCurve>(
+    pub fn new_statement_from_params_ref<G: AffineRepr>(
         r1cs_ref: usize,
         wasm_bytes_ref: usize,
         snark_proving_key_ref: usize,
@@ -73,7 +71,7 @@ impl<E: PairingEngine> R1CSCircomProver<E> {
         }))
     }
 
-    pub fn new_statement_from_params_when_reusing_proof<G: AffineCurve>(
+    pub fn new_statement_from_params_when_reusing_proof<G: AffineRepr>(
         snark_proving_key: ProvingKey<E>,
     ) -> Result<Statement<E, G>, ProofSystemError> {
         Ok(Statement::R1CSCircomProver(Self {
@@ -86,7 +84,7 @@ impl<E: PairingEngine> R1CSCircomProver<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref_when_reusing_proof<G: AffineCurve>(
+    pub fn new_statement_from_params_ref_when_reusing_proof<G: AffineRepr>(
         snark_proving_key_ref: usize,
     ) -> Result<Statement<E, G>, ProofSystemError> {
         Ok(Statement::R1CSCircomProver(Self {
@@ -99,7 +97,7 @@ impl<E: PairingEngine> R1CSCircomProver<E> {
         }))
     }
 
-    pub fn get_r1cs<'a, G: AffineCurve>(
+    pub fn get_r1cs<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -114,7 +112,7 @@ impl<E: PairingEngine> R1CSCircomProver<E> {
         )
     }
 
-    pub fn get_wasm_bytes<'a, G: AffineCurve>(
+    pub fn get_wasm_bytes<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -129,7 +127,7 @@ impl<E: PairingEngine> R1CSCircomProver<E> {
         )
     }
 
-    pub fn get_proving_key<'a, G: AffineCurve>(
+    pub fn get_proving_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -145,9 +143,9 @@ impl<E: PairingEngine> R1CSCircomProver<E> {
     }
 }
 
-impl<E: PairingEngine> R1CSCircomVerifier<E> {
-    pub fn new_statement_from_params<G: AffineCurve>(
-        public_inputs: Vec<E::Fr>,
+impl<E: Pairing> R1CSCircomVerifier<E> {
+    pub fn new_statement_from_params<G: AffineRepr>(
+        public_inputs: Vec<E::ScalarField>,
         snark_verifying_key: VerifyingKey<E>,
     ) -> Result<Statement<E, G>, ProofSystemError> {
         Ok(Statement::R1CSCircomVerifier(Self {
@@ -158,7 +156,7 @@ impl<E: PairingEngine> R1CSCircomVerifier<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineCurve>(
+    pub fn new_statement_from_params_ref<G: AffineRepr>(
         public_inputs_ref: usize,
         snark_verifying_key_ref: usize,
     ) -> Result<Statement<E, G>, ProofSystemError> {
@@ -170,11 +168,11 @@ impl<E: PairingEngine> R1CSCircomVerifier<E> {
         }))
     }
 
-    pub fn get_public_inputs<'a, G: AffineCurve>(
+    pub fn get_public_inputs<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
-    ) -> Result<&'a Vec<E::Fr>, ProofSystemError> {
+    ) -> Result<&'a Vec<E::ScalarField>, ProofSystemError> {
         extract_param!(
             setup_params,
             &self.public_inputs,
@@ -185,7 +183,7 @@ impl<E: PairingEngine> R1CSCircomVerifier<E> {
         )
     }
 
-    pub fn get_verifying_key<'a, G: AffineCurve>(
+    pub fn get_verifying_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,

@@ -1,5 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::PairingEngine;
+use ark_ec::pairing::Pairing;
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
@@ -11,7 +11,7 @@ use bbs_plus::signature::SignatureG1;
 use benches::setup_bbs_plus;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-type Fr = <Bls12_381 as PairingEngine>::Fr;
+type Fr = <Bls12_381 as Pairing>::ScalarField;
 
 fn pok_sig_benchmark(c: &mut Criterion) {
     let mut rng = StdRng::seed_from_u64(0u64);

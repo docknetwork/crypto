@@ -5,23 +5,26 @@ use crate::auditor::{AuditorPublicKey, Ciphertext};
 use crate::error::DelegationError;
 use crate::mercurial_sig::Signature;
 use crate::protego::issuance::Credential;
-use crate::protego::keys::{IssuerPublicKey, UserPublicKey, UserSecretKey};
-use crate::set_commitment::{SetCommitment, SetCommitmentSRS, SubsetWitness};
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{One, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
-use ark_std::ops::{Add, Sub};
+use crate::protego::keys::{
+    IssuerPublicKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey,
+};
+use crate::set_commitment::{
+    PreparedSetCommitmentSRS, SetCommitment, SetCommitmentSRS, SubsetWitness,
+};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_ff::{PrimeField, Zero};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::io::Write;
+use ark_std::ops::{Add, Mul, Sub};
 use ark_std::rand::RngCore;
 use ark_std::UniformRand;
 use ark_std::{vec, vec::Vec};
-use dock_crypto_utils::ec::pairing_product_with_g2_prepared;
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
-use dock_crypto_utils::serde_utils::{AffineGroupBytes, FieldBytes};
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::error::SchnorrError;
 use schnorr_pok::impl_proof_of_knowledge_of_discrete_log;
 
@@ -43,11 +46,11 @@ impl_proof_of_knowledge_of_discrete_log!(CiphertextRandSchnorrProtocol, Cipherte
 
 /// Proof that ciphertext is correct, i.e. it encrypts the user's public key and the auditor can decrypt it.
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CiphertextProof<E: PairingEngine> {
+pub struct CiphertextProof<E: Pairing> {
     pub C6: E::G1Affine,
     pub C7: E::G1Affine,
     pub com1: E::G1Affine,
-    pub z1: E::Fr,
+    pub z1: E::ScalarField,
     pub ciphertext_rand_proof: CiphertextRandSchnorrProof<E::G1Affine>,
     pub t1: E::G2Affine,
     pub t2: E::G2Affine,
@@ -56,14 +59,14 @@ pub struct CiphertextProof<E: PairingEngine> {
 
 /// Protocol to create `CiphertextProof`
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CiphertextProofProtocol<E: PairingEngine> {
+pub struct CiphertextProofProtocol<E: Pairing> {
     pub C6: E::G1Affine,
     pub C7: E::G1Affine,
-    pub alpha: E::Fr,
+    pub alpha: E::ScalarField,
     /// Encrypts the user's public key
     pub ct: Ciphertext<E>,
-    pub r1: E::Fr,
-    pub r2: E::Fr,
+    pub r1: E::ScalarField,
+    pub r2: E::ScalarField,
     pub com1: E::G1Affine,
     pub ciphertext_rand_protocol: CiphertextRandSchnorrProtocol<E::G1Affine>,
     pub t1: E::G2Affine,
@@ -73,7 +76,7 @@ pub struct CiphertextProofProtocol<E: PairingEngine> {
 
 /// Proof that the credential contains commitment to the secret key and pseudonym and also share the randomized witness and accumulator
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RevocationShow<E: PairingEngine> {
+pub struct RevocationShow<E: Pairing> {
     pub randomized_accum: E::G1Affine,
     pub randomized_witness: RandomizedNonMembershipWitness<E>,
     pub C4: E::G1Affine,
@@ -85,7 +88,7 @@ pub struct RevocationShow<E: PairingEngine> {
 
 /// Protocol to create `RevocationShow`
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RevocationShowProtocol<E: PairingEngine> {
+pub struct RevocationShowProtocol<E: Pairing> {
     pub randomized_accum: E::G1Affine,
     pub randomized_witness: RandomizedNonMembershipWitness<E>,
     pub C4: E::G1Affine,
@@ -97,7 +100,7 @@ pub struct RevocationShowProtocol<E: PairingEngine> {
 
 /// Protocol for creating `CoreCredentialShow`
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CoreCredentialShowProtocol<E: PairingEngine> {
+pub struct CoreCredentialShowProtocol<E: Pairing> {
     pub C1: E::G1Affine,
     pub C2: E::G1Affine,
     pub C3: E::G1Affine,
@@ -111,7 +114,7 @@ pub struct CoreCredentialShowProtocol<E: PairingEngine> {
 /// Credential show that convinces the verifier that the user has a signature from the
 /// issuer on some attributes and optionally disclosing some of those attributes
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CoreCredentialShow<E: PairingEngine> {
+pub struct CoreCredentialShow<E: Pairing> {
     pub C1: E::G1Affine,
     pub C2: E::G1Affine,
     pub C3: E::G1Affine,
@@ -123,7 +126,7 @@ pub struct CoreCredentialShow<E: PairingEngine> {
 
 /// Protocol to show a credential which is optionally revocable and auditable
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CredentialShowProtocol<E: PairingEngine> {
+pub struct CredentialShowProtocol<E: Pairing> {
     pub core: CoreCredentialShowProtocol<E>,
     pub rev: Option<RevocationShowProtocol<E>>,
     pub ct: Option<CiphertextProofProtocol<E>>,
@@ -131,7 +134,7 @@ pub struct CredentialShowProtocol<E: PairingEngine> {
 
 /// Credential show including the core (mandatory) part and optional revocation and audit
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CredentialShow<E: PairingEngine> {
+pub struct CredentialShow<E: Pairing> {
     pub core: CoreCredentialShow<E>,
     pub rev: Option<RevocationShow<E>>,
     pub ct_proof: Option<CiphertextProof<E>>,
@@ -139,12 +142,12 @@ pub struct CredentialShow<E: PairingEngine> {
     pub ct: Option<Ciphertext<E>>,
 }
 
-impl<E: PairingEngine> CredentialShowProtocol<E> {
+impl<E: Pairing> CredentialShowProtocol<E> {
     /// `user_pk` and `auditor_pk` must not be None if the credential is auditable.
     pub fn init<R: RngCore>(
         rng: &mut R,
         credential: Credential<E>,
-        disclosed_attributes: Vec<E::Fr>,
+        disclosed_attributes: Vec<E::ScalarField>,
         user_pk: Option<&UserPublicKey<E>>,
         auditor_pk: Option<&AuditorPublicKey<E>>,
         set_comm_srs: &SetCommitmentSRS<E>,
@@ -168,7 +171,7 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
     pub fn init_with_revocation<R: RngCore>(
         rng: &mut R,
         credential: Credential<E>,
-        disclosed_attributes: Vec<E::Fr>,
+        disclosed_attributes: Vec<E::ScalarField>,
         accumulated: &E::G1Affine,
         non_mem_wit: &NonMembershipWitness<E>,
         user_sk: &UserSecretKey<E>,
@@ -195,8 +198,8 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
     pub(super) fn _init<R: RngCore>(
         rng: &mut R,
         mut credential: Credential<E>,
-        disclosed_attributes: Vec<E::Fr>,
-        sig_converter: Option<&E::Fr>,
+        disclosed_attributes: Vec<E::ScalarField>,
+        sig_converter: Option<&E::ScalarField>,
         accumulated: Option<&E::G1Affine>,
         non_mem_wit: Option<&NonMembershipWitness<E>>,
         user_sk: Option<&UserSecretKey<E>>,
@@ -214,7 +217,7 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
             credential.C1,
             credential
                 .C1
-                .mul(credential.opening.r4.into_repr())
+                .mul_bigint(credential.opening.r4.into_bigint())
                 .into_affine(),
             *P1,
         ];
@@ -234,9 +237,9 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
             C.push(apk);
         }
 
-        let mu = E::Fr::rand(rng);
-        let r1 = E::Fr::rand(rng);
-        let r2 = E::Fr::rand(rng);
+        let mu = E::ScalarField::rand(rng);
+        let r1 = E::ScalarField::rand(rng);
+        let r2 = E::ScalarField::rand(rng);
 
         // Randomizes the commitments `C1`, `C2`, .. using `mu`
         let (signature, C_prime) = if let Some(sig_c) = sig_converter {
@@ -271,10 +274,10 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
         let attrib_comm_rand_protocol = AttributeCommitmentRandSchnorrProtocol::init(mu, r2, P1);
 
         let rev = if credential.supports_revocation() {
-            let r3 = E::Fr::rand(rng);
-            let r4 = E::Fr::rand(rng);
-            let r5 = E::Fr::rand(rng);
-            let tau = E::Fr::rand(rng);
+            let r3 = E::ScalarField::rand(rng);
+            let r4 = E::ScalarField::rand(rng);
+            let r5 = E::ScalarField::rand(rng);
+            let tau = E::ScalarField::rand(rng);
             let Q = Q.ok_or(DelegationError::AccumulatorPublicParamsNotProvided)?;
             let accum = accumulated.ok_or(DelegationError::NeedAccumulator)?;
             let wit = non_mem_wit.ok_or(DelegationError::NeedWitness)?;
@@ -285,11 +288,11 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
             let r = mu * tau * usk_2;
 
             // randomized_accum = accum * mu * tau * usk_2
-            let randomized_accum = accum.mul(r.into_repr()).into_affine();
+            let randomized_accum = accum.mul_bigint(r.into_bigint()).into_affine();
             let randomized_d = wit.1 * r;
             let randomized_witness = RandomizedNonMembershipWitness(
-                wit.0.mul(tau.into_repr()).into_affine(),
-                P1.mul(randomized_d.into_repr()).into_affine(),
+                wit.0.mul_bigint(tau.into_bigint()).into_affine(),
+                P1.mul_bigint(randomized_d.into_bigint()).into_affine(),
             );
 
             let accum_rand_protocol = AccumulatorRandSchnorrProtocol::init(r, r3, accum);
@@ -310,9 +313,9 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
         };
 
         let ct_proof_proto = if credential.auditable_sig {
-            let r1 = E::Fr::rand(rng);
-            let r2 = E::Fr::rand(rng);
-            let beta = E::Fr::rand(rng);
+            let r1 = E::ScalarField::rand(rng);
+            let r2 = E::ScalarField::rand(rng);
+            let beta = E::ScalarField::rand(rng);
 
             let upk = user_pk.ok_or(DelegationError::NeedUserPublicKey)?;
             let apk = auditor_pk.ok_or(DelegationError::NeedAuditorPublicKey)?;
@@ -397,10 +400,10 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
         }
 
         if let Some(ct) = &self.ct {
-            P1.serialize_unchecked(&mut writer)?;
-            apk.unwrap().serialize_unchecked(&mut writer)?;
-            ct.ct.enc1.serialize_unchecked(&mut writer)?;
-            ct.com1.serialize_unchecked(&mut writer)?;
+            P1.serialize_compressed(&mut writer)?;
+            apk.unwrap().serialize_compressed(&mut writer)?;
+            ct.ct.enc1.serialize_compressed(&mut writer)?;
+            ct.com1.serialize_compressed(&mut writer)?;
             ct.ciphertext_rand_protocol
                 .challenge_contribution(P1, &ct.ct.enc2, &mut writer)?;
         }
@@ -410,7 +413,7 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
     pub fn gen_show(
         self,
         user_secret_key: Option<&UserSecretKey<E>>,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
     ) -> Result<CredentialShow<E>, DelegationError> {
         let rev = match self.rev {
             Some(rev) => Some(RevocationShow {
@@ -482,14 +485,14 @@ impl<E: PairingEngine> CredentialShowProtocol<E> {
     }
 }
 
-impl<E: PairingEngine> CredentialShow<E> {
+impl<E: Pairing> CredentialShow<E> {
     pub fn verify(
         &self,
-        challenge: &E::Fr,
-        disclosed_attributes: Vec<E::Fr>,
-        issuer_pk: &IssuerPublicKey<E>,
+        challenge: &E::ScalarField,
+        disclosed_attributes: Vec<E::ScalarField>,
+        issuer_pk: impl Into<PreparedIssuerPublicKey<E>>,
         auditor_pk: Option<&AuditorPublicKey<E>>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         self._verify(
             challenge,
@@ -497,7 +500,7 @@ impl<E: PairingEngine> CredentialShow<E> {
             issuer_pk,
             None,
             None,
-            None,
+            None::<crate::accumulator::PreparedPublicKey<E>>,
             auditor_pk,
             set_comm_srs,
         )
@@ -505,14 +508,14 @@ impl<E: PairingEngine> CredentialShow<E> {
 
     pub fn verify_with_revocation(
         &self,
-        challenge: &E::Fr,
-        disclosed_attributes: Vec<E::Fr>,
-        issuer_pk: &IssuerPublicKey<E>,
+        challenge: &E::ScalarField,
+        disclosed_attributes: Vec<E::ScalarField>,
+        issuer_pk: impl Into<PreparedIssuerPublicKey<E>>,
         accumulated: &E::G1Affine,
         Q: &E::G1Affine,
-        accumulator_pk: &crate::accumulator::PublicKey<E>,
+        accumulator_pk: impl Into<crate::accumulator::PreparedPublicKey<E>>,
         auditor_pk: Option<&AuditorPublicKey<E>>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         self._verify(
             challenge,
@@ -528,17 +531,18 @@ impl<E: PairingEngine> CredentialShow<E> {
 
     pub fn _verify(
         &self,
-        challenge: &E::Fr,
-        disclosed_attributes: Vec<E::Fr>,
-        issuer_pk: &IssuerPublicKey<E>,
+        challenge: &E::ScalarField,
+        disclosed_attributes: Vec<E::ScalarField>,
+        issuer_pk: impl Into<PreparedIssuerPublicKey<E>>,
         accumulated: Option<&E::G1Affine>,
         Q: Option<&E::G1Affine>,
-        accumulator_pk: Option<&crate::accumulator::PublicKey<E>>,
+        accumulator_pk: Option<impl Into<crate::accumulator::PreparedPublicKey<E>>>,
         auditor_pk: Option<&AuditorPublicKey<E>>,
-        set_comm_srs: &SetCommitmentSRS<E>,
+        set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
+        let set_comm_srs = set_comm_srs.into();
         let P1 = set_comm_srs.get_P1();
-        let P2 = set_comm_srs.get_P2();
+        let prep_P2 = set_comm_srs.prepared_P2.clone();
 
         if !self
             .core
@@ -562,7 +566,7 @@ impl<E: PairingEngine> CredentialShow<E> {
                 .disclosed_attributes_witness
                 .as_ref()
                 .ok_or(DelegationError::InvalidCredentialShow)?
-                .verify(ss, &comm, set_comm_srs)?;
+                .verify(ss, &comm, &set_comm_srs)?;
         }
 
         let mut C = vec![self.core.C1, self.core.C2, self.core.C3];
@@ -579,14 +583,15 @@ impl<E: PairingEngine> CredentialShow<E> {
 
         self.core
             .signature
-            .verify(&C, &issuer_pk.public_key, P1, P2)?;
+            .verify(&C, issuer_pk.into().public_key, P1, prep_P2.clone())?;
 
         // If the show supports revocation
         match &self.rev {
             Some(rev) => {
                 let Q = Q.ok_or(DelegationError::AccumulatorPublicParamsNotProvided)?;
-                let accumulator_pk =
-                    accumulator_pk.ok_or(DelegationError::AccumulatorPublicKeyNotProvided)?;
+                let accumulator_pk = accumulator_pk
+                    .ok_or(DelegationError::AccumulatorPublicKeyNotProvided)?
+                    .into();
                 let accumulated = accumulated.ok_or(DelegationError::AccumulatorNotProvided)?;
 
                 if !rev
@@ -611,7 +616,7 @@ impl<E: PairingEngine> CredentialShow<E> {
                     &rev.randomized_accum,
                     &rev.C4,
                     accumulator_pk,
-                    set_comm_srs.get_P2(),
+                    prep_P2,
                 ) {
                     return Err(DelegationError::InvalidRevocationShow);
                 }
@@ -625,7 +630,7 @@ impl<E: PairingEngine> CredentialShow<E> {
                 if P1
                     .mul(ct_proof.z1)
                     .add(&apk.0.mul(ct_proof.ciphertext_rand_proof.response))
-                    .sub(ct.enc1.mul(challenge.into_repr()))
+                    .sub(ct.enc1.mul_bigint(challenge.into_bigint()))
                     .into_affine()
                     != ct_proof.com1
                 {
@@ -643,27 +648,31 @@ impl<E: PairingEngine> CredentialShow<E> {
                 let t2_prep = E::G2Prepared::from(ct_proof.t2);
                 let t3_prep = E::G2Prepared::from(ct_proof.t3);
 
-                if !pairing_product_with_g2_prepared::<E>(
-                    &[ct.enc2, -*P1],
-                    &[t1_prep.clone(), t3_prep.clone()],
+                if !E::multi_pairing(
+                    [ct.enc2, (-P1.into_group()).into_affine()],
+                    [t1_prep.clone(), t3_prep.clone()],
                 )
-                .is_one()
+                .is_zero()
                 {
                     return Err(DelegationError::InvalidAuditShow);
                 }
-                if !pairing_product_with_g2_prepared::<E>(
-                    &[ct.enc2, -self.core.C3],
-                    &[t2_prep.clone(), t3_prep.clone()],
+                if !E::multi_pairing(
+                    [ct.enc2, (-self.core.C3.into_group()).into_affine()],
+                    [t2_prep.clone(), t3_prep.clone()],
                 )
-                .is_one()
+                .is_zero()
                 {
                     return Err(DelegationError::InvalidAuditShow);
                 }
-                if !pairing_product_with_g2_prepared::<E>(
-                    &[-ct.enc1, ct_proof.C6, ct_proof.C7],
-                    &[t2_prep, t1_prep, t3_prep],
+                if !E::multi_pairing(
+                    [
+                        (-ct.enc1.into_group()).into_affine(),
+                        ct_proof.C6,
+                        ct_proof.C7,
+                    ],
+                    [t2_prep, t1_prep, t3_prep],
                 )
-                .is_one()
+                .is_zero()
                 {
                     return Err(DelegationError::InvalidAuditShow);
                 }

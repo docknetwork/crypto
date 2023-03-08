@@ -4,12 +4,13 @@
 //! Feldman VSS and generate the public key at the end. The public key is assumed to be of the form
 //! `G*x` where `x` is the secret key and `G` is the group generator.
 
-use ark_ec::AffineCurve;
+use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::Zero;
 use ark_poly::univariate::DensePolynomial;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::BTreeMap;
-use ark_std::io::{Read, Write};
 use ark_std::rand::RngCore;
+use ark_std::vec::Vec;
 use ark_std::UniformRand;
 
 use crate::common::{
@@ -23,7 +24,7 @@ use crate::pedersen_vss::CommitmentKey;
 
 /// In Phase 1, each participant runs Pedersen VSS
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Phase1<G: AffineCurve> {
+pub struct Phase1<G: AffineRepr> {
     /// `z_i` from the paper
     pub secret: G::ScalarField,
     pub accumulator: pedersen_dvss::SharesAccumulator<G>,
@@ -36,7 +37,7 @@ pub struct Phase1<G: AffineCurve> {
 /// the public key is supposed to be in group G2, but the commitments in Phase1 can still be in group G1.
 /// Thus GP1 is the commitment group from Phase 1 and GP2 is in Phase 2.
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Phase2<GP2: AffineCurve<ScalarField = GP1::ScalarField>, GP1: AffineCurve> {
+pub struct Phase2<GP2: AffineRepr<ScalarField = GP1::ScalarField>, GP1: AffineRepr> {
     pub id: ParticipantId,
     pub secret: GP2::ScalarField,
     /// Shares from Phase 1. Only participants which submitted shares in Phase 1 will be allowed in
@@ -47,7 +48,7 @@ pub struct Phase2<GP2: AffineCurve<ScalarField = GP1::ScalarField>, GP1: AffineC
     pub coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<GP2>>,
 }
 
-impl<GP1: AffineCurve> Phase1<GP1> {
+impl<GP1: AffineRepr> Phase1<GP1> {
     /// Start Phase 1 with a randomly generated secret.
     pub fn start_with_random_secret<R: RngCore>(
         rng: &mut R,
@@ -125,7 +126,7 @@ impl<GP1: AffineCurve> Phase1<GP1> {
     }
 
     /// Mark Phase 1 as over and initialize Phase 2.
-    pub fn finish<GP2: AffineCurve<ScalarField = GP1::ScalarField>>(
+    pub fn finish<GP2: AffineRepr<ScalarField = GP1::ScalarField>>(
         self,
         ped_comm_key: &CommitmentKey<GP1>,
         fel_comm_key: &GP2,
@@ -157,7 +158,7 @@ impl<GP1: AffineCurve> Phase1<GP1> {
     }
 }
 
-impl<GP2: AffineCurve<ScalarField = GP1::ScalarField>, GP1: AffineCurve> Phase2<GP2, GP1> {
+impl<GP2: AffineRepr<ScalarField = GP1::ScalarField>, GP1: AffineRepr> Phase2<GP2, GP1> {
     /// Called by a participant when it receives commitments from others.
     pub fn add_received_commitments(
         &mut self,
@@ -198,7 +199,8 @@ impl<GP2: AffineCurve<ScalarField = GP1::ScalarField>, GP1: AffineCurve> Phase2<
                 .clone(),
             self.coeff_comms
                 .values()
-                .fold(GP2::zero(), |acc, v| acc + *v.commitment_to_secret()),
+                .fold(GP2::Group::zero(), |acc, v| acc + *v.commitment_to_secret())
+                .into_affine(),
         ))
     }
 }
@@ -208,22 +210,21 @@ pub mod tests {
     use super::*;
     use crate::pedersen_vss::CommitmentKey;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::{PairingEngine, ProjectiveCurve};
+    use ark_ec::{pairing::Pairing, CurveGroup};
     use ark_ff::PrimeField;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
 
-    type G1 = <Bls12_381 as PairingEngine>::G1Affine;
+    type G1 = <Bls12_381 as Pairing>::G1Affine;
 
     #[test]
     fn gennaro_distributed_key_generation() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let ped_comm_key = CommitmentKey::<G1>::new::<Blake2b>(b"test");
-        let fed_comm_key = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
-        let fed_comm_key_g2 =
-            <Bls12_381 as PairingEngine>::G2Projective::rand(&mut rng).into_affine();
+        let ped_comm_key = CommitmentKey::<G1>::new::<Blake2b512>(b"test");
+        let fed_comm_key = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
+        let fed_comm_key_g2 = <Bls12_381 as Pairing>::G2::rand(&mut rng).into_affine();
 
-        fn check<GP1: AffineCurve, GP2: AffineCurve<ScalarField = GP1::ScalarField>>(
+        fn check<GP1: AffineRepr, GP2: AffineRepr<ScalarField = GP1::ScalarField>>(
             rng: &mut StdRng,
             ped_comm_key: &CommitmentKey<GP1>,
             fed_comm_key: &GP2,
@@ -316,7 +317,10 @@ pub mod tests {
                 for i in 0..total {
                     let (own_sk, own_pk, threshold_pk) = all_phase2s[i].clone().finish().unwrap();
                     assert_eq!(own_sk, all_secrets[i]);
-                    assert_eq!(own_pk, fed_comm_key.mul(own_sk.into_repr()).into_affine());
+                    assert_eq!(
+                        own_pk,
+                        fed_comm_key.mul_bigint(own_sk.into_bigint()).into_affine()
+                    );
                     if i == 0 {
                         tk = Some(threshold_pk);
                     } else {

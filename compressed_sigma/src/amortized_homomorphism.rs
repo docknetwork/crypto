@@ -2,18 +2,12 @@
 //! This is for the relation R_{AMOREXP} where a single homomorphism is applied over many witness vectors and
 //! there is a separate commitment to each witness vector.
 
-use ark_ec::msm::VariableBaseMSM;
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::rand::RngCore;
 use ark_std::{cfg_iter, vec::Vec, UniformRand};
-use ark_std::{
-    io::{Read, Write},
-    rand::RngCore,
-};
 use digest::Digest;
-
-use dock_crypto_utils::msm::variable_base_msm;
 
 use crate::compressed_homomorphism;
 use crate::error::CompSigmaError;
@@ -24,7 +18,7 @@ use crate::utils::{amortized_response, get_n_powers};
 use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RandomCommitment<G: AffineCurve> {
+pub struct RandomCommitment<G: AffineRepr> {
     /// Maximum size of the witness vectors
     pub max_size: usize,
     /// Random vector from Z_q^n
@@ -36,14 +30,14 @@ pub struct RandomCommitment<G: AffineCurve> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Response<G: AffineCurve> {
+pub struct Response<G: AffineRepr> {
     /// z_tilde = r + \sum_{i=1}^s c^i*\vec{x_i}
     pub z_tilde: Vec<G::ScalarField>,
 }
 
 impl<G> RandomCommitment<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     pub fn new<R: RngCore, F: Homomorphism<G::ScalarField, Output = G>>(
         rng: &mut R,
@@ -64,7 +58,7 @@ where
             (0..max_size).map(|_| G::ScalarField::rand(rng)).collect()
         };
         let t = f.eval(&r).unwrap();
-        let A = variable_base_msm(g, &r);
+        let A = G::Group::msm_unchecked(g, &r);
         Ok(Self {
             max_size,
             r,
@@ -90,7 +84,7 @@ where
 
 impl<G> Response<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     pub fn is_valid<F: Homomorphism<G::ScalarField, Output = G>>(
         &self,
@@ -117,29 +111,22 @@ where
         // `challenge_powers` is of form [c, c^2, c^3, ..., c^{n-1}]
         let challenge_powers = get_n_powers(challenge.clone(), count_commitments);
         let challenge_powers_repr = cfg_iter!(challenge_powers)
-            .map(|c| c.into_repr())
+            .map(|c| c.into_bigint())
             .collect::<Vec<_>>();
 
         // P_tilde = A + \sum_{i}(P_i * c^i)
-        let mut P_tilde = A.into_projective();
-        P_tilde += VariableBaseMSM::multi_scalar_mul(P, &challenge_powers_repr);
+        let mut P_tilde = A.into_group();
+        P_tilde += G::Group::msm_bigint(P, &challenge_powers_repr);
 
         // Check g*z_tilde == P_tilde
-        let g_z = VariableBaseMSM::multi_scalar_mul(
-            g,
-            &self
-                .z_tilde
-                .iter()
-                .map(|z| z.into_repr())
-                .collect::<Vec<_>>(),
-        );
+        let g_z = G::Group::msm_unchecked(g, &self.z_tilde);
         if g_z != P_tilde {
             return Err(CompSigmaError::InvalidResponse);
         }
 
         // Check \sum_{i}(y_i * c^i) + t == f(z_tilde)
-        let c_y = VariableBaseMSM::multi_scalar_mul(y, &challenge_powers_repr);
-        if c_y.add_mixed(t).into_affine() != f.eval(&self.z_tilde).unwrap() {
+        let c_y = G::Group::msm_bigint(y, &challenge_powers_repr);
+        if (c_y + t).into_affine() != f.eval(&self.z_tilde).unwrap() {
             return Err(CompSigmaError::InvalidResponse);
         }
         Ok(())
@@ -176,22 +163,22 @@ where
 
 /// Q = A + \sum_{i}(P_i * c^i)
 /// Y = t + \sum_{i}(Y_i * c^i)
-pub fn calculate_Q_and_Y<G: AffineCurve>(
+pub fn calculate_Q_and_Y<G: AffineRepr>(
     Ps: &[G],
     Ys: &[G],
     A: &G,
     t: &G,
     challenge: &G::ScalarField,
-) -> (G::Projective, G::Projective) {
+) -> (G::Group, G::Group) {
     assert_eq!(Ps.len(), Ys.len());
     let count_commitments = Ps.len();
     let challenge_powers = get_n_powers(challenge.clone(), count_commitments);
     let challenge_powers_repr = cfg_iter!(challenge_powers)
-        .map(|c| c.into_repr())
+        .map(|c| c.into_bigint())
         .collect::<Vec<_>>();
 
-    let Q = VariableBaseMSM::multi_scalar_mul(Ps, &challenge_powers_repr).add_mixed(A);
-    let Y = VariableBaseMSM::multi_scalar_mul(Ys, &challenge_powers_repr).add_mixed(t);
+    let Q = G::Group::msm_bigint(Ps, &challenge_powers_repr) + A;
+    let Y = G::Group::msm_bigint(Ys, &challenge_powers_repr) + t;
     (Q, Y)
 }
 
@@ -199,21 +186,20 @@ pub fn calculate_Q_and_Y<G: AffineCurve>(
 mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_ff::Zero;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use blake2::Blake2b;
-    use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
+    use blake2::Blake2b512;
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
-    type G1 = <Bls12_381 as PairingEngine>::G1Affine;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
+    type G1 = <Bls12_381 as Pairing>::G1Affine;
 
     #[derive(Clone)]
-    struct TestHom<G: AffineCurve> {
+    struct TestHom<G: AffineRepr> {
         pub constants: Vec<G>,
     }
 
@@ -225,9 +211,7 @@ mod tests {
             let mut rng = StdRng::seed_from_u64(0u64);
             let homomorphism = TestHom {
                 constants: (0..max_size)
-                    .map(|_| {
-                        <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine()
-                    })
+                    .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                     .collect::<Vec<_>>(),
             };
 
@@ -242,28 +226,16 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let g = (0..max_size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
 
-            let comm1 = VariableBaseMSM::multi_scalar_mul(
-                &g,
-                &x1.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-            )
-            .into_affine();
+            let comm1 = <Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x1).into_affine();
             let eval1 = homomorphism.eval(&x1).unwrap();
 
-            let comm2 = VariableBaseMSM::multi_scalar_mul(
-                &g,
-                &x2.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-            )
-            .into_affine();
+            let comm2 = <Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x2).into_affine();
             let eval2 = homomorphism.eval(&x2).unwrap();
 
-            let comm3 = VariableBaseMSM::multi_scalar_mul(
-                &g,
-                &x3.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-            )
-            .into_affine();
+            let comm3 = <Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x3).into_affine();
             let eval3 = homomorphism.eval(&x3).unwrap();
 
             let rand_comm =
@@ -299,7 +271,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
         let homomorphism = TestHom {
             constants: (0..max_size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>(),
         };
 
@@ -314,28 +286,16 @@ mod tests {
             .collect::<Vec<_>>();
 
         let g = (0..max_size)
-            .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+            .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
             .collect::<Vec<_>>();
 
-        let comm1 = VariableBaseMSM::multi_scalar_mul(
-            &g,
-            &x1.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-        )
-        .into_affine();
+        let comm1 = <Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x1).into_affine();
         let eval1 = homomorphism.eval(&x1).unwrap();
 
-        let comm2 = VariableBaseMSM::multi_scalar_mul(
-            &g,
-            &x2.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-        )
-        .into_affine();
+        let comm2 = <Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x2).into_affine();
         let eval2 = homomorphism.eval(&x2).unwrap();
 
-        let comm3 = VariableBaseMSM::multi_scalar_mul(
-            &g,
-            &x3.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-        )
-        .into_affine();
+        let comm3 = <Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x3).into_affine();
         let eval3 = homomorphism.eval(&x3).unwrap();
 
         let comms = [comm1, comm2, comm3];
@@ -368,7 +328,7 @@ mod tests {
         );
 
         let start = Instant::now();
-        let comp_resp = response.compress::<Blake2b, _>(&g, &homomorphism);
+        let comp_resp = response.compress::<Blake2b512, _>(&g, &homomorphism);
         println!(
             "Compressing response of {} commitments, with max size {} takes: {:?}",
             comms.len(),
@@ -377,7 +337,7 @@ mod tests {
         );
 
         let start = Instant::now();
-        Response::is_valid_compressed::<Blake2b, _>(
+        Response::is_valid_compressed::<Blake2b512, _>(
             &g,
             &homomorphism,
             &comms,

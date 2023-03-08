@@ -5,7 +5,7 @@
 //! becomes more important when interacting with the WASM bindings of this crate as the overhead of repeated
 //! serialization and de-serialization can be avoided.
 
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::vec::Vec;
 use bbs_plus::prelude::{PublicKeyG2 as BBSPublicKeyG2, SignatureParamsG1 as BBSSignatureParamsG1};
 use legogroth16::circom::R1CS;
@@ -16,40 +16,37 @@ use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey as SaverSnarkProvingKey,
     VerifyingKey as SaverSnarkVerifyingKey,
 };
-use saver::saver_groth16::Groth16VerifyingKeyBytes;
 use vb_accumulator::prelude::{
     MembershipProvingKey, NonMembershipProvingKey, PublicKey as AccumPublicKey,
     SetupParams as AccumParams,
 };
 
-use dock_crypto_utils::serde_utils::{AffineGroupBytes, FieldBytes};
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-
-use crate::util::{LegoProvingKeyBytes, LegoVerifyingKeyBytes, R1CSBytes};
 
 /// Holds (public) setup parameters of different protocols.
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub enum SetupParams<E: PairingEngine, G: AffineCurve> {
+pub enum SetupParams<E: Pairing, G: AffineRepr> {
     BBSPlusSignatureParams(BBSSignatureParamsG1<E>),
     BBSPlusPublicKey(BBSPublicKeyG2<E>),
     VbAccumulatorParams(AccumParams<E>),
-    VbAccumulatorPublicKey(AccumPublicKey<E::G2Affine>),
+    VbAccumulatorPublicKey(AccumPublicKey<E>),
     VbAccumulatorMemProvingKey(MembershipProvingKey<E::G1Affine>),
     VbAccumulatorNonMemProvingKey(NonMembershipProvingKey<E::G1Affine>),
-    PedersenCommitmentKey(#[serde_as(as = "Vec<AffineGroupBytes>")] Vec<G>),
+    PedersenCommitmentKey(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<G>),
     SaverEncryptionGens(EncryptionGens<E>),
     SaverCommitmentGens(ChunkedCommitmentGens<E::G1Affine>),
     SaverEncryptionKey(EncryptionKey<E>),
     SaverProvingKey(SaverSnarkProvingKey<E>),
-    SaverVerifyingKey(#[serde_as(as = "Groth16VerifyingKeyBytes")] SaverSnarkVerifyingKey<E>),
-    LegoSnarkProvingKey(#[serde_as(as = "LegoProvingKeyBytes")] LegoSnarkProvingKey<E>),
-    LegoSnarkVerifyingKey(#[serde_as(as = "LegoVerifyingKeyBytes")] LegoSnarkVerifyingKey<E>),
-    R1CS(#[serde_as(as = "R1CSBytes")] R1CS<E>),
+    SaverVerifyingKey(#[serde_as(as = "ArkObjectBytes")] SaverSnarkVerifyingKey<E>),
+    LegoSnarkProvingKey(#[serde_as(as = "ArkObjectBytes")] LegoSnarkProvingKey<E>),
+    LegoSnarkVerifyingKey(#[serde_as(as = "ArkObjectBytes")] LegoSnarkVerifyingKey<E>),
+    R1CS(#[serde_as(as = "ArkObjectBytes")] R1CS<E>),
     Bytes(Vec<u8>),
-    FieldElemVec(#[serde_as(as = "Vec<FieldBytes>")] Vec<E::Fr>),
+    FieldElemVec(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
 }
 
 macro_rules! extract_param {
@@ -74,447 +71,229 @@ macro_rules! extract_param {
 
 mod serialization {
     use super::*;
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+    use ark_serialize::{
+        CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Valid, Validate,
+    };
     use ark_std::io::{Read, Write};
 
-    impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for SetupParams<E, G> {
-        fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+    impl<E: Pairing, G: AffineRepr> Valid for SetupParams<E, G> {
+        fn check(&self) -> Result<(), SerializationError> {
             match self {
-                Self::BBSPlusSignatureParams(s) => {
-                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::BBSPlusPublicKey(s) => {
-                    CanonicalSerialize::serialize(&1u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::VbAccumulatorParams(s) => {
-                    CanonicalSerialize::serialize(&2u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::VbAccumulatorPublicKey(s) => {
-                    CanonicalSerialize::serialize(&3u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::VbAccumulatorMemProvingKey(s) => {
-                    CanonicalSerialize::serialize(&4u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::VbAccumulatorNonMemProvingKey(s) => {
-                    CanonicalSerialize::serialize(&5u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::PedersenCommitmentKey(s) => {
-                    CanonicalSerialize::serialize(&6u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::SaverEncryptionGens(s) => {
-                    CanonicalSerialize::serialize(&7u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::SaverCommitmentGens(s) => {
-                    CanonicalSerialize::serialize(&8u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::SaverEncryptionKey(s) => {
-                    CanonicalSerialize::serialize(&9u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::SaverProvingKey(s) => {
-                    CanonicalSerialize::serialize(&10u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::SaverVerifyingKey(s) => {
-                    CanonicalSerialize::serialize(&11u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::LegoSnarkProvingKey(s) => {
-                    CanonicalSerialize::serialize(&12u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::LegoSnarkVerifyingKey(s) => {
-                    CanonicalSerialize::serialize(&13u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::R1CS(s) => {
-                    CanonicalSerialize::serialize(&14u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::Bytes(s) => {
-                    CanonicalSerialize::serialize(&15u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::FieldElemVec(s) => {
-                    CanonicalSerialize::serialize(&16u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-            }
-        }
-
-        fn serialized_size(&self) -> usize {
-            match self {
-                Self::BBSPlusSignatureParams(s) => 0u8.serialized_size() + s.serialized_size(),
-                Self::BBSPlusPublicKey(s) => 1u8.serialized_size() + s.serialized_size(),
-                Self::VbAccumulatorParams(s) => 2u8.serialized_size() + s.serialized_size(),
-                Self::VbAccumulatorPublicKey(s) => 3u8.serialized_size() + s.serialized_size(),
-                Self::VbAccumulatorMemProvingKey(s) => 4u8.serialized_size() + s.serialized_size(),
-                Self::VbAccumulatorNonMemProvingKey(s) => {
-                    5u8.serialized_size() + s.serialized_size()
-                }
-                Self::PedersenCommitmentKey(s) => 6u8.serialized_size() + s.serialized_size(),
-                Self::SaverEncryptionGens(s) => 7u8.serialized_size() + s.serialized_size(),
-                Self::SaverCommitmentGens(s) => 8u8.serialized_size() + s.serialized_size(),
-                Self::SaverEncryptionKey(s) => 9u8.serialized_size() + s.serialized_size(),
-                Self::SaverProvingKey(s) => 10u8.serialized_size() + s.serialized_size(),
-                Self::SaverVerifyingKey(s) => 11u8.serialized_size() + s.serialized_size(),
-                Self::LegoSnarkProvingKey(s) => 12u8.serialized_size() + s.serialized_size(),
-                Self::LegoSnarkVerifyingKey(s) => 13u8.serialized_size() + s.serialized_size(),
-                Self::R1CS(s) => 14u8.serialized_size() + s.serialized_size(),
-                Self::Bytes(s) => 15u8.serialized_size() + s.serialized_size(),
-                Self::FieldElemVec(s) => 16u8.serialized_size() + s.serialized_size(),
-            }
-        }
-
-        fn serialize_uncompressed<W: Write>(
-            &self,
-            mut writer: W,
-        ) -> Result<(), SerializationError> {
-            match self {
-                Self::BBSPlusSignatureParams(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&0u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::BBSPlusPublicKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&1u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::VbAccumulatorParams(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&2u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::VbAccumulatorPublicKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&3u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::VbAccumulatorMemProvingKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&4u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::VbAccumulatorNonMemProvingKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&5u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::PedersenCommitmentKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&6u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::SaverEncryptionGens(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&7u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::SaverCommitmentGens(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&8u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::SaverEncryptionKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&9u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::SaverProvingKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&10u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::SaverVerifyingKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&11u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::LegoSnarkProvingKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&12u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::LegoSnarkVerifyingKey(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&13u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::R1CS(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&14u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::Bytes(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&15u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-                Self::FieldElemVec(s) => {
-                    CanonicalSerialize::serialize_uncompressed(&16u8, &mut writer)?;
-                    CanonicalSerialize::serialize_uncompressed(s, &mut writer)
-                }
-            }
-        }
-
-        fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            match self {
-                Self::BBSPlusSignatureParams(s) => {
-                    CanonicalSerialize::serialize_unchecked(&0u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::BBSPlusPublicKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&1u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::VbAccumulatorParams(s) => {
-                    CanonicalSerialize::serialize_unchecked(&2u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::VbAccumulatorPublicKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&3u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::VbAccumulatorMemProvingKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&4u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::VbAccumulatorNonMemProvingKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&5u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::PedersenCommitmentKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&6u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::SaverEncryptionGens(s) => {
-                    CanonicalSerialize::serialize_unchecked(&7u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::SaverCommitmentGens(s) => {
-                    CanonicalSerialize::serialize_unchecked(&8u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::SaverEncryptionKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&9u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::SaverProvingKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&10u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::SaverVerifyingKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&11u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::LegoSnarkProvingKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&12u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::LegoSnarkVerifyingKey(s) => {
-                    CanonicalSerialize::serialize_unchecked(&13u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::R1CS(s) => {
-                    CanonicalSerialize::serialize_unchecked(&14u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::Bytes(s) => {
-                    CanonicalSerialize::serialize_unchecked(&15u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-                Self::FieldElemVec(s) => {
-                    CanonicalSerialize::serialize_unchecked(&16u8, &mut writer)?;
-                    CanonicalSerialize::serialize_unchecked(s, &mut writer)
-                }
-            }
-        }
-
-        fn uncompressed_size(&self) -> usize {
-            match self {
-                Self::BBSPlusSignatureParams(s) => 0u8.uncompressed_size() + s.uncompressed_size(),
-                Self::BBSPlusPublicKey(s) => 1u8.uncompressed_size() + s.uncompressed_size(),
-                Self::VbAccumulatorParams(s) => 2u8.uncompressed_size() + s.uncompressed_size(),
-                Self::VbAccumulatorPublicKey(s) => 3u8.uncompressed_size() + s.uncompressed_size(),
-                Self::VbAccumulatorMemProvingKey(s) => {
-                    4u8.uncompressed_size() + s.uncompressed_size()
-                }
-                Self::VbAccumulatorNonMemProvingKey(s) => {
-                    5u8.uncompressed_size() + s.uncompressed_size()
-                }
-                Self::PedersenCommitmentKey(s) => 6u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverEncryptionGens(s) => 7u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverCommitmentGens(s) => 8u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverEncryptionKey(s) => 9u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverProvingKey(s) => 10u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverVerifyingKey(s) => 11u8.uncompressed_size() + s.uncompressed_size(),
-                Self::LegoSnarkProvingKey(s) => 12u8.uncompressed_size() + s.uncompressed_size(),
-                Self::LegoSnarkVerifyingKey(s) => 13u8.uncompressed_size() + s.uncompressed_size(),
-                Self::R1CS(s) => 14u8.uncompressed_size() + s.uncompressed_size(),
-                Self::Bytes(s) => 15u8.uncompressed_size() + s.uncompressed_size(),
-                Self::FieldElemVec(s) => 16u8.uncompressed_size() + s.uncompressed_size(),
+                Self::BBSPlusSignatureParams(s) => s.check(),
+                Self::BBSPlusPublicKey(s) => s.check(),
+                Self::VbAccumulatorParams(s) => s.check(),
+                Self::VbAccumulatorPublicKey(s) => s.check(),
+                Self::VbAccumulatorMemProvingKey(s) => s.check(),
+                Self::VbAccumulatorNonMemProvingKey(s) => s.check(),
+                Self::PedersenCommitmentKey(s) => s.check(),
+                Self::SaverEncryptionGens(s) => s.check(),
+                Self::SaverCommitmentGens(s) => s.check(),
+                Self::SaverEncryptionKey(s) => s.check(),
+                Self::SaverProvingKey(s) => s.check(),
+                Self::SaverVerifyingKey(s) => s.check(),
+                Self::LegoSnarkProvingKey(s) => s.check(),
+                Self::LegoSnarkVerifyingKey(s) => s.check(),
+                Self::R1CS(s) => s.check(),
+                Self::Bytes(s) => s.check(),
+                Self::FieldElemVec(s) => s.check(),
             }
         }
     }
 
-    impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for SetupParams<E, G> {
-        fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
+    impl<E: Pairing, G: AffineRepr> CanonicalSerialize for SetupParams<E, G> {
+        fn serialize_with_mode<W: Write>(
+            &self,
+            mut writer: W,
+            compress: Compress,
+        ) -> Result<(), SerializationError> {
+            match self {
+                Self::BBSPlusSignatureParams(s) => {
+                    CanonicalSerialize::serialize_with_mode(&0u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::BBSPlusPublicKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&1u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::VbAccumulatorParams(s) => {
+                    CanonicalSerialize::serialize_with_mode(&2u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::VbAccumulatorPublicKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&3u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::VbAccumulatorMemProvingKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&4u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::VbAccumulatorNonMemProvingKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&5u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::PedersenCommitmentKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&6u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::SaverEncryptionGens(s) => {
+                    CanonicalSerialize::serialize_with_mode(&7u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::SaverCommitmentGens(s) => {
+                    CanonicalSerialize::serialize_with_mode(&8u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::SaverEncryptionKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&9u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::SaverProvingKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&10u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::SaverVerifyingKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&11u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::LegoSnarkProvingKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&12u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::LegoSnarkVerifyingKey(s) => {
+                    CanonicalSerialize::serialize_with_mode(&13u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::R1CS(s) => {
+                    CanonicalSerialize::serialize_with_mode(&14u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::Bytes(s) => {
+                    CanonicalSerialize::serialize_with_mode(&15u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::FieldElemVec(s) => {
+                    CanonicalSerialize::serialize_with_mode(&16u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+            }
+        }
+
+        fn serialized_size(&self, compress: Compress) -> usize {
+            match self {
+                Self::BBSPlusSignatureParams(s) => {
+                    0u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::BBSPlusPublicKey(s) => {
+                    1u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::VbAccumulatorParams(s) => {
+                    2u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::VbAccumulatorPublicKey(s) => {
+                    3u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::VbAccumulatorMemProvingKey(s) => {
+                    4u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::VbAccumulatorNonMemProvingKey(s) => {
+                    5u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::PedersenCommitmentKey(s) => {
+                    6u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::SaverEncryptionGens(s) => {
+                    7u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::SaverCommitmentGens(s) => {
+                    8u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::SaverEncryptionKey(s) => {
+                    9u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::SaverProvingKey(s) => {
+                    10u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::SaverVerifyingKey(s) => {
+                    11u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::LegoSnarkProvingKey(s) => {
+                    12u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::LegoSnarkVerifyingKey(s) => {
+                    13u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::R1CS(s) => 14u8.serialized_size(compress) + s.serialized_size(compress),
+                Self::Bytes(s) => 15u8.serialized_size(compress) + s.serialized_size(compress),
+                Self::FieldElemVec(s) => {
+                    16u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+            }
+        }
+    }
+
+    impl<E: Pairing, G: AffineRepr> CanonicalDeserialize for SetupParams<E, G> {
+        fn deserialize_with_mode<R: Read>(
+            mut reader: R,
+            compress: Compress,
+            validate: Validate,
+        ) -> Result<Self, SerializationError> {
+            let t: u8 =
+                CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
             match t {
                 0u8 => Ok(Self::BBSPlusSignatureParams(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                1u8 => Ok(Self::BBSPlusPublicKey(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                2u8 => Ok(Self::VbAccumulatorParams(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                3u8 => Ok(Self::VbAccumulatorPublicKey(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                4u8 => Ok(Self::VbAccumulatorMemProvingKey(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                5u8 => Ok(Self::VbAccumulatorNonMemProvingKey(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                6u8 => Ok(Self::PedersenCommitmentKey(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                7u8 => Ok(Self::SaverEncryptionGens(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                8u8 => Ok(Self::SaverCommitmentGens(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                9u8 => Ok(Self::SaverEncryptionKey(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                10u8 => Ok(Self::SaverProvingKey(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                11u8 => Ok(Self::SaverVerifyingKey(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                12u8 => Ok(Self::LegoSnarkProvingKey(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                13u8 => Ok(Self::LegoSnarkVerifyingKey(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                14u8 => Ok(Self::R1CS(CanonicalDeserialize::deserialize(&mut reader)?)),
-                15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize(&mut reader)?)),
-                16u8 => Ok(Self::FieldElemVec(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_uncompressed(&mut reader)? {
-                0u8 => Ok(Self::BBSPlusSignatureParams(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 1u8 => Ok(Self::BBSPlusPublicKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 2u8 => Ok(Self::VbAccumulatorParams(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 3u8 => Ok(Self::VbAccumulatorPublicKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 4u8 => Ok(Self::VbAccumulatorMemProvingKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 5u8 => Ok(Self::VbAccumulatorNonMemProvingKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 6u8 => Ok(Self::PedersenCommitmentKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 7u8 => Ok(Self::SaverEncryptionGens(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 8u8 => Ok(Self::SaverCommitmentGens(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 9u8 => Ok(Self::SaverEncryptionKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 10u8 => Ok(Self::SaverProvingKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 11u8 => Ok(Self::SaverVerifyingKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 12u8 => Ok(Self::LegoSnarkProvingKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 13u8 => Ok(Self::LegoSnarkVerifyingKey(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
-                14u8 => Ok(Self::R1CS(CanonicalDeserialize::deserialize_uncompressed(
+                14u8 => Ok(Self::R1CS(CanonicalDeserialize::deserialize_with_mode(
                     &mut reader,
+                    compress,
+                    validate,
                 )?)),
-                15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize_uncompressed(
+                15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize_with_mode(
                     &mut reader,
-                )?)),
-                16u8 => Ok(Self::FieldElemVec(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_unchecked(&mut reader)? {
-                0u8 => Ok(Self::BBSPlusSignatureParams(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                1u8 => Ok(Self::BBSPlusPublicKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                2u8 => Ok(Self::VbAccumulatorParams(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                3u8 => Ok(Self::VbAccumulatorPublicKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                4u8 => Ok(Self::VbAccumulatorMemProvingKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                5u8 => Ok(Self::VbAccumulatorNonMemProvingKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                6u8 => Ok(Self::PedersenCommitmentKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                7u8 => Ok(Self::SaverEncryptionGens(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                8u8 => Ok(Self::SaverCommitmentGens(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                9u8 => Ok(Self::SaverEncryptionKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                10u8 => Ok(Self::SaverProvingKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                11u8 => Ok(Self::SaverVerifyingKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                12u8 => Ok(Self::LegoSnarkProvingKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                13u8 => Ok(Self::LegoSnarkVerifyingKey(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                14u8 => Ok(Self::R1CS(CanonicalDeserialize::deserialize_unchecked(
-                    &mut reader,
-                )?)),
-                15u8 => Ok(Self::Bytes(CanonicalDeserialize::deserialize_unchecked(
-                    &mut reader,
+                    compress,
+                    validate,
                 )?)),
                 16u8 => Ok(Self::FieldElemVec(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
             }

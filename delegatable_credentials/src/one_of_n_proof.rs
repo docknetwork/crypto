@@ -1,16 +1,12 @@
 use crate::error::DelegationError;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{One, PrimeField, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
+use ark_ff::{PrimeField, Zero};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::BTreeMap;
-use ark_std::io::{Read, Write};
 use ark_std::ops::{Add, Neg, Sub};
 use ark_std::rand::RngCore;
 use ark_std::{cfg_iter, UniformRand};
 use ark_std::{vec, vec::Vec};
-use dock_crypto_utils::ec::{
-    batch_normalize_projective_into_affine, pairing_product_with_g2_prepared,
-};
 use dock_crypto_utils::msm::WindowTable;
 
 #[cfg(feature = "parallel")]
@@ -18,27 +14,27 @@ use rayon::prelude::*;
 
 /// SRS used for the 1-of-N proof
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct OneOfNSrs<E: PairingEngine>(E::G1Affine);
+pub struct OneOfNSrs<E: Pairing>(E::G1Affine);
 
 /// Proof that 1 out of `N` public vectors of group elements when scaled (multiplied) by a scalar result in
 /// a specific public group element. Based on NIZK argument in Section 7.2, Fig 6 of the
 /// paper [Improved Constructions of Anonymous Credentials From SPS-EQ](https://eprint.iacr.org/2021/1680)
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct OneOfNProof<E: PairingEngine> {
+pub struct OneOfNProof<E: Pairing> {
     pub z: Vec<E::G1Affine>,
     pub d: Vec<E::G1Affine>,
     pub a: Vec<Vec<E::G2Affine>>,
 }
 
-impl<E: PairingEngine> OneOfNSrs<E> {
+impl<E: Pairing> OneOfNSrs<E> {
     /// Returns the SRS and trapdoor
-    pub fn new<R: RngCore>(rng: &mut R, P1: &E::G1Affine) -> (Self, E::Fr) {
-        let z = E::Fr::rand(rng);
-        (Self(P1.mul(z.into_repr()).into_affine()), z)
+    pub fn new<R: RngCore>(rng: &mut R, P1: &E::G1Affine) -> (Self, E::ScalarField) {
+        let z = E::ScalarField::rand(rng);
+        (Self(P1.mul_bigint(z.into_bigint()).into_affine()), z)
     }
 }
 
-impl<E: PairingEngine> OneOfNProof<E> {
+impl<E: Pairing> OneOfNProof<E> {
     /// `actual * witness = instance` but `actual` will be hidden among `decoys` and it will be proved that
     /// one of the members of this combined group is multiplied by `witness` to create `instance` without revealing
     /// which group member corresponds to `actual` and the `witness`. Note that the passed `decoys` don't
@@ -48,7 +44,7 @@ impl<E: PairingEngine> OneOfNProof<E> {
         actual: &[E::G2Affine],
         decoys: Vec<&[E::G2Affine]>,
         instance: &[E::G2Affine],
-        witness: &E::Fr,
+        witness: &E::ScalarField,
         srs: &OneOfNSrs<E>,
         P1: &E::G1Affine,
     ) -> Result<Self, DelegationError> {
@@ -76,13 +72,15 @@ impl<E: PairingEngine> OneOfNProof<E> {
             all.insert(Self::map_key(pk), (i + 1, pk));
         }
 
-        let P1_table = WindowTable::new(4, P1.into_projective());
+        let P1_table = WindowTable::new(4, P1.into_group());
 
-        let s = E::Fr::rand(rng);
-        let s_repr = s.into_repr();
+        let s = E::ScalarField::rand(rng);
+        let s_repr = s.into_bigint();
 
         // Generate `n - 1` random challenges which the paper calls `z_i`
-        let random_challenges = (0..n - 1).map(|_| E::Fr::rand(rng)).collect::<Vec<_>>();
+        let random_challenges = (0..n - 1)
+            .map(|_| E::ScalarField::rand(rng))
+            .collect::<Vec<_>>();
         let mut actual_at = 0;
 
         for (_, (i, pk)) in all.into_iter() {
@@ -91,27 +89,29 @@ impl<E: PairingEngine> OneOfNProof<E> {
                 actual_at = a.len();
                 // `a_j = s * actual_j`
                 a.push({
-                    let a = cfg_iter!(pk).map(|p| p.mul(s_repr)).collect::<Vec<_>>();
-                    batch_normalize_projective_into_affine(a)
+                    let a = cfg_iter!(pk)
+                        .map(|p| p.mul_bigint(s_repr))
+                        .collect::<Vec<_>>();
+                    E::G2::normalize_batch(&a)
                 });
                 // Temporary value for `d` and `z`, will be overwritten later
-                d.push(E::G1Projective::zero());
-                z.push(E::G1Projective::zero());
+                d.push(E::G1::zero());
+                z.push(E::G1::zero());
             } else {
                 // For `decoys`
                 if pk.len() != m {
                     return Err(DelegationError::UnequalSizeOfSequence(pk.len(), m));
                 }
-                let d_i = E::Fr::rand(rng);
-                let d_i_repr = d_i.into_repr();
-                let z_i = random_challenges[i - 1].into_repr();
+                let d_i = E::ScalarField::rand(rng);
+                let d_i_repr = d_i.into_bigint();
+                let z_i = random_challenges[i - 1].into_bigint();
                 // `a_j = d_i * decoy_j - z_i * actual`
                 a.push({
                     let a = cfg_iter!(pk)
                         .zip(cfg_iter!(instance))
-                        .map(|(b, b_prime)| b.mul(d_i_repr).sub(b_prime.mul(z_i)))
+                        .map(|(b, b_prime)| b.mul_bigint(d_i_repr).sub(b_prime.mul_bigint(z_i)))
                         .collect::<Vec<_>>();
-                    batch_normalize_projective_into_affine(a)
+                    E::G2::normalize_batch(&a)
                 });
                 z.push(P1_table.multiply(&random_challenges[i - 1]));
                 d.push(P1_table.multiply(&d_i));
@@ -120,15 +120,15 @@ impl<E: PairingEngine> OneOfNProof<E> {
 
         // For `actual`, `z_i = z - (z_1 + z_2 + ....)` and `d_i = witness * z_i + s * P1`
         z[actual_at] = P1_table
-            .multiply(&random_challenges.iter().sum::<E::Fr>())
+            .multiply(&random_challenges.iter().sum::<E::ScalarField>())
             .neg()
-            .add_mixed(&srs.0);
+            + srs.0;
         d[actual_at] = z[actual_at]
-            .mul(witness.into_repr())
+            .mul_bigint(witness.into_bigint())
             .add(P1_table.multiply(&s));
         Ok(Self {
-            z: batch_normalize_projective_into_affine(z),
-            d: batch_normalize_projective_into_affine(d),
+            z: E::G1::normalize_batch(&z),
+            d: E::G1::normalize_batch(&d),
             a,
         })
     }
@@ -153,7 +153,7 @@ impl<E: PairingEngine> OneOfNProof<E> {
         }
 
         // The sum of all `z` should match the one in SRS
-        if self.z.iter().sum::<E::G1Affine>() != srs.0 {
+        if self.z.iter().sum::<E::G1>().into_affine() != srs.0 {
             return Err(DelegationError::InvalidOneOfNProof);
         }
 
@@ -174,15 +174,15 @@ impl<E: PairingEngine> OneOfNProof<E> {
                 return Err(DelegationError::UnequalSizeOfSequence(pk.len(), m));
             }
             for j in 0..pk.len() {
-                if !pairing_product_with_g2_prepared::<E>(
-                    &[self.d[i].neg(), self.z[i], *P1],
-                    &[
+                if !E::multi_pairing(
+                    [self.d[i].into_group().neg().into_affine(), self.z[i], *P1],
+                    [
                         E::G2Prepared::from(pk[j]),
                         prepared_instance[j].clone(),
                         E::G2Prepared::from(self.a[i][j]),
                     ],
                 )
-                .is_one()
+                .is_zero()
                 {
                     return Err(DelegationError::InvalidOneOfNProof);
                 }
@@ -195,7 +195,7 @@ impl<E: PairingEngine> OneOfNProof<E> {
     /// Create key for the BtreeMap
     fn map_key(pk: &[E::G2Affine]) -> Vec<u8> {
         let mut key = vec![];
-        pk.serialize(&mut key).unwrap();
+        pk.serialize_compressed(&mut key).unwrap();
         key
     }
 }
@@ -205,23 +205,24 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
+    use std::ops::Mul;
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
-    type G2 = <Bls12_381 as PairingEngine>::G2Projective;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
+    type G2 = <Bls12_381 as Pairing>::G2;
 
     #[test]
     fn one_of_n_proof() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        let P1 = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+        let P1 = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
         let (srs, _) = OneOfNSrs::<Bls12_381>::new(&mut rng, &P1);
 
         fn check(
             rng: &mut StdRng,
             size: usize,
             count_decoys: usize,
-            P1: &<Bls12_381 as PairingEngine>::G1Affine,
+            P1: &<Bls12_381 as Pairing>::G1Affine,
             srs: &OneOfNSrs<Bls12_381>,
         ) {
             let actual = (0..size)

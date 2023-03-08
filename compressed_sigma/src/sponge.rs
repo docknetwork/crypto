@@ -2,5 +2,5 @@
 //! Sponge construction takes in arbitrary length input vector and
 //! outputs the desired number of outputs (output)
 
-// use ark_ec::AffineCurve;
-// pub fn sponge<G: AffineCurve>(inputs: Vec<G::ScalarField>, output: usize) -> Vec<G::ScalarField> {}
+// use ark_ec::AffineRepr;
+// pub fn sponge<G: AffineRepr>(inputs: Vec<G::ScalarField>, output: usize) -> Vec<G::ScalarField> {}

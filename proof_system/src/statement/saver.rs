@@ -1,6 +1,6 @@
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
+use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::vec::Vec;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -8,17 +8,17 @@ use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
 use crate::statement::Statement;
 use crate::sub_protocols::saver::SaverProtocol;
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, VerifyingKey,
 };
-use saver::saver_groth16::Groth16VerifyingKeyBytes;
 
 /// Proving knowledge of correctly encrypted message
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct SaverProver<E: PairingEngine> {
+pub struct SaverProver<E: Pairing> {
     pub chunk_bit_size: u8,
     pub encryption_gens: Option<EncryptionGens<E>>,
     pub chunked_commitment_gens: Option<ChunkedCommitmentGens<E::G1Affine>>,
@@ -36,12 +36,12 @@ pub struct SaverProver<E: PairingEngine> {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct SaverVerifier<E: PairingEngine> {
+pub struct SaverVerifier<E: Pairing> {
     pub chunk_bit_size: u8,
     pub encryption_gens: Option<EncryptionGens<E>>,
     pub chunked_commitment_gens: Option<ChunkedCommitmentGens<E::G1Affine>>,
     pub encryption_key: Option<EncryptionKey<E>>,
-    #[serde_as(as = "Option<Groth16VerifyingKeyBytes>")]
+    #[serde_as(as = "Option<ArkObjectBytes>")]
     pub snark_verifying_key: Option<VerifyingKey<E>>,
     pub encryption_gens_ref: Option<usize>,
     pub chunked_commitment_gens_ref: Option<usize>,
@@ -49,8 +49,8 @@ pub struct SaverVerifier<E: PairingEngine> {
     pub snark_verifying_key_ref: Option<usize>,
 }
 
-impl<E: PairingEngine> SaverProver<E> {
-    pub fn new_statement_from_params<G: AffineCurve>(
+impl<E: Pairing> SaverProver<E> {
+    pub fn new_statement_from_params<G: AffineRepr>(
         chunk_bit_size: u8,
         encryption_gens: EncryptionGens<E>,
         chunked_commitment_gens: ChunkedCommitmentGens<E::G1Affine>,
@@ -71,7 +71,7 @@ impl<E: PairingEngine> SaverProver<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineCurve>(
+    pub fn new_statement_from_params_ref<G: AffineRepr>(
         chunk_bit_size: u8,
         encryption_gens: usize,
         chunked_commitment_gens: usize,
@@ -91,7 +91,7 @@ impl<E: PairingEngine> SaverProver<E> {
         })
     }
 
-    pub fn get_encryption_gens<'a, G: AffineCurve>(
+    pub fn get_encryption_gens<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -106,7 +106,7 @@ impl<E: PairingEngine> SaverProver<E> {
         )
     }
 
-    pub fn get_chunked_commitment_gens<'a, G: AffineCurve>(
+    pub fn get_chunked_commitment_gens<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -121,7 +121,7 @@ impl<E: PairingEngine> SaverProver<E> {
         )
     }
 
-    pub fn get_encryption_key<'a, G: AffineCurve>(
+    pub fn get_encryption_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -136,7 +136,7 @@ impl<E: PairingEngine> SaverProver<E> {
         )
     }
 
-    pub fn get_snark_proving_key<'a, G: AffineCurve>(
+    pub fn get_snark_proving_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -152,8 +152,8 @@ impl<E: PairingEngine> SaverProver<E> {
     }
 }
 
-impl<E: PairingEngine> SaverVerifier<E> {
-    pub fn new_statement_from_params<G: AffineCurve>(
+impl<E: Pairing> SaverVerifier<E> {
+    pub fn new_statement_from_params<G: AffineRepr>(
         chunk_bit_size: u8,
         encryption_gens: EncryptionGens<E>,
         chunked_commitment_gens: ChunkedCommitmentGens<E::G1Affine>,
@@ -174,7 +174,7 @@ impl<E: PairingEngine> SaverVerifier<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineCurve>(
+    pub fn new_statement_from_params_ref<G: AffineRepr>(
         chunk_bit_size: u8,
         encryption_gens: usize,
         chunked_commitment_gens: usize,
@@ -194,7 +194,7 @@ impl<E: PairingEngine> SaverVerifier<E> {
         })
     }
 
-    pub fn get_encryption_gens<'a, G: AffineCurve>(
+    pub fn get_encryption_gens<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -209,7 +209,7 @@ impl<E: PairingEngine> SaverVerifier<E> {
         )
     }
 
-    pub fn get_chunked_commitment_gens<'a, G: AffineCurve>(
+    pub fn get_chunked_commitment_gens<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -224,7 +224,7 @@ impl<E: PairingEngine> SaverVerifier<E> {
         )
     }
 
-    pub fn get_encryption_key<'a, G: AffineCurve>(
+    pub fn get_encryption_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -239,7 +239,7 @@ impl<E: PairingEngine> SaverVerifier<E> {
         )
     }
 
-    pub fn get_snark_verifying_key<'a, G: AffineCurve>(
+    pub fn get_snark_verifying_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,

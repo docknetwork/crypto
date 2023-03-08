@@ -6,6 +6,7 @@ use ark_std::rand::SeedableRng;
 use ark_std::UniformRand;
 use bbs_plus::prelude::{KeypairG2, SignatureG1};
 use bbs_plus::setup::SignatureParamsG1;
+use blake2::Blake2b512;
 use proof_system::prelude::{
     EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, Statements, Witness,
     WitnessRef, Witnesses,
@@ -130,7 +131,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     r1cs_wit.set_public("max".to_string(), vec![sum_bound]);
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -169,7 +170,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     );
     verifier_proof_spec.validate().unwrap();
     proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,

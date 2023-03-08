@@ -1,4 +1,4 @@
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::RngCore;
 use ark_std::UniformRand;
@@ -13,7 +13,7 @@ use crate::statement_proof::{PedersenCommitmentProof, StatementProof};
 use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SchnorrProtocol<'a, G: AffineCurve> {
+pub struct SchnorrProtocol<'a, G: AffineRepr> {
     pub id: usize,
     pub commitment_key: &'a [G],
     pub commitment: G,
@@ -21,7 +21,7 @@ pub struct SchnorrProtocol<'a, G: AffineCurve> {
     pub witnesses: Option<Vec<G::ScalarField>>,
 }
 
-impl<'a, G: AffineCurve> SchnorrProtocol<'a, G> {
+impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
     pub fn new(id: usize, commitment_key: &'a [G], commitment: G) -> Self {
         Self {
             id,
@@ -61,8 +61,8 @@ impl<'a, G: AffineCurve> SchnorrProtocol<'a, G> {
                 self.id,
             ));
         }
-        self.commitment_key.serialize_unchecked(&mut writer)?;
-        self.commitment.serialize_unchecked(&mut writer)?;
+        self.commitment_key.serialize_compressed(&mut writer)?;
+        self.commitment.serialize_compressed(&mut writer)?;
         self.commitment_to_randomness
             .as_ref()
             .unwrap()
@@ -70,7 +70,7 @@ impl<'a, G: AffineCurve> SchnorrProtocol<'a, G> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<E: PairingEngine>(
+    pub fn gen_proof_contribution<E: Pairing>(
         &mut self,
         challenge: &G::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
@@ -93,7 +93,7 @@ impl<'a, G: AffineCurve> SchnorrProtocol<'a, G> {
         Ok(PedersenCommitmentProof::new(commitment.t, responses))
     }
 
-    pub fn verify_proof_contribution<E: PairingEngine>(
+    pub fn verify_proof_contribution<E: Pairing>(
         &self,
         challenge: &G::ScalarField,
         proof: &StatementProof<E, G>,
@@ -123,14 +123,14 @@ impl<'a, G: AffineCurve> SchnorrProtocol<'a, G> {
         t: &G,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
-        bases.serialize_unchecked(&mut writer)?;
-        y.serialize_unchecked(&mut writer)?;
-        t.serialize_unchecked(writer)?;
+        bases.serialize_compressed(&mut writer)?;
+        y.serialize_compressed(&mut writer)?;
+        t.serialize_compressed(writer)?;
         Ok(())
     }
 }
 
-impl<'a, G: AffineCurve> Zeroize for SchnorrProtocol<'a, G> {
+impl<'a, G: AffineRepr> Zeroize for SchnorrProtocol<'a, G> {
     fn zeroize(&mut self) {
         self.commitment_to_randomness.as_mut().map(|c| c.zeroize());
         self.witnesses
@@ -139,7 +139,7 @@ impl<'a, G: AffineCurve> Zeroize for SchnorrProtocol<'a, G> {
     }
 }
 
-impl<'a, G: AffineCurve> Drop for SchnorrProtocol<'a, G> {
+impl<'a, G: AffineRepr> Drop for SchnorrProtocol<'a, G> {
     fn drop(&mut self) {
         self.zeroize();
     }

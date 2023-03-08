@@ -1,5 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::PairingEngine;
+use ark_ec::pairing::Pairing;
 use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
@@ -9,7 +9,7 @@ use bbs_plus::signature::{SignatureG1, SignatureG2};
 use benches::setup_bbs_plus;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-type Fr = <Bls12_381 as PairingEngine>::Fr;
+type Fr = <Bls12_381 as Pairing>::ScalarField;
 
 macro_rules! sign_verify {
     ($sig_params:ident, $keypair: ident, $rng: ident, $message_count_range: ident, $messages_range: ident, $params_range: ident, $keypair_range: ident, $c: ident, $sig_group: ident) => {

@@ -5,8 +5,7 @@ use ark_std::{io, string::ToString, vec::Vec};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 
-pub type FieldBytes = AsCanonical;
-pub type AffineGroupBytes = AsCanonical;
+pub type ArkObjectBytes = AsCanonical;
 
 // This is taken from the expanded [`serde_with::serde_conv!`] macro but generalized for any `T: CanonicalSerialize + CanonicalDeserialize`
 
@@ -17,9 +16,10 @@ impl AsCanonical {
         T: CanonicalSerialize,
         S: Serializer,
     {
-        let size = x.serialized_size();
+        let size = x.compressed_size();
         let mut bytes = Vec::with_capacity(size);
-        x.serialize(&mut bytes).map_err(serde::ser::Error::custom)?;
+        x.serialize_compressed(&mut bytes)
+            .map_err(serde::ser::Error::custom)?;
         Serialize::serialize(&bytes, serializer)
     }
     pub fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
@@ -28,7 +28,7 @@ impl AsCanonical {
         D: Deserializer<'de>,
     {
         let y: Vec<u8> = Deserialize::deserialize(deserializer)?;
-        T::deserialize(y.as_slice()).map_err(serde::de::Error::custom)
+        T::deserialize_compressed(y.as_slice()).map_err(serde::de::Error::custom)
     }
 }
 
@@ -75,11 +75,4 @@ where
     S: Serializer,
 {
     serializer.serialize_str(&error.to_string())
-}
-
-#[macro_export]
-macro_rules! impl_for_groth16_struct {
-    ($serializer_name: ident) => {
-        pub type $serializer_name = ::dock_crypto_utils::serde_utils::AsCanonical;
-    };
 }

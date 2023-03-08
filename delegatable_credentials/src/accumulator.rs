@@ -1,91 +1,103 @@
 use crate::error::DelegationError;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{Field, One, PrimeField};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_ff::{Field, One, PrimeField, Zero};
 use ark_poly::univariate::{DenseOrSparsePolynomial, DensePolynomial};
-use ark_poly::{Polynomial, UVPolynomial};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_poly::{DenseUVPolynomial, Polynomial};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
-    io::{Read, Write},
-    ops::Neg,
+    ops::{Mul, Neg},
     rand::RngCore,
+    vec::Vec,
     UniformRand,
 };
-use dock_crypto_utils::ec::pairing_product;
 use dock_crypto_utils::poly::poly_from_roots;
 use zeroize::Zeroize;
 
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SecretKey<E: PairingEngine>(pub E::Fr);
+pub struct SecretKey<E: Pairing>(pub E::ScalarField);
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PublicKey<E: PairingEngine>(pub E::G2Affine);
+pub struct PublicKey<E: Pairing>(pub E::G2Affine);
 
-impl<E: PairingEngine> Drop for SecretKey<E> {
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct PreparedPublicKey<E: Pairing>(pub E::G2Prepared);
+
+impl<E: Pairing> Drop for SecretKey<E> {
     fn drop(&mut self) {
         self.0.zeroize();
     }
 }
 
-impl<E: PairingEngine> SecretKey<E> {
+impl<E: Pairing> SecretKey<E> {
     pub fn new<R: RngCore>(rng: &mut R) -> Self {
-        Self(E::Fr::rand(rng))
+        Self(E::ScalarField::rand(rng))
     }
 }
 
-impl<E: PairingEngine> PublicKey<E> {
+impl<E: Pairing> PublicKey<E> {
     pub fn new(secret_key: &SecretKey<E>, P2: &E::G2Affine) -> Self {
-        Self(P2.mul(secret_key.0.into_repr()).into_affine())
+        Self(P2.mul_bigint(secret_key.0.into_bigint()).into_affine())
+    }
+}
+
+impl<E: Pairing> From<PublicKey<E>> for PreparedPublicKey<E> {
+    fn from(pk: PublicKey<E>) -> Self {
+        Self(E::G2Prepared::from(pk.0))
     }
 }
 
 /// The accumulator. Contains (`(\prod_{i}(trapdoor - members[i]) * 1/secret_key) * P1`, `(\prod_{i}(trapdoor - members[i]) * 1/secret_key)`, `\prod_{i}(trapdoor - members[i])`)
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Accumulator<E: PairingEngine>(pub E::G1Affine, pub E::Fr, pub E::Fr);
+pub struct Accumulator<E: Pairing>(pub E::G1Affine, pub E::ScalarField, pub E::ScalarField);
 
 /// As an optimization for creating non-membership witnesses, the accumulator manager can persist the accumulator polynomial
 /// and keep it updated as per the accumulator. This is the polynomial with the roots as the current accumulator members
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct AccumulatorPolynomial<E: PairingEngine>(pub DensePolynomial<E::Fr>);
+pub struct AccumulatorPolynomial<E: Pairing>(pub DensePolynomial<E::ScalarField>);
 
 /// Non-membership witness
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct NonMembershipWitness<E: PairingEngine>(pub E::G2Affine, pub E::Fr);
+pub struct NonMembershipWitness<E: Pairing>(pub E::G2Affine, pub E::ScalarField);
 
 /// Randomized version of the non-membership witness. Used to remain unlinkable while proving non-membership during credential show.
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RandomizedNonMembershipWitness<E: PairingEngine>(pub E::G2Affine, pub E::G1Affine);
+pub struct RandomizedNonMembershipWitness<E: Pairing>(pub E::G2Affine, pub E::G1Affine);
 
-impl<E: PairingEngine> Accumulator<E> {
+impl<E: Pairing> Accumulator<E> {
     /// Create a new accumulator using the trapdoor and the secret key. It can be created without the
     /// knowledge of the trapdoor but that will be expensive so a more practical approach is for the accumulator
     /// manager to know the trapdoor.
     pub fn new_using_trapdoor(
-        members: &[E::Fr],
-        trapdoor: &E::Fr,
+        members: &[E::ScalarField],
+        trapdoor: &E::ScalarField,
         secret_key: &SecretKey<E>,
         P1: &E::G1Affine,
     ) -> (Self, AccumulatorPolynomial<E>) {
         // `accumulator = (\prod_{i}(trapdoor - members[i]) * 1/secret_key) * P1`
-        let accum_poly = poly_from_roots::<E::Fr>(members);
+        let accum_poly = poly_from_roots::<E::ScalarField>(members);
         let eval = accum_poly.evaluate(trapdoor);
         let aux = secret_key.0.inverse().unwrap() * eval;
         (
-            Self(P1.mul(aux.into_repr()).into_affine(), aux, eval),
+            Self(P1.mul_bigint(aux.into_bigint()).into_affine(), aux, eval),
             AccumulatorPolynomial(accum_poly),
         )
     }
 
-    pub fn add_using_trapdoor(&mut self, additions: &[E::Fr], trapdoor: &E::Fr) {
+    pub fn add_using_trapdoor(&mut self, additions: &[E::ScalarField], trapdoor: &E::ScalarField) {
         let eval = Self::eval_at_trapdoor(additions, trapdoor);
-        self.0 = self.0.mul(eval.into_repr()).into_affine();
+        self.0 = self.0.mul_bigint(eval.into_bigint()).into_affine();
         self.1 = self.1 * eval;
         self.2 = self.2 * eval;
     }
 
-    pub fn remove_using_trapdoor(&mut self, removals: &[E::Fr], trapdoor: &E::Fr) {
+    pub fn remove_using_trapdoor(
+        &mut self,
+        removals: &[E::ScalarField],
+        trapdoor: &E::ScalarField,
+    ) {
         let eval = Self::eval_at_trapdoor(removals, trapdoor);
         let eval_inv = eval.inverse().unwrap();
-        self.0 = self.0.mul(eval_inv.into_repr()).into_affine();
+        self.0 = self.0.mul_bigint(eval_inv.into_bigint()).into_affine();
         self.1 = self.1 * eval_inv;
         self.2 = self.2 * eval_inv;
     }
@@ -94,31 +106,35 @@ impl<E: PairingEngine> Accumulator<E> {
         &self.0
     }
 
-    fn eval_at_trapdoor(elements: &[E::Fr], trapdoor: &E::Fr) -> E::Fr {
+    fn eval_at_trapdoor(elements: &[E::ScalarField], trapdoor: &E::ScalarField) -> E::ScalarField {
         elements
             .iter()
-            .fold(E::Fr::one(), |p, e| (*trapdoor - *e) * p)
+            .fold(E::ScalarField::one(), |p, e| (*trapdoor - *e) * p)
     }
 }
 
-impl<E: PairingEngine> AccumulatorPolynomial<E> {
-    pub fn add_using_trapdoor(&mut self, additions: &[E::Fr], trapdoor: &E::Fr) {
+impl<E: Pairing> AccumulatorPolynomial<E> {
+    pub fn add_using_trapdoor(&mut self, additions: &[E::ScalarField], trapdoor: &E::ScalarField) {
         let eval = Accumulator::<E>::eval_at_trapdoor(additions, trapdoor);
         self.0 = &self.0 * eval;
     }
 
-    pub fn remove_using_trapdoor(&mut self, removals: &[E::Fr], trapdoor: &E::Fr) {
+    pub fn remove_using_trapdoor(
+        &mut self,
+        removals: &[E::ScalarField],
+        trapdoor: &E::ScalarField,
+    ) {
         let eval = Accumulator::<E>::eval_at_trapdoor(removals, trapdoor);
         self.0 = &self.0 * eval.inverse().unwrap();
     }
 }
 
-impl<E: PairingEngine> NonMembershipWitness<E> {
+impl<E: Pairing> NonMembershipWitness<E> {
     /// Create from all current members of the accumulator. Using the trapdoor as its more efficient.
     pub fn from_members_using_trapdoor(
-        non_member: &E::Fr,
-        members: &[E::Fr],
-        trapdoor: &E::Fr,
+        non_member: &E::ScalarField,
+        members: &[E::ScalarField],
+        trapdoor: &E::ScalarField,
         P2: &E::G2Affine,
     ) -> Result<Self, DelegationError> {
         let poly = DenseOrSparsePolynomial::from(poly_from_roots(members));
@@ -128,26 +144,26 @@ impl<E: PairingEngine> NonMembershipWitness<E> {
     /// This is broken for now.
     // TODO: Fix me
     pub fn from_eval_using_trapdoor(
-        non_member: &E::Fr,
-        eval: &E::Fr,
-        trapdoor: &E::Fr,
+        non_member: &E::ScalarField,
+        eval: &E::ScalarField,
+        trapdoor: &E::ScalarField,
         P2: &E::G2Affine,
     ) -> Result<Self, DelegationError> {
         use num_integer::Integer;
 
-        let div = (*trapdoor - *non_member).into_repr().into();
-        let eval_repr = eval.into_repr().into();
+        let div = (*trapdoor - *non_member).into_bigint().into();
+        let eval_repr = eval.into_bigint().into();
         let (q, d) = eval_repr.div_rem(&div);
-        let q = E::Fr::from(q);
-        let d = E::Fr::from(d);
+        let q = E::ScalarField::from(q);
+        let d = E::ScalarField::from(d);
         Ok(Self(P2.mul(q).into_affine(), d))
     }
 
     /// Create from the accumulator polynomial. Much more efficient than `Self::from_members_using_trapdoor`
     pub fn from_polynomial_using_trapdoor(
-        non_member: &E::Fr,
+        non_member: &E::ScalarField,
         polynomial: &AccumulatorPolynomial<E>,
-        trapdoor: &E::Fr,
+        trapdoor: &E::ScalarField,
         P2: &E::G2Affine,
     ) -> Result<Self, DelegationError> {
         let poly = DenseOrSparsePolynomial::from(&polynomial.0);
@@ -156,32 +172,36 @@ impl<E: PairingEngine> NonMembershipWitness<E> {
 
     pub fn verify(
         &self,
-        non_member: &E::Fr,
+        non_member: &E::ScalarField,
         accumulated: &E::G1Affine,
-        pk: &PublicKey<E>,
+        pk: impl Into<PreparedPublicKey<E>>,
         P1_s: &E::G1Affine,
         P1: &E::G1Affine,
-        P2: &E::G2Affine,
+        P2: impl Into<E::G2Prepared>,
     ) -> bool {
         // `e1 = P1*(trapdoor - non_member) = P1*trapdoor - P1*non_member`
-        let P1_n = P1.mul(non_member.into_repr()).neg();
-        let e1 = P1_n.add_mixed(P1_s).into_affine();
-        let P1_d = P1.mul(self.1.into_repr()).into_affine();
+        let P1_n = P1.mul_bigint(non_member.into_bigint()).neg();
+        let e1 = (P1_n + P1_s).into_affine();
+        let P1_d = P1.mul_bigint(self.1.into_bigint()).into_affine();
         // Check e(accumulator, P2) == e(P1*(trapdoor - non_member), witness) * e(P1*d, P2) => e(P1*(trapdoor - non_member), witness) * e(P1*d, P2) * e(-accumulator, P2) == 1
-        pairing_product::<E>(&[e1, P1_d, -*accumulated], &[self.0, *P2, pk.0]).is_one()
+        E::multi_pairing(
+            [e1, P1_d, (-accumulated.into_group()).into_affine()],
+            [E::G2Prepared::from(self.0), P2.into(), pk.into().0],
+        )
+        .is_zero()
     }
 
     /// Divide the given polynomial by another polynomial (x - `non_member`) to get a quotient polynomial
     /// `q` and remainder `d` and then evaluate `q` at `trapdoor`
     fn from_poly(
-        non_member: &E::Fr,
-        polynomial: DenseOrSparsePolynomial<E::Fr>,
-        trapdoor: &E::Fr,
+        non_member: &E::ScalarField,
+        polynomial: DenseOrSparsePolynomial<E::ScalarField>,
+        trapdoor: &E::ScalarField,
         P2: &E::G2Affine,
     ) -> Result<Self, DelegationError> {
         let divisor = DenseOrSparsePolynomial::from(DensePolynomial::from_coefficients_slice(&[
             -*non_member,
-            E::Fr::one(),
+            E::ScalarField::one(),
         ]));
         let (q, d) = polynomial.divide_with_q_and_r(&divisor).unwrap();
         // Remainder `d` must be of degree 0 as the divisor polynomial is of degree 1.
@@ -197,19 +217,23 @@ impl<E: PairingEngine> NonMembershipWitness<E> {
     }
 }
 
-impl<E: PairingEngine> RandomizedNonMembershipWitness<E> {
+impl<E: Pairing> RandomizedNonMembershipWitness<E> {
     pub fn verify(
         &self,
         randomized_accumulated: &E::G1Affine,
         randomized_factor: &E::G1Affine,
-        pk: &PublicKey<E>,
-        P2: &E::G2Affine,
+        pk: impl Into<PreparedPublicKey<E>>,
+        P2: impl Into<E::G2Prepared>,
     ) -> bool {
-        pairing_product::<E>(
-            &[*randomized_factor, self.1, -*randomized_accumulated],
-            &[self.0, *P2, pk.0],
+        E::multi_pairing(
+            [
+                *randomized_factor,
+                self.1,
+                (-randomized_accumulated.into_group()).into_affine(),
+            ],
+            [E::G2Prepared::from(self.0), P2.into(), pk.into().0],
         )
-        .is_one()
+        .is_zero()
     }
 }
 
@@ -219,10 +243,11 @@ mod tests {
     use crate::set_commitment::SetCommitmentSRS;
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
+    type G2Prepared = <Bls12_381 as Pairing>::G2Prepared;
 
     #[test]
     fn add_remove() {
@@ -230,7 +255,7 @@ mod tests {
         let max_size = 100;
         let (srs, trapdoor) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
             StdRng,
-            Blake2b,
+            Blake2b512,
         >(&mut rng, max_size, None);
 
         let sk = SecretKey::<Bls12_381>::new(&mut rng);
@@ -257,11 +282,14 @@ mod tests {
         let max_size = 100;
         let (srs, trapdoor) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
             StdRng,
-            Blake2b,
+            Blake2b512,
         >(&mut rng, max_size, None);
 
         let sk = SecretKey::new(&mut rng);
         let pk = PublicKey::<Bls12_381>::new(&sk, srs.get_P2());
+
+        let prep_P2 = G2Prepared::from(*srs.get_P2());
+        let prep_pk = PreparedPublicKey::from(pk.clone());
 
         let m1 = (0..6).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
         let (mut a1, mut accum_poly) =
@@ -278,10 +306,10 @@ mod tests {
         assert!(wit1.verify(
             &non_member,
             a1.accumulated(),
-            &pk,
+            prep_pk.clone(),
             srs.get_s_P1(),
             srs.get_P1(),
-            srs.get_P2()
+            prep_P2.clone()
         ));
 
         let wit1_from_poly = NonMembershipWitness::from_polynomial_using_trapdoor(
@@ -294,10 +322,10 @@ mod tests {
         assert!(wit1_from_poly.verify(
             &non_member,
             a1.accumulated(),
-            &pk,
+            prep_pk.clone(),
             srs.get_s_P1(),
             srs.get_P1(),
-            srs.get_P2()
+            prep_P2.clone()
         ));
         assert_eq!(wit1, wit1_from_poly);
 
@@ -329,20 +357,20 @@ mod tests {
         assert!(!wit1.verify(
             &non_member,
             a1.accumulated(),
-            &pk,
+            prep_pk.clone(),
             srs.get_s_P1(),
             srs.get_P1(),
-            srs.get_P2()
+            prep_P2.clone()
         ));
 
         // Old witness verifies for old accumulator
         assert!(wit1.verify(
             &non_member,
             a2.accumulated(),
-            &pk,
+            prep_pk.clone(),
             srs.get_s_P1(),
             srs.get_P1(),
-            srs.get_P2()
+            prep_P2.clone()
         ));
 
         accum_poly.add_using_trapdoor(&m2, &trapdoor);
@@ -356,10 +384,10 @@ mod tests {
         assert!(wit2_from_poly.verify(
             &non_member,
             a1.accumulated(),
-            &pk,
+            prep_pk.clone(),
             srs.get_s_P1(),
             srs.get_P1(),
-            srs.get_P2()
+            prep_P2.clone()
         ));
 
         // Cannot create non-membership witness for a member
@@ -383,11 +411,14 @@ mod tests {
         let max_size = 5000;
         let (srs, trapdoor) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<
             StdRng,
-            Blake2b,
+            Blake2b512,
         >(&mut rng, max_size, None);
 
         let sk = SecretKey::new(&mut rng);
         let pk = PublicKey::<Bls12_381>::new(&sk, srs.get_P2());
+
+        let prep_P2 = G2Prepared::from(*srs.get_P2());
+        let prep_pk = PreparedPublicKey::from(pk.clone());
 
         let mut members = (0..1000).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
         let (mut accum, mut accum_poly) =
@@ -412,10 +443,10 @@ mod tests {
         assert!(wit1.verify(
             &non_member,
             accum.accumulated(),
-            &pk,
+            prep_pk.clone(),
             srs.get_s_P1(),
             srs.get_P1(),
-            srs.get_P2()
+            prep_P2.clone()
         ));
 
         let start = Instant::now();
@@ -431,10 +462,10 @@ mod tests {
         assert!(wit1_from_poly.verify(
             &non_member,
             accum.accumulated(),
-            &pk,
+            prep_pk.clone(),
             srs.get_s_P1(),
             srs.get_P1(),
-            srs.get_P2()
+            prep_P2.clone()
         ));
 
         let mut additions = (0..1000).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
@@ -474,10 +505,10 @@ mod tests {
         assert!(wit2.verify(
             &non_member,
             accum.accumulated(),
-            &pk,
+            prep_pk.clone(),
             srs.get_s_P1(),
             srs.get_P1(),
-            srs.get_P2()
+            prep_P2.clone()
         ));
 
         let start = Instant::now();
@@ -493,10 +524,10 @@ mod tests {
         assert!(wi2_from_poly.verify(
             &non_member,
             accum.accumulated(),
-            &pk,
+            prep_pk,
             srs.get_s_P1(),
             srs.get_P1(),
-            srs.get_P2()
+            prep_P2
         ));
     }
 }

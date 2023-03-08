@@ -1,7 +1,7 @@
 //! Shamir secret sharing
 
 use ark_ff::PrimeField;
-use ark_poly::{univariate::DensePolynomial, Polynomial, UVPolynomial};
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
 use ark_std::rand::RngCore;
 use ark_std::{cfg_into_iter, cfg_iter, vec::Vec};
 
@@ -67,10 +67,10 @@ impl<F: PrimeField> Shares<F> {
 pub mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn shamir_secret_sharing() {

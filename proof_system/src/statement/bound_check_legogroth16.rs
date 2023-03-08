@@ -1,6 +1,6 @@
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
+use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::vec::Vec;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -10,7 +10,7 @@ use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
 use crate::statement::Statement;
 use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
-use crate::util::{LegoProvingKeyBytes, LegoVerifyingKeyBytes};
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 
 /// Proving knowledge of message that satisfies given bounds, i.e. `min <= message <= max` using LegoGroth16.
 #[serde_as]
@@ -18,10 +18,10 @@ use crate::util::{LegoProvingKeyBytes, LegoVerifyingKeyBytes};
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct BoundCheckLegoGroth16Prover<E: PairingEngine> {
+pub struct BoundCheckLegoGroth16Prover<E: Pairing> {
     pub min: u64,
     pub max: u64,
-    #[serde_as(as = "Option<LegoProvingKeyBytes>")]
+    #[serde_as(as = "Option<ArkObjectBytes>")]
     pub snark_proving_key: Option<ProvingKey<E>>,
     pub snark_proving_key_ref: Option<usize>,
 }
@@ -32,16 +32,16 @@ pub struct BoundCheckLegoGroth16Prover<E: PairingEngine> {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct BoundCheckLegoGroth16Verifier<E: PairingEngine> {
+pub struct BoundCheckLegoGroth16Verifier<E: Pairing> {
     pub min: u64,
     pub max: u64,
-    #[serde_as(as = "Option<LegoVerifyingKeyBytes>")]
+    #[serde_as(as = "Option<ArkObjectBytes>")]
     pub snark_verifying_key: Option<VerifyingKey<E>>,
     pub snark_verifying_key_ref: Option<usize>,
 }
 
-impl<E: PairingEngine> BoundCheckLegoGroth16Prover<E> {
-    pub fn new_statement_from_params<G: AffineCurve>(
+impl<E: Pairing> BoundCheckLegoGroth16Prover<E> {
+    pub fn new_statement_from_params<G: AffineRepr>(
         min: u64,
         max: u64,
         snark_proving_key: ProvingKey<E>,
@@ -57,7 +57,7 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Prover<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineCurve>(
+    pub fn new_statement_from_params_ref<G: AffineRepr>(
         min: u64,
         max: u64,
         snark_proving_key_ref: usize,
@@ -71,7 +71,7 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Prover<E> {
         }))
     }
 
-    pub fn get_proving_key<'a, G: AffineCurve>(
+    pub fn get_proving_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -87,8 +87,8 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Prover<E> {
     }
 }
 
-impl<E: PairingEngine> BoundCheckLegoGroth16Verifier<E> {
-    pub fn new_statement_from_params<G: AffineCurve>(
+impl<E: Pairing> BoundCheckLegoGroth16Verifier<E> {
+    pub fn new_statement_from_params<G: AffineRepr>(
         min: u64,
         max: u64,
         snark_verifying_key: VerifyingKey<E>,
@@ -104,7 +104,7 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Verifier<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineCurve>(
+    pub fn new_statement_from_params_ref<G: AffineRepr>(
         min: u64,
         max: u64,
         snark_verifying_key_ref: usize,
@@ -118,7 +118,7 @@ impl<E: PairingEngine> BoundCheckLegoGroth16Verifier<E> {
         }))
     }
 
-    pub fn get_verifying_key<'a, G: AffineCurve>(
+    pub fn get_verifying_key<'a, G: AffineRepr>(
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
@@ -146,27 +146,27 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
         let snark_pk = generate_snark_srs_bound_check::<Bls12_381, _>(&mut rng).unwrap();
         assert!(BoundCheckLegoGroth16Prover::new_statement_from_params::<
-            <Bls12_381 as PairingEngine>::G1Affine,
+            <Bls12_381 as Pairing>::G1Affine,
         >(5, 5, snark_pk.clone())
         .is_err());
         assert!(BoundCheckLegoGroth16Verifier::new_statement_from_params::<
-            <Bls12_381 as PairingEngine>::G1Affine,
+            <Bls12_381 as Pairing>::G1Affine,
         >(5, 5, snark_pk.vk.clone())
         .is_err());
         assert!(BoundCheckLegoGroth16Prover::new_statement_from_params::<
-            <Bls12_381 as PairingEngine>::G1Affine,
+            <Bls12_381 as Pairing>::G1Affine,
         >(5, 4, snark_pk.clone())
         .is_err());
         assert!(BoundCheckLegoGroth16Verifier::new_statement_from_params::<
-            <Bls12_381 as PairingEngine>::G1Affine,
+            <Bls12_381 as Pairing>::G1Affine,
         >(5, 4, snark_pk.vk.clone())
         .is_err());
         assert!(BoundCheckLegoGroth16Prover::new_statement_from_params::<
-            <Bls12_381 as PairingEngine>::G1Affine,
+            <Bls12_381 as Pairing>::G1Affine,
         >(5, 6, snark_pk.clone())
         .is_ok());
         assert!(BoundCheckLegoGroth16Verifier::new_statement_from_params::<
-            <Bls12_381 as PairingEngine>::G1Affine,
+            <Bls12_381 as Pairing>::G1Affine,
         >(5, 6, snark_pk.vk.clone())
         .is_ok());
     }

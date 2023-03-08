@@ -4,21 +4,19 @@
 //! Utilities for batch updates to the accumulators and witnesses.
 
 use crate::setup::SecretKey;
-use ark_ec::AffineCurve;
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{batch_inversion, PrimeField, Zero};
-use ark_poly::polynomial::{univariate::DensePolynomial, UVPolynomial};
+use ark_poly::polynomial::{univariate::DensePolynomial, DenseUVPolynomial};
 use ark_poly::Polynomial;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     cfg_iter,
     fmt::Debug,
-    io::{Read, Write},
     iter::{IntoIterator, Iterator},
     vec,
     vec::Vec,
 };
 use dock_crypto_utils::{
-    ec::batch_normalize_projective_into_affine,
     msm::multiply_field_elems_with_same_group_elem,
     poly::{inner_product_poly, multiply_many_polys, multiply_poly},
     serde_utils::*,
@@ -27,7 +25,6 @@ use dock_crypto_utils::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use dock_crypto_utils::msm::variable_base_msm;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -408,11 +405,11 @@ where
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct Omega<G: AffineCurve>(#[serde_as(as = "Vec<AffineGroupBytes>")] pub Vec<G>);
+pub struct Omega<G: AffineRepr>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G>);
 
 impl<G> Omega<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     /// Create new `Omega` after `additions` are added and `removals` are removed from `old_accumulator`.
     /// Note that `old_accumulator` is the accumulated value before the updates were made.
@@ -424,8 +421,8 @@ where
     ) -> Self {
         let poly = Poly_v_AD::generate(additions, removals, &sk.0);
         let coeffs = poly.get_coefficients();
-        Omega(batch_normalize_projective_into_affine::<G::Projective>(
-            multiply_field_elems_with_same_group_elem(old_accumulator.into_projective(), coeffs),
+        Omega(G::Group::normalize_batch(
+            &multiply_field_elems_with_same_group_elem(old_accumulator.into_group(), coeffs),
         ))
     }
 
@@ -435,10 +432,10 @@ where
         &self,
         y: &G::ScalarField,
         scalar: &G::ScalarField,
-    ) -> G::Projective {
+    ) -> G::Group {
         let powers_of_y = Self::scaled_powers_of_y(y, scalar, self.len());
         // <powers_of_y, omega>
-        variable_base_msm(&self.0, &powers_of_y)
+        G::Group::msm_unchecked(&self.0, &powers_of_y)
     }
 
     /// Return [`scalar`*1, `scalar`*`y`, `scalar`*`y^2`, `scalar`*`y^3`, ..., `scalar`*`y^{n-1}`]
@@ -458,9 +455,11 @@ where
     }
 
     /// Scale the omega vector by the given `scalar`
-    pub fn scaled(&self, scalar: &G::ScalarField) -> Vec<G::Projective> {
-        let scalar_bigint = scalar.into_repr();
-        cfg_iter!(self.0).map(|o| o.mul(scalar_bigint)).collect()
+    pub fn scaled(&self, scalar: &G::ScalarField) -> Vec<G::Group> {
+        let scalar_bigint = scalar.into_bigint();
+        cfg_iter!(self.0)
+            .map(|o| o.mul_bigint(scalar_bigint))
+            .collect()
     }
 
     pub fn len(&self) -> usize {
@@ -490,7 +489,7 @@ where
         let v_AD = Poly_v_AD::eval_direct(additions, removals, &sk.0, element);
         let d_D_inv = Poly_d::eval_direct(removals, element).inverse().unwrap();
 
-        let mut V_prime = old_accumulator.into_projective();
+        let mut V_prime = old_accumulator.into_group();
         V_prime *= v_AD * d_D_inv;
 
         let omega = Self::new(additions, removals, old_accumulator, sk);
@@ -507,12 +506,12 @@ where
 mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_ff::One;
     use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn polys() {

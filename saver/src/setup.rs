@@ -1,18 +1,14 @@
 use crate::circuit::BitsizeCheckCircuit;
 use crate::keygen::{keygen, DecryptionKey, EncryptionKey, SecretKey};
 use crate::saver_groth16;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::to_bytes;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    io::{Read, Write},
-    rand::RngCore,
-    UniformRand,
-};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+use dock_crypto_utils::concat_slices;
 use dock_crypto_utils::hashing_utils::affine_group_elem_from_try_and_incr;
 use dock_crypto_utils::serde_utils::*;
 
@@ -21,41 +17,46 @@ use dock_crypto_utils::serde_utils::*;
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct EncryptionGens<E: PairingEngine> {
-    #[serde_as(as = "AffineGroupBytes")]
+pub struct EncryptionGens<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub G: E::G1Affine,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub H: E::G2Affine,
 }
 
 /// Create "G" and "H" from the paper.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct PreparedEncryptionGens<E: PairingEngine> {
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct PreparedEncryptionGens<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub G: E::G1Prepared,
+    #[serde_as(as = "ArkObjectBytes")]
     pub H: E::G2Prepared,
 }
 
-impl<E: PairingEngine> EncryptionGens<E> {
+impl<E: Pairing> EncryptionGens<E> {
     pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let G = affine_group_elem_from_try_and_incr::<E::G1Affine, D>(
-            &to_bytes![label, " : G".as_bytes()].unwrap(),
-        );
-        let H = affine_group_elem_from_try_and_incr::<E::G2Affine, D>(
-            &to_bytes![label, " : H".as_bytes()].unwrap(),
-        );
+        let G =
+            affine_group_elem_from_try_and_incr::<E::G1Affine, D>(&concat_slices![label, b" : G"]);
+        let H =
+            affine_group_elem_from_try_and_incr::<E::G2Affine, D>(&concat_slices![label, b" : H"]);
         Self { G, H }
     }
 
     pub fn new_using_rng<R: RngCore>(rng: &mut R) -> Self {
-        let G = E::G1Projective::rand(rng).into_affine();
-        let H = E::G2Projective::rand(rng).into_affine();
+        let G = E::G1::rand(rng).into_affine();
+        let H = E::G2::rand(rng).into_affine();
         Self { G, H }
     }
+}
 
-    pub fn prepared(&self) -> PreparedEncryptionGens<E> {
-        PreparedEncryptionGens {
-            G: E::G1Prepared::from(self.G),
-            H: E::G2Prepared::from(self.H),
+impl<E: Pairing> From<EncryptionGens<E>> for PreparedEncryptionGens<E> {
+    fn from(ek: EncryptionGens<E>) -> Self {
+        Self {
+            G: E::G1Prepared::from(ek.G),
+            H: E::G2Prepared::from(ek.H),
         }
     }
 }
@@ -65,39 +66,35 @@ impl<E: PairingEngine> EncryptionGens<E> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct ChunkedCommitmentGens<G: AffineCurve> {
-    #[serde_as(as = "AffineGroupBytes")]
+pub struct ChunkedCommitmentGens<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub G: G,
-    #[serde_as(as = "AffineGroupBytes")]
+    #[serde_as(as = "ArkObjectBytes")]
     pub H: G,
 }
 
-impl<G: AffineCurve> ChunkedCommitmentGens<G> {
+impl<G: AffineRepr> ChunkedCommitmentGens<G> {
     pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let G = affine_group_elem_from_try_and_incr::<G, D>(
-            &to_bytes![label, " : G".as_bytes()].unwrap(),
-        );
-        let H = affine_group_elem_from_try_and_incr::<G, D>(
-            &to_bytes![label, " : H".as_bytes()].unwrap(),
-        );
+        let G = affine_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : G"]);
+        let H = affine_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : H"]);
         Self { G, H }
     }
 
     pub fn new_using_rng<R: RngCore>(rng: &mut R) -> Self {
-        let G = G::Projective::rand(rng).into_affine();
-        let H = G::Projective::rand(rng).into_affine();
+        let G = G::Group::rand(rng).into_affine();
+        let H = G::Group::rand(rng).into_affine();
         Self { G, H }
     }
 }
 
 /// Generate secret key, encryption key, decryption key and generate SNARK proving and verifying key
-pub fn setup_for_groth16<E: PairingEngine, R: RngCore>(
+pub fn setup_for_groth16<E: Pairing, R: RngCore>(
     rng: &mut R,
     chunk_bit_size: u8,
     enc_gens: &EncryptionGens<E>,
 ) -> crate::Result<(
     saver_groth16::ProvingKey<E>,
-    SecretKey<E::Fr>,
+    SecretKey<E::ScalarField>,
     EncryptionKey<E>,
     DecryptionKey<E>,
 )> {
@@ -126,18 +123,18 @@ pub(crate) mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn gens() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let label = [1, 2, 3];
-        let enc_gens_1 = EncryptionGens::<Bls12_381>::new::<Blake2b>(&label);
-        let enc_gens_2 = EncryptionGens::<Bls12_381>::new::<Blake2b>(&label);
-        let enc_gens_3 = EncryptionGens::<Bls12_381>::new::<Blake2b>(&[1, 2]);
+        let enc_gens_1 = EncryptionGens::<Bls12_381>::new::<Blake2b512>(&label);
+        let enc_gens_2 = EncryptionGens::<Bls12_381>::new::<Blake2b512>(&label);
+        let enc_gens_3 = EncryptionGens::<Bls12_381>::new::<Blake2b512>(&[1, 2]);
         assert_eq!(enc_gens_1, enc_gens_2);
         assert_ne!(enc_gens_2, enc_gens_3);
         assert_ne!(
@@ -146,21 +143,16 @@ pub(crate) mod tests {
         );
 
         let comm_gens_1 =
-            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new::<Blake2b>(&label);
+            ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>::new::<Blake2b512>(&label);
         let comm_gens_2 =
-            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new::<Blake2b>(&label);
-        let comm_gens_3 = ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new::<
-            Blake2b,
-        >(&[1, 0]);
+            ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>::new::<Blake2b512>(&label);
+        let comm_gens_3 =
+            ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>::new::<Blake2b512>(&[1, 0]);
         assert_eq!(comm_gens_1, comm_gens_2);
         assert_ne!(comm_gens_2, comm_gens_3);
         assert_ne!(
-            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
-                &mut rng
-            ),
-            ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
-                &mut rng
-            )
+            ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>::new_using_rng(&mut rng),
+            ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>::new_using_rng(&mut rng)
         )
     }
 
@@ -171,12 +163,10 @@ pub(crate) mod tests {
             let mut rng = StdRng::seed_from_u64(0u64);
             let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
             let comm_gens =
-                ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>::new_using_rng(
-                    &mut rng,
-                );
+                ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>::new_using_rng(&mut rng);
             test_serialization!(EncryptionGens<Bls12_381>, enc_gens);
             test_serialization!(
-                ChunkedCommitmentGens::<<Bls12_381 as PairingEngine>::G1Affine>,
+                ChunkedCommitmentGens::<<Bls12_381 as Pairing>::G1Affine>,
                 comm_gens
             );
 

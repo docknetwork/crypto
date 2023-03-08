@@ -1,14 +1,12 @@
 //! Feldman Verifiable Secret Sharing Scheme. Based on the paper [A practical scheme for non-interactive verifiable secret sharing](https://www.cs.umd.edu/~gasarch/TOPICS/secretsharing/feldmanVSS.pdf)
 
-use ark_ec::AffineCurve;
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::univariate::DensePolynomial;
 use ark_std::rand::RngCore;
 use ark_std::{cfg_iter, vec::Vec, UniformRand};
-use dock_crypto_utils::ec::batch_normalize_projective_into_affine;
 
 use dock_crypto_utils::ff::powers;
-use dock_crypto_utils::msm::variable_base_msm;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -20,7 +18,7 @@ use crate::shamir_ss;
 /// Generate a random secret with its shares according to Feldman's verifiable secret sharing.
 /// Returns the secret, shares, and commitments to coefficients of the polynomials for
 /// the secret and the polynomial
-pub fn deal_random_secret<R: RngCore, G: AffineCurve>(
+pub fn deal_random_secret<R: RngCore, G: AffineRepr>(
     rng: &mut R,
     threshold: ShareId,
     total: ShareId,
@@ -40,7 +38,7 @@ pub fn deal_random_secret<R: RngCore, G: AffineCurve>(
 }
 
 /// Same as `deal_random_secret` above but accepts the secret to share
-pub fn deal_secret<R: RngCore, G: AffineCurve>(
+pub fn deal_secret<R: RngCore, G: AffineRepr>(
     rng: &mut R,
     secret: G::ScalarField,
     threshold: ShareId,
@@ -59,20 +57,20 @@ pub fn deal_secret<R: RngCore, G: AffineCurve>(
     Ok((shares, coeff_comms.into(), poly))
 }
 
-pub(crate) fn commit_to_poly<G: AffineCurve>(
+pub(crate) fn commit_to_poly<G: AffineRepr>(
     poly: &DensePolynomial<G::ScalarField>,
     ck: &G,
 ) -> Vec<G> {
-    batch_normalize_projective_into_affine(
-        cfg_iter!(poly.coeffs)
-            .map(|i| ck.mul(i.into_repr()))
+    G::Group::normalize_batch(
+        &cfg_iter!(poly.coeffs)
+            .map(|i| ck.mul_bigint(i.into_bigint()))
             .collect::<Vec<_>>(),
     )
 }
 
 impl<F: PrimeField> Share<F> {
     /// Executed by each participant to verify its share received from the dealer.
-    pub fn verify<G: AffineCurve<ScalarField = F>>(
+    pub fn verify<G: AffineRepr<ScalarField = F>>(
         &self,
         commitment_coeffs: &CommitmentToCoefficients<G>,
         ck: &G,
@@ -85,7 +83,9 @@ impl<F: PrimeField> Share<F> {
             &G::ScalarField::from(self.id as u64),
             self.threshold as usize,
         );
-        if variable_base_msm(&commitment_coeffs.0, &powers) != ck.mul(self.share.into_repr()) {
+        if G::Group::msm_unchecked(&commitment_coeffs.0, &powers)
+            != ck.mul_bigint(self.share.into_bigint())
+        {
             return Err(SSError::InvalidShare);
         }
         Ok(())
@@ -96,17 +96,18 @@ impl<F: PrimeField> Share<F> {
 pub mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::{PairingEngine, ProjectiveCurve};
+    use ark_ec::pairing::Pairing;
+    use ark_ec::CurveGroup;
     use ark_ff::One;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
 
     #[test]
     fn feldman_verifiable_secret_sharing() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let g1 = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
-        let g2 = <Bls12_381 as PairingEngine>::G2Projective::rand(&mut rng).into_affine();
+        let g1 = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
+        let g2 = <Bls12_381 as Pairing>::G2::rand(&mut rng).into_affine();
 
-        fn check<G: AffineCurve>(rng: &mut StdRng, g: &G) {
+        fn check<G: AffineRepr>(rng: &mut StdRng, g: &G) {
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),

@@ -1,17 +1,13 @@
 //! Amortized sigma protocol as described in Appendix B of the paper "Compressed Sigma Protocol Theory..."
 
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{PrimeField, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    io::{Read, Write},
-    ops::Add,
-    rand::RngCore,
-};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{ops::Add, rand::RngCore};
 use ark_std::{vec::Vec, UniformRand};
 use digest::Digest;
 
-use dock_crypto_utils::{ff::inner_product, msm::variable_base_msm};
+use dock_crypto_utils::ff::inner_product;
 
 use crate::compressed_linear_form;
 use crate::error::CompSigmaError;
@@ -19,7 +15,7 @@ use crate::transforms::LinearForm;
 use crate::utils::{amortized_response, get_n_powers};
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RandomCommitment<G: AffineCurve> {
+pub struct RandomCommitment<G: AffineRepr> {
     /// Maximum size of the witness vectors
     pub max_size: usize,
     pub r: Vec<G::ScalarField>,
@@ -29,14 +25,14 @@ pub struct RandomCommitment<G: AffineCurve> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Response<G: AffineCurve> {
+pub struct Response<G: AffineRepr> {
     pub z_tilde: Vec<G::ScalarField>,
     pub phi: G::ScalarField,
 }
 
 impl<G> RandomCommitment<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     pub fn new<R: RngCore, L: LinearForm<G::ScalarField>>(
         rng: &mut R,
@@ -60,7 +56,7 @@ where
         let rho = G::ScalarField::rand(rng);
         let t = linear_form.eval(&r);
         // h * rho is done separately to avoid copying g
-        let A = variable_base_msm(g, &r).add(&h.mul(rho.into_repr()));
+        let A = G::Group::msm_unchecked(g, &r).add(&h.mul_bigint(rho.into_bigint()));
         Ok(Self {
             max_size,
             r,
@@ -94,7 +90,7 @@ where
 
 impl<G> Response<G>
 where
-    G: AffineCurve,
+    G: AffineRepr,
 {
     pub fn is_valid<L: LinearForm<G::ScalarField>>(
         &self,
@@ -123,11 +119,11 @@ where
         let challenge_powers = get_n_powers(challenge.clone(), count_commitments);
 
         // P_tilde = A + \sum_{i}(P_i * c^i)
-        let mut P_tilde = A.into_projective();
-        P_tilde += variable_base_msm(commitments, &challenge_powers);
+        let mut P_tilde = A.into_group();
+        P_tilde += G::Group::msm_unchecked(commitments, &challenge_powers);
 
         // Check g*z_tilde + h*phi == P_tilde
-        let g_z = variable_base_msm(g, &self.z_tilde);
+        let g_z = G::Group::msm_unchecked(g, &self.z_tilde);
         let h_phi = h.mul(self.phi);
         if (g_z + h_phi) != P_tilde {
             return Err(CompSigmaError::InvalidResponse);
@@ -189,7 +185,7 @@ where
     }
 }
 
-pub fn prepare_for_compression<G: AffineCurve, L: LinearForm<G::ScalarField>>(
+pub fn prepare_for_compression<G: AffineRepr, L: LinearForm<G::ScalarField>>(
     g: &[G],
     h: &G,
     k: &G,
@@ -200,7 +196,7 @@ pub fn prepare_for_compression<G: AffineCurve, L: LinearForm<G::ScalarField>>(
     t: &G::ScalarField,
     challenge: &G::ScalarField,
     new_challenge: &G::ScalarField,
-) -> (Vec<G>, G::Projective, L) {
+) -> (Vec<G>, G::Group, L) {
     // g_hat = (g_0, g_1, ... g_n, h)
     let mut g_hat = g.to_vec();
     g_hat.push(*h);
@@ -209,7 +205,7 @@ pub fn prepare_for_compression<G: AffineCurve, L: LinearForm<G::ScalarField>>(
     let L_tilde = linear_form.scale(new_challenge);
 
     let challenge_powers = get_n_powers(challenge.clone(), Ps.len());
-    let P = variable_base_msm(Ps, &challenge_powers);
+    let P = G::Group::msm_unchecked(Ps, &challenge_powers);
     let Y = challenge_powers
         .iter()
         .zip(ys.iter())
@@ -218,11 +214,11 @@ pub fn prepare_for_compression<G: AffineCurve, L: LinearForm<G::ScalarField>>(
         .unwrap();
 
     // Q = P + k * (new_challenge*(Y + t)) + A
-    let Q = (P + k.mul(*new_challenge * (Y + t))).add_mixed(&A);
+    let Q = P + k.mul(*new_challenge * (Y + t)) + A;
     (g_hat, Q, L_tilde)
 }
 
-fn calculate_Q<G: AffineCurve>(
+fn calculate_Q<G: AffineRepr>(
     k: &G,
     Ps: &[G],
     ys: &[G::ScalarField],
@@ -230,9 +226,9 @@ fn calculate_Q<G: AffineCurve>(
     t: &G::ScalarField,
     challenge: &G::ScalarField,
     new_challenge: &G::ScalarField,
-) -> G::Projective {
+) -> G::Group {
     let challenge_powers = get_n_powers(challenge.clone(), Ps.len());
-    let P = variable_base_msm(Ps, &challenge_powers);
+    let P = G::Group::msm_unchecked(Ps, &challenge_powers);
     let Y = challenge_powers
         .iter()
         .zip(ys.iter())
@@ -241,23 +237,22 @@ fn calculate_Q<G: AffineCurve>(
         .unwrap();
 
     // Q = P + k * (new_challenge*(Y + t)) + A
-    (P + k.mul(*new_challenge * (Y + t))).add_mixed(&A)
+    P + k.mul(*new_challenge * (Y + t)) + A
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::msm::VariableBaseMSM;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_ff::Zero;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
 
-    type Fr = <Bls12_381 as PairingEngine>::Fr;
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     struct TestLinearForm1 {}
 
@@ -319,30 +314,24 @@ mod tests {
             let gamma3 = Fr::rand(&mut rng);
 
             let g = (0..max_size)
-                .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+                .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
-            let h = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+            let h = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
 
-            let comm1 = (VariableBaseMSM::multi_scalar_mul(
-                &g,
-                &x1.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-            ) + h.mul(gamma1.into_repr()))
+            let comm1 = (<Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x1)
+                + h.mul_bigint(gamma1.into_bigint()))
             .into_affine();
             let eval1 = linear_form_1.eval(&x1);
             let eval12 = linear_form_2.eval(&x1);
 
-            let comm2 = (VariableBaseMSM::multi_scalar_mul(
-                &g,
-                &x2.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-            ) + h.mul(gamma2.into_repr()))
+            let comm2 = (<Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x2)
+                + h.mul_bigint(gamma2.into_bigint()))
             .into_affine();
             let eval2 = linear_form_1.eval(&x2);
             let eval22 = linear_form_2.eval(&x2);
 
-            let comm3 = (VariableBaseMSM::multi_scalar_mul(
-                &g,
-                &x3.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-            ) + h.mul(gamma3.into_repr()))
+            let comm3 = (<Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x3)
+                + h.mul_bigint(gamma3.into_bigint()))
             .into_affine();
             let eval3 = linear_form_1.eval(&x3);
             let eval32 = linear_form_2.eval(&x3);
@@ -423,29 +412,23 @@ mod tests {
         let gamma3 = Fr::rand(&mut rng);
 
         let g = (0..max_size)
-            .map(|_| <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine())
+            .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
             .collect::<Vec<_>>();
-        let h = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
-        let k = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
+        let h = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
+        let k = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
 
-        let comm1 = (VariableBaseMSM::multi_scalar_mul(
-            &g,
-            &x1.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-        ) + h.mul(gamma1.into_repr()))
+        let comm1 = (<Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x1)
+            + h.mul_bigint(gamma1.into_bigint()))
         .into_affine();
         let eval1 = linear_form.eval(&x1);
 
-        let comm2 = (VariableBaseMSM::multi_scalar_mul(
-            &g,
-            &x2.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-        ) + h.mul(gamma2.into_repr()))
+        let comm2 = (<Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x2)
+            + h.mul_bigint(gamma2.into_bigint()))
         .into_affine();
         let eval2 = linear_form.eval(&x2);
 
-        let comm3 = (VariableBaseMSM::multi_scalar_mul(
-            &g,
-            &x3.iter().map(|x| x.into_repr()).collect::<Vec<_>>(),
-        ) + h.mul(gamma3.into_repr()))
+        let comm3 = (<Bls12_381 as Pairing>::G1::msm_unchecked(&g, &x3)
+            + h.mul_bigint(gamma3.into_bigint()))
         .into_affine();
         let eval3 = linear_form.eval(&x3);
 
@@ -474,8 +457,8 @@ mod tests {
             .unwrap();
 
         let c_1 = Fr::rand(&mut rng);
-        let comp_resp = response.compress::<Blake2b, _>(&g, &h, &k, &linear_form, &c_1);
-        Response::is_valid_compressed::<Blake2b, _>(
+        let comp_resp = response.compress::<Blake2b512, _>(&g, &h, &k, &linear_form, &c_1);
+        Response::is_valid_compressed::<Blake2b512, _>(
             &g,
             &h,
             &k,

@@ -11,18 +11,12 @@ use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
 use crate::sub_protocols::r1cs_legogorth16::R1CSLegogroth16Protocol;
 use crate::sub_protocols::saver::SaverProtocol;
 use crate::sub_protocols::schnorr::SchnorrProtocol;
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{
-    collections::BTreeMap,
-    format,
-    io::{Read, Write},
-    rand::RngCore,
-    vec,
-    vec::Vec,
-};
+use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec};
 use digest::Digest;
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
 use saver::encryption::Ciphertext;
 
 /// Passed to the verifier during proof verification
@@ -41,14 +35,13 @@ impl Default for VerifierConfig {
     }
 }
 
-impl<E, G, D> Proof<E, G, D>
+impl<E, G> Proof<E, G>
 where
-    E: PairingEngine,
-    G: AffineCurve<ScalarField = E::Fr>,
-    D: Digest,
+    E: Pairing,
+    G: AffineRepr<ScalarField = E::ScalarField>,
 {
     /// Verify the `Proof` given the `ProofSpec`, `nonce` and `config`
-    pub fn verify<R: RngCore>(
+    pub fn verify<R: RngCore, D: Digest>(
         self,
         rng: &mut R,
         proof_spec: ProofSpec<E, G>,
@@ -58,13 +51,13 @@ where
         match config.use_lazy_randomized_pairing_checks {
             Some(b) => {
                 let pairing_checker = RandomizedPairingChecker::new_using_rng(rng, b);
-                self._verify::<R>(rng, proof_spec, nonce, Some(pairing_checker))
+                self._verify::<R, D>(rng, proof_spec, nonce, Some(pairing_checker))
             }
-            None => self._verify::<R>(rng, proof_spec, nonce, None),
+            None => self._verify::<R, D>(rng, proof_spec, nonce, None),
         }
     }
 
-    fn _verify<R: RngCore>(
+    fn _verify<R: RngCore, D: Digest>(
         self,
         rng: &mut R,
         proof_spec: ProofSpec<E, G>,
@@ -87,7 +80,7 @@ where
         let aggregate_snarks =
             proof_spec.aggregate_groth16.is_some() || proof_spec.aggregate_legogroth16.is_some();
         let mut agg_saver = Vec::<Vec<Ciphertext<E>>>::new();
-        let mut agg_lego = Vec::<(Vec<E::G1Affine>, Vec<Vec<E::Fr>>)>::new();
+        let mut agg_lego = Vec::<(Vec<E::G1Affine>, Vec<Vec<E::ScalarField>>)>::new();
 
         let mut agg_saver_stmts = BTreeMap::new();
         let mut agg_lego_stmts = BTreeMap::new();
@@ -116,9 +109,17 @@ where
         let (bound_check_comm, ek_comm, chunked_comm, r1cs_comm_keys) =
             proof_spec.derive_commitment_keys()?;
 
-        // Prepared required parameters for pairings
-        let (derived_lego_vk, derived_gens, derived_ek, derived_saver_vk) =
-            proof_spec.derive_prepared_parameters()?;
+        // Prepare required parameters for pairings
+        let (
+            derived_lego_vk,
+            derived_gens,
+            derived_ek,
+            derived_saver_vk,
+            derived_bbs_param,
+            derived_bbs_pk,
+            derived_accum_param,
+            derived_accum_pk,
+        ) = proof_spec.derive_prepared_parameters()?;
 
         // All the distinct equalities in `ProofSpec`
         let mut witness_equalities = vec![];
@@ -132,7 +133,7 @@ where
 
         // This will hold the response for each witness equality. If there is no response for some witness
         // equality, it will contain `None` corresponding to that.
-        let mut responses_for_equalities: Vec<Option<&E::Fr>> =
+        let mut responses_for_equalities: Vec<Option<&E::ScalarField>> =
             vec![None; witness_equalities.len()];
 
         // Get nonce's and context's challenge contribution
@@ -473,7 +474,7 @@ where
         }
 
         // Verifier independently generates challenge
-        let challenge = Self::generate_challenge_from_bytes(&challenge_bytes);
+        let challenge = Self::generate_challenge_from_bytes::<D>(&challenge_bytes);
 
         // Verify the proof for each statement
         for (s_idx, (statement, proof)) in proof_spec
@@ -494,7 +495,13 @@ where
                             sig_params,
                             pk,
                         );
-                        sp.verify_proof_contribution(&challenge, &p, &mut pairing_checker)?
+                        sp.verify_proof_contribution(
+                            &challenge,
+                            &p,
+                            derived_bbs_pk.get(s_idx).unwrap().clone(),
+                            derived_bbs_param.get(s_idx).unwrap().clone(),
+                            &mut pairing_checker,
+                        )?
                     }
                     _ => {
                         return Err(ProofSystemError::ProofIncompatibleWithStatement(
@@ -516,7 +523,13 @@ where
                             prk,
                             s.accumulator_value,
                         );
-                        sp.verify_proof_contribution(&challenge, &p, &mut pairing_checker)?
+                        sp.verify_proof_contribution(
+                            &challenge,
+                            &p,
+                            derived_accum_pk.get(s_idx).unwrap().clone(),
+                            derived_accum_param.get(s_idx).unwrap().clone(),
+                            &mut pairing_checker,
+                        )?
                     }
                     _ => {
                         return Err(ProofSystemError::ProofIncompatibleWithStatement(
@@ -538,7 +551,13 @@ where
                             prk,
                             s.accumulator_value,
                         );
-                        sp.verify_proof_contribution(&challenge, &p, &mut pairing_checker)?
+                        sp.verify_proof_contribution(
+                            &challenge,
+                            &p,
+                            derived_accum_pk.get(s_idx).unwrap().clone(),
+                            derived_accum_param.get(s_idx).unwrap().clone(),
+                            &mut pairing_checker,
+                        )?
                     }
                     _ => {
                         return Err(ProofSystemError::ProofIncompatibleWithStatement(
@@ -580,18 +599,17 @@ where
                     let cc_keys = chunked_comm.get(s_idx).unwrap();
 
                     match proof {
-                        StatementProof::Saver(ref saver_proof) => sp
-                            .verify_proof_contribution_using_prepared(
-                                &challenge,
-                                saver_proof,
-                                ek_comm_key,
-                                &cc_keys.0,
-                                &cc_keys.1,
-                                derived_saver_vk.get(s_idx).unwrap(),
-                                derived_gens.get(s_idx).unwrap(),
-                                derived_ek.get(s_idx).unwrap(),
-                                &mut pairing_checker,
-                            )?,
+                        StatementProof::Saver(ref saver_proof) => sp.verify_proof_contribution(
+                            &challenge,
+                            saver_proof,
+                            ek_comm_key,
+                            &cc_keys.0,
+                            &cc_keys.1,
+                            derived_saver_vk.get(s_idx).unwrap(),
+                            derived_gens.get(s_idx).unwrap().clone(),
+                            derived_ek.get(s_idx).unwrap().clone(),
+                            &mut pairing_checker,
+                        )?,
                         StatementProof::SaverWithAggregation(ref saver_proof) => {
                             let agg_idx = agg_saver_stmts.get(&s_idx).ok_or_else(|| {
                                 ProofSystemError::InvalidStatementProofIndex(s_idx)
@@ -629,7 +647,8 @@ where
                                 &mut pairing_checker,
                             )?,
                         StatementProof::BoundCheckLegoGroth16WithAggregation(ref bc_proof) => {
-                            let pub_inp = vec![E::Fr::from(sp.min), E::Fr::from(sp.max)];
+                            let pub_inp =
+                                vec![E::ScalarField::from(sp.min), E::ScalarField::from(sp.max)];
                             let agg_idx = agg_lego_stmts.get(&s_idx).ok_or_else(|| {
                                 ProofSystemError::InvalidStatementProofIndex(s_idx)
                             })?;
@@ -699,7 +718,6 @@ where
                 _ => return Err(ProofSystemError::SnarckpackSrsNotProvided),
             };
 
-            use legogroth16::aggregation::transcript::{new_merlin_transcript, Transcript};
             let mut transcript = new_merlin_transcript(b"aggregation");
             transcript.append(b"challenge", &challenge);
 
@@ -726,8 +744,8 @@ where
                         SaverProtocol::verify_ciphertext_commitments_in_batch(
                             rng,
                             ciphertexts,
-                            derived_gens.get(s_id).unwrap(),
-                            derived_ek.get(s_id).unwrap(),
+                            derived_gens.get(s_id).unwrap().clone(),
+                            derived_ek.get(s_id).unwrap().clone(),
                             &mut pairing_checker,
                         )?;
                         saver::saver_groth16::verify_aggregate_proof(
@@ -737,7 +755,7 @@ where
                             ciphertexts,
                             rng,
                             &mut transcript,
-                            None,
+                            pairing_checker.as_mut(),
                         )?;
                     }
                 } else {
@@ -767,7 +785,7 @@ where
                             &agg_lego[i].0,
                             rng,
                             &mut transcript,
-                            None,
+                            pairing_checker.as_mut(),
                         )
                             .map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?
                     }
@@ -791,8 +809,8 @@ where
         stmt_id: usize,
         wit_id: usize,
         equality_id: usize,
-        responses_for_equalities: &mut [Option<&'a E::Fr>],
-        resp: &'a E::Fr,
+        responses_for_equalities: &mut [Option<&'a E::ScalarField>],
+        resp: &'a E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         if responses_for_equalities[equality_id].is_none() {
             // First response encountered for the witness

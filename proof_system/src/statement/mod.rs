@@ -1,4 +1,4 @@
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     io::{Read, Write},
@@ -18,7 +18,7 @@ pub use serialization::*;
 /// Type of relation being proved and the public values for the relation
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub enum Statement<E: PairingEngine, G: AffineCurve> {
+pub enum Statement<E: Pairing, G: AffineRepr> {
     /// For proof of knowledge of BBS+ signature
     PoKBBSSignatureG1(bbs_plus::PoKBBSSignatureG1<E>),
     /// For proof of knowledge of committed elements in a Pedersen commitment
@@ -48,13 +48,13 @@ pub enum Statement<E: PairingEngine, G: AffineCurve> {
 #[serde(bound = "")]
 pub struct Statements<E, G>(pub Vec<Statement<E, G>>)
 where
-    E: PairingEngine,
-    G: AffineCurve;
+    E: Pairing,
+    G: AffineRepr;
 
 impl<E, G> Statements<E, G>
 where
-    E: PairingEngine,
-    G: AffineCurve,
+    E: Pairing,
+    G: AffineRepr,
 {
     pub fn new() -> Self {
         Self(Vec::new())
@@ -76,290 +76,147 @@ where
 
 mod serialization {
     use super::*;
+    use ark_serialize::{Compress, Valid, Validate};
 
-    impl<E: PairingEngine, G: AffineCurve> CanonicalSerialize for Statement<E, G> {
-        fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+    impl<E: Pairing, G: AffineRepr> Valid for Statement<E, G> {
+        fn check(&self) -> Result<(), SerializationError> {
             match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::AccumulatorMembership(s) => {
-                    CanonicalSerialize::serialize(&1u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    CanonicalSerialize::serialize(&2u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::PedersenCommitment(s) => {
-                    CanonicalSerialize::serialize(&3u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::SaverProver(s) => {
-                    CanonicalSerialize::serialize(&4u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::SaverVerifier(s) => {
-                    CanonicalSerialize::serialize(&5u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::BoundCheckLegoGroth16Prover(s) => {
-                    CanonicalSerialize::serialize(&6u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::BoundCheckLegoGroth16Verifier(s) => {
-                    CanonicalSerialize::serialize(&7u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::R1CSCircomProver(s) => {
-                    CanonicalSerialize::serialize(&8u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-                Self::R1CSCircomVerifier(s) => {
-                    CanonicalSerialize::serialize(&9u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-            }
-        }
-
-        fn serialized_size(&self) -> usize {
-            match self {
-                Self::PoKBBSSignatureG1(s) => 0u8.serialized_size() + s.serialized_size(),
-                Self::AccumulatorMembership(s) => 1u8.serialized_size() + s.serialized_size(),
-                Self::AccumulatorNonMembership(s) => 2u8.serialized_size() + s.serialized_size(),
-                Self::PedersenCommitment(s) => 3u8.serialized_size() + s.serialized_size(),
-                Self::SaverProver(s) => 4u8.serialized_size() + s.serialized_size(),
-                Self::SaverVerifier(s) => 5u8.serialized_size() + s.serialized_size(),
-                Self::BoundCheckLegoGroth16Prover(s) => 6u8.serialized_size() + s.serialized_size(),
-                Self::BoundCheckLegoGroth16Verifier(s) => {
-                    7u8.serialized_size() + s.serialized_size()
-                }
-                Self::R1CSCircomProver(s) => 8u8.serialized_size() + s.serialized_size(),
-                Self::R1CSCircomVerifier(s) => 97u8.serialized_size() + s.serialized_size(),
-            }
-        }
-
-        fn serialize_uncompressed<W: Write>(
-            &self,
-            mut writer: W,
-        ) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::AccumulatorMembership(s) => {
-                    1u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::PedersenCommitment(s) => {
-                    3u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::SaverProver(s) => {
-                    4u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::SaverVerifier(s) => {
-                    5u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::BoundCheckLegoGroth16Prover(s) => {
-                    6u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::BoundCheckLegoGroth16Verifier(s) => {
-                    7u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::R1CSCircomProver(s) => {
-                    8u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-                Self::R1CSCircomVerifier(s) => {
-                    9u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
-                }
-            }
-        }
-
-        fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::AccumulatorMembership(s) => {
-                    1u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::PedersenCommitment(s) => {
-                    3u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::SaverProver(s) => {
-                    4u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::SaverVerifier(s) => {
-                    5u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::BoundCheckLegoGroth16Prover(s) => {
-                    6u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::BoundCheckLegoGroth16Verifier(s) => {
-                    7u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::R1CSCircomProver(s) => {
-                    8u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-                Self::R1CSCircomVerifier(s) => {
-                    9u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
-                }
-            }
-        }
-
-        fn uncompressed_size(&self) -> usize {
-            match self {
-                Self::PoKBBSSignatureG1(s) => 0u8.uncompressed_size() + s.uncompressed_size(),
-                Self::AccumulatorMembership(s) => 1u8.uncompressed_size() + s.uncompressed_size(),
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.uncompressed_size() + s.uncompressed_size()
-                }
-                Self::PedersenCommitment(s) => 3u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverProver(s) => 4u8.uncompressed_size() + s.uncompressed_size(),
-                Self::SaverVerifier(s) => 5u8.uncompressed_size() + s.uncompressed_size(),
-                Self::BoundCheckLegoGroth16Prover(s) => {
-                    6u8.uncompressed_size() + s.uncompressed_size()
-                }
-                Self::BoundCheckLegoGroth16Verifier(s) => {
-                    7u8.uncompressed_size() + s.uncompressed_size()
-                }
-                Self::R1CSCircomProver(s) => 8u8.uncompressed_size() + s.uncompressed_size(),
-                Self::R1CSCircomVerifier(s) => 9u8.uncompressed_size() + s.uncompressed_size(),
+                Self::PoKBBSSignatureG1(s) => s.check(),
+                Self::AccumulatorMembership(s) => s.check(),
+                Self::AccumulatorNonMembership(s) => s.check(),
+                Self::PedersenCommitment(s) => s.check(),
+                Self::SaverProver(s) => s.check(),
+                Self::SaverVerifier(s) => s.check(),
+                Self::BoundCheckLegoGroth16Prover(s) => s.check(),
+                Self::BoundCheckLegoGroth16Verifier(s) => s.check(),
+                Self::R1CSCircomProver(s) => s.check(),
+                Self::R1CSCircomVerifier(s) => s.check(),
             }
         }
     }
 
-    impl<E: PairingEngine, G: AffineCurve> CanonicalDeserialize for Statement<E, G> {
-        fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
+    impl<E: Pairing, G: AffineRepr> CanonicalSerialize for Statement<E, G> {
+        fn serialize_with_mode<W: Write>(
+            &self,
+            mut writer: W,
+            compress: Compress,
+        ) -> Result<(), SerializationError> {
+            match self {
+                Self::PoKBBSSignatureG1(s) => {
+                    CanonicalSerialize::serialize_with_mode(&0u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::AccumulatorMembership(s) => {
+                    CanonicalSerialize::serialize_with_mode(&1u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::AccumulatorNonMembership(s) => {
+                    CanonicalSerialize::serialize_with_mode(&2u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::PedersenCommitment(s) => {
+                    CanonicalSerialize::serialize_with_mode(&3u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::SaverProver(s) => {
+                    CanonicalSerialize::serialize_with_mode(&4u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::SaverVerifier(s) => {
+                    CanonicalSerialize::serialize_with_mode(&5u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::BoundCheckLegoGroth16Prover(s) => {
+                    CanonicalSerialize::serialize_with_mode(&6u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::BoundCheckLegoGroth16Verifier(s) => {
+                    CanonicalSerialize::serialize_with_mode(&7u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::R1CSCircomProver(s) => {
+                    CanonicalSerialize::serialize_with_mode(&8u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+                Self::R1CSCircomVerifier(s) => {
+                    CanonicalSerialize::serialize_with_mode(&9u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                }
+            }
+        }
+
+        fn serialized_size(&self, compress: Compress) -> usize {
+            match self {
+                Self::PoKBBSSignatureG1(s) => {
+                    0u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::AccumulatorMembership(s) => {
+                    1u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::AccumulatorNonMembership(s) => {
+                    2u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::PedersenCommitment(s) => {
+                    3u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::SaverProver(s) => 4u8.serialized_size(compress) + s.serialized_size(compress),
+                Self::SaverVerifier(s) => {
+                    5u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::BoundCheckLegoGroth16Prover(s) => {
+                    6u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::BoundCheckLegoGroth16Verifier(s) => {
+                    7u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::R1CSCircomProver(s) => {
+                    8u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+                Self::R1CSCircomVerifier(s) => {
+                    97u8.serialized_size(compress) + s.serialized_size(compress)
+                }
+            }
+        }
+    }
+
+    impl<E: Pairing, G: AffineRepr> CanonicalDeserialize for Statement<E, G> {
+        fn deserialize_with_mode<R: Read>(
+            mut reader: R,
+            compress: Compress,
+            validate: Validate,
+        ) -> Result<Self, SerializationError> {
+            let t: u8 =
+                CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
             match t {
-                0u8 => Ok(Self::PoKBBSSignatureG1(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                4u8 => Ok(Self::SaverProver(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                5u8 => Ok(Self::SaverVerifier(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                6u8 => Ok(Self::BoundCheckLegoGroth16Prover(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                7u8 => Ok(Self::BoundCheckLegoGroth16Verifier(
-                    CanonicalDeserialize::deserialize(&mut reader)?,
-                )),
-                8u8 => Ok(Self::R1CSCircomProver(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                9u8 => Ok(Self::R1CSCircomVerifier(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_uncompressed(&mut reader)? {
                 0u8 => Ok(Self::PoKBBSSignatureG1(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 1u8 => Ok(Self::AccumulatorMembership(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 2u8 => Ok(Self::AccumulatorNonMembership(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 3u8 => Ok(Self::PedersenCommitment(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 4u8 => Ok(Self::SaverProver(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 5u8 => Ok(Self::SaverVerifier(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 6u8 => Ok(Self::BoundCheckLegoGroth16Prover(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 7u8 => Ok(Self::BoundCheckLegoGroth16Verifier(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 8u8 => Ok(Self::R1CSCircomProver(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 9u8 => Ok(Self::R1CSCircomVerifier(
-                    CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_unchecked(&mut reader)? {
-                0u8 => Ok(Self::PoKBBSSignatureG1(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                4u8 => Ok(Self::SaverProver(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                5u8 => Ok(Self::SaverVerifier(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                6u8 => Ok(Self::BoundCheckLegoGroth16Prover(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                7u8 => Ok(Self::BoundCheckLegoGroth16Verifier(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                8u8 => Ok(Self::R1CSCircomProver(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
-                )),
-                9u8 => Ok(Self::R1CSCircomVerifier(
-                    CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
             }
@@ -372,9 +229,7 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_bls12_381::{fr::Fr, g1::G1Projective as G1Proj};
-    use ark_ec::msm::VariableBaseMSM;
-    use ark_ec::ProjectiveCurve;
-    use ark_ff::PrimeField;
+    use ark_ec::{CurveGroup, VariableBaseMSM};
     use ark_std::{
         collections::BTreeMap,
         rand::{rngs::StdRng, SeedableRng},
@@ -394,15 +249,13 @@ mod tests {
         let (pos_params, pos_keypair, pos_accumulator, _) = setup_positive_accum(&mut rng);
         let (uni_params, uni_keypair, uni_accumulator, _, _) = setup_universal_accum(&mut rng, 100);
         let mem_prk =
-            MembershipProvingKey::<<Bls12_381 as PairingEngine>::G1Affine>::generate_using_rng(
-                &mut rng,
-            );
+            MembershipProvingKey::<<Bls12_381 as Pairing>::G1Affine>::generate_using_rng(&mut rng);
         let non_mem_prk =
-            NonMembershipProvingKey::<<Bls12_381 as PairingEngine>::G1Affine>::generate_using_rng(
+            NonMembershipProvingKey::<<Bls12_381 as Pairing>::G1Affine>::generate_using_rng(
                 &mut rng,
             );
 
-        let mut statements: Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine> =
+        let mut statements: Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine> =
             Statements::new();
 
         let stmt_1 = bbs_plus::PoKBBSSignatureG1::new_statement_from_params(
@@ -410,50 +263,46 @@ mod tests {
             keypair_1.public_key.clone(),
             BTreeMap::new(),
         );
-        test_serialization!(Statement<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, stmt_1);
+        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_1);
 
         statements.add(stmt_1);
-        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
 
         let stmt_2 = accumulator::AccumulatorMembership::new_statement_from_params::<
-            <Bls12_381 as PairingEngine>::G1Affine,
+            <Bls12_381 as Pairing>::G1Affine,
         >(
             pos_params.clone(),
             pos_keypair.public_key.clone(),
             mem_prk.clone(),
             pos_accumulator.value().clone(),
         );
-        test_serialization!(Statement<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, stmt_2);
+        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_2);
 
         statements.add(stmt_2);
-        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
 
         let stmt_3 = accumulator::AccumulatorNonMembership::new_statement_from_params::<
-            <Bls12_381 as PairingEngine>::G1Affine,
+            <Bls12_381 as Pairing>::G1Affine,
         >(
             uni_params.clone(),
             uni_keypair.public_key.clone(),
             non_mem_prk.clone(),
             uni_accumulator.value().clone(),
         );
-        test_serialization!(Statement<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, stmt_3);
+        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_3);
 
         statements.add(stmt_3);
-        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
 
         let bases = (0..5)
             .map(|_| G1Proj::rand(&mut rng).into_affine())
             .collect::<Vec<_>>();
         let scalars = (0..5).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
-        let commitment = VariableBaseMSM::multi_scalar_mul(
-            &bases,
-            &scalars.iter().map(|s| s.into_repr()).collect::<Vec<_>>(),
-        )
-        .into_affine();
+        let commitment = G1Proj::msm_unchecked(&bases, &scalars).into_affine();
         let stmt_4 = ped_comm::PedersenCommitment::new_statement_from_params(bases, commitment);
-        test_serialization!(Statement<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, stmt_4);
+        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_4);
 
         statements.add(stmt_4);
-        test_serialization!(Statements<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>, statements);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
     }
 }

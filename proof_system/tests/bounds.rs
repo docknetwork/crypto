@@ -3,6 +3,7 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
+use blake2::Blake2b512;
 use std::time::Instant;
 
 use proof_system::prelude::{
@@ -87,7 +88,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let start = Instant::now();
-    let (proof, comm_rand) = ProofG1::new(
+    let (proof, comm_rand) = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -128,7 +129,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     let start = Instant::now();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -142,7 +143,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     );
     proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -163,7 +164,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         reuse_saver_proofs: None,
         reuse_legogroth16_proofs: Some(m),
     };
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -179,7 +180,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     );
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -188,7 +189,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         .unwrap();
     proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -213,7 +214,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     );
     proof_spec_prover.validate().unwrap();
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -232,7 +233,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     proof_spec_verifier.validate().unwrap();
     assert!(proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_verifier.clone(),
             None,
@@ -240,7 +241,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         )
         .is_err());
     assert!(proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_verifier.clone(),
             None,
@@ -262,7 +263,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
     proof_spec_prover.validate().unwrap();
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover,
         witnesses_wrong,
@@ -275,7 +276,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     proof_spec_verifier.validate().unwrap();
     assert!(proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_verifier.clone(),
             None,
@@ -283,7 +284,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         )
         .is_err());
     assert!(proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_verifier,
             None,
@@ -326,7 +327,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     ));
     prover_statements.add(
         BoundCheckProverStmt::new_statement_from_params(
-            msg.into_repr().as_ref()[0],
+            msg.into_bigint().as_ref()[0],
             max,
             snark_pk.clone(),
         )
@@ -354,7 +355,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     ));
     witnesses.add(Witness::BoundCheckLegoGroth16(msg));
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -372,7 +373,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     ));
     verifier_statements.add(
         BoundCheckVerifierStmt::new_statement_from_params(
-            msg.into_repr().as_ref()[0],
+            msg.into_bigint().as_ref()[0],
             max,
             snark_pk.vk.clone(),
         )
@@ -386,7 +387,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     );
     proof_spec_verifier.validate().unwrap();
     proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_verifier.clone(),
             None,
@@ -404,7 +405,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     prover_statements.add(
         BoundCheckProverStmt::new_statement_from_params(
             min,
-            msg.into_repr().as_ref()[0],
+            msg.into_bigint().as_ref()[0],
             snark_pk.clone(),
         )
         .unwrap(),
@@ -431,7 +432,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     ));
     witnesses.add(Witness::BoundCheckLegoGroth16(msg));
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -450,7 +451,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     verifier_statements.add(
         BoundCheckVerifierStmt::new_statement_from_params(
             min,
-            msg.into_repr().as_ref()[0],
+            msg.into_bigint().as_ref()[0],
             snark_pk.vk.clone(),
         )
         .unwrap(),
@@ -463,7 +464,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     );
     proof_spec_verifier.validate().unwrap();
     proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_verifier.clone(),
             None,
@@ -576,7 +577,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         witnesses.add(Witness::BoundCheckLegoGroth16(msg_3));
 
         let start = Instant::now();
-        let (proof, comm_rand) = ProofG1::new(
+        let (proof, comm_rand) = ProofG1::new::<StdRng, Blake2b512>(
             &mut rng,
             prover_proof_spec.clone(),
             witnesses.clone(),
@@ -656,7 +657,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         let start = Instant::now();
         proof
             .clone()
-            .verify::<StdRng>(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -671,7 +672,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         let start = Instant::now();
         proof
             .clone()
-            .verify(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,
@@ -699,7 +700,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
             reuse_saver_proofs: None,
             reuse_legogroth16_proofs: Some(m),
         };
-        let proof = ProofG1::new(
+        let proof = ProofG1::new::<StdRng, Blake2b512>(
             &mut rng,
             prover_proof_spec.clone(),
             witnesses.clone(),
@@ -714,7 +715,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
             start.elapsed()
         );
         proof
-            .verify::<StdRng>(
+            .verify::<StdRng, Blake2b512>(
                 &mut rng,
                 verifier_proof_spec.clone(),
                 None,

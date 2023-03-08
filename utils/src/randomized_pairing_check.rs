@@ -1,7 +1,8 @@
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{Field, One, PrimeField};
+use ark_ec::pairing::{MillerLoopOutput, PairingOutput};
+use ark_ec::{pairing::Pairing, AffineRepr, Group};
+use ark_ff::{One, PrimeField, Zero};
 use ark_std::rand::Rng;
-use ark_std::{cfg_into_iter, cfg_iter, vec, vec::Vec, UniformRand};
+use ark_std::{cfg_iter, ops::MulAssign, vec, vec::Vec, UniformRand};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -13,46 +14,46 @@ use rayon::prelude::*;
 /// exponentiation when verifying if all checks are verified.
 /// For each pairing equation, multiply by a power of a random element created during initialization
 #[derive(Debug, Clone)]
-pub struct RandomizedPairingChecker<E: PairingEngine> {
+pub struct RandomizedPairingChecker<E: Pairing> {
     /// a miller loop result that is to be multiplied by other miller loop results
     /// before going into a final exponentiation result
-    left: E::Fqk,
+    left: MillerLoopOutput<E>,
     /// a right side result which is already in the right subgroup Gt which is to
     /// be compared to the left side when "final_exponentiatiat"-ed
-    right: E::Fqk,
+    right: PairingOutput<E>,
     /// If true, delays the computation of miller loops till the end (unless overridden) trading off memory for CPU time.
     lazy: bool,
     /// Keeps the pairs of G1, G2 elements that need to be used in miller loops when running lazily
-    pending: Vec<(E::G1Prepared, E::G2Prepared)>,
-    random: E::Fr,
+    pending: (Vec<E::G1Prepared>, Vec<E::G2Prepared>),
+    random: E::ScalarField,
     /// For each pairing equation, its multiplied by `self.random`
-    current_random: E::Fr,
+    current_random: E::ScalarField,
 }
 
 impl<E> RandomizedPairingChecker<E>
 where
-    E: PairingEngine,
+    E: Pairing,
 {
     pub fn new_using_rng<R: Rng>(rng: &mut R, lazy: bool) -> Self {
-        Self::new(E::Fr::rand(rng), lazy)
+        Self::new(E::ScalarField::rand(rng), lazy)
     }
 
-    pub fn new(random: E::Fr, lazy: bool) -> Self {
+    pub fn new(random: E::ScalarField, lazy: bool) -> Self {
         Self {
-            left: E::Fqk::one(),
-            right: E::Fqk::one(),
+            left: MillerLoopOutput(E::TargetField::one()),
+            right: PairingOutput::zero(),
             lazy,
-            pending: vec![],
+            pending: (vec![], vec![]),
             random,
-            current_random: E::Fr::one(),
+            current_random: E::ScalarField::one(),
         }
     }
 
     pub fn add_multiple_sources_and_target(
         &mut self,
         a: &[E::G1Affine],
-        b: &[E::G2Affine],
-        out: &E::Fqk,
+        b: impl IntoIterator<Item = impl Into<E::G2Prepared>>,
+        out: &PairingOutput<E>,
     ) {
         self.add_multiple_sources_and_target_with_laziness_choice(a, b, out, self.lazy)
     }
@@ -60,148 +61,110 @@ where
     pub fn add_multiple_sources(
         &mut self,
         a: &[E::G1Affine],
-        b: &[E::G2Affine],
+        b: impl IntoIterator<Item = impl Into<E::G2Prepared>>,
         c: &[E::G1Affine],
-        d: &[E::G2Affine],
+        d: impl IntoIterator<Item = impl Into<E::G2Prepared>>,
     ) {
         self.add_multiple_sources_with_laziness_choice(a, b, c, d, self.lazy)
     }
 
-    pub fn add_sources(&mut self, a: E::G1Affine, b: E::G2Affine, c: E::G1Affine, d: E::G2Affine) {
-        self.add_sources_with_laziness_choice(a, b, c, d, self.lazy)
-    }
-
-    pub fn add_prepared_sources_and_target(
+    pub fn add_sources(
         &mut self,
-        a: &[E::G1Affine],
-        b: Vec<E::G2Prepared>,
-        out: &E::Fqk,
+        a: &E::G1Affine,
+        b: impl Into<E::G2Prepared>,
+        c: &E::G1Affine,
+        d: impl Into<E::G2Prepared>,
     ) {
-        self.add_prepared_sources_and_target_with_laziness_choice(a, b, out, self.lazy)
+        self.add_sources_with_laziness_choice(a, b, c, d, self.lazy)
     }
 
     pub fn add_multiple_sources_and_target_with_laziness_choice(
         &mut self,
         a: &[E::G1Affine],
-        b: &[E::G2Affine],
-        out: &E::Fqk,
+        b: impl IntoIterator<Item = impl Into<E::G2Prepared>>,
+        out: &PairingOutput<E>,
         lazy: bool,
     ) {
-        assert_eq!(a.len(), b.len());
-
-        let m = self.current_random.into_repr();
-        let mut it = cfg_iter!(a)
-            .zip(cfg_iter!(b))
-            .map(|(a, b)| {
-                (
-                    E::G1Prepared::from(a.mul(m).into_affine()),
-                    E::G2Prepared::from(*b),
-                )
-            })
+        let m = self.current_random.into_bigint();
+        let mut a_m = cfg_iter!(a)
+            .map(|a| E::G1Prepared::from(a.mul_bigint(m)))
             .collect::<Vec<_>>();
         if lazy {
-            self.pending.append(&mut it);
+            self.pending.0.append(&mut a_m);
+            self.pending
+                .1
+                .append(&mut b.into_iter().map(|b| b.into()).collect());
         } else {
-            self.left *= E::miller_loop(it.iter());
+            self.left.0.mul_assign(E::multi_miller_loop(a_m, b).0);
         }
-        self.right *= out.pow(m);
+        self.right += out.mul_bigint(m);
         self.current_random *= self.random;
     }
 
     pub fn add_multiple_sources_with_laziness_choice(
         &mut self,
         a: &[E::G1Affine],
-        b: &[E::G2Affine],
+        b: impl IntoIterator<Item = impl Into<E::G2Prepared>>,
         c: &[E::G1Affine],
-        d: &[E::G2Affine],
+        d: impl IntoIterator<Item = impl Into<E::G2Prepared>>,
         lazy: bool,
     ) {
-        assert_eq!(a.len(), b.len());
-        assert_eq!(c.len(), d.len());
-        let m = self.current_random.into_repr();
-        let mut it = cfg_iter!(a)
-            .zip(cfg_iter!(b))
-            .map(|(a, b)| {
-                (
-                    E::G1Prepared::from(a.mul(m).into_affine()),
-                    E::G2Prepared::from(*b),
-                )
-            })
+        let m = self.current_random.into_bigint();
+        let mut a_m = cfg_iter!(a)
+            .map(|a| E::G1Prepared::from(a.mul_bigint(m)))
             .collect::<Vec<_>>();
-        let mut it1 = cfg_iter!(c)
-            .zip(cfg_iter!(d))
-            .map(|(c, d)| {
-                (
-                    E::G1Prepared::from(-c.mul(m).into_affine()),
-                    E::G2Prepared::from(*d),
-                )
-            })
+        let mut c_m = cfg_iter!(c)
+            .map(|c| E::G1Prepared::from(-c.mul_bigint(m)))
             .collect::<Vec<_>>();
         if lazy {
-            self.pending.append(&mut it);
-            self.pending.append(&mut it1);
+            self.pending.0.append(&mut a_m);
+            self.pending
+                .1
+                .append(&mut b.into_iter().map(|b| b.into()).collect());
+            self.pending.0.append(&mut c_m);
+            self.pending
+                .1
+                .append(&mut d.into_iter().map(|d| d.into()).collect());
         } else {
-            self.left *= E::miller_loop(it.iter().chain(it1.iter()));
+            self.left.0.mul_assign(E::multi_miller_loop(a_m, b).0);
+            self.left.0.mul_assign(E::multi_miller_loop(c_m, d).0);
         }
         self.current_random *= self.random;
     }
 
     pub fn add_sources_with_laziness_choice(
         &mut self,
-        a: E::G1Affine,
-        b: E::G2Affine,
-        c: E::G1Affine,
-        d: E::G2Affine,
+        a: &E::G1Affine,
+        b: impl Into<E::G2Prepared>,
+        c: &E::G1Affine,
+        d: impl Into<E::G2Prepared>,
         lazy: bool,
     ) {
-        let m = self.current_random.into_repr();
-        let mut it = vec![
-            (
-                E::G1Prepared::from(a.mul(m).into_affine()),
-                E::G2Prepared::from(b),
-            ),
-            (
-                E::G1Prepared::from(-c.mul(m).into_affine()),
-                E::G2Prepared::from(d),
-            ),
+        let m = self.current_random.into_bigint();
+        let mut g1 = vec![
+            E::G1Prepared::from(a.mul_bigint(m)),
+            E::G1Prepared::from(-c.mul_bigint(m)),
         ];
+        let mut g2 = vec![b.into(), d.into()];
         if lazy {
-            self.pending.append(&mut it);
+            self.pending.0.append(&mut g1);
+            self.pending.1.append(&mut g2);
         } else {
-            self.left *= E::miller_loop(it.iter());
+            self.left.0.mul_assign(E::multi_miller_loop(g1, g2).0);
         }
-        self.current_random *= self.random;
-    }
-
-    pub fn add_prepared_sources_and_target_with_laziness_choice(
-        &mut self,
-        a: &[E::G1Affine],
-        b: Vec<E::G2Prepared>,
-        out: &E::Fqk,
-        lazy: bool,
-    ) {
-        assert_eq!(a.len(), b.len());
-        let m = self.current_random.into_repr();
-        let mut it = cfg_iter!(a)
-            .map(|a| E::G1Prepared::from(a.mul(m).into_affine()))
-            .zip(cfg_into_iter!(b))
-            .collect::<Vec<_>>();
-        if lazy {
-            self.pending.append(&mut it);
-        } else {
-            self.left *= E::miller_loop(it.iter());
-        }
-        self.right *= out.pow(m);
         self.current_random *= self.random;
     }
 
     pub fn verify(&self) -> bool {
-        let mut p = E::Fqk::one();
-        if self.pending.len() > 0 {
-            p = E::miller_loop(self.pending.iter());
-        }
-        let left = self.left * p;
-        E::final_exponentiation(&left).unwrap() == self.right
+        assert_eq!(self.pending.0.len(), self.pending.1.len());
+        let left = if self.pending.0.len() > 0 {
+            let mut p = E::multi_miller_loop(self.pending.0.clone(), self.pending.1.clone());
+            p.0.mul_assign(self.left.0);
+            p
+        } else {
+            self.left
+        };
+        E::final_exponentiation(left).unwrap() == self.right
     }
 }
 
@@ -209,7 +172,8 @@ where
 mod test {
     use super::*;
     use ark_bls12_381::{Bls12_381, G1Projective, G2Projective};
-    use ark_ec::bls12::{G1Prepared, G2Prepared};
+    use ark_ec::bls12::G2Prepared;
+    use ark_ec::CurveGroup;
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
     use ark_std::UniformRand;
@@ -247,64 +211,104 @@ mod test {
             .collect::<Vec<_>>();
 
         let start = Instant::now();
-        let out1 = Bls12_381::product_of_pairings(
-            &a1.iter()
-                .zip(b1.iter())
-                .map(|(a, b)| (G1Prepared::from(*a), G2Prepared::from(*b)))
-                .collect::<Vec<_>>(),
-        );
+        let out1 = Bls12_381::multi_pairing(a1.clone(), b1.clone());
         t1 += start.elapsed().as_micros();
 
         let start = Instant::now();
-        let out2 = Bls12_381::product_of_pairings(
-            &a2.iter()
-                .zip(b2.iter())
-                .map(|(a, b)| (G1Prepared::from(*a), G2Prepared::from(*b)))
-                .collect::<Vec<_>>(),
-        );
+        let out2 = Bls12_381::multi_pairing(a2.clone(), b2.clone());
         t1 += start.elapsed().as_micros();
 
         let start = Instant::now();
-        let out3 = Bls12_381::product_of_pairings(
-            &a3.iter()
-                .zip(b3.iter())
-                .map(|(a, b)| (G1Prepared::from(*a), G2Prepared::from(*b)))
-                .collect::<Vec<_>>(),
-        );
+        let out3 = Bls12_381::multi_pairing(a3.clone(), b3.clone());
         t1 += start.elapsed().as_micros();
 
-        for lazy in [true, false] {
-            let start = Instant::now();
-            let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
-            checker.add_multiple_sources_and_target(&a1, &b1, &out1);
-            checker.add_multiple_sources_and_target(&a2, &b2, &out2);
-            checker.add_multiple_sources_and_target(&a3, &b3, &out3);
-            assert!(checker.verify());
-            let l_str = if lazy { "lazy-" } else { "" };
-            println!(
-                "Time taken with {}checker {} us",
-                l_str,
-                start.elapsed().as_micros()
-            );
-        }
         println!("Time taken without checker {} us", t1);
 
         for lazy in [true, false] {
+            let start = Instant::now();
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
-            checker.add_multiple_sources(&a1, &b1, &rev_vec(&a1), &rev_vec(&b1));
+            checker.add_multiple_sources_and_target(&a1, &b1, &out1);
+            checker.add_multiple_sources_and_target(&a2, &b2, &out2);
+            checker.add_multiple_sources_and_target(&a3, &b3, &out3);
+            assert!(checker.verify());
+            let l_str = if lazy { "lazy-" } else { "" };
+            println!(
+                "Time taken with {}checker {} us",
+                l_str,
+                start.elapsed().as_micros()
+            );
+        }
+
+        let b1_prep = b1.iter().map(|b| G2Prepared::from(*b)).collect::<Vec<_>>();
+        let b2_prep = b2.iter().map(|b| G2Prepared::from(*b)).collect::<Vec<_>>();
+        let b3_prep = b3.iter().map(|b| G2Prepared::from(*b)).collect::<Vec<_>>();
+
+        for lazy in [true, false] {
+            let start = Instant::now();
+            let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
+            checker.add_multiple_sources_and_target(&a1, b1_prep.clone(), &out1);
+            checker.add_multiple_sources_and_target(&a2, b2_prep.clone(), &out2);
+            checker.add_multiple_sources_and_target(&a3, b3_prep.clone(), &out3);
+            assert!(checker.verify());
+            let l_str = if lazy { "lazy-" } else { "" };
+            println!(
+                "Time taken with prepared G2 and {}checker {} us",
+                l_str,
+                start.elapsed().as_micros()
+            );
+        }
+
+        let a1_rev = rev_vec(&a1);
+        let a2_rev = rev_vec(&a2);
+        let a3_rev = rev_vec(&a3);
+        let b1_rev = rev_vec(&b1);
+        let b2_rev = rev_vec(&b2);
+        let b3_rev = rev_vec(&b3);
+
+        let b1_rev_prep = b1_rev
+            .iter()
+            .map(|b| G2Prepared::from(*b))
+            .collect::<Vec<_>>();
+        let b2_rev_prep = b2_rev
+            .iter()
+            .map(|b| G2Prepared::from(*b))
+            .collect::<Vec<_>>();
+        let b3_rev_prep = b3_rev
+            .iter()
+            .map(|b| G2Prepared::from(*b))
+            .collect::<Vec<_>>();
+
+        for lazy in [true, false] {
+            let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
+            checker.add_multiple_sources(&a1, &b1, &a1_rev, &b1_rev);
             assert!(checker.verify());
         }
 
         for lazy in [true, false] {
             let start = Instant::now();
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
-            checker.add_multiple_sources(&a1, &b1, &rev_vec(&a1), &rev_vec(&b1));
-            checker.add_multiple_sources(&a2, &b2, &rev_vec(&a2), &rev_vec(&b2));
-            checker.add_multiple_sources(&a3, &b3, &rev_vec(&a3), &rev_vec(&b3));
+            checker.add_multiple_sources(&a1, &b1, &a1_rev, &b1_rev);
+            checker.add_multiple_sources(&a2, &b2, &a2_rev, &b2_rev);
+            checker.add_multiple_sources(&a3, &b3, &a3_rev, &b3_rev);
             assert!(checker.verify());
             let l_str = if lazy { "lazy-" } else { "" };
             println!(
                 "Time taken with {}checker {} us",
+                l_str,
+                start.elapsed().as_micros()
+            );
+        }
+
+        for lazy in [true, false] {
+            let start = Instant::now();
+            let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
+            checker.add_multiple_sources(&a1, b1_prep.clone(), &a1_rev, b1_rev_prep.clone());
+            checker.add_multiple_sources(&a2, b2_prep.clone(), &a2_rev, b2_rev_prep.clone());
+            checker.add_multiple_sources(&a3, b3_prep.clone(), &a3_rev, b3_rev_prep.clone());
+            assert!(checker.verify());
+            let l_str = if lazy { "lazy-" } else { "" };
+            println!(
+                "Time taken with prepared G2 and {}checker {} us",
                 l_str,
                 start.elapsed().as_micros()
             );
@@ -316,9 +320,9 @@ mod test {
             checker.add_multiple_sources_and_target(&a1, &b1, &out1);
             checker.add_multiple_sources_and_target(&a2, &b2, &out2);
             checker.add_multiple_sources_and_target(&a3, &b3, &out3);
-            checker.add_multiple_sources(&a1, &b1, &rev_vec(&a1), &rev_vec(&b1));
-            checker.add_multiple_sources(&a2, &b2, &rev_vec(&a2), &rev_vec(&b2));
-            checker.add_multiple_sources(&a3, &b3, &rev_vec(&a3), &rev_vec(&b3));
+            checker.add_multiple_sources(&a1, &b1, &a1_rev, &b1_rev);
+            checker.add_multiple_sources(&a2, &b2, &a2_rev, &b2_rev);
+            checker.add_multiple_sources(&a3, &b3, &a3_rev, &b3_rev);
             assert!(checker.verify());
             let l_str = if lazy { "lazy-" } else { "" };
             println!(
@@ -330,13 +334,13 @@ mod test {
 
         for lazy in [true, false] {
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
-            checker.add_sources(a1[0].clone(), b1[0].clone(), a1[0].clone(), b1[0].clone());
+            checker.add_sources(&a1[0], b1[0].clone(), &a1[0], b1[0].clone());
             assert!(checker.verify());
 
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
-            checker.add_sources(a1[0].clone(), b1[0].clone(), a1[0].clone(), b1[0].clone());
-            checker.add_sources(a1[1].clone(), b1[1].clone(), a1[1].clone(), b1[1].clone());
-            checker.add_sources(a1[2].clone(), b1[2].clone(), a1[2].clone(), b1[2].clone());
+            checker.add_sources(&a1[0], b1[0].clone(), &a1[0], b1[0].clone());
+            checker.add_sources(&a1[1], b1[1].clone(), &a1[1], b1[1].clone());
+            checker.add_sources(&a1[2], b1[2].clone(), &a1[2], b1[2].clone());
             assert!(checker.verify());
         }
     }

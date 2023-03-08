@@ -1,5 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::PairingEngine;
+use ark_ec::pairing::Pairing;
 use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
@@ -9,7 +9,7 @@ use std::time::Instant;
 use test_utils::accumulators::setup_universal_accum;
 use vb_accumulator::positive::Accumulator;
 
-type Fr = <Bls12_381 as PairingEngine>::Fr;
+type Fr = <Bls12_381 as Pairing>::ScalarField;
 
 fn batch(c: &mut Criterion) {
     // Increase `max` if adding bigger batches or getting `AccumulatorFull` errors

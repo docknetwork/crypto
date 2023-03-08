@@ -1,9 +1,10 @@
 use crate::error::ProofSystemError;
 use crate::statement_proof::{SaverProof, SaverProofWhenAggregatingSnarks, StatementProof};
 use crate::sub_protocols::schnorr::SchnorrProtocol;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{One, PrimeField};
-use ark_groth16::{prepare_verifying_key, PreparedVerifyingKey, VerifyingKey};
+use ark_ec::pairing::PairingOutput;
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_ff::{PrimeField, Zero};
+use ark_groth16::{PreparedVerifyingKey, VerifyingKey};
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::{Rng, RngCore};
 use ark_std::{collections::BTreeMap, io::Write, ops::Add, vec, vec::Vec, UniformRand};
@@ -21,7 +22,7 @@ use saver::utils::decompose;
 
 /// Apart from the SAVER protocol (encryption and snark proof), this also runs 3 Schnorr proof of knowledge protocols
 #[derive(Clone, Debug, PartialEq)]
-pub struct SaverProtocol<'a, E: PairingEngine> {
+pub struct SaverProtocol<'a, E: Pairing> {
     pub id: usize,
     pub chunk_bit_size: u8,
     pub encryption_gens: &'a EncryptionGens<E>,
@@ -41,7 +42,7 @@ pub struct SaverProtocol<'a, E: PairingEngine> {
     pub sp_combined: Option<SchnorrProtocol<'a, E::G1Affine>>,
 }
 
-impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
+impl<'a, E: Pairing> SaverProtocol<'a, E> {
     /// Create an instance of this protocol for the prover.
     pub fn new_for_prover(
         id: usize,
@@ -100,8 +101,8 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         ck_comm_ct: &'a [E::G1Affine],
         ck_comm_chunks: &'a [E::G1Affine],
         ck_comm_combined: &'a [E::G1Affine],
-        message: E::Fr,
-        blinding_combined_message: Option<E::Fr>,
+        message: E::ScalarField,
+        blinding_combined_message: Option<E::ScalarField>,
     ) -> Result<(), ProofSystemError> {
         if self.ciphertext.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -138,9 +139,9 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         ck_comm_ct: &'a [E::G1Affine],
         ck_comm_chunks: &'a [E::G1Affine],
         ck_comm_combined: &'a [E::G1Affine],
-        message: E::Fr,
-        blinding_combined_message: Option<E::Fr>,
-        old_randomness: E::Fr,
+        message: E::ScalarField,
+        blinding_combined_message: Option<E::ScalarField>,
+        old_randomness: E::ScalarField,
         ciphertext: Ciphertext<E>,
         proof: ark_groth16::Proof<E>,
     ) -> Result<(), ProofSystemError> {
@@ -194,9 +195,9 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
     }
 
     /// Generate responses for the 3 Schnorr protocols
-    pub fn gen_proof_contribution<G: AffineCurve>(
+    pub fn gen_proof_contribution<G: AffineRepr>(
         &mut self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.ciphertext.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
@@ -225,62 +226,18 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
     /// as the ones committed in the chunked commitment and all the 3 Schnorr proofs are valid.
     pub fn verify_proof_contribution(
         &self,
-        challenge: &E::Fr,
-        proof: &SaverProof<E>,
-        ck_comm_ct: &[E::G1Affine],
-        ck_comm_chunks: &[E::G1Affine],
-        ck_comm_combined: &[E::G1Affine],
-    ) -> Result<(), ProofSystemError> {
-        // Both commitments, one to the chunks and the other to the combined message must be same
-        if proof.comm_chunks != proof.comm_combined {
-            return Err(ProofSystemError::SaverInequalChunkedCommitment);
-        }
-
-        // Each chunk in the chunked commitment should be same as the chunk in ciphertext's
-        // commitment
-        if proof.sp_chunks.response.len() != proof.sp_ciphertext.response.len() {
-            return Err(ProofSystemError::SaverInsufficientChunkedCommitmentResponses);
-        }
-        for i in 0..(proof.sp_chunks.response.len() - 1) {
-            if proof.sp_chunks.response.get_response(i)?
-                != proof.sp_ciphertext.response.get_response(i)?
-            {
-                return Err(ProofSystemError::SaverInequalChunkedCommitmentResponse);
-            }
-        }
-
-        let snark_verifying_key = self
-            .snark_verifying_key
-            .ok_or(ProofSystemError::SaverSnarkVerifyingKeyNotProvided)?;
-
-        let pvk = prepare_verifying_key(snark_verifying_key);
-        let pek = self.encryption_key.prepared();
-        let pgens = self.encryption_gens.prepared();
-        self.verify_proof_contribution_using_prepared(
-            challenge,
-            proof,
-            ck_comm_ct,
-            ck_comm_chunks,
-            ck_comm_combined,
-            &pvk,
-            &pgens,
-            &pek,
-            &mut None,
-        )
-    }
-
-    pub fn verify_proof_contribution_using_prepared(
-        &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         proof: &SaverProof<E>,
         ck_comm_ct: &[E::G1Affine],
         ck_comm_chunks: &[E::G1Affine],
         ck_comm_combined: &[E::G1Affine],
         pvk: &PreparedVerifyingKey<E>,
-        pgens: &PreparedEncryptionGens<E>,
-        pek: &PreparedEncryptionKey<E>,
+        pgens: impl Into<PreparedEncryptionGens<E>>,
+        pek: impl Into<PreparedEncryptionKey<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
+        let pek = pek.into();
+        let pgens = pgens.into();
         let expected_count = pek.supported_chunks_count()? as usize;
         if proof.ciphertext.enc_chunks.len() != expected_count {
             return Err(SaverError::IncompatibleEncryptionKey(
@@ -297,23 +254,25 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
                         &proof.ciphertext.enc_chunks,
                         &proof.ciphertext.commitment,
                     ),
-                    Encryption::get_g2_for_ciphertext_commitment_pairing_checks(pek, pgens),
+                    Encryption::get_g2_for_ciphertext_commitment_pairing_checks(&pek, &pgens),
                 );
-                c.add_prepared_sources_and_target(&a, b, &E::Fqk::one());
+                c.add_multiple_sources_and_target(&a, b, &PairingOutput::zero());
                 let d = calculate_d(pvk, &proof.ciphertext)?;
-                c.add_prepared_sources_and_target(
+                c.add_multiple_sources_and_target(
                     &[proof.snark_proof.a, proof.snark_proof.c, d],
                     vec![
                         proof.snark_proof.b.into(),
                         pvk.delta_g2_neg_pc.clone(),
                         pvk.gamma_g2_neg_pc.clone(),
                     ],
-                    &pvk.alpha_g1_beta_g2,
+                    &PairingOutput(pvk.alpha_g1_beta_g2),
                 );
             }
-            None => proof
-                .ciphertext
-                .verify_commitment_and_proof_given_prepared(&proof.snark_proof, pvk, pek, pgens)?,
+            None => {
+                proof
+                    .ciphertext
+                    .verify_commitment_and_proof(&proof.snark_proof, pvk, pek, pgens)?
+            }
         }
 
         // NOTE: value of id is dummy
@@ -328,7 +287,7 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
 
     pub fn verify_proof_contribution_using_prepared_when_aggregating_snark(
         &self,
-        challenge: &E::Fr,
+        challenge: &E::ScalarField,
         proof: &SaverProofWhenAggregatingSnarks<E>,
         ck_comm_ct: &[E::G1Affine],
         ck_comm_chunks: &[E::G1Affine],
@@ -347,12 +306,14 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
     pub fn verify_ciphertext_commitments_in_batch<R: Rng>(
         rng: &mut R,
         ciphertexts: &[Ciphertext<E>],
-        pgens: &PreparedEncryptionGens<E>,
-        pek: &PreparedEncryptionKey<E>,
+        pgens: impl Into<PreparedEncryptionGens<E>>,
+        pek: impl Into<PreparedEncryptionKey<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
-        let r = E::Fr::rand(rng);
+        let r = E::ScalarField::rand(rng);
         let r_powers = powers(&r, ciphertexts.len());
+        let pek = pek.into();
+        let pgens = pgens.into();
         match pairing_checker {
             Some(c) => {
                 assert_eq!(r_powers.len(), ciphertexts.len());
@@ -371,17 +332,12 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
                     ciphertexts,
                     &r_powers,
                 );
-                let b = Encryption::get_g2_for_ciphertext_commitment_pairing_checks(pek, pgens);
-                c.add_prepared_sources_and_target(&a, b, &E::Fqk::one());
+                let b = Encryption::get_g2_for_ciphertext_commitment_pairing_checks(&pek, &pgens);
+                c.add_multiple_sources_and_target(&a, b, &PairingOutput::zero());
                 Ok(())
             }
-            None => Encryption::verify_commitments_in_batch_given_prepared(
-                ciphertexts,
-                &r_powers,
-                pek,
-                pgens,
-            )
-            .map_err(|e| e.into()),
+            None => Encryption::verify_commitments_in_batch(ciphertexts, &r_powers, pek, pgens)
+                .map_err(|e| e.into()),
         }
     }
 
@@ -392,20 +348,20 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         proof: &SaverProof<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
-        ck_comm_ct.serialize_unchecked(&mut writer)?;
+        ck_comm_ct.serialize_compressed(&mut writer)?;
         proof
             .ciphertext
             .commitment
-            .serialize_unchecked(&mut writer)?;
-        proof.sp_ciphertext.t.serialize_unchecked(&mut writer)?;
+            .serialize_compressed(&mut writer)?;
+        proof.sp_ciphertext.t.serialize_compressed(&mut writer)?;
 
-        ck_comm_chunks.serialize_unchecked(&mut writer)?;
-        proof.comm_chunks.serialize_unchecked(&mut writer)?;
-        proof.sp_chunks.t.serialize_unchecked(&mut writer)?;
+        ck_comm_chunks.serialize_compressed(&mut writer)?;
+        proof.comm_chunks.serialize_compressed(&mut writer)?;
+        proof.sp_chunks.t.serialize_compressed(&mut writer)?;
 
-        ck_comm_combined.serialize_unchecked(&mut writer)?;
-        proof.comm_combined.serialize_unchecked(&mut writer)?;
-        proof.sp_combined.t.serialize_unchecked(&mut writer)?;
+        ck_comm_combined.serialize_compressed(&mut writer)?;
+        proof.comm_combined.serialize_compressed(&mut writer)?;
+        proof.sp_combined.t.serialize_compressed(&mut writer)?;
         Ok(())
     }
 
@@ -416,20 +372,20 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         proof: &SaverProofWhenAggregatingSnarks<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
-        ck_comm_ct.serialize_unchecked(&mut writer)?;
+        ck_comm_ct.serialize_compressed(&mut writer)?;
         proof
             .ciphertext
             .commitment
-            .serialize_unchecked(&mut writer)?;
-        proof.sp_ciphertext.t.serialize_unchecked(&mut writer)?;
+            .serialize_compressed(&mut writer)?;
+        proof.sp_ciphertext.t.serialize_compressed(&mut writer)?;
 
-        ck_comm_chunks.serialize_unchecked(&mut writer)?;
-        proof.comm_chunks.serialize_unchecked(&mut writer)?;
-        proof.sp_chunks.t.serialize_unchecked(&mut writer)?;
+        ck_comm_chunks.serialize_compressed(&mut writer)?;
+        proof.comm_chunks.serialize_compressed(&mut writer)?;
+        proof.sp_chunks.t.serialize_compressed(&mut writer)?;
 
-        ck_comm_combined.serialize_unchecked(&mut writer)?;
-        proof.comm_combined.serialize_unchecked(&mut writer)?;
-        proof.sp_combined.t.serialize_unchecked(&mut writer)?;
+        ck_comm_combined.serialize_compressed(&mut writer)?;
+        proof.comm_combined.serialize_compressed(&mut writer)?;
+        proof.sp_combined.t.serialize_compressed(&mut writer)?;
         Ok(())
     }
 
@@ -438,11 +394,11 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         encryption_key: &EncryptionKey<E>,
     ) -> Result<(), ProofSystemError> {
         if encryption_key.supported_chunks_count()?
-            != saver::utils::chunks_count::<E::Fr>(chunk_bit_size)
+            != saver::utils::chunks_count::<E::ScalarField>(chunk_bit_size)
         {
             Err(ProofSystemError::SaverError(
                 saver::error::SaverError::IncompatibleEncryptionKey(
-                    saver::utils::chunks_count::<E::Fr>(chunk_bit_size) as usize,
+                    saver::utils::chunks_count::<E::ScalarField>(chunk_bit_size) as usize,
                     encryption_key.supported_chunks_count()? as usize,
                 ),
             ))
@@ -475,20 +431,20 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         ck_comm_ct: &'a [E::G1Affine],
         ck_comm_chunks: &'a [E::G1Affine],
         ck_comm_combined: &'a [E::G1Affine],
-        message: E::Fr,
-        blinding_combined_message: Option<E::Fr>,
+        message: E::ScalarField,
+        blinding_combined_message: Option<E::ScalarField>,
         ciphertext: Ciphertext<E>,
-        randomness_enc: E::Fr,
+        randomness_enc: E::ScalarField,
         proof: ark_groth16::Proof<E>,
     ) -> Result<(), ProofSystemError> {
         // blinding used for `H` in both commitments
-        let h_blinding = E::Fr::rand(rng);
+        let h_blinding = E::ScalarField::rand(rng);
 
         // blinding used to prove knowledge of message in `comm_combined`. The caller of this method ensures
         // that this will be same as the one used proving knowledge of the corresponding message in BBS+
         // signature, thus allowing them to be proved equal.
         let blinding_combined_message = if blinding_combined_message.is_none() {
-            E::Fr::rand(rng)
+            E::ScalarField::rand(rng)
         } else {
             blinding_combined_message.unwrap()
         };
@@ -498,8 +454,13 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         let comm_combined = self
             .chunked_commitment_gens
             .G
-            .mul(message.into_repr())
-            .add(&(self.chunked_commitment_gens.H.mul(h_blinding.into_repr())))
+            .mul_bigint(message.into_bigint())
+            .add(
+                &(self
+                    .chunked_commitment_gens
+                    .H
+                    .mul_bigint(h_blinding.into_bigint())),
+            )
             .into_affine();
         let comm_chunks = ChunkedCommitment::<E::G1Affine>::get_commitment_given_commitment_key(
             &message,
@@ -510,7 +471,7 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
 
         let message_chunks = decompose(&message, self.chunk_bit_size)?
             .into_iter()
-            .map(|m| E::Fr::from(m as u64))
+            .map(|m| E::ScalarField::from(m as u64))
             .collect::<Vec<_>>();
 
         // NOTE: value of id is dummy
@@ -519,8 +480,8 @@ impl<'a, E: PairingEngine> SaverProtocol<'a, E> {
         let mut sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, comm_combined);
 
         let blindings_chunks = (0..message_chunks.len())
-            .map(|i| (i, E::Fr::rand(rng)))
-            .collect::<BTreeMap<usize, E::Fr>>();
+            .map(|i| (i, E::ScalarField::rand(rng)))
+            .collect::<BTreeMap<usize, E::ScalarField>>();
         let mut sp_ciphertext_wit = message_chunks.clone();
         sp_ciphertext_wit.push(randomness_enc);
         sp_ciphertext.init(rng, blindings_chunks.clone(), sp_ciphertext_wit)?;

@@ -127,75 +127,48 @@ impl MetaStatements {
 
 mod serialization {
     use super::*;
+    use ark_serialize::{Compress, Valid, Validate};
+
+    impl Valid for MetaStatement {
+        fn check(&self) -> Result<(), SerializationError> {
+            Ok(())
+        }
+    }
 
     impl CanonicalSerialize for MetaStatement {
-        fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-            match self {
-                Self::WitnessEquality(s) => {
-                    CanonicalSerialize::serialize(&0u8, &mut writer)?;
-                    CanonicalSerialize::serialize(s, &mut writer)
-                }
-            }
-        }
-
-        fn serialized_size(&self) -> usize {
-            match self {
-                Self::WitnessEquality(s) => 0u8.serialized_size() + s.serialized_size(),
-            }
-        }
-
-        fn serialize_uncompressed<W: Write>(
+        fn serialize_with_mode<W: Write>(
             &self,
             mut writer: W,
+            compress: Compress,
         ) -> Result<(), SerializationError> {
             match self {
                 Self::WitnessEquality(s) => {
-                    0u8.serialize_uncompressed(&mut writer)?;
-                    s.serialize_uncompressed(&mut writer)
+                    CanonicalSerialize::serialize_with_mode(&0u8, &mut writer, compress)?;
+                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
                 }
             }
         }
 
-        fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        fn serialized_size(&self, compress: Compress) -> usize {
             match self {
                 Self::WitnessEquality(s) => {
-                    0u8.serialize_unchecked(&mut writer)?;
-                    s.serialize_unchecked(&mut writer)
+                    0u8.serialized_size(compress) + s.serialized_size(compress)
                 }
-            }
-        }
-
-        fn uncompressed_size(&self) -> usize {
-            match self {
-                Self::WitnessEquality(s) => 0u8.uncompressed_size() + s.uncompressed_size(),
             }
         }
     }
 
     impl CanonicalDeserialize for MetaStatement {
-        fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
+        fn deserialize_with_mode<R: Read>(
+            mut reader: R,
+            compress: Compress,
+            validate: Validate,
+        ) -> Result<Self, SerializationError> {
+            let t: u8 =
+                CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
             match t {
-                0u8 => Ok(Self::WitnessEquality(CanonicalDeserialize::deserialize(
-                    &mut reader,
-                )?)),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_uncompressed(&mut reader)? {
                 0u8 => Ok(Self::WitnessEquality(
-                    EqualWitnesses::deserialize_uncompressed(&mut reader)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-
-        fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-            match u8::deserialize_unchecked(&mut reader)? {
-                0u8 => Ok(Self::WitnessEquality(
-                    EqualWitnesses::deserialize_unchecked(&mut reader)?,
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
                 )),
                 _ => Err(SerializationError::InvalidData),
             }

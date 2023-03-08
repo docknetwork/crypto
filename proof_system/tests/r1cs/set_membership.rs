@@ -3,6 +3,7 @@ use ark_ff::{One, Zero};
 use ark_std::rand::rngs::StdRng;
 use ark_std::rand::SeedableRng;
 use ark_std::UniformRand;
+use blake2::Blake2b512;
 use legogroth16::circom::{CircomCircuit, R1CS};
 use proof_system::prelude::{
     EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, Statements, Witness, WitnessRef,
@@ -88,7 +89,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     r1cs_wit.set_public("set".to_string(), public_set.clone());
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -120,7 +121,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     );
     verifier_proof_spec.validate().unwrap();
     proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,
@@ -143,7 +144,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     r1cs_wit.set_public("set".to_string(), public_set.clone());
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -175,7 +176,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     );
     verifier_proof_spec.validate().unwrap();
     proof
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
             None,

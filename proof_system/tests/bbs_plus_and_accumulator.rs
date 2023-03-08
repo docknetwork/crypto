@@ -1,12 +1,11 @@
 use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
-use ark_ec::msm::VariableBaseMSM;
-use ark_ec::{PairingEngine, ProjectiveCurve};
+use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
 use bbs_plus::prelude::SignatureG1;
-use dock_crypto_utils::msm::variable_base_msm;
+use blake2::Blake2b512;
 use std::time::Instant;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 
@@ -176,7 +175,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
 
     // Prover now creates the proof using the proof spec and witnesses. This will be sent to the verifier
     let nonce = Some(b"some nonce".to_vec());
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses,
@@ -189,11 +188,11 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
     // Proof with no nonce shouldn't verify
     assert!(proof
         .clone()
-        .verify::<StdRng>(&mut rng, proof_spec.clone(), None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec.clone(), None, Default::default())
         .is_err());
     assert!(proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             None,
@@ -206,7 +205,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
     // Proof with invalid nonce shouldn't verify
     assert!(proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             Some(b"random...".to_vec()),
@@ -215,7 +214,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
         .is_err());
     assert!(proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             Some(b"random...".to_vec()),
@@ -231,7 +230,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
     let start = Instant::now();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
@@ -245,7 +244,7 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
 
     let start = Instant::now();
     proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec,
             nonce,
@@ -341,7 +340,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     let nonce = Some(b"test-nonce".to_vec());
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -356,7 +355,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
@@ -370,7 +369,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     let start = Instant::now();
     proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
@@ -394,7 +393,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         vec![],
         context.clone(),
     );
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_incorrect.clone(),
         witnesses,
@@ -406,7 +405,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     assert!(proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_incorrect.clone(),
             nonce.clone(),
@@ -414,7 +413,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         )
         .is_err());
     assert!(proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec_incorrect.clone(),
             nonce.clone(),
@@ -445,7 +444,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     ));
     let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context.clone());
     proof_spec.validate().unwrap();
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses_incorrect,
@@ -456,7 +455,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     .0;
     assert!(proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
@@ -464,7 +463,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
         )
         .is_err());
     assert!(proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec,
             nonce.clone(),
@@ -539,7 +538,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -554,7 +553,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
@@ -569,7 +568,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
@@ -637,7 +636,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -652,7 +651,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
@@ -666,7 +665,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     let start = Instant::now();
     proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
@@ -764,7 +763,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -779,7 +778,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
     let start = Instant::now();
     proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             nonce.clone(),
@@ -790,7 +789,7 @@ fn pok_of_bbs_plus_sig_and_accumulator() {
 
     let start = Instant::now();
     proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec,
             nonce,
@@ -820,7 +819,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     // Make 2 of the messages in the commitment same as in the signature
     scalars[1] = msgs[0].clone();
     scalars[4] = msgs[5].clone();
-    let commitment = variable_base_msm(&bases, &scalars).into_affine();
+    let commitment = G1Projective::msm_unchecked(&bases, &scalars).into_affine();
 
     let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -863,7 +862,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let nonce = Some(b"test nonce".to_vec());
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -876,7 +875,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     test_serialization!(ProofG1, proof);
 
     proof
-        .verify::<StdRng>(&mut rng, proof_spec, nonce.clone(), Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce.clone(), Default::default())
         .unwrap();
 
     // Wrong message equality should fail to verify
@@ -899,7 +898,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
         context.clone(),
     );
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_invalid.clone(),
         witnesses.clone(),
@@ -910,7 +909,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig() {
     .0;
 
     assert!(proof
-        .verify::<StdRng>(&mut rng, proof_spec_invalid, nonce, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_invalid, nonce, Default::default())
         .is_err());
 }
 
@@ -972,7 +971,7 @@ fn requesting_partially_blind_bbs_plus_sig() {
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let nonce = Some(b"test nonce".to_vec());
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -985,7 +984,7 @@ fn requesting_partially_blind_bbs_plus_sig() {
     test_serialization!(ProofG1, proof);
 
     proof
-        .verify::<StdRng>(&mut rng, proof_spec, nonce, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce, Default::default())
         .unwrap();
 
     // Now requester picks the messages he is revealing to the signer and prepares `uncommitted_messages`
@@ -1032,7 +1031,7 @@ fn proof_spec_modification() {
         .verify(&msgs_2, &keypair_2.public_key, &params_2)
         .unwrap();
 
-    let mut statements = Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+    let mut statements = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         params_1.clone(),
         keypair_1.public_key.clone(),
@@ -1070,7 +1069,7 @@ fn proof_spec_modification() {
             .collect::<BTreeMap<usize, Fr>>(),
     ));
 
-    assert!(ProofG1::new(
+    assert!(ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         invalid_proof_spec.clone(),
         witnesses.clone(),
@@ -1086,7 +1085,7 @@ fn proof_spec_modification() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
     let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
-    assert!(ProofG1::new(
+    assert!(ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         invalid_proof_spec.clone(),
         witnesses.clone(),
@@ -1102,7 +1101,7 @@ fn proof_spec_modification() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
     let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
-    assert!(ProofG1::new(
+    assert!(ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         invalid_proof_spec.clone(),
         witnesses.clone(),
@@ -1129,7 +1128,7 @@ fn proof_spec_modification() {
         ProofSpec::new(statements.clone(), MetaStatements::new(), vec![], None);
 
     // Proof created using modified proof spec wont be a valid
-    let invalid_proof = ProofG1::new(
+    let invalid_proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         modified_proof_spec.clone(),
         witnesses.clone(),
@@ -1142,7 +1141,7 @@ fn proof_spec_modification() {
     // Above proof is valid if verified using the modified proof spec but not with the original proof spec
     invalid_proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             modified_proof_spec.clone(),
             None,
@@ -1150,11 +1149,11 @@ fn proof_spec_modification() {
         )
         .unwrap();
     assert!(invalid_proof
-        .verify::<StdRng>(&mut rng, orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, orig_proof_spec.clone(), None, Default::default())
         .is_err());
 
     // Proof created using original proof spec will be valid
-    let valid_proof = ProofG1::new(
+    let valid_proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         orig_proof_spec.clone(),
         witnesses.clone(),
@@ -1164,15 +1163,14 @@ fn proof_spec_modification() {
     .unwrap()
     .0;
     valid_proof
-        .verify::<StdRng>(&mut rng, orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, orig_proof_spec.clone(), None, Default::default())
         .unwrap();
 
     // Verifier creates proof spec with 2 statements, prover modifies it to remove a statement
     let orig_proof_spec = ProofSpec::new(statements.clone(), MetaStatements::new(), vec![], None);
 
     // Prover's modified proof spec
-    let mut only_1_statement =
-        Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+    let mut only_1_statement = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
     only_1_statement.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         params_1.clone(),
         keypair_1.public_key.clone(),
@@ -1195,7 +1193,7 @@ fn proof_spec_modification() {
     ));
 
     // Proof created using modified proof spec wont be a valid
-    let invalid_proof = ProofG1::new(
+    let invalid_proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         modified_proof_spec.clone(),
         only_1_witness.clone(),
@@ -1208,7 +1206,7 @@ fn proof_spec_modification() {
     // Above proof is valid if verified using the modified proof spec but not with the original proof spec
     invalid_proof
         .clone()
-        .verify::<StdRng>(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             modified_proof_spec.clone(),
             None,
@@ -1216,11 +1214,11 @@ fn proof_spec_modification() {
         )
         .unwrap();
     assert!(invalid_proof
-        .verify::<StdRng>(&mut rng, orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, orig_proof_spec.clone(), None, Default::default())
         .is_err());
 
     // Proof created using original proof spec will be valid
-    let valid_proof = ProofG1::new(
+    let valid_proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         orig_proof_spec.clone(),
         witnesses.clone(),
@@ -1230,7 +1228,7 @@ fn proof_spec_modification() {
     .unwrap()
     .0;
     valid_proof
-        .verify::<StdRng>(&mut rng, orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, orig_proof_spec.clone(), None, Default::default())
         .unwrap();
 }
 
@@ -1264,7 +1262,7 @@ fn verifier_local_linkability() {
 
     // This is the registration commitment of the prover for verifier 1
     let reg_commit_1 =
-        VariableBaseMSM::multi_scalar_mul(&gens_1, &[msgs[1].into_repr(), blinding_1.into_repr()])
+        G1Projective::msm_bigint(&gens_1, &[msgs[1].into_bigint(), blinding_1.into_bigint()])
             .into_affine();
 
     // The prover must persist `blinding_1` and `commitment_1` as long as he ever wants to interact with verifier 1.
@@ -1279,7 +1277,7 @@ fn verifier_local_linkability() {
 
     // This is the registration commitment of the prover for verifier 2
     let reg_commit_2 =
-        VariableBaseMSM::multi_scalar_mul(&gens_2, &[msgs[1].into_repr(), blinding_2.into_repr()])
+        G1Projective::msm_bigint(&gens_2, &[msgs[1].into_bigint(), blinding_2.into_bigint()])
             .into_affine();
 
     // The prover must persist `blinding_2` and `commitment_2` as long as he ever wants to interact with verifier 2.
@@ -1325,7 +1323,7 @@ fn verifier_local_linkability() {
         blinding_1.clone(),
     ]));
 
-    let proof_1 = ProofG1::new(
+    let proof_1 = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_1.clone(),
         witnesses_1.clone(),
@@ -1336,7 +1334,7 @@ fn verifier_local_linkability() {
     .0;
 
     proof_1
-        .verify::<StdRng>(&mut rng, proof_spec_1, None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_1, None, Default::default())
         .unwrap();
 
     // Prover proves to verifier 2
@@ -1377,7 +1375,7 @@ fn verifier_local_linkability() {
         blinding_2.clone(),
     ]));
 
-    let proof_2 = ProofG1::new(
+    let proof_2 = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_2.clone(),
         witnesses_2.clone(),
@@ -1388,7 +1386,7 @@ fn verifier_local_linkability() {
     .0;
 
     proof_2
-        .verify::<StdRng>(&mut rng, proof_spec_2, None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_2, None, Default::default())
         .unwrap();
 
     // Prover again proves to verifier 1, this time something different like revealing a message but still uses his registration
@@ -1443,7 +1441,7 @@ fn verifier_local_linkability() {
         blinding_1.clone(),
     ]));
 
-    let proof_3 = ProofG1::new(
+    let proof_3 = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_3.clone(),
         witnesses_3.clone(),
@@ -1454,7 +1452,7 @@ fn verifier_local_linkability() {
     .0;
 
     proof_3
-        .verify::<StdRng>(&mut rng, proof_spec_3, None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_3, None, Default::default())
         .unwrap();
 }
 
@@ -1551,7 +1549,7 @@ fn pok_of_bbs_plus_sig_with_reusing_setup_params() {
     ));
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new(
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses,
@@ -1564,7 +1562,7 @@ fn pok_of_bbs_plus_sig_with_reusing_setup_params() {
     let start = Instant::now();
     proof
         .clone()
-        .verify::<StdRng>(&mut rng, proof_spec.clone(), None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec.clone(), None, Default::default())
         .unwrap();
     println!(
         "Time to verify proof with 4 BBS+ signatures: {:?}",
@@ -1573,7 +1571,7 @@ fn pok_of_bbs_plus_sig_with_reusing_setup_params() {
 
     let start = Instant::now();
     proof
-        .verify(
+        .verify::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec,
             None,
@@ -1597,7 +1595,7 @@ fn proof_spec_validation() {
     let (msgs_1, params_1, keypair_1, _) = sig_setup(&mut rng, 5);
     let (msgs_2, params_2, keypair_2, _) = sig_setup(&mut rng, 6);
 
-    let mut statements_1 = Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+    let mut statements_1 = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
     statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         params_1.clone(),
         keypair_1.public_key.clone(),
@@ -1615,7 +1613,7 @@ fn proof_spec_validation() {
 
     let mut revealed = BTreeMap::new();
     revealed.insert(1, msgs_1[1].clone());
-    let mut statements_2 = Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+    let mut statements_2 = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
     statements_2.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         params_1.clone(),
         keypair_1.public_key.clone(),
@@ -1637,7 +1635,7 @@ fn proof_spec_validation() {
 
     let mut revealed_1 = BTreeMap::new();
     revealed_1.insert(3, msgs_2[3].clone());
-    let mut statements_3 = Statements::<Bls12_381, <Bls12_381 as PairingEngine>::G1Affine>::new();
+    let mut statements_3 = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
     statements_3.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
         params_1.clone(),
         keypair_1.public_key.clone(),

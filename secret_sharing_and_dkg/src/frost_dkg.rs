@@ -6,16 +6,16 @@ use crate::common::{CommitmentToCoefficients, ParticipantId, Share, ShareId, Sha
 use crate::error::SSError;
 use crate::feldman_dvss_dkg;
 use crate::feldman_vss;
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::BTreeMap;
-use ark_std::io::{Read, Write};
+use ark_std::io::Write;
 use ark_std::rand::RngCore;
-use ark_std::vec;
 use ark_std::UniformRand;
+use ark_std::{vec, vec::Vec};
 use digest::Digest;
-use dock_crypto_utils::serde_utils::{AffineGroupBytes, FieldBytes};
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::error::SchnorrError;
 use schnorr_pok::{compute_random_oracle_challenge, impl_proof_of_knowledge_of_discrete_log};
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,7 @@ impl_proof_of_knowledge_of_discrete_log!(SecretKeyKnowledgeProtocol, SecretKeyKn
 
 /// State of a participant during Round 1
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Round1State<G: AffineCurve> {
+pub struct Round1State<G: AffineRepr> {
     pub id: ParticipantId,
     pub threshold: ShareId,
     pub shares: Shares<G::ScalarField>,
@@ -38,7 +38,7 @@ pub struct Round1State<G: AffineCurve> {
 
 /// Message sent by a participant during Round 1
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Round1Msg<G: AffineCurve> {
+pub struct Round1Msg<G: AffineRepr> {
     pub sender_id: ParticipantId,
     pub comm_coeffs: CommitmentToCoefficients<G>,
     /// Proof of knowledge of the secret key for the public key
@@ -47,7 +47,7 @@ pub struct Round1Msg<G: AffineCurve> {
 
 /// State of a participant during Round 2
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Round2State<G: AffineCurve> {
+pub struct Round2State<G: AffineRepr> {
     pub id: ParticipantId,
     pub threshold: ShareId,
     /// Stores the shares sent by each participant
@@ -56,7 +56,7 @@ pub struct Round2State<G: AffineCurve> {
     pub coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
 }
 
-impl<G: AffineCurve> Round1State<G> {
+impl<G: AffineRepr> Round1State<G> {
     /// Start Phase 1 with a randomly generated secret.
     pub fn start_with_random_secret<R: RngCore, D: Digest>(
         rng: &mut R,
@@ -180,7 +180,7 @@ impl<G: AffineCurve> Round1State<G> {
     }
 }
 
-impl<G: AffineCurve> Round2State<G> {
+impl<G: AffineRepr> Round2State<G> {
     /// Called by a participant when it receives its share during Round 1
     pub fn add_received_share<R: RngCore>(
         &mut self,
@@ -229,18 +229,18 @@ impl<G: AffineCurve> Round2State<G> {
 pub mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use ark_std::UniformRand;
-    use blake2::Blake2b;
+    use blake2::Blake2b512;
 
     #[test]
     fn frost_distributed_key_generation() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let g1 = <Bls12_381 as PairingEngine>::G1Projective::rand(&mut rng).into_affine();
-        let g2 = <Bls12_381 as PairingEngine>::G2Projective::rand(&mut rng).into_affine();
+        let g1 = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
+        let g2 = <Bls12_381 as Pairing>::G2::rand(&mut rng).into_affine();
 
-        fn check<G: AffineCurve>(rng: &mut StdRng, comm_key: &G) {
+        fn check<G: AffineRepr>(rng: &mut StdRng, comm_key: &G) {
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -270,7 +270,7 @@ pub mod tests {
                 // Each participant starts Round 1
                 for i in 1..=total {
                     let (round1_state, round1_msg) =
-                        Round1State::start_with_random_secret::<StdRng, Blake2b>(
+                        Round1State::start_with_random_secret::<StdRng, Blake2b512>(
                             rng,
                             i as ParticipantId,
                             threshold as ShareId,
@@ -292,7 +292,7 @@ pub mod tests {
                             let mut msg_with_wrong_id = all_round1_msgs[j].clone();
                             msg_with_wrong_id.sender_id = i as ShareId + 1;
                             assert!(all_round1_states[i]
-                                .add_received_message::<StdRng, Blake2b>(
+                                .add_received_message::<StdRng, Blake2b512>(
                                     msg_with_wrong_id,
                                     schnorr_ctx,
                                     comm_key,
@@ -302,7 +302,7 @@ pub mod tests {
                             let mut comms = all_round1_msgs[j].clone();
                             comms.comm_coeffs.0.remove(0);
                             assert!(all_round1_states[i]
-                                .add_received_message::<StdRng, Blake2b>(
+                                .add_received_message::<StdRng, Blake2b512>(
                                     comms,
                                     schnorr_ctx,
                                     comm_key,
@@ -310,7 +310,7 @@ pub mod tests {
                                 .is_err());
 
                             assert!(all_round1_states[i]
-                                .add_received_message::<StdRng, Blake2b>(
+                                .add_received_message::<StdRng, Blake2b512>(
                                     all_round1_msgs[j].clone(),
                                     b"another-ctx",
                                     comm_key,
@@ -318,7 +318,7 @@ pub mod tests {
                                 .is_err());
 
                             all_round1_states[i]
-                                .add_received_message::<StdRng, Blake2b>(
+                                .add_received_message::<StdRng, Blake2b512>(
                                     all_round1_msgs[j].clone(),
                                     schnorr_ctx,
                                     comm_key,
@@ -408,7 +408,10 @@ pub mod tests {
                 let mut final_shares = vec![];
                 for i in 0..total {
                     let (share, pk, t_pk) = all_round2_states[i].clone().finish(comm_key).unwrap();
-                    assert_eq!(comm_key.mul(share.share.into_repr()).into_affine(), pk);
+                    assert_eq!(
+                        comm_key.mul_bigint(share.share.into_bigint()).into_affine(),
+                        pk
+                    );
                     if tk.is_none() {
                         tk = Some(t_pk);
                     } else {
