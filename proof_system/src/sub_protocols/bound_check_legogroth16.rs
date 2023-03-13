@@ -352,7 +352,7 @@ mod tests {
     fn valid_bounds() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let proving_key = generate_snark_srs_bound_check::<Bls12_381, _>(&mut rng).unwrap();
-        let pvk = prepare_verifying_key(&proving_key.vk);
+        let pvk = PreparedVerifyingKey::from(&proving_key.vk);
 
         for (min, max, value) in [
             (100, 200, 100),
