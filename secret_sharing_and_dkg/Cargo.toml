@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Secret sharing schemes and Gennaro's DKG"
+description = "Secret sharing schemes and DKGs."
 
 [dependencies]
 ark-ff.workspace = true

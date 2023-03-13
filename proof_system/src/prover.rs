@@ -420,7 +420,7 @@ where
         let mut aggregated_groth16 = vec![];
         let mut aggregated_legogroth16 = vec![];
 
-        let mut aggregate_snarks =
+        let aggregate_snarks =
             proof_spec.aggregate_groth16.is_some() || proof_spec.aggregate_legogroth16.is_some();
         if !aggregate_snarks {
             // TODO: Check no of groth16 and legogroth16

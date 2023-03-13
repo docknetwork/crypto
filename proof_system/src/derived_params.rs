@@ -93,6 +93,7 @@ impl<DP> StatementDerivedParams<DP> {
     }
 }
 
+/// To derive commitment key from `LegoVerifyingKey`
 impl<'a, E: Pairing> DerivedParams<'a, LegoVerifyingKey<E>, Vec<E::G1Affine>>
     for DerivedParamsTracker<'a, LegoVerifyingKey<E>, Vec<E::G1Affine>, E>
 {
@@ -101,6 +102,7 @@ impl<'a, E: Pairing> DerivedParams<'a, LegoVerifyingKey<E>, Vec<E::G1Affine>>
     }
 }
 
+/// To derive commitment key from `EncryptionKey`
 impl<'a, E: Pairing> DerivedParams<'a, EncryptionKey<E>, Vec<E::G1Affine>>
     for DerivedParamsTracker<'a, EncryptionKey<E>, Vec<E::G1Affine>, E>
 {
@@ -129,66 +131,65 @@ impl<'a, E: Pairing>
     }
 }
 
-impl<'a, E: Pairing> DerivedParams<'a, EncryptionGens<E>, PreparedEncryptionGens<E>>
-    for DerivedParamsTracker<'a, EncryptionGens<E>, PreparedEncryptionGens<E>, E>
-{
-    fn new_derived(gens: &EncryptionGens<E>) -> PreparedEncryptionGens<E> {
-        PreparedEncryptionGens::from(gens.clone())
-    }
+macro_rules! impl_derived_for_prepared_ref {
+    ($(#[$doc:meta])*
+    $unprepared: ident, $prepared: ident) => {
+        impl<'a, E: Pairing> DerivedParams<'a, $unprepared<E>, $prepared<E>>
+            for DerivedParamsTracker<'a, $unprepared<E>, $prepared<E>, E>
+        {
+            fn new_derived(gens: &$unprepared<E>) -> $prepared<E> {
+                $prepared::from(gens.clone())
+            }
+        }
+    };
 }
 
-impl<'a, E: Pairing> DerivedParams<'a, EncryptionKey<E>, PreparedEncryptionKey<E>>
-    for DerivedParamsTracker<'a, EncryptionKey<E>, PreparedEncryptionKey<E>, E>
-{
-    fn new_derived(ek: &EncryptionKey<E>) -> PreparedEncryptionKey<E> {
-        PreparedEncryptionKey::from(ek.clone())
-    }
+macro_rules! impl_derived_for_prepared {
+    ($(#[$doc:meta])*
+    $unprepared: ident, $prepared: ident) => {
+        $(#[$doc])*
+        impl<'a, E: Pairing> DerivedParams<'a, $unprepared<E>, $prepared<E>>
+            for DerivedParamsTracker<'a, $unprepared<E>, $prepared<E>, E>
+        {
+            fn new_derived(gens: &$unprepared<E>) -> $prepared<E> {
+                $prepared::from(gens)
+            }
+        }
+    };
 }
 
-impl<'a, E: Pairing> DerivedParams<'a, SaverVerifyingKey<E>, SaverPreparedVerifyingKey<E>>
-    for DerivedParamsTracker<'a, SaverVerifyingKey<E>, SaverPreparedVerifyingKey<E>, E>
-{
-    fn new_derived(vk: &SaverVerifyingKey<E>) -> SaverPreparedVerifyingKey<E> {
-        saver::saver_groth16::prepare_verifying_key(vk)
-    }
-}
+impl_derived_for_prepared_ref!(
+    /// To derive prepared encryption generators from `EncryptionGens`
+    EncryptionGens,
+    PreparedEncryptionGens
+);
 
-impl<'a, E: Pairing> DerivedParams<'a, LegoVerifyingKey<E>, LegoPreparedVerifyingKey<E>>
-    for DerivedParamsTracker<'a, LegoVerifyingKey<E>, LegoPreparedVerifyingKey<E>, E>
-{
-    fn new_derived(vk: &LegoVerifyingKey<E>) -> LegoPreparedVerifyingKey<E> {
-        legogroth16::prepare_verifying_key(vk)
-    }
-}
+impl_derived_for_prepared_ref!(
+    /// To derive prepared encryption key from `EncryptionKey`
+    EncryptionKey,
+    PreparedEncryptionKey
+);
 
-impl<'a, E: Pairing> DerivedParams<'a, BBSPlusSigParams<E>, PreparedBBSPlusSigParams<E>>
-    for DerivedParamsTracker<'a, BBSPlusSigParams<E>, PreparedBBSPlusSigParams<E>, E>
-{
-    fn new_derived(p: &BBSPlusSigParams<E>) -> PreparedBBSPlusSigParams<E> {
-        PreparedBBSPlusSigParams::from(p.clone())
-    }
-}
+impl_derived_for_prepared_ref!(SaverVerifyingKey, SaverPreparedVerifyingKey);
 
-impl<'a, E: Pairing> DerivedParams<'a, BBSPlusPk<E>, PreparedBBSPlusPk<E>>
-    for DerivedParamsTracker<'a, BBSPlusPk<E>, PreparedBBSPlusPk<E>, E>
-{
-    fn new_derived(p: &BBSPlusPk<E>) -> PreparedBBSPlusPk<E> {
-        PreparedBBSPlusPk::from(p.clone())
-    }
-}
+impl_derived_for_prepared!(
+    /// To derive prepared verification key from `LegoVerifyingKey`
+    LegoVerifyingKey,
+    LegoPreparedVerifyingKey
+);
 
-impl<'a, E: Pairing> DerivedParams<'a, AccumParams<E>, PreparedAccumParams<E>>
-    for DerivedParamsTracker<'a, AccumParams<E>, PreparedAccumParams<E>, E>
-{
-    fn new_derived(p: &AccumParams<E>) -> PreparedAccumParams<E> {
-        PreparedAccumParams::from(p.clone())
-    }
-}
+impl_derived_for_prepared_ref!(
+    /// To derive prepared signature params from BBS+ signature params
+    BBSPlusSigParams,
+    PreparedBBSPlusSigParams
+);
 
-impl<'a, E: Pairing> DerivedParams<'a, AccumPk<E>, PreparedAccumPk<E>>
-    for DerivedParamsTracker<'a, AccumPk<E>, PreparedAccumPk<E>, E>
-{
-    fn new_derived(p: &AccumPk<E>) -> PreparedAccumPk<E> {
-        PreparedAccumPk::from(p.clone())
-    }
-}
+impl_derived_for_prepared_ref!(
+    /// To derive prepared BBS+ public key from BBS+ public key
+    BBSPlusPk,
+    PreparedBBSPlusPk
+);
+
+impl_derived_for_prepared_ref!(AccumParams, PreparedAccumParams);
+
+impl_derived_for_prepared_ref!(AccumPk, PreparedAccumPk);

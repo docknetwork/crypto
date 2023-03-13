@@ -13,8 +13,8 @@ use ark_std::{vec, vec::Vec};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use legogroth16::circom::{CircomCircuit, WitnessCalculator, R1CS};
 use legogroth16::{
-    calculate_d, create_random_proof, prepare_verifying_key, rerandomize_proof_1, verify_proof,
-    PreparedVerifyingKey, Proof, ProvingKey, VerifyingKey,
+    calculate_d, create_random_proof, rerandomize_proof_1, verify_proof, PreparedVerifyingKey,
+    Proof, ProvingKey, VerifyingKey,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -78,15 +78,6 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
         };
         let snark_proof = create_random_proof(circuit, v, proving_key, rng)?;
 
-        /*// NOTE: value of id is dummy
-        let mut sp = SchnorrProtocol::new(10000, comm_key, snark_proof.d);
-        let mut private_inputs =
-            witness.get_first_n_private_inputs(proving_key.vk.commit_witness_count)?;
-        private_inputs.push(v);
-        sp.init(rng, blindings, private_inputs)?;
-        self.snark_proof = Some(snark_proof);
-        self.sp = Some(sp);
-        Ok(())*/
         self.init_schnorr_protocol(
             rng,
             comm_key,
@@ -172,22 +163,6 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
 
     /// Verify that the snark proof and the Schnorr proof are valid.
     pub fn verify_proof_contribution(
-        &self,
-        challenge: &E::ScalarField,
-        inputs: &[E::ScalarField],
-        proof: &R1CSLegoGroth16Proof<E>,
-        comm_key: &[E::G1Affine],
-    ) -> Result<(), ProofSystemError> {
-        let verifying_key = self
-            .verifying_key
-            .ok_or(ProofSystemError::LegoGroth16VerifyingKeyNotProvided)?;
-        let pvk = prepare_verifying_key(verifying_key);
-        self.verify_proof_contribution_using_prepared(
-            challenge, inputs, proof, comm_key, &pvk, &mut None,
-        )
-    }
-
-    pub fn verify_proof_contribution_using_prepared(
         &self,
         challenge: &E::ScalarField,
         inputs: &[E::ScalarField],

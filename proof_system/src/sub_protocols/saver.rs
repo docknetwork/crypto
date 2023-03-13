@@ -285,7 +285,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         sp_combined.verify_proof_contribution_as_struct(challenge, &proof.sp_combined)
     }
 
-    pub fn verify_proof_contribution_using_prepared_when_aggregating_snark(
+    pub fn verify_proof_contribution_when_aggregating_snark(
         &self,
         challenge: &E::ScalarField,
         proof: &SaverProofWhenAggregatingSnarks<E>,

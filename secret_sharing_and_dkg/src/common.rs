@@ -1,9 +1,12 @@
 use ark_ec::AffineRepr;
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::vec::Vec;
+use ark_std::{cfg_into_iter, cfg_iter, vec::Vec};
 
 use zeroize::Zeroize;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 pub type ShareId = u16;
 
@@ -111,4 +114,61 @@ pub fn lagrange_basis_at_0<F: PrimeField>(x_coords: &[ShareId], i: ShareId) -> F
     }
     denominator.inverse_in_place().unwrap();
     numerator * denominator
+}
+
+/// Return the Lagrange basis polynomial at x = 0 for each of the given `x` coordinates. Faster than
+/// doing multiple calls to `lagrange_basis_at_0`
+pub fn lagrange_basis_at_0_for_all<F: PrimeField>(x_coords: Vec<ShareId>) -> Vec<F> {
+    let x = cfg_into_iter!(x_coords.as_slice())
+        .map(|x| F::from(*x as u64))
+        .collect::<Vec<_>>();
+
+    // Product of all `x`, i.e. \prod_{i}(x_i}
+    let product = cfg_iter!(x).product::<F>();
+
+    let all_l = cfg_into_iter!(x.clone()).map(move |i| {
+        let mut denominator = cfg_iter!(x)
+            .filter(|&j| &i != j)
+            .map(|&j| j - i)
+            .product::<F>();
+        denominator.inverse_in_place().unwrap();
+
+        // The numerator is of the form `x_1*x_2*...x_{i-1}*x_{i+1}*x_{i+2}*..` which is a product of all
+        // `x` except `x_i` and thus can be calculated as \prod_{i}(x_i} * (1 / x_i)
+        let numerator = product * i.inverse().unwrap();
+
+        denominator * numerator
+    }).collect::<Vec<_>>();
+    all_l
+}
+
+#[cfg(test)]
+pub mod tests {
+    use std::time::Instant;
+    use super::*;
+    use ark_ec::pairing::Pairing;
+    use ark_bls12_381::Bls12_381;
+    use ark_std::rand::prelude::StdRng;
+    use ark_std::rand::SeedableRng;
+    use ark_std::UniformRand;
+
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
+
+    #[test]
+    fn compare_lagrange_basis_at_0() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        let count = 20;
+        let x = (0..count).map(|_| ShareId::rand(&mut rng)).collect::<Vec<_>>();
+
+        let start = Instant::now();
+        let single = cfg_iter!(x).map(|i| lagrange_basis_at_0(&x, *i)).collect::<Vec<Fr>>();
+        println!("For {} x, single took {:?}", count, start.elapsed());
+
+        let start = Instant::now();
+        let multiple = lagrange_basis_at_0_for_all(x);
+        println!("For {} x, multiple took {:?}", count, start.elapsed());
+
+        assert_eq!(single, multiple);
+    }
 }

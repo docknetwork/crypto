@@ -615,7 +615,7 @@ where
                                 ProofSystemError::InvalidStatementProofIndex(s_idx)
                             })?;
                             agg_saver[*agg_idx].push(saver_proof.ciphertext.clone());
-                            sp.verify_proof_contribution_using_prepared_when_aggregating_snark(
+                            sp.verify_proof_contribution_when_aggregating_snark(
                                 &challenge,
                                 saver_proof,
                                 ek_comm_key,
@@ -639,7 +639,7 @@ where
                     let comm_key = bound_check_comm.get(s_idx).unwrap();
                     match proof {
                         StatementProof::BoundCheckLegoGroth16(ref bc_proof) => sp
-                            .verify_proof_contribution_using_prepared(
+                            .verify_proof_contribution(
                                 &challenge,
                                 bc_proof,
                                 &comm_key,
@@ -676,7 +676,7 @@ where
 
                     match proof {
                         StatementProof::R1CSLegoGroth16(ref r1cs_proof) => sp
-                            .verify_proof_contribution_using_prepared(
+                            .verify_proof_contribution(
                                 &challenge,
                                 &pub_inp,
                                 r1cs_proof,

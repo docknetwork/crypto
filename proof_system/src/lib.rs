@@ -159,6 +159,7 @@ extern crate core;
 
 #[macro_use]
 pub mod setup_params;
+#[macro_use]
 mod derived_params;
 pub mod error;
 pub mod meta_statement;
