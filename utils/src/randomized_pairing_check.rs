@@ -8,7 +8,7 @@ use ark_std::{cfg_iter, ops::MulAssign, vec, vec::Vec, UniformRand};
 use rayon::prelude::*;
 
 /// Inspired from Snarkpack implementation - https://github.com/nikkolasg/snarkpack/blob/main/src/pairing_check.rs
-/// RandomizedPairingChecker represents a check of the form e(A,B)e(C,D)... = T. Checks can
+/// RandomizedPairingChecker represents a check of the form `e(A,B)e(C,D)... = T`. Checks can
 /// be aggregated together using random linear combination. The efficiency comes
 /// from keeping the results from the miller loop output before proceeding to a final
 /// exponentiation when verifying if all checks are verified.
@@ -21,7 +21,8 @@ pub struct RandomizedPairingChecker<E: Pairing> {
     /// a right side result which is already in the right subgroup Gt which is to
     /// be compared to the left side when "final_exponentiatiat"-ed
     right: PairingOutput<E>,
-    /// If true, delays the computation of miller loops till the end (unless overridden) trading off memory for CPU time.
+    /// If true, delays the computation of miller loops till the end (unless overridden) trading off
+    /// memory for CPU time.
     lazy: bool,
     /// Keeps the pairs of G1, G2 elements that need to be used in miller loops when running lazily
     pending: (Vec<E::G1Prepared>, Vec<E::G2Prepared>),
@@ -34,10 +35,8 @@ impl<E> RandomizedPairingChecker<E>
 where
     E: Pairing,
 {
-    pub fn new_using_rng<R: Rng>(rng: &mut R, lazy: bool) -> Self {
-        Self::new(E::ScalarField::rand(rng), lazy)
-    }
-
+    /// Create a checker using given random number. If `lazy` is set to true, delays the computation
+    /// of miller loops till the end (unless overridden) trading off memory for CPU time.
     pub fn new(random: E::ScalarField, lazy: bool) -> Self {
         Self {
             left: MillerLoopOutput(E::TargetField::one()),
@@ -49,6 +48,13 @@ where
         }
     }
 
+    /// Same as `Self::new` except that this generates a random value
+    pub fn new_using_rng<R: Rng>(rng: &mut R, lazy: bool) -> Self {
+        Self::new(E::ScalarField::rand(rng), lazy)
+    }
+
+    /// Add a sequence of group elements whose pairing product must be equal to the given target field
+    /// element, i.e. `\prod_{i}(e(a_i, b_i)) = out`
     pub fn add_multiple_sources_and_target(
         &mut self,
         a: &[E::G1Affine],
@@ -58,6 +64,8 @@ where
         self.add_multiple_sources_and_target_with_laziness_choice(a, b, out, self.lazy)
     }
 
+    /// Add a sequence of group elements whose pairing product must be equal to the another given sequence
+    /// of group elements, i.e. `\prod_{i}(e(a_i, b_i)) = \prod_{i}(e(c_i, d_i))`
     pub fn add_multiple_sources(
         &mut self,
         a: &[E::G1Affine],
@@ -68,6 +76,8 @@ where
         self.add_multiple_sources_with_laziness_choice(a, b, c, d, self.lazy)
     }
 
+    /// Add 2 group elements whose pairing should be equal to the pairing of another 2 given group
+    /// elements, i.e. `e(a, b) = e(c, d)`
     pub fn add_sources(
         &mut self,
         a: &E::G1Affine,
@@ -78,6 +88,8 @@ where
         self.add_sources_with_laziness_choice(a, b, c, d, self.lazy)
     }
 
+    /// Same as `Self::add_multiple_sources_and_target` except that this accepts whether to be lazy or
+    /// not and does not default to laziness decided during creation of the checker
     pub fn add_multiple_sources_and_target_with_laziness_choice(
         &mut self,
         a: &[E::G1Affine],
@@ -101,6 +113,8 @@ where
         self.current_random *= self.random;
     }
 
+    /// Same as `Self::add_multiple_sources` except that this accepts whether to be lazy or
+    /// not and does not default to laziness decided during creation of the checker
     pub fn add_multiple_sources_with_laziness_choice(
         &mut self,
         a: &[E::G1Affine],
@@ -132,6 +146,8 @@ where
         self.current_random *= self.random;
     }
 
+    /// Same as `Self::add_sources` except that this accepts whether to be lazy or
+    /// not and does not default to laziness decided during creation of the checker
     pub fn add_sources_with_laziness_choice(
         &mut self,
         a: &E::G1Affine,
@@ -155,6 +171,7 @@ where
         self.current_random *= self.random;
     }
 
+    /// Verify that all added pairing equations are satisfied.
     pub fn verify(&self) -> bool {
         assert_eq!(self.pending.0.len(), self.pending.1.len());
         let left = if self.pending.0.len() > 0 {
