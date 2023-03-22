@@ -6,8 +6,7 @@ use crate::helpers::{IndexIsOutOfBounds, InvalidPair};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PSError {
     NoMessages,
-    IncompatibleVerificationKey,
-    MessageCountExceeded { received: usize, max: usize },
+    InvalidMessageCount { received: usize, expected: usize },
     MessageIndicesMustBeUniqueAndSorted(InvalidPair<usize>),
     ZeroSignature,
     MessageIndexIsOutOfBounds(IndexIsOutOfBounds),
@@ -31,6 +30,10 @@ impl<T> From<InvalidPair<(usize, T)>> for PSError {
 pub enum BlindPSError {
     NoCommitmentsOrMessages,
     IndexIsOutOfBounds(IndexIsOutOfBounds),
+    InvalidCommitmentsAndMessagesCount {
+        received: Option<usize>,
+        expected: usize,
+    },
     BlindingIndicesMustBeUniqueAndSorted(InvalidPair<usize>),
     IncompatibleVerificationKey,
 }

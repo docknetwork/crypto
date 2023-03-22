@@ -65,8 +65,14 @@ impl<E: Pairing> BlindSignature<E> {
         );
         let (ExtendSome(m_y_pairs), ExtendSome(com_y_pairs)): DoubleOwnedPairs<_, _, _, _> =
             process_results(com_and_msg_paired_with_y, |iter| iter.unzip())?;
-        if m_y_pairs.is_empty() && com_y_pairs.is_empty() {
-            Err(BlindPSError::NoCommitmentsOrMessages)?
+
+        match m_y_pairs.len().checked_add(com_y_pairs.len()) {
+            Some(0) => Err(BlindPSError::NoCommitmentsOrMessages)?,
+            Some(amount) if amount == y.len() => {}
+            received => Err(BlindPSError::InvalidCommitmentsAndMessagesCount {
+                received,
+                expected: y.len(),
+            })?,
         }
 
         // `h * (x + \sum_{i}(m_{i} * y_{i})) + \sum_{j}(com_{j} * y_{j})`

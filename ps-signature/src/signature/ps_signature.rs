@@ -52,7 +52,7 @@ impl<E: Pairing> Signature<E> {
         }
 
         let m_y_pairs = try_pairs!(messages, y)
-            .map_err(|(received, max)| PSError::MessageCountExceeded { max, received })?;
+            .map_err(|(received, expected)| PSError::InvalidMessageCount { received, expected })?;
 
         let r = E::ScalarField::rand(rng);
         // h = g * r
@@ -73,7 +73,7 @@ impl<E: Pairing> Signature<E> {
         }
 
         let m_y_pairs = try_pairs!(messages, y)
-            .map_err(|(received, max)| PSError::MessageCountExceeded { max, received })?;
+            .map_err(|(received, expected)| PSError::InvalidMessageCount { received, expected })?;
 
         let messages: Vec<_> = cfg_into_iter!(messages)
             .map(|field| field.into_bigint().to_bytes_be())
@@ -105,8 +105,8 @@ impl<E: Pairing> Signature<E> {
         }
 
         // `\sum_{i}(beta_tilde_{i} * m_{i})`
-        let beta_tilde_mul_m = Pairs::new(beta_tilde, messages)
-            .ok_or(PSError::IncompatibleVerificationKey)?
+        let beta_tilde_mul_m = try_pairs!(beta_tilde, messages)
+            .map_err(|(expected, received)| PSError::InvalidMessageCount { received, expected })?
             .msm();
 
         self.verify_pairing(beta_tilde_mul_m + alpha_tilde, g_tilde)
