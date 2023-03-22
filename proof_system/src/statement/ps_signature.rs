@@ -11,7 +11,7 @@ use crate::statement::Statement;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use ps_signature::{proof::*, setup::*};
 
-/// Public values like setup params, public key and revealed messages for proving knowledge of BBS+ signature.
+/// Public values like setup params, public key and revealed messages for proving knowledge of PS signature.
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,

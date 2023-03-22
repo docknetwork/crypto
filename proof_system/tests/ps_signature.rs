@@ -34,20 +34,20 @@ use test_utils::{test_serialization, Fr, ProofG1};
 
 #[test]
 fn pok_of_3_ps_sig_and_message_equality() {
-    // Prove knowledge of 3 BBS+ signatures and 3 of the messages are same among them.
+    // Prove knowledge of 3 PS signatures and 3 of the messages are same among them.
     let mut rng = StdRng::seed_from_u64(0u64);
 
-    // 1st BBS+ sig
+    // 1st PS sig
     let msg_count_1 = 6;
     let (secret_key_1, public_key_1, sig_params_1, msgs_1) =
         test_setup::<Bls12_381, Blake2b512, _>(&mut rng, msg_count_1);
 
-    // 2nd BBS+ sig
+    // 2nd PS sig
     let msg_count_2 = 10;
     let (secret_key_2, public_key_2, sig_params_2, mut msgs_2) =
         test_setup::<Bls12_381, Blake2b512, _>(&mut rng, msg_count_2);
 
-    // 3rd BBS+ sig
+    // 3rd PS sig
     let msg_count_3 = 12;
     let (secret_key_3, public_key_3, sig_params_3, mut msgs_3) =
         test_setup::<Bls12_381, Blake2b512, _>(&mut rng, msg_count_3);
@@ -111,7 +111,7 @@ fn pok_of_3_ps_sig_and_message_equality() {
         .map(|(i, m)| (i, *m))
         .collect::<BTreeMap<_, _>>();
 
-    // Since proving knowledge of 3 BBS+ signatures, add 3 statements, all of the same type though.
+    // Since proving knowledge of 3 PS signatures, add 3 statements, all of the same type though.
     let mut statements = Statements::new();
     statements.add(PoKPSSignatureStatement::new_statement_from_params(
         sig_params_1.clone(),
@@ -242,7 +242,7 @@ fn pok_of_3_ps_sig_and_message_equality() {
         )
         .unwrap();
     println!(
-        "Time to verify proof with 3 BBS+ signatures: {:?}",
+        "Time to verify proof with 3 PS signatures: {:?}",
         start.elapsed()
     );
 
@@ -258,14 +258,14 @@ fn pok_of_3_ps_sig_and_message_equality() {
         )
         .unwrap();
     println!(
-        "Time to verify proof with 3 BBS+ signatures with randomized pairing check: {:?}",
+        "Time to verify proof with 3 PS signatures with randomized pairing check: {:?}",
         start.elapsed()
     );
 }
 
 #[test]
 fn pok_of_ps_sig_and_accumulator() {
-    // Prove knowledge of BBS+ signature and one of the message's membership and non-membership in accumulators
+    // Prove knowledge of PS signature and one of the message's membership and non-membership in accumulators
     let mut rng = StdRng::seed_from_u64(0u64);
 
     let msg_count = 6;
@@ -369,7 +369,7 @@ fn pok_of_ps_sig_and_accumulator() {
         )
         .unwrap();
     println!(
-        "Time to verify proof with a BBS+ signature and positive accumulator membership: {:?}",
+        "Time to verify proof with a PS signature and positive accumulator membership: {:?}",
         start.elapsed()
     );
 
@@ -384,7 +384,7 @@ fn pok_of_ps_sig_and_accumulator() {
             },
         )
         .unwrap();
-    println!("Time to verify proof with a BBS+ signature and positive accumulator membership with randomized pairing check: {:?}", start.elapsed());
+    println!("Time to verify proof with a PS signature and positive accumulator membership with randomized pairing check: {:?}", start.elapsed());
 
     // Wrong witness reference fails to verify
     let mut meta_statements_incorrect = MetaStatements::new();
@@ -436,13 +436,13 @@ fn pok_of_ps_sig_and_accumulator() {
         unrevealed_messages: msgs.clone().into_iter().enumerate().collect(),
     }));
     witnesses_incorrect.add(Witness::AccumulatorMembership(MembershipWit {
-        element: msgs[2], // 2nd message from BBS+ sig in accumulator
+        element: msgs[2], // 2nd message from PS sig in accumulator
         witness: mem_1_wit.clone(),
     }));
     let mut meta_statements = MetaStatements::new();
     meta_statements.add_witness_equality(EqualWitnesses(
         vec![
-            (0, 2), // 2nd message from BBS+ sig in accumulator
+            (0, 2), // 2nd message from PS sig in accumulator
             (1, 0),
         ]
         .into_iter()
@@ -567,7 +567,7 @@ fn pok_of_ps_sig_and_accumulator() {
         )
         .unwrap();
     println!(
-        "Time to verify proof with a BBS+ signature and universal accumulator membership: {:?}",
+        "Time to verify proof with a PS signature and universal accumulator membership: {:?}",
         start.elapsed()
     );
 
@@ -583,7 +583,7 @@ fn pok_of_ps_sig_and_accumulator() {
             },
         )
         .unwrap();
-    println!("Time to verify proof with a BBS+ signature and universal accumulator membership with randomized pairing check: {:?}", start.elapsed());
+    println!("Time to verify proof with a PS signature and universal accumulator membership with randomized pairing check: {:?}", start.elapsed());
 
     // Prove knowledge of signature and non-membership of message with index `accum_non_member_idx` in universal accumulator
     let accum_non_member_idx = 3;
@@ -665,7 +665,7 @@ fn pok_of_ps_sig_and_accumulator() {
         )
         .unwrap();
     println!(
-        "Time to verify proof with a BBS+ signature and universal accumulator non-membership: {:?}",
+        "Time to verify proof with a PS signature and universal accumulator non-membership: {:?}",
         start.elapsed()
     );
 
@@ -680,7 +680,7 @@ fn pok_of_ps_sig_and_accumulator() {
             },
         )
         .unwrap();
-    println!("Time to verify proof with a BBS+ signature and universal accumulator non-membership with randomized pairing check: {:?}", start.elapsed());
+    println!("Time to verify proof with a PS signature and universal accumulator non-membership with randomized pairing check: {:?}", start.elapsed());
 
     // Prove knowledge of signature and
     // - membership of message with index `accum_member_1_idx` in positive accumulator
@@ -791,7 +791,7 @@ fn pok_of_ps_sig_and_accumulator() {
             Default::default(),
         )
         .unwrap();
-    println!("Time to verify proof with a BBS+ signature and 3 accumulator membership and non-membership checks: {:?}", start.elapsed());
+    println!("Time to verify proof with a PS signature and 3 accumulator membership and non-membership checks: {:?}", start.elapsed());
 
     let start = Instant::now();
     proof
@@ -804,12 +804,12 @@ fn pok_of_ps_sig_and_accumulator() {
             },
         )
         .unwrap();
-    println!("Time to verify proof with a BBS+ signature and 3 accumulator membership and non-membership checks with randomized pairing check: {:?}", start.elapsed());
+    println!("Time to verify proof with a PS signature and 3 accumulator membership and non-membership checks with randomized pairing check: {:?}", start.elapsed());
 }
 
 #[test]
 fn pok_of_knowledge_in_pedersen_commitment_and_ps_sig() {
-    // Prove knowledge of commitment in Pedersen commitments and equality with a BBS+ signature.
+    // Prove knowledge of commitment in Pedersen commitments and equality with a PS signature.
     // Useful when requesting a blind signature and proving knowledge of a signature along with
     // some the equality of certain messages in the commitment and signature
 
@@ -1034,7 +1034,7 @@ fn proof_spec_modification() {
 
     let mut rng = StdRng::seed_from_u64(0u64);
 
-    // 1st BBS+ sig
+    // 1st PS sig
     let msg_count_1 = 6;
     let (secret_key_1, public_key_1, sig_params_1, msgs_1) =
         test_setup::<Bls12_381, Blake2b512, _>(&mut rng, msg_count_1);
@@ -1042,7 +1042,7 @@ fn proof_spec_modification() {
     let sig_1 =
         Signature::<Bls12_381>::new(&mut rng, &msgs_1, &secret_key_1, &sig_params_1).unwrap();
 
-    // 2nd BBS+ sig
+    // 2nd PS sig
     let msg_count_2 = 10;
     let (secret_key_2, public_key_2, sig_params_2, mut msgs_2) =
         test_setup::<Bls12_381, Blake2b512, _>(&mut rng, msg_count_2);
@@ -1566,7 +1566,7 @@ fn pok_of_ps_sig_with_reusing_setup_params() {
         .verify::<StdRng, Blake2b512>(&mut rng, proof_spec.clone(), None, Default::default())
         .unwrap();
     println!(
-        "Time to verify proof with 4 BBS+ signatures: {:?}",
+        "Time to verify proof with 4 PS signatures: {:?}",
         start.elapsed()
     );
 
@@ -1582,7 +1582,7 @@ fn pok_of_ps_sig_with_reusing_setup_params() {
         )
         .unwrap();
     println!(
-        "Time to verify proof with 4 BBS+ signatures with randomized pairing check: {:?}",
+        "Time to verify proof with 4 PS signatures with randomized pairing check: {:?}",
         start.elapsed()
     );
 }
