@@ -135,7 +135,7 @@ impl<E: Pairing> CredentialShow<E> {
         set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         let set_comm_srs = set_comm_srs.into();
-        let P1 = set_comm_srs.get_P1().clone();
+        let P1 = *set_comm_srs.get_P1();
         self.signature
             .verify_for_subsets_with_aggregated_witness::<D>(
                 self.commitments.to_vec(),
@@ -236,10 +236,7 @@ pub mod tests {
         )
         .unwrap();
 
-        let disclosed = vec![
-            vec![msgs_1[0].clone(), msgs_1[1].clone()],
-            vec![msgs_2[2].clone()],
-        ];
+        let disclosed = vec![vec![msgs_1[0], msgs_1[1]], vec![msgs_2[2]]];
         let show_p = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
             cred_rand.clone(),
@@ -266,10 +263,10 @@ pub mod tests {
         )
         .unwrap();
 
-        let disclosed = vec![vec![msgs_1[0].clone(), msgs_1[1].clone()], vec![]];
+        let disclosed = vec![vec![msgs_1[0], msgs_1[1]], vec![]];
         let show_p = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
-            cred_rand.clone(),
+            cred_rand,
             disclosed.clone(),
             &pseudonym.secret,
             &pseudonym.nym,
@@ -285,13 +282,8 @@ pub mod tests {
         let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let show = show_p.gen_show(&challenge);
-        show.verify::<Blake2b512>(
-            disclosed,
-            &challenge,
-            prep_ipk.clone(),
-            prep_set_comm_srs.clone(),
-        )
-        .unwrap();
+        show.verify::<Blake2b512>(disclosed, &challenge, prep_ipk, prep_set_comm_srs)
+            .unwrap();
     }
 
     #[test]
@@ -346,7 +338,6 @@ pub mod tests {
 
         // Delegate credential
         let (cred1, uk1) = root_cred_rand
-            .clone()
             .delegate_with_new_attributes(
                 &mut rng,
                 msgs_3.clone(),
@@ -399,11 +390,7 @@ pub mod tests {
         )
         .unwrap();
 
-        let disclosed = vec![
-            vec![],
-            vec![msgs_2[1].clone()],
-            vec![msgs_3[0].clone(), msgs_3[3].clone()],
-        ];
+        let disclosed = vec![vec![], vec![msgs_2[1]], vec![msgs_3[0], msgs_3[3]]];
         let show_p = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
             cred1_rand.clone(),
@@ -507,7 +494,7 @@ pub mod tests {
 
         let (root_cred, uk) = Credential::issue_root(
             &mut rng,
-            vec![msgs_1.clone(), msgs_2.clone()],
+            vec![msgs_1, msgs_2],
             &upk1,
             Some(2),
             &isk1,
@@ -530,10 +517,9 @@ pub mod tests {
 
         // Delegate credential
         let (cred1, uk1) = root_cred_rand
-            .clone()
             .delegate_with_new_attributes(
                 &mut rng,
-                msgs_3.clone(),
+                msgs_3,
                 &pseudonym.secret,
                 &ipk1.X_0,
                 Some(2),
@@ -547,8 +533,8 @@ pub mod tests {
         let (cred1_rand, pseudonym1, _) = cred1
             .process_received_delegated_using_given_randomness(
                 &mu,
-                psi.clone(),
-                chi.clone(),
+                psi,
+                chi,
                 Some(&uk1),
                 &upk2,
                 &usk2,
@@ -559,7 +545,7 @@ pub mod tests {
 
         let (root_cred2, uk2) = Credential::issue_root(
             &mut rng,
-            vec![msgs_4.clone(), msgs_5.clone()],
+            vec![msgs_4, msgs_5],
             &upk2,
             Some(2),
             &isk2,
@@ -589,7 +575,7 @@ pub mod tests {
         let disclosed_2 = vec![vec![], vec![]];
         let show_p1 = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
-            cred1_rand.clone(),
+            cred1_rand,
             disclosed_1.clone(),
             &pseudonym1.secret,
             &pseudonym1.nym,
@@ -600,7 +586,7 @@ pub mod tests {
 
         let show_p2 = CredentialShowProtocol::init::<_, Blake2b512>(
             &mut rng,
-            root_cred2_rand.clone(),
+            root_cred2_rand,
             disclosed_2.clone(),
             &pseudonym2.secret,
             &pseudonym2.nym,

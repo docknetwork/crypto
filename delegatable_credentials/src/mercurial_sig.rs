@@ -364,7 +364,7 @@ impl<E: Pairing> Signature<E> {
         {
             return Err(DelegationError::InvalidSignature);
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -410,7 +410,7 @@ impl<E: Pairing> SignatureG2<E> {
         {
             return Err(DelegationError::InvalidSignature);
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -430,7 +430,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let (P1, P2) = generator_pair::<Bls12_381, StdRng>(&mut rng);
-        let prep_P2 = G2Prepared::from(P2.clone());
+        let prep_P2 = G2Prepared::from(P2);
 
         let count = 5;
         let sk = SecretKey::new(&mut rng, count).unwrap();
@@ -459,8 +459,7 @@ mod tests {
         // Converted messages and signature with original public key
         let r2 = Fr::rand(&mut rng);
         let (sig2, msgs1) = sig.change_rep(&mut rng, &r2, &msgs);
-        sig2.verify(&msgs1, prep_pk.clone(), &P1, prep_P2.clone())
-            .unwrap();
+        sig2.verify(&msgs1, prep_pk, &P1, prep_P2.clone()).unwrap();
 
         let (sig3, msgs2) = sig1.change_rep(&mut rng, &r2, &msgs);
         sig3.verify(&msgs2, prep_pk1.clone(), &P1, prep_P2.clone())
@@ -468,8 +467,7 @@ mod tests {
 
         // Messages, signature and public key, all converted
         let (sig4, msgs3) = sig.change_rep_with_given_sig_converter(&mut rng, &r2, &r1, &msgs);
-        sig4.verify(&msgs3, prep_pk1.clone(), &P1, prep_P2.clone())
-            .unwrap();
+        sig4.verify(&msgs3, prep_pk1, &P1, prep_P2.clone()).unwrap();
 
         // Switch group for messages and public key
 
@@ -483,6 +481,6 @@ mod tests {
 
         // Converted messages and signature with original public key
         let (sig2, msgs1) = sig.change_rep(&mut rng, &r2, &msgs);
-        sig2.verify(&msgs1, &pk, prep_P2.clone(), &P1).unwrap();
+        sig2.verify(&msgs1, &pk, prep_P2, &P1).unwrap();
     }
 }

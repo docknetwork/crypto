@@ -50,7 +50,7 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
             })
             .collect::<Vec<_>>();
         self.commitment_to_randomness =
-            Some(SchnorrCommitment::new(&self.commitment_key, blindings));
+            Some(SchnorrCommitment::new(self.commitment_key, blindings));
         self.witnesses = Some(witnesses);
         Ok(())
     }
@@ -132,10 +132,12 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
 
 impl<'a, G: AffineRepr> Zeroize for SchnorrProtocol<'a, G> {
     fn zeroize(&mut self) {
-        self.commitment_to_randomness.as_mut().map(|c| c.zeroize());
-        self.witnesses
-            .as_mut()
-            .map(|w| cfg_iter_mut!(w).for_each(|v| v.zeroize()));
+        if let Some(c) = self.commitment_to_randomness.as_mut() {
+            c.zeroize()
+        }
+        if let Some(w) = self.witnesses.as_mut() {
+            cfg_iter_mut!(w).for_each(|v| v.zeroize())
+        }
     }
 }
 

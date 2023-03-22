@@ -12,6 +12,10 @@ use bbs_plus::setup::{
 use legogroth16::{
     PreparedVerifyingKey as LegoPreparedVerifyingKey, VerifyingKey as LegoVerifyingKey,
 };
+use ps_signature::setup::{
+    PreparedPublicKey as PreparedPSPk, PreparedSignatureParams as PreparedPSSigParams,
+    PublicKey as PSPk, SignatureParams as PSSigParams,
+};
 use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, PreparedEncryptionGens,
     PreparedEncryptionKey,
@@ -185,9 +189,21 @@ impl_derived_for_prepared_ref!(
 );
 
 impl_derived_for_prepared_ref!(
-    /// To derive prepared BBS+ public key from BBS+ public key
+    /// To derive prepared signature params from BBS+ signature params
+    PSSigParams,
+    PreparedPSSigParams
+);
+
+impl_derived_for_prepared_ref!(
+    /// To derive prepared PS public key from PS public key
     BBSPlusPk,
     PreparedBBSPlusPk
+);
+
+impl_derived_for_prepared_ref!(
+    /// To derive prepared PS public key from PS public key
+    PSPk,
+    PreparedPSPk
 );
 
 impl_derived_for_prepared_ref!(AccumParams, PreparedAccumParams);

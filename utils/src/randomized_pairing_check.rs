@@ -174,7 +174,7 @@ where
     /// Verify that all added pairing equations are satisfied.
     pub fn verify(&self) -> bool {
         assert_eq!(self.pending.0.len(), self.pending.1.len());
-        let left = if self.pending.0.len() > 0 {
+        let left = if !self.pending.0.is_empty() {
             let mut p = E::multi_miller_loop(self.pending.0.clone(), self.pending.1.clone());
             p.0.mul_assign(self.left.0);
             p
@@ -351,13 +351,13 @@ mod test {
 
         for lazy in [true, false] {
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
-            checker.add_sources(&a1[0], b1[0].clone(), &a1[0], b1[0].clone());
+            checker.add_sources(&a1[0], b1[0], &a1[0], b1[0]);
             assert!(checker.verify());
 
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
-            checker.add_sources(&a1[0], b1[0].clone(), &a1[0], b1[0].clone());
-            checker.add_sources(&a1[1], b1[1].clone(), &a1[1], b1[1].clone());
-            checker.add_sources(&a1[2], b1[2].clone(), &a1[2], b1[2].clone());
+            checker.add_sources(&a1[0], b1[0], &a1[0], b1[0]);
+            checker.add_sources(&a1[1], b1[1], &a1[1], b1[1]);
+            checker.add_sources(&a1[2], b1[2], &a1[2], b1[2]);
             assert!(checker.verify());
         }
     }

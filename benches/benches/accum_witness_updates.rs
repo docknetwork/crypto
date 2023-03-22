@@ -72,7 +72,7 @@ fn non_membership_update_batch_using_public_info(c: &mut Criterion) {
 
                     let mut old_accums = Vec::with_capacity(iters as usize);
                     let mut omegas = Vec::with_capacity(iters as usize);
-                    old_accums.push((*accumulator.value()).clone());
+                    old_accums.push(*accumulator.value());
 
                     for i in 0..iters as usize {
                         accumulator = accumulator
@@ -85,7 +85,7 @@ fn non_membership_update_batch_using_public_info(c: &mut Criterion) {
                             )
                             .unwrap();
                         if i < (iters - 1) as usize {
-                            old_accums.push((*accumulator.value()).clone());
+                            old_accums.push(*accumulator.value());
                             let omega = Omega::new(
                                 &elems_batches[i + 1],
                                 &elems_batches[i],
@@ -137,7 +137,7 @@ fn membership_update_batch_using_public_info(c: &mut Criterion) {
                 b.iter_custom(|iters| {
                     let member = Fr::rand(&mut rng);
                     accumulator = accumulator
-                        .add(member.clone(), &keypair.secret_key, &mut state)
+                        .add(member, &keypair.secret_key, &mut state)
                         .unwrap();
 
                     let elems_batches = (0..iters + 1)
@@ -158,7 +158,7 @@ fn membership_update_batch_using_public_info(c: &mut Criterion) {
 
                     let mut old_accums = Vec::with_capacity(iters as usize);
                     let mut omegas = Vec::with_capacity(iters as usize);
-                    old_accums.push((*accumulator.value()).clone());
+                    old_accums.push(*accumulator.value());
 
                     for i in 0..iters as usize {
                         accumulator = accumulator
@@ -170,7 +170,7 @@ fn membership_update_batch_using_public_info(c: &mut Criterion) {
                             )
                             .unwrap();
                         if i < (iters - 1) as usize {
-                            old_accums.push((*accumulator.value()).clone());
+                            old_accums.push(*accumulator.value());
                         }
                         let omega = Omega::new(
                             &elems_batches[i + 1],
@@ -239,13 +239,13 @@ fn non_membership_update_batch_using_secret_key(c: &mut Criterion) {
                             .collect::<Vec<_>>();
 
                         let mut old_accums = Vec::with_capacity(iters as usize);
-                        old_accums.push((*accumulator.value()).clone());
+                        old_accums.push(*accumulator.value());
                         for i in 0..iters as usize {
                             accumulator = accumulator
                                 .add_batch(elems_batches[i].clone(), &keypair.secret_key, &initial_elements, &mut state)
                                 .unwrap();
                             if i < (iters - 1) as usize {
-                                old_accums.push((*accumulator.value()).clone());
+                                old_accums.push(*accumulator.value());
                             }
                         }
 
@@ -306,7 +306,7 @@ fn non_membership_update_batch_using_secret_key(c: &mut Criterion) {
                                 accumulator = accumulator
                                     .remove_batch(&elems_batches[i], &keypair.secret_key, &initial_elements, &mut state)
                                     .unwrap();
-                                new_accums.push((*accumulator.value()).clone());
+                                new_accums.push(*accumulator.value());
                             }
 
                             let start = Instant::now();
@@ -361,14 +361,14 @@ fn non_membership_update_batch_using_secret_key(c: &mut Criterion) {
                                 .unwrap();
 
                             let mut old_accums = Vec::with_capacity(iters as usize);
-                            old_accums.push((*accumulator.value()).clone());
+                            old_accums.push(*accumulator.value());
 
                             for i in 0..iters as usize {
                                 accumulator = accumulator
                                     .batch_updates(elems_batches[i+1].clone(), &elems_batches[i], &keypair.secret_key, &initial_elements, &mut state)
                                     .unwrap();
                                 if i < (iters - 1) as usize {
-                                    old_accums.push((*accumulator.value()).clone());
+                                    old_accums.push(*accumulator.value());
                                 }
                             }
 
@@ -435,13 +435,13 @@ fn membership_update_batch_using_secret_key(c: &mut Criterion) {
                             .collect::<Vec<_>>();
 
                         let mut old_accums = Vec::with_capacity(iters as usize);
-                        old_accums.push((*pos_accumulator_1.value()).clone());
+                        old_accums.push(*pos_accumulator_1.value());
                         for i in 0..iters as usize {
                             pos_accumulator_1 = pos_accumulator_1
                                 .add_batch(elems_batches[i].clone(), &pos_keypair.secret_key, &mut pos_state)
                                 .unwrap();
                             if i < (iters - 1) as usize {
-                                old_accums.push((*pos_accumulator_1.value()).clone());
+                                old_accums.push(*pos_accumulator_1.value());
                             }
                         }
 
@@ -505,7 +505,7 @@ fn membership_update_batch_using_secret_key(c: &mut Criterion) {
                             pos_accumulator_1 = pos_accumulator_1
                                 .remove_batch(&elems_batches[i], &pos_keypair.secret_key, &mut pos_state)
                                 .unwrap();
-                            new_accums.push((*pos_accumulator_1.value()).clone());
+                            new_accums.push(*pos_accumulator_1.value());
                         }
 
                         let start = Instant::now();
@@ -563,14 +563,14 @@ fn membership_update_batch_using_secret_key(c: &mut Criterion) {
                             .unwrap();
 
                         let mut old_accums = Vec::with_capacity(iters as usize);
-                        old_accums.push((*pos_accumulator_1.value()).clone());
+                        old_accums.push(*pos_accumulator_1.value());
 
                         for i in 0..iters as usize {
                             pos_accumulator_1 = pos_accumulator_1
                                 .batch_updates(elems_batches[i+1].clone(), &elems_batches[i], &pos_keypair.secret_key, &mut pos_state)
                                 .unwrap();
                             if i < (iters - 1) as usize {
-                                old_accums.push((*pos_accumulator_1.value()).clone());
+                                old_accums.push(*pos_accumulator_1.value());
                             }
                         }
 
@@ -606,11 +606,11 @@ fn membership_update_single(c: &mut Criterion) {
 
     let elem = Fr::rand(&mut rng);
     let pos_accumulator_1 = pos_accumulator
-        .add(elem.clone(), &pos_keypair.secret_key, &mut pos_state)
+        .add(elem, &pos_keypair.secret_key, &mut pos_state)
         .unwrap();
     let uni_accumulator_1 = uni_accumulator
         .add(
-            elem.clone(),
+            elem,
             &uni_keypair.secret_key,
             &initial_elements,
             &mut uni_state,
@@ -619,15 +619,11 @@ fn membership_update_single(c: &mut Criterion) {
 
     let elem_to_update_with = Fr::rand(&mut rng);
     let pos_accumulator_2 = pos_accumulator_1
-        .add(
-            elem_to_update_with.clone(),
-            &pos_keypair.secret_key,
-            &mut pos_state,
-        )
+        .add(elem_to_update_with, &pos_keypair.secret_key, &mut pos_state)
         .unwrap();
     let uni_accumulator_2 = uni_accumulator_1
         .add(
-            elem_to_update_with.clone(),
+            elem_to_update_with,
             &uni_keypair.secret_key,
             &initial_elements,
             &mut uni_state,
@@ -730,7 +726,7 @@ fn non_membership_update_single(c: &mut Criterion) {
     let elem_to_update_with = Fr::rand(&mut rng);
     let accumulator_1 = accumulator
         .add(
-            elem_to_update_with.clone(),
+            elem_to_update_with,
             &keypair.secret_key,
             &initial_elements,
             &mut state,
@@ -744,7 +740,7 @@ fn non_membership_update_single(c: &mut Criterion) {
                 wit_1.update_after_addition(
                     black_box(&non_member),
                     black_box(&elem_to_update_with),
-                    black_box(&accumulator.value()),
+                    black_box(accumulator.value()),
                 );
             })
         },
@@ -771,7 +767,7 @@ fn non_membership_update_single(c: &mut Criterion) {
                     .update_after_removal(
                         black_box(&non_member),
                         black_box(&elem_to_update_with),
-                        black_box(&accumulator_2.value()),
+                        black_box(accumulator_2.value()),
                     )
                     .unwrap();
             })

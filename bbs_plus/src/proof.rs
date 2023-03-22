@@ -339,7 +339,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
             params.h[*i].serialize_compressed(&mut writer)?;
             bases_revealed.push(params.h[*i]);
             msg.serialize_compressed(&mut writer)?;
-            exponents.push(msg.clone());
+            exponents.push(*msg);
         }
         E::G1::msm_unchecked(&bases_revealed, &exponents).serialize_compressed(&mut writer)?;
         T2.serialize_compressed(&mut writer).map_err(|e| e.into())
@@ -495,7 +495,7 @@ where
             if revealed_msgs.contains_key(&i) {
                 let message = revealed_msgs.get(&i).unwrap();
                 bases_revealed.push(h[i]);
-                exponents.push(message.clone());
+                exponents.push(*message);
             } else {
                 bases_2.push(h[i]);
             }
@@ -557,10 +557,7 @@ mod tests {
         KeypairG2<Bls12_381>,
         SignatureG1<Bls12_381>,
     ) {
-        let messages: Vec<Fr> = (0..message_count)
-            .into_iter()
-            .map(|_| Fr::rand(rng))
-            .collect();
+        let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(rng)).collect();
         let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, message_count);
         let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
         let sig =
@@ -669,18 +666,16 @@ mod tests {
         let keypair_2 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_2);
 
         let mut messages_1: Vec<Fr> = (0..message_1_count - 1)
-            .into_iter()
             .map(|_| Fr::rand(&mut rng))
             .collect();
         let mut messages_2: Vec<Fr> = (0..message_2_count - 1)
-            .into_iter()
             .map(|_| Fr::rand(&mut rng))
             .collect();
 
         let same_msg_idx = 4;
         let same_msg = Fr::rand(&mut rng);
-        messages_1.insert(same_msg_idx, same_msg.clone());
-        messages_2.insert(same_msg_idx, same_msg.clone());
+        messages_1.insert(same_msg_idx, same_msg);
+        messages_2.insert(same_msg_idx, same_msg);
 
         // A particular message is same
         assert_eq!(messages_1[same_msg_idx], messages_2[same_msg_idx]);
@@ -704,10 +699,10 @@ mod tests {
         let same_blinding = Fr::rand(&mut rng);
 
         let mut blindings_1 = BTreeMap::new();
-        blindings_1.insert(same_msg_idx, same_blinding.clone());
+        blindings_1.insert(same_msg_idx, same_blinding);
 
         let mut blindings_2 = BTreeMap::new();
-        blindings_2.insert(same_msg_idx, same_blinding.clone());
+        blindings_2.insert(same_msg_idx, same_blinding);
 
         // Add some more blindings randomly,
         blindings_1.insert(0, Fr::rand(&mut rng));
@@ -854,7 +849,7 @@ mod tests {
             *proof_2
                 .get_resp_for_message(1, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_2.0[2 + 0]
+            proof_2.sc_resp_2.0[2]
         );
         assert_eq!(
             *proof_2
@@ -896,7 +891,7 @@ mod tests {
             *proof_3
                 .get_resp_for_message(1, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_2.0[2 + 0]
+            proof_3.sc_resp_2.0[2]
         );
         assert_eq!(
             *proof_3
@@ -972,7 +967,6 @@ mod tests {
         for i in 0..sig_count {
             msgs.push(
                 (0..message_count)
-                    .into_iter()
                     .map(|_| Fr::rand(&mut rng))
                     .collect::<Vec<Fr>>(),
             );

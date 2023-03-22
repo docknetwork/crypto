@@ -1,10 +1,10 @@
 use ark_bls12_381::Bls12_381;
 use ark_ec::pairing::Pairing;
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
-    io::{Read, Write},
+    io::Write,
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
@@ -39,7 +39,7 @@ macro_rules! bench_single {
             })
         });
 
-        let y = base.mul(witness.into_repr()).into_affine();
+        let y = base.mul_bigint(witness.into_bigint()).into_affine();
         let blinding = Fr::rand(&mut rng);
         let protocol =
             Protocol::<<Bls12_381 as Pairing>::$group_affine>::init(witness, blinding, &base);
@@ -71,7 +71,8 @@ macro_rules! bench_vector {
                 .into_iter()
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<Vec<_>>();
-            let y = variable_base_msm(&bases, &witnesses).into_affine();
+            let y = <Bls12_381 as Pairing>::$group_projective::msm_unchecked(&bases, &witnesses)
+                .into_affine();
             bases_vec.push(bases);
             witnesses_vec.push(witnesses);
             y_vec.push(y);
@@ -140,19 +141,19 @@ macro_rules! bench_vector {
 }
 
 fn schnorr_single_g1(c: &mut Criterion) {
-    bench_single!(G1Affine, G1Projective, c);
+    bench_single!(G1Affine, G1, c);
 }
 
 fn schnorr_single_g2(c: &mut Criterion) {
-    bench_single!(G2Affine, G2Projective, c);
+    bench_single!(G2Affine, G2, c);
 }
 
 fn schnorr_vector_g1(c: &mut Criterion) {
-    bench_vector!(G1Projective, c);
+    bench_vector!(G1, c);
 }
 
 fn schnorr_vector_g2(c: &mut Criterion) {
-    bench_vector!(G2Projective, c);
+    bench_vector!(G2, c);
 }
 
 criterion_group!(

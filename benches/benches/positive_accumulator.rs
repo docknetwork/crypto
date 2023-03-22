@@ -199,7 +199,7 @@ fn single(c: &mut Criterion) {
             let elems = (0..iters).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
             for elem in &elems {
                 accumulator_1 = accumulator_1
-                    .add(elem.clone(), &keypair.secret_key, &mut state_1)
+                    .add(*elem, &keypair.secret_key, &mut state_1)
                     .unwrap();
             }
             let start = Instant::now();
@@ -219,7 +219,7 @@ fn single(c: &mut Criterion) {
             let elems = (0..iters).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
             for elem in &elems {
                 accumulator_2 = accumulator_2
-                    .add(elem.clone(), &keypair.secret_key, &mut state_2)
+                    .add(*elem, &keypair.secret_key, &mut state_2)
                     .unwrap();
             }
             let start = Instant::now();
@@ -240,7 +240,7 @@ fn single(c: &mut Criterion) {
             let mut wits = Vec::with_capacity(iters as usize);
             for elem in &elems {
                 accumulator_3 = accumulator_3
-                    .add(elem.clone(), &keypair.secret_key, &mut state_3)
+                    .add(*elem, &keypair.secret_key, &mut state_3)
                     .unwrap();
             }
             for i in 0..iters as usize {

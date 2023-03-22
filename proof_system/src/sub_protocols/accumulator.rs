@@ -96,7 +96,7 @@ impl<'a, E: Pairing> AccumulatorMembershipSubProtocol<'a, E> {
             ));
         }
         let protocol = self.protocol.take().unwrap();
-        let proof = protocol.gen_proof(&challenge);
+        let proof = protocol.gen_proof(challenge);
         Ok(StatementProof::AccumulatorMembership(proof))
     }
 
@@ -195,7 +195,7 @@ impl<'a, E: Pairing> AccumulatorNonMembershipSubProtocol<'a, E> {
             ));
         }
         let protocol = self.protocol.take().unwrap();
-        let proof = protocol.gen_proof(&challenge);
+        let proof = protocol.gen_proof(challenge);
         Ok(StatementProof::AccumulatorNonMembership(proof))
     }
 

@@ -33,7 +33,7 @@ pub fn deal_random_secret<R: RngCore, G: AffineRepr>(
     SSError,
 > {
     let secret = G::ScalarField::rand(rng);
-    let (shares, coeff_comms, poly) = deal_secret(rng, secret.clone(), threshold, total, ck)?;
+    let (shares, coeff_comms, poly) = deal_secret(rng, secret, threshold, total, ck)?;
     Ok((secret, shares, coeff_comms, poly))
 }
 

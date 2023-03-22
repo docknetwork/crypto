@@ -229,7 +229,7 @@ impl<E: Pairing> Signature<E> {
 
         let mut new_uk = None;
         if let Some(uk) = update_key {
-            uk.verify(&self, issuer_public_key, max_attributes_per_credential, srs)?;
+            uk.verify(self, issuer_public_key, max_attributes_per_credential, srs)?;
 
             let psi_inv = psi.inverse().unwrap();
             // The paper says the following commented line but that seems wrong.
@@ -277,7 +277,7 @@ impl<E: Pairing> Signature<E> {
 
         let mut new_z = SetCommitmentSRS::<E>::eval::<E::G1Affine>(
             msg_set.clone(),
-            &update_key.get_key_for_index(insert_at_index),
+            update_key.get_key_for_index(insert_at_index),
         )
         .mul_bigint(rho.into_bigint());
         new_z += self.comm_sig.Z;
@@ -602,7 +602,7 @@ pub mod tests {
         let usk = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk = UserPublicKey::new(&usk, set_comm_srs.get_P1());
 
-        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk);
 
         let msgs_1 = (0..t - 2).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
         let msgs_2 = (0..t - 1).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
@@ -941,7 +941,7 @@ pub mod tests {
         let isk = RootIssuerSecretKey::<Bls12_381>::new::<StdRng>(&mut rng, l).unwrap();
         let ipk = RootIssuerPublicKey::new(&isk, set_comm_srs.get_P1(), set_comm_srs.get_P2());
 
-        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk);
 
         let usk = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk = UserPublicKey::new(&usk, set_comm_srs.get_P1());
@@ -1020,15 +1020,10 @@ pub mod tests {
         new_sig
             .verify(
                 &comms,
-                vec![
-                    msgs_1.clone(),
-                    msgs_2.clone(),
-                    msgs_3.clone(),
-                    msgs_4.clone(),
-                ],
+                vec![msgs_1, msgs_2, msgs_3, msgs_4],
                 &opns,
                 &upk,
-                prep_ipk.clone(),
+                prep_ipk,
                 &set_comm_srs,
             )
             .unwrap();
@@ -1088,7 +1083,7 @@ pub mod tests {
         new_sig
             .verify(
                 &comms,
-                vec![msgs_1.clone(), msgs_2.clone()],
+                vec![msgs_1, msgs_2],
                 &opns,
                 &upk1,
                 prep_ipk,

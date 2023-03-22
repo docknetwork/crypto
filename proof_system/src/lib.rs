@@ -162,6 +162,7 @@ pub mod setup_params;
 #[macro_use]
 mod derived_params;
 pub mod error;
+mod macros;
 pub mod meta_statement;
 pub mod proof;
 pub mod proof_spec;

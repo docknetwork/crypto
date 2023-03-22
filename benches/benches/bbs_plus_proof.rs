@@ -84,8 +84,8 @@ fn pok_sig_benchmark(c: &mut Criterion) {
                     b.iter(|| {
                         let pok = PoKOfSignatureG1Protocol::init(
                             &mut rng,
-                            black_box(&sig),
-                            black_box(&params),
+                            black_box(sig),
+                            black_box(params),
                             black_box(messages),
                             black_box(BTreeMap::new()),
                             black_box(revealed_indices[j].clone()),
@@ -117,8 +117,8 @@ fn pok_sig_benchmark(c: &mut Criterion) {
         for j in 0..revealed_indices_range[i].len() {
             let pok = PoKOfSignatureG1Protocol::init(
                 &mut rng,
-                &sig,
-                &params,
+                sig,
+                params,
                 messages,
                 BTreeMap::new(),
                 revealed_indices_range[i][j].clone(),
@@ -155,8 +155,8 @@ fn pok_sig_benchmark(c: &mut Criterion) {
                             .verify(
                                 black_box(&revealed_msgs_range[i][j]),
                                 black_box(&challenges_range[i][j]),
-                                black_box(&keypair.public_key),
-                                black_box(&params),
+                                black_box(keypair.public_key.clone()),
+                                black_box(params.clone()),
                             )
                             .unwrap();
                     });

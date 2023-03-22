@@ -19,12 +19,15 @@ pub enum ProofSystemError {
     ProofIncompatibleWithSaverProtocol,
     ProofIncompatibleWithBoundCheckProtocol,
     BBSPlusProtocolMessageAbsent(usize, usize),
+    PSProtocolInvalidBlindingIndex(usize),
+    PSProtocolInvalidMessageIndex(usize),
     SubProtocolNotReadyToGenerateChallenge(usize),
     SubProtocolAlreadyInitialized(usize),
     SubProtocolNotReadyToGenerateProof(usize),
     InvalidSetupParamsIndex(usize),
     NeitherParamsNorRefGiven(usize),
     IncompatibleBBSPlusSetupParamAtIndex(usize),
+    IncompatiblePSSetupParamAtIndex(usize),
     IncompatiblePedCommSetupParamAtIndex(usize),
     IncompatibleAccumulatorSetupParamAtIndex(usize),
     IncompatibleSaverSetupParamAtIndex(usize),
@@ -72,6 +75,7 @@ pub enum ProofSystemError {
     NoAggregateLegoGroth16ProofFound,
     InvalidNumberOfAggregateLegoGroth16Proofs(usize, usize),
     NotFoundAggregateLegoGroth16ProofForRequiredStatements(usize, BTreeSet<usize>),
+    PSSignaturePoKError(ps_signature::SignaturePoKError),
 }
 
 impl From<SchnorrError> for ProofSystemError {
@@ -113,5 +117,11 @@ impl From<SerializationError> for ProofSystemError {
 impl From<CircomError> for ProofSystemError {
     fn from(e: CircomError) -> Self {
         Self::CircomError(e)
+    }
+}
+
+impl From<ps_signature::SignaturePoKError> for ProofSystemError {
+    fn from(e: ps_signature::SignaturePoKError) -> Self {
+        Self::PSSignaturePoKError(e)
     }
 }

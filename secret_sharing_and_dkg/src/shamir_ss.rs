@@ -20,7 +20,7 @@ pub fn deal_random_secret<R: RngCore, F: PrimeField>(
     total: ShareId,
 ) -> Result<(F, Shares<F>, DensePolynomial<F>), SSError> {
     let secret = F::rand(rng);
-    let (shares, poly) = deal_secret(rng, secret.clone(), threshold, total)?;
+    let (shares, poly) = deal_secret(rng, secret, threshold, total)?;
     Ok((secret, shares, poly))
 }
 

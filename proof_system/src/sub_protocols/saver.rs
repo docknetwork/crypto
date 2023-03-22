@@ -466,7 +466,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
             &message,
             &h_blinding,
             self.chunk_bit_size,
-            &ck_comm_chunks,
+            ck_comm_chunks,
         )?;
 
         let message_chunks = decompose(&message, self.chunk_bit_size)?
@@ -486,7 +486,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         sp_ciphertext_wit.push(randomness_enc);
         sp_ciphertext.init(rng, blindings_chunks.clone(), sp_ciphertext_wit)?;
 
-        let mut sp_chunks_wit = message_chunks.clone();
+        let mut sp_chunks_wit = message_chunks;
         sp_chunks_wit.push(h_blinding);
         sp_chunks.init(rng, blindings_chunks, sp_chunks_wit)?;
 

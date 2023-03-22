@@ -86,8 +86,8 @@ impl<E: Pairing> Accumulator<E> {
     pub fn add_using_trapdoor(&mut self, additions: &[E::ScalarField], trapdoor: &E::ScalarField) {
         let eval = Self::eval_at_trapdoor(additions, trapdoor);
         self.0 = self.0.mul_bigint(eval.into_bigint()).into_affine();
-        self.1 = self.1 * eval;
-        self.2 = self.2 * eval;
+        self.1 *= eval;
+        self.2 *= eval;
     }
 
     pub fn remove_using_trapdoor(
@@ -98,8 +98,8 @@ impl<E: Pairing> Accumulator<E> {
         let eval = Self::eval_at_trapdoor(removals, trapdoor);
         let eval_inv = eval.inverse().unwrap();
         self.0 = self.0.mul_bigint(eval_inv.into_bigint()).into_affine();
-        self.1 = self.1 * eval_inv;
-        self.2 = self.2 * eval_inv;
+        self.1 *= eval_inv;
+        self.2 *= eval_inv;
     }
 
     pub fn accumulated(&self) -> &E::G1Affine {
@@ -289,7 +289,7 @@ mod tests {
         let pk = PublicKey::<Bls12_381>::new(&sk, srs.get_P2());
 
         let prep_P2 = G2Prepared::from(*srs.get_P2());
-        let prep_pk = PreparedPublicKey::from(pk.clone());
+        let prep_pk = PreparedPublicKey::from(pk);
 
         let m1 = (0..6).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
         let (mut a1, mut accum_poly) =
@@ -384,15 +384,15 @@ mod tests {
         assert!(wit2_from_poly.verify(
             &non_member,
             a1.accumulated(),
-            prep_pk.clone(),
+            prep_pk,
             srs.get_s_P1(),
             srs.get_P1(),
-            prep_P2.clone()
+            prep_P2
         ));
 
         // Cannot create non-membership witness for a member
         let mut m3 = m2.clone();
-        m3.push(non_member.clone());
+        m3.push(non_member);
         a2.add_using_trapdoor(&[non_member], &trapdoor);
         assert!(
             NonMembershipWitness::<Bls12_381>::from_members_using_trapdoor(
@@ -418,7 +418,7 @@ mod tests {
         let pk = PublicKey::<Bls12_381>::new(&sk, srs.get_P2());
 
         let prep_P2 = G2Prepared::from(*srs.get_P2());
-        let prep_pk = PreparedPublicKey::from(pk.clone());
+        let prep_pk = PreparedPublicKey::from(pk);
 
         let mut members = (0..1000).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
         let (mut accum, mut accum_poly) =

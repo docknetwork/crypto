@@ -37,7 +37,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
     let non_member_idxs = vec![11, 12, 13, 14, 15, 16];
 
     for i in member_idxs.iter() {
-        public_set[*i] = msgs[*i].clone();
+        public_set[*i] = msgs[*i];
     }
 
     let commit_witness_count = 1;
@@ -46,7 +46,6 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
     let wasm_file_path = "tests/r1cs/circom/bls12-381/set_membership_5_public.wasm";
     let circuit = CircomCircuit::<Bls12_381>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
     let snark_pk = circuit
-        .clone()
         .generate_proving_key(commit_witness_count, &mut rng)
         .unwrap();
 
@@ -58,8 +57,8 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
 
     let mut prover_setup_params = vec![];
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk.clone()));
-    prover_setup_params.push(SetupParams::R1CS(r1cs.clone()));
-    prover_setup_params.push(SetupParams::Bytes(wasm_bytes.clone()));
+    prover_setup_params.push(SetupParams::R1CS(r1cs));
+    prover_setup_params.push(SetupParams::Bytes(wasm_bytes));
 
     let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -104,8 +103,8 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig,
+        msgs.clone().into_iter().enumerate().collect(),
     ));
 
     for i in 0..member_idxs.len() {
@@ -124,7 +123,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover.clone(),
+        proof_spec_prover,
         witnesses.clone(),
         None,
         Default::default(),
@@ -141,13 +140,13 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
     public_inputs_non_mem.extend(&public_set);
 
     let mut verifier_setup_params = vec![];
-    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk.clone()));
+    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk));
     verifier_setup_params.push(SetupParams::FieldElemVec(public_inputs_mem));
     verifier_setup_params.push(SetupParams::FieldElemVec(public_inputs_non_mem));
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
+        sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
@@ -204,7 +203,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
     updated_proof
         .verify::<StdRng, Blake2b512>(
             &mut rng,
-            verifier_proof_spec.clone(),
+            verifier_proof_spec,
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),

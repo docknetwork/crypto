@@ -5,6 +5,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec, UniformRand};
 
 use crate::statement::Statement;
+use crate::sub_protocols::ps_signature::PSSignaturePoK;
 use crate::sub_protocols::SubProtocol;
 use crate::witness::Witness;
 use crate::{error::ProofSystemError, witness::Witnesses};
@@ -380,6 +381,31 @@ where
                         ))
                     }
                 },
+                Statement::PoKPSSignature(s) => match witness {
+                    Witness::PoKPSSignature(w) => {
+                        // Prepare blindings for this BBS+ signature proof
+                        let mut blindings_map = BTreeMap::new();
+                        for k in w.unrevealed_messages.keys() {
+                            match blindings.remove(&(s_idx, *k)) {
+                                Some(b) => blindings_map.insert(*k, b),
+                                None => None,
+                            };
+                        }
+                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp =
+                            PSSignaturePoK::new(s_idx, &s.revealed_messages, sig_params, pk);
+                        sp.init(rng, blindings_map, w)?;
+                        sub_protocols.push(SubProtocol::PSSignaturePoK(sp));
+                    }
+                    _ => {
+                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", witness),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -492,12 +518,12 @@ where
             Self {
                 statement_proofs,
                 nonce,
-                aggregated_groth16: if aggregated_groth16.len() > 0 {
+                aggregated_groth16: if !aggregated_groth16.is_empty() {
                     Some(aggregated_groth16)
                 } else {
                     None
                 },
-                aggregated_legogroth16: if aggregated_legogroth16.len() > 0 {
+                aggregated_legogroth16: if !aggregated_legogroth16.is_empty() {
                     Some(aggregated_legogroth16)
                 } else {
                     None

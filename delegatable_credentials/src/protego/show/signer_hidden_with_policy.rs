@@ -56,7 +56,7 @@ impl<E: Pairing> DelegationPolicySecretKey<E> {
         P1: &E::G1Affine,
         P2: &E::G2Affine,
     ) -> Result<SignatureG2<E>, DelegationError> {
-        let sig = SignatureG2::new(rng, &pk.public_key.0, &self.0, &P2, P1)?;
+        let sig = SignatureG2::new(rng, &pk.public_key.0, &self.0, P2, P1)?;
         Ok(sig)
     }
 }

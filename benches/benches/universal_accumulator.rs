@@ -7,7 +7,6 @@ use ark_std::{
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::time::Instant;
 use test_utils::accumulators::setup_universal_accum;
-use vb_accumulator::positive::Accumulator;
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -243,12 +242,7 @@ fn single(c: &mut Criterion) {
             for i in 0..iters as usize {
                 black_box({
                     accumulator = accumulator
-                        .add(
-                            elems[i].clone(),
-                            &keypair.secret_key,
-                            &initial_elements,
-                            &mut state,
-                        )
+                        .add(elems[i], &keypair.secret_key, &initial_elements, &mut state)
                         .unwrap();
                 });
             }
@@ -266,12 +260,7 @@ fn single(c: &mut Criterion) {
             let elems = (0..iters).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
             for elem in &elems {
                 accumulator_1 = accumulator_1
-                    .add(
-                        elem.clone(),
-                        &keypair.secret_key,
-                        &initial_elements,
-                        &mut state_1,
-                    )
+                    .add(*elem, &keypair.secret_key, &initial_elements, &mut state_1)
                     .unwrap();
             }
             let start = Instant::now();
@@ -296,16 +285,13 @@ fn single(c: &mut Criterion) {
             let elems = (0..iters).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
             for elem in &elems {
                 accumulator_2 = accumulator_2
-                    .add(
-                        elem.clone(),
-                        &keypair.secret_key,
-                        &initial_elements,
-                        &mut state_2,
-                    )
+                    .add(*elem, &keypair.secret_key, &initial_elements, &mut state_2)
                     .unwrap();
             }
             let start = Instant::now();
             for i in 0..iters as usize {
+                use vb_accumulator::positive::Accumulator;
+
                 black_box(
                     accumulator_2
                         .get_membership_witness(&elems[i], &keypair.secret_key, &state_2)
@@ -335,12 +321,7 @@ fn single(c: &mut Criterion) {
                         .collect::<Vec<_>>();
                     for elem in &elems {
                         accumulator_3 = accumulator_3
-                            .add(
-                                elem.clone(),
-                                &keypair.secret_key,
-                                &initial_elements,
-                                &mut state_3,
-                            )
+                            .add(*elem, &keypair.secret_key, &initial_elements, &mut state_3)
                             .unwrap();
                     }
 

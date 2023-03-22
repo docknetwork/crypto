@@ -410,10 +410,7 @@ mod tests {
         // Test signing and verification
         let mut rng = StdRng::seed_from_u64(0u64);
         let message_count = 20;
-        let messages: Vec<Fr> = (0..message_count)
-            .into_iter()
-            .map(|_| Fr::rand(&mut rng))
-            .collect();
+        let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
 
         {
             test_sig_verif!(

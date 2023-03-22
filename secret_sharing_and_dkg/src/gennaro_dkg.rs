@@ -85,7 +85,7 @@ impl<GP1: AffineRepr> Phase1<GP1> {
         SSError,
     > {
         let (_, shares, commitments, poly, _) =
-            pedersen_vss::deal_secret::<_, GP1>(rng, secret, threshold, total, &comm_key)?;
+            pedersen_vss::deal_secret::<_, GP1>(rng, secret, threshold, total, comm_key)?;
         let mut accumulator = pedersen_dvss::SharesAccumulator::new(participant_id, threshold);
         accumulator.add_self_share(
             shares.0[(participant_id as usize) - 1].clone(),
@@ -192,11 +192,11 @@ impl<GP2: AffineRepr<ScalarField = GP1::ScalarField>, GP1: AffineRepr> Phase2<GP
         }
         Ok((
             self.secret,
-            self.coeff_comms
+            *self
+                .coeff_comms
                 .get(&self.id)
                 .unwrap()
-                .commitment_to_secret()
-                .clone(),
+                .commitment_to_secret(),
             self.coeff_comms
                 .values()
                 .fold(GP2::Group::zero(), |acc, v| acc + *v.commitment_to_secret())

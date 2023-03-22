@@ -229,15 +229,15 @@ impl<E: Pairing> PreparedDecryptionKey<E> {
         let mut powers = Vec::<Vec<PairingOutput<E>>>::with_capacity(n);
         for i in 0..n {
             // Powers of `g_i_v_i` will be created
-            let g_i_v_i = E::pairing(g_i[i].clone(), self.V_2[i].clone());
+            let g_i_v_i = E::pairing(g_i[i], self.V_2[i].clone());
 
             // `powers_i` will have `chunk_max_val` powers of `g_i_v_i` like [g_i_v_i, g_i_v_i^2, g_i_v_i^3, ...]
             let mut powers_i = Vec::<PairingOutput<E>>::with_capacity(chunk_max_val as usize);
-            let mut cur = g_i_v_i.clone();
-            powers_i.push(cur.clone());
+            let mut cur = g_i_v_i;
+            powers_i.push(cur);
             for _ in 1..chunk_max_val {
                 cur += g_i_v_i;
-                powers_i.push(cur.clone());
+                powers_i.push(cur);
             }
             powers.push(powers_i);
         }
@@ -278,7 +278,7 @@ pub fn keygen<R: RngCore, E: Pairing>(
     let delta_g_proj = delta_g.into_group();
     let t_repr = cfg_iter!(t).map(|t| t.into_bigint()).collect::<Vec<_>>();
 
-    let X = multiply_field_elems_with_same_group_elem(delta_g_proj.clone(), &s);
+    let X = multiply_field_elems_with_same_group_elem(delta_g_proj, &s);
     let Y = (0..n)
         .map(|i| g_i[i].mul_bigint(t_repr[i + 1]))
         .collect::<Vec<_>>();
@@ -289,7 +289,7 @@ pub fn keygen<R: RngCore, E: Pairing>(
         .mul_bigint((t[0] + (0..n).map(|j| s[j] * t[j + 1]).sum::<E::ScalarField>()).into_bigint());
 
     let ek = EncryptionKey {
-        X_0: delta_g.clone(),
+        X_0: *delta_g,
         X: E::G1::normalize_batch(&X),
         Y: E::G1::normalize_batch(&Y),
         Z: E::G2::normalize_batch(&Z),
@@ -299,7 +299,7 @@ pub fn keygen<R: RngCore, E: Pairing>(
             .into_affine(),
     };
     let V_0 = gens.H.mul_bigint(rho.into_bigint());
-    let V_2 = multiply_field_elems_with_same_group_elem(V_0.clone(), &v);
+    let V_2 = multiply_field_elems_with_same_group_elem(V_0, &v);
     let V_1 = multiply_field_elems_with_same_group_elem(
         gens.H.into_group(),
         &s.into_iter()

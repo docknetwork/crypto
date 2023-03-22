@@ -29,10 +29,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
 
     let mut rng = StdRng::seed_from_u64(0u64);
     let msg_count = 5;
-    let mut msgs: Vec<Fr> = (0..msg_count - 1)
-        .into_iter()
-        .map(|_| Fr::rand(&mut rng))
-        .collect();
+    let mut msgs: Vec<Fr> = (0..msg_count - 1).map(|_| Fr::rand(&mut rng)).collect();
     msgs.push(Fr::from(105u64));
 
     // Message index that will be hashed
@@ -71,7 +68,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     let image = {
         use legogroth16::circom::WitnessCalculator;
         let mut wits_calc = WitnessCalculator::<Bls12_381>::from_wasm_bytes(&wasm_bytes).unwrap();
-        let mut circ = circuit.clone();
+        let mut circ = circuit;
         circ.set_wires_using_witness_calculator(
             &mut wits_calc,
             [
@@ -93,12 +90,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
         BTreeMap::new(),
     ));
     prover_statements.add(
-        R1CSProverStmt::new_statement_from_params(
-            r1cs.clone(),
-            wasm_bytes.clone(),
-            snark_pk.clone(),
-        )
-        .unwrap(),
+        R1CSProverStmt::new_statement_from_params(r1cs, wasm_bytes, snark_pk.clone()).unwrap(),
     );
 
     let mut meta_statements = MetaStatements::new();
@@ -118,8 +110,8 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig,
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
     r1cs_wit.set_private("in".to_string(), vec![msgs[msg_idx_to_hash]]);
@@ -128,7 +120,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover.clone(),
+        proof_spec_prover,
         witnesses.clone(),
         None,
         Default::default(),
@@ -159,12 +151,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     verifier_proof_spec.validate().unwrap();
     proof
         .clone()
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec.clone(),
-            None,
-            Default::default(),
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec, None, Default::default())
         .unwrap();
     println!(
         "Verifying proof for MiMC circuit takes {:?}",
@@ -174,13 +161,12 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     // Proof with wrong public input fails
     let mut verifier_statements_1 = Statements::new();
     verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
+        sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     verifier_statements_1.add(
-        R1CSVerifierStmt::new_statement_from_params(vec![Fr::rand(&mut rng)], snark_pk.vk.clone())
-            .unwrap(),
+        R1CSVerifierStmt::new_statement_from_params(vec![Fr::rand(&mut rng)], snark_pk.vk).unwrap(),
     );
     let verifier_proof_spec_1 = ProofSpec::new(
         verifier_statements_1.clone(),
@@ -190,11 +176,6 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     );
     verifier_proof_spec_1.validate().unwrap();
     assert!(proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec_1.clone(),
-            None,
-            Default::default()
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec_1, None, Default::default())
         .is_err());
 }

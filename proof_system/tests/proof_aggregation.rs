@@ -121,12 +121,12 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig_1.clone(),
-        msgs_1.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig_1,
+        msgs_1.into_iter().enumerate().collect(),
     ));
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig_2.clone(),
-        msgs_2.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig_2,
+        msgs_2.into_iter().enumerate().collect(),
     ));
     for m in enc_msgs_1 {
         witnesses.add(Witness::Saver(m));
@@ -137,7 +137,7 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
 
     let (proof, _) = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        prover_proof_spec.clone(),
+        prover_proof_spec,
         witnesses.clone(),
         None,
         Default::default(),
@@ -146,18 +146,18 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
 
     let mut verifier_setup_params = vec![];
     verifier_setup_params.push(SetupParams::SaverEncryptionGens(enc_gens.clone()));
-    verifier_setup_params.push(SetupParams::SaverCommitmentGens(chunked_comm_gens.clone()));
-    verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek.clone()));
-    verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk.pk.vk.clone()));
+    verifier_setup_params.push(SetupParams::SaverCommitmentGens(chunked_comm_gens));
+    verifier_setup_params.push(SetupParams::SaverEncryptionKey(ek));
+    verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk.pk.vk));
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        params_1.clone(),
+        params_1,
         keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        params_2.clone(),
+        params_2,
         keypair_2.public_key.clone(),
         BTreeMap::new(),
     ));
@@ -207,10 +207,9 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
 
     let start = Instant::now();
     updated_proof
-        .clone()
         .verify::<StdRng, Blake2b512>(
             &mut rng,
-            verifier_proof_spec.clone(),
+            verifier_proof_spec,
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(true),
@@ -231,16 +230,14 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
     // 1st BBS+ sig
     let msg_count_1 = 4;
     let msgs_1 = (1..=msg_count_1)
-        .into_iter()
-        .map(|i| Fr::from(100u64 + i * 10 as u64))
+        .map(|i| Fr::from(100u64 + i * 10_u64))
         .collect::<Vec<_>>();
     let (params_1, keypair_1, sig_1) = sig_setup_given_messages(&mut rng, &msgs_1);
 
     // 2nd BBS+ sig
     let msg_count_2 = 10;
     let msgs_2 = (1..=msg_count_2)
-        .into_iter()
-        .map(|i| Fr::from(1000u64 + i * 10 as u64))
+        .map(|i| Fr::from(1000u64 + i * 10_u64))
         .collect::<Vec<_>>();
     let (params_2, keypair_2, sig_2) = sig_setup_given_messages(&mut rng, &msgs_2);
 
@@ -326,12 +323,12 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig_1.clone(),
-        msgs_1.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig_1,
+        msgs_1.clone().into_iter().enumerate().collect(),
     ));
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig_2.clone(),
-        msgs_2.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig_2,
+        msgs_2.clone().into_iter().enumerate().collect(),
     ));
     for m in bounded_msgs_1 {
         witnesses.add(Witness::BoundCheckLegoGroth16(m));
@@ -342,7 +339,7 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
 
     let (proof, _) = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        prover_proof_spec.clone(),
+        prover_proof_spec,
         witnesses.clone(),
         None,
         Default::default(),
@@ -350,16 +347,16 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
     .unwrap();
 
     let mut verifier_setup_params = vec![];
-    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk.clone()));
+    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk));
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        params_1.clone(),
+        params_1,
         keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        params_2.clone(),
+        params_2,
         keypair_2.public_key.clone(),
         BTreeMap::new(),
     ));
@@ -409,10 +406,9 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
 
     let start = Instant::now();
     updated_proof
-        .clone()
         .verify::<StdRng, Blake2b512>(
             &mut rng,
-            verifier_proof_spec.clone(),
+            verifier_proof_spec,
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(true),

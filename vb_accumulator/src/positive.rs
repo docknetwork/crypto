@@ -250,7 +250,7 @@ pub trait Accumulator<E: Pairing> {
     ) -> Result<(E::ScalarField, E::G1Affine), VBAccumulatorError> {
         self.check_before_remove(element, state)?;
         let t = self._compute_new_post_remove(element, sk);
-        state.remove(&element);
+        state.remove(element);
         Ok(t)
     }
 
@@ -454,7 +454,7 @@ where
 {
     /// Create a new positive accumulator
     pub fn initialize(setup_params: &SetupParams<E>) -> Self {
-        Self(setup_params.P.clone())
+        Self(setup_params.P)
     }
 
     /// Compute new accumulated value after addition

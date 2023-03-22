@@ -126,7 +126,7 @@ pub fn lagrange_basis_at_0_for_all<F: PrimeField>(x_coords: Vec<ShareId>) -> Vec
     // Product of all `x`, i.e. \prod_{i}(x_i}
     let product = cfg_iter!(x).product::<F>();
 
-    let all_l = cfg_into_iter!(x.clone())
+    cfg_into_iter!(x.clone())
         .map(move |i| {
             let mut denominator = cfg_iter!(x)
                 .filter(|&j| &i != j)
@@ -140,8 +140,7 @@ pub fn lagrange_basis_at_0_for_all<F: PrimeField>(x_coords: Vec<ShareId>) -> Vec
 
             denominator * numerator
         })
-        .collect::<Vec<_>>();
-    all_l
+        .collect::<Vec<_>>()
 }
 
 #[cfg(test)]

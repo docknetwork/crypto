@@ -42,7 +42,6 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     let wasm_file_path = "tests/r1cs/circom/bls12-381/set_membership_5_public.wasm";
     let circuit = CircomCircuit::<Bls12_381>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
     let snark_pk = circuit
-        .clone()
         .generate_proving_key(commit_witness_count, &mut rng)
         .unwrap();
 
@@ -56,12 +55,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
         BTreeMap::new(),
     ));
     prover_statements.add(
-        R1CSProverStmt::new_statement_from_params(
-            r1cs.clone(),
-            wasm_bytes.clone(),
-            snark_pk.clone(),
-        )
-        .unwrap(),
+        R1CSProverStmt::new_statement_from_params(r1cs, wasm_bytes, snark_pk.clone()).unwrap(),
     );
 
     let mut meta_statements = MetaStatements::new();
@@ -82,7 +76,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
         sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
     r1cs_wit.set_private("x".to_string(), vec![msgs[member_msg_idx]]);
@@ -121,23 +115,18 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     );
     verifier_proof_spec.validate().unwrap();
     proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec.clone(),
-            None,
-            Default::default(),
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec, None, Default::default())
         .unwrap();
 
     // -------------------------------------------------------------------------------------- //
 
     // Update set to contain the signed message
-    public_set[2] = msgs[member_msg_idx].clone();
+    public_set[2] = msgs[member_msg_idx];
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig,
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
     r1cs_wit.set_private("x".to_string(), vec![msgs[member_msg_idx]]);
@@ -146,7 +135,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover.clone(),
+        proof_spec_prover,
         witnesses.clone(),
         None,
         Default::default(),
@@ -156,7 +145,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
+        sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
@@ -165,9 +154,8 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     let mut public_inputs = vec![Fr::one()];
     public_inputs.extend(&public_set);
 
-    verifier_statements.add(
-        R1CSVerifierStmt::new_statement_from_params(public_inputs, snark_pk.vk.clone()).unwrap(),
-    );
+    verifier_statements
+        .add(R1CSVerifierStmt::new_statement_from_params(public_inputs, snark_pk.vk).unwrap());
     let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
         meta_statements.clone(),
@@ -176,11 +164,6 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     );
     verifier_proof_spec.validate().unwrap();
     proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec.clone(),
-            None,
-            Default::default(),
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec, None, Default::default())
         .unwrap();
 }

@@ -90,7 +90,7 @@ impl<G: AffineRepr> Round1State<G> {
     ) -> Result<(Self, Round1Msg<G>), SSError> {
         // Create shares of the secret and commit to it
         let (shares, commitments, _) =
-            feldman_vss::deal_secret::<R, G>(rng, secret, threshold, total, &comm_key)?;
+            feldman_vss::deal_secret::<R, G>(rng, secret, threshold, total, comm_key)?;
         let mut coeff_comms = BTreeMap::new();
         coeff_comms.insert(id, commitments.clone());
 
@@ -101,16 +101,16 @@ impl<G: AffineRepr> Round1State<G> {
         schnorr
             .challenge_contribution(
                 comm_key,
-                &commitments.commitment_to_secret(),
+                commitments.commitment_to_secret(),
                 &mut challenge_bytes,
             )
-            .map_err(|e| SSError::SchnorrError(e))?;
+            .map_err(SSError::SchnorrError)?;
         challenge_bytes.extend_from_slice(schnorr_proof_ctx);
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         let schnorr_proof = schnorr.gen_proof(&challenge);
         Ok((
             Round1State {
-                id: id,
+                id,
                 threshold,
                 shares,
                 coeff_comms,
@@ -145,7 +145,7 @@ impl<G: AffineRepr> Round1State<G> {
                 msg.comm_coeffs.commitment_to_secret(),
                 &mut challenge_bytes,
             )
-            .map_err(|e| SSError::SchnorrError(e))?;
+            .map_err(SSError::SchnorrError)?;
         challenge_bytes.extend_from_slice(schnorr_proof_ctx);
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         if !msg

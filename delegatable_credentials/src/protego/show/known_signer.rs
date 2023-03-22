@@ -228,11 +228,8 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         }
 
         if credential.auditable_sig {
-            let upk = user_pk.clone().ok_or(DelegationError::NeedUserPublicKey)?.0;
-            let apk = auditor_pk
-                .clone()
-                .ok_or(DelegationError::NeedAuditorPublicKey)?
-                .0;
+            let upk = user_pk.ok_or(DelegationError::NeedUserPublicKey)?.0;
+            let apk = auditor_pk.ok_or(DelegationError::NeedAuditorPublicKey)?.0;
             C.push(upk);
             C.push(apk);
         }
@@ -258,14 +255,14 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         } else {
             // TODO: Needs refactoring
             let comm = SetCommitment(C_prime[0]);
-            let subset = disclosed_attributes.iter().map(|i| *i).collect();
-            let set = credential.attributes.iter().map(|i| *i).collect();
+            let subset = disclosed_attributes.iter().copied().collect();
+            let set = credential.attributes.iter().copied().collect();
             // Expect the caller to pass valid subset and the correct opening
             Some(comm.open_subset_unchecked(
                 &credential.opening.set_comm_opening,
                 subset,
                 set,
-                &set_comm_srs,
+                set_comm_srs,
             )?)
         };
 
@@ -471,15 +468,11 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         check_audit: bool,
         check_revocation: bool,
     ) -> Result<(), DelegationError> {
-        if check_audit {
-            if !issuer_public_key.supports_audit {
-                return Err(DelegationError::IncompatiblePublicKey);
-            }
+        if check_audit && !issuer_public_key.supports_audit {
+            return Err(DelegationError::IncompatiblePublicKey);
         }
-        if check_revocation {
-            if !issuer_public_key.supports_revocation {
-                return Err(DelegationError::IncompatiblePublicKey);
-            }
+        if check_revocation && !issuer_public_key.supports_revocation {
+            return Err(DelegationError::IncompatiblePublicKey);
         }
         Ok(())
     }
@@ -572,13 +565,13 @@ impl<E: Pairing> CredentialShow<E> {
         let mut C = vec![self.core.C1, self.core.C2, self.core.C3];
 
         if let Some(rev) = &self.rev {
-            C.push(rev.C4.clone());
-            C.push(rev.C5.clone());
+            C.push(rev.C4);
+            C.push(rev.C5);
         }
 
         if let Some(ct) = &self.ct_proof {
-            C.push(ct.C6.clone());
-            C.push(ct.C7.clone());
+            C.push(ct.C6);
+            C.push(ct.C7);
         }
 
         self.core
@@ -596,12 +589,12 @@ impl<E: Pairing> CredentialShow<E> {
 
                 if !rev
                     .accum_rand_proof
-                    .verify(&rev.randomized_accum, &accumulated, challenge)
+                    .verify(&rev.randomized_accum, accumulated, challenge)
                 {
                     return Err(DelegationError::InvalidRevocationShow);
                 }
 
-                if !rev.user_rev_secret_proof.verify(&rev.C5, &Q, challenge) {
+                if !rev.user_rev_secret_proof.verify(&rev.C5, Q, challenge) {
                     return Err(DelegationError::InvalidRevocationShow);
                 }
 

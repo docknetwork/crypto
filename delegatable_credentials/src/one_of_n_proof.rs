@@ -169,7 +169,7 @@ impl<E: Pairing> OneOfNProof<E> {
             .collect::<Vec<_>>();
 
         // TODO: Optimize using randomized pairing check
-        for (i, pk) in all.values().into_iter().enumerate() {
+        for (i, pk) in all.values().enumerate() {
             if pk.len() != m {
                 return Err(DelegationError::UnequalSizeOfSequence(pk.len(), m));
             }
@@ -245,14 +245,14 @@ mod tests {
 
             let start = Instant::now();
             let proof =
-                OneOfNProof::new(rng, &actual, d.clone(), &instance, &witness, &srs, &P1).unwrap();
+                OneOfNProof::new(rng, &actual, d.clone(), &instance, &witness, srs, P1).unwrap();
             let proving_time = start.elapsed();
 
             let start = Instant::now();
             for i in 0..count_decoys {
                 let mut temp_d = d.clone();
                 temp_d.insert(i, &actual);
-                proof.verify(temp_d, &instance, &srs, &P1).unwrap();
+                proof.verify(temp_d, &instance, srs, P1).unwrap();
             }
             let verifying_time = start.elapsed();
 

@@ -1,0 +1,223 @@
+/// Concatenates supplied slices into one continuous vector.
+#[macro_export]
+macro_rules! concat_slices {
+    ($($slice: expr),+) => {
+        [$(&$slice[..]),+].concat()
+    }
+}
+
+/// Implements `Deref`/`DeferMut` traits for the supplied wrapper and type.
+#[macro_export]
+macro_rules! impl_deref {
+    ($wrapper: ident$(<$($ty: ident: $($by: path),+),*>)?($type: path)) => {
+        impl$(<$($ty: $($by)++),+>)* core::ops::Deref for $wrapper$(<$($ty),+>)* {
+            type Target = $type;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl$(<$($ty: $($by)++),+>)* core::ops::DerefMut for $wrapper$(<$($ty),+>)* {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+    };
+}
+
+/// Implements `From<type>` for the wrapper.
+#[macro_export]
+macro_rules! impl_deref_from_type_conversion {
+    ($wrapper: ident: $($type: ty),+) => {
+        $(
+            impl From<$type> for $wrapper {
+                fn from(value: $type) -> $wrapper {
+                    $wrapper(value.into())
+                }
+            }
+        )+
+    }
+}
+
+/// Convert given slices to `OwnedPairs`, panics in case of error.
+#[macro_export]
+macro_rules! owned_pairs {
+    ($left: expr, $right: expr) => {
+        $crate::try_owned_pairs!($left, $right).unwrap_or_else(|(left, right)| {
+            panic!("Lengths are not equal: left = {}, right = {}", left, right)
+        })
+    };
+}
+
+/// Convert given slices to `OwnedPairs`, panics in case of error.
+#[macro_export]
+macro_rules! try_owned_pairs {
+    ($left: expr, $right: expr) => {
+        $crate::helpers::OwnedPairs::try_from(($left, $right))
+    };
+}
+
+/// Convert given slices to `Pairs`, panics in case of error.
+#[macro_export]
+macro_rules! pairs {
+    ($left: expr, $right: expr) => {
+        $crate::try_pairs!($left, $right).unwrap_or_else(|(left, right)| {
+            panic!("Lengths are not equal: left = {}, right = {}", left, right)
+        })
+    };
+}
+
+/// Attempts to convert given slices to `Pairs`, returning `(left length, right length)` in case of error.
+#[macro_export]
+macro_rules! try_pairs {
+    ($left: expr, $right: expr) => {
+        $crate::helpers::Pairs::try_from((&$left[..], &$right[..]))
+    };
+}
+
+/// Calculates the product of pairing for supplied pairs.
+/// ```compile_fail
+/// multi_pairing! {
+///     a, c,
+///     b, d
+/// }
+/// ```
+/// Will be transformed to:
+/// ```compile_fail
+/// E::multi_pairing([a, b], [c, d])
+/// ```
+#[macro_export]
+macro_rules! multi_pairing {
+    ($($g1: expr, $g2: expr);+) => {
+        $crate::multi_pairing! { using E: $($g1, $g2);+ }
+    };
+    (using $pairing_engine: path: $($g1: expr, $g2: expr);+) => {
+        <$pairing_engine>::multi_pairing(
+            [
+                $($g1.into()),+
+            ],
+            [
+                $($g2.into()),+
+            ]
+        )
+    }
+}
+
+/// `rayon::join(|| expr1, || rayon::join(|| expr2, || ...))`
+#[cfg(feature = "parallel")]
+#[macro_export]
+macro_rules! join {
+    ($a: expr) => { $a };
+    ($a: expr, $b: expr) => {
+        rayon::join(|| $a, || $b)
+    };
+    ($a: expr, $b: expr, $($c: expr),+) => {{
+        $crate::unnest_tuple!(
+            $a, $b, $($c),+
+            =>
+            join!(
+                $a,
+                join!($b, $($c),+)
+            )
+        )
+    }}
+}
+
+/// `(expr1, expr2, expr3...)`
+#[cfg(not(feature = "parallel"))]
+#[macro_export]
+macro_rules! join {
+    ($($e: expr),+) => {
+        ($($e),+)
+    };
+}
+
+/// `(a, (b, c)) => (a, b, c)`
+#[macro_export]
+macro_rules! unnest_tuple {
+    ($a: expr => $v: expr) => {{
+        $v
+    }};
+    ($a: expr, $b: expr => $v: expr) => {{
+        let (_a, _b) = $v;
+
+        (_a, _b)
+    }};
+    ($a: expr, $b: expr, $c: expr => $v: expr) => {{
+        let (_a, (_b, _c)) = $v;
+
+        (_a, _b, _c)
+    }};
+    ($a: expr, $b: expr, $d: expr => $v: expr) => {{
+        let (_a, (_b, (_c, _d))) = $v;
+
+        (_a, _b, _c, _d)
+    }};
+    ($a: expr, $b: expr, $d: expr, $e: expr => $v: expr) => {{
+        let (_a, (_b, (_c, (_d, _e)))) = $v;
+
+        (_a, _b, _c, _d, _e)
+    }};
+    ($a: expr, $b: expr, $d: expr, $e: expr, $f: expr => $v: expr) => {{
+        let (_a, (_b, (_c, (_d, (_e, _f))))) = $v;
+
+        (_a, _b, _c, _d, _e, _f)
+    }};
+}
+
+/// `impl Iterator` or `impl ParallelIterator` depending on the `parallel` feature.
+#[macro_export]
+#[cfg(feature = "parallel")]
+macro_rules! impl_iter {
+    (<Item = $item: ty> $($tt: tt)*) => { impl rayon::prelude::ParallelIterator<Item = $item> $($tt)* }
+}
+
+/// `impl Iterator` or `impl ParallelIterator` depending on the `parallel` feature.
+#[macro_export]
+#[cfg(not(feature = "parallel"))]
+macro_rules! impl_iter {
+    (<Item = $item: ty> $($tt: tt)*) => { impl core::iter::Iterator<Item = $item> $($tt)* }
+}
+
+/// `impl IntoIterator` or `impl IntoParallelIterator` depending on the `parallel` feature.
+#[macro_export]
+#[cfg(feature = "parallel")]
+macro_rules! impl_into_iter {
+    (<Item = $item: ty> $($tt: tt)*) => { impl rayon::prelude::IntoParallelIterator<Item = $item> $($tt)* }
+}
+
+/// `impl IntoIterator` or `impl IntoParallelIterator` depending on the `parallel` feature.
+#[macro_export]
+#[cfg(not(feature = "parallel"))]
+macro_rules! impl_into_iter {
+    (<Item = $item: ty> $($tt: tt)*) => { impl core::iter::IntoIterator<Item = $item> $($tt)* }
+}
+
+/// `impl DoubleEndedIterator + ExactSizeIterator` or `impl IndexedParallelIterator` depending on the `parallel` feature.
+#[macro_export]
+#[cfg(feature = "parallel")]
+macro_rules! impl_indexed_iter {
+    (<Item = $item: ty> $($tt: tt)*) => { impl rayon::prelude::IndexedParallelIterator<Item = $item> $($tt)* }
+}
+
+/// `impl DoubleEndedIterator + ExactSizeIterator` or `impl IndexedParallelIterator` depending on the `parallel` feature.
+#[macro_export]
+#[cfg(not(feature = "parallel"))]
+macro_rules! impl_indexed_iter {
+    (<Item = $item: ty> $($tt: tt)*) => { impl $crate::helpers::DoubleEndedExactSizeIterator<Item = $item> $($tt)* }
+}
+
+/// `impl IntoIterator` where `IntoIter: DoubleEndedIterator + ExactSizeIterator`  or `impl IntoParallelIterator` where `Iter: IndexedParallelIterator` depending on the `parallel` feature.
+#[macro_export]
+#[cfg(feature = "parallel")]
+macro_rules! impl_into_indexed_iter {
+    (<Item = $item: ty> $($tt: tt)*) => { impl rayon::prelude::IntoParallelIterator<Item = $item, Iter = impl rayon::prelude::IndexedParallelIterator<Item = $item> $($tt)*> $($tt)* }
+}
+
+/// `impl IntoIterator` where `IntoIter: DoubleEndedIterator + ExactSizeIterator`  or `impl IntoParallelIterator` where `Iter: IndexedParallelIterator` depending on the `parallel` feature.
+#[macro_export]
+#[cfg(not(feature = "parallel"))]
+macro_rules! impl_into_indexed_iter {
+    (<Item = $item: ty> $($tt: tt)*) => { impl core::iter::IntoIterator<Item = $item, IntoIter = impl $crate::helpers::DoubleEndedExactSizeIterator<Item = $item> $($tt)*> $($tt)* }
+}

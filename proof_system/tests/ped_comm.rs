@@ -38,8 +38,8 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
         .collect::<Vec<_>>();
     let mut scalars_2 = (0..10).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
     // Make 2 of the scalars same
-    scalars_2[1] = scalars_1[3].clone();
-    scalars_2[4] = scalars_1[0].clone();
+    scalars_2[1] = scalars_1[3];
+    scalars_2[4] = scalars_1[0];
     let commitment_2 = G1Projective::msm_bigint(
         &bases_2,
         &scalars_2
@@ -52,11 +52,11 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     let mut statements = Statements::new();
     statements.add(PedersenCommitmentStmt::new_statement_from_params(
         bases_1.clone(),
-        commitment_1.clone(),
+        commitment_1,
     ));
     statements.add(PedersenCommitmentStmt::new_statement_from_params(
         bases_2.clone(),
-        commitment_2.clone(),
+        commitment_2,
     ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, statements);
@@ -74,7 +74,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     )));
 
     let mut witnesses = Witnesses::new();
-    witnesses.add(Witness::PedersenCommitment(scalars_1.clone()));
+    witnesses.add(Witness::PedersenCommitment(scalars_1));
     witnesses.add(Witness::PedersenCommitment(scalars_2.clone()));
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
@@ -111,13 +111,13 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     // Wrong commitment should fail to verify
     let mut statements_wrong = Statements::new();
     statements_wrong.add(PedersenCommitmentStmt::new_statement_from_params(
-        bases_1.clone(),
-        commitment_1.clone(),
+        bases_1,
+        commitment_1,
     ));
     // The commitment is wrong
     statements_wrong.add(PedersenCommitmentStmt::new_statement_from_params(
-        bases_2.clone(),
-        commitment_1.clone(),
+        bases_2,
+        commitment_1,
     ));
 
     let proof_spec_invalid = ProofSpec::new(
@@ -159,12 +159,8 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
             .collect::<BTreeSet<WitnessRef>>(),
     )));
 
-    let proof_spec_invalid = ProofSpec::new(
-        statements.clone(),
-        meta_statements_wrong,
-        vec![],
-        context.clone(),
-    );
+    let proof_spec_invalid =
+        ProofSpec::new(statements.clone(), meta_statements_wrong, vec![], context);
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
@@ -194,8 +190,8 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     let scalars_1 = (0..count).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
     let mut scalars_2 = (0..count).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
     // Make 2 of the scalars same
-    scalars_2[1] = scalars_1[3].clone();
-    scalars_2[4] = scalars_1[0].clone();
+    scalars_2[1] = scalars_1[3];
+    scalars_2[4] = scalars_1[0];
     let scalars_3 = (0..count).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
 
     let commitment_1 = G1Projective::msm_bigint(
@@ -231,15 +227,15 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     let mut statements = Statements::new();
     statements.add(PedersenCommitmentStmt::new_statement_from_params_refs(
         0,
-        commitment_1.clone(),
+        commitment_1,
     ));
     statements.add(PedersenCommitmentStmt::new_statement_from_params_refs(
         0,
-        commitment_2.clone(),
+        commitment_2,
     ));
     statements.add(PedersenCommitmentStmt::new_statement_from_params_refs(
         0,
-        commitment_3.clone(),
+        commitment_3,
     ));
 
     test_serialization!(Statements<Bls12_381, G1Affine>, statements);
@@ -257,9 +253,9 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     )));
 
     let mut witnesses = Witnesses::new();
-    witnesses.add(Witness::PedersenCommitment(scalars_1.clone()));
+    witnesses.add(Witness::PedersenCommitment(scalars_1));
     witnesses.add(Witness::PedersenCommitment(scalars_2.clone()));
-    witnesses.add(Witness::PedersenCommitment(scalars_3.clone()));
+    witnesses.add(Witness::PedersenCommitment(scalars_3));
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
@@ -269,7 +265,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
         statements.clone(),
         meta_statements.clone(),
         all_setup_params,
-        context.clone(),
+        context,
     );
     proof_spec.validate().unwrap();
 
@@ -289,6 +285,6 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     test_serialization!(ProofG1, proof);
 
     proof
-        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce.clone(), Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce, Default::default())
         .unwrap();
 }

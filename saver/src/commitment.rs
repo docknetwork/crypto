@@ -116,7 +116,7 @@ impl<G: AffineRepr> ChunkedCommitment<G> {
         let log2 = radix.trailing_zeros();
         for i in 1..chunks_count {
             // Multiply the last element of `gs` by `radix` by repeated doublings
-            let mut curr = gs[i as usize - 1].clone();
+            let mut curr = gs[i as usize - 1];
             for _ in 0..log2 {
                 curr.double_in_place();
             }
@@ -135,7 +135,7 @@ impl<G: AffineRepr> ChunkedCommitment<G> {
         // factors = [radix^{chunks_count - 1}, radix^{chunks_count - 2}, ..., 1]
         let mut factors = vec![];
         for i in 1..chunks_count {
-            factors.push(radix.pow(&[(chunks_count - i) as u64]));
+            factors.push(radix.pow([(chunks_count - i) as u64]));
         }
         factors.push(G::ScalarField::one());
         multiply_field_elems_with_same_group_elem(g, &factors)
@@ -145,17 +145,15 @@ impl<G: AffineRepr> ChunkedCommitment<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encryption::tests::enc_setup;
-    use crate::encryption::Encryption;
-    use ark_bls12_381::{Bls12_381, G1Affine};
+
+    use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
-    use ark_std::collections::BTreeSet;
+
     use ark_std::rand::prelude::StdRng;
     use ark_std::rand::SeedableRng;
     use ark_std::UniformRand;
-    use blake2::Blake2b512;
-    use std::ops::Add;
-    use std::time::{Duration, Instant};
+
+    use std::time::Instant;
 
     // TODO Uncomment
     // use proof_system::prelude::{

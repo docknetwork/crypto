@@ -4,6 +4,7 @@ use ark_std::io::{Read, Write};
 use ark_std::vec::Vec;
 use bbs_plus::prelude::PoKOfSignatureG1Proof;
 use dock_crypto_utils::serde_utils::*;
+use ps_signature::SignaturePoK as PSSignaturePoK;
 use saver::encryption::Ciphertext;
 use schnorr_pok::SchnorrResponse;
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,49 @@ pub enum StatementProof<E: Pairing, G: AffineRepr> {
     SaverWithAggregation(SaverProofWhenAggregatingSnarks<E>),
     BoundCheckLegoGroth16WithAggregation(BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>),
     R1CSLegoGroth16WithAggregation(R1CSLegoGroth16ProofWhenAggregatingSnarks<E>),
+    PoKPSSignature(PSSignaturePoK<E>),
+}
+
+macro_rules! delegate {
+    ($([$idx: ident])?$self: ident $($tt: tt)+) => {{
+        $crate::delegate_indexed! {
+            $self $([$idx 0u8])? =>
+                PoKBBSSignatureG1,
+                AccumulatorMembership,
+                AccumulatorNonMembership,
+                PedersenCommitment,
+                Saver,
+                BoundCheckLegoGroth16,
+                R1CSLegoGroth16,
+                SaverWithAggregation,
+                BoundCheckLegoGroth16WithAggregation,
+                R1CSLegoGroth16WithAggregation,
+                PoKPSSignature
+            : $($tt)+
+        }
+    }};
+}
+
+macro_rules! delegate_reverse {
+    ($val: ident or else $err: expr => $($tt: tt)+) => {{
+        $crate::delegate_indexed_reverse! {
+            $val[_idx 0u8] =>
+                PoKBBSSignatureG1,
+                AccumulatorMembership,
+                AccumulatorNonMembership,
+                PedersenCommitment,
+                Saver,
+                BoundCheckLegoGroth16,
+                R1CSLegoGroth16,
+                SaverWithAggregation,
+                BoundCheckLegoGroth16WithAggregation,
+                R1CSLegoGroth16WithAggregation,
+                PoKPSSignature
+            : $($tt)+
+        }
+
+        $err
+    }};
 }
 
 #[serde_as]
@@ -77,8 +121,8 @@ impl<E: Pairing> SaverProof<E> {
     pub fn for_aggregation(&self) -> SaverProofWhenAggregatingSnarks<E> {
         SaverProofWhenAggregatingSnarks {
             ciphertext: self.ciphertext.clone(),
-            comm_chunks: self.comm_chunks.clone(),
-            comm_combined: self.comm_combined.clone(),
+            comm_chunks: self.comm_chunks,
+            comm_combined: self.comm_combined,
             sp_ciphertext: self.sp_ciphertext.clone(),
             sp_chunks: self.sp_chunks.clone(),
             sp_combined: self.sp_combined.clone(),
@@ -131,7 +175,7 @@ impl<E: Pairing> BoundCheckLegoGroth16Proof<E> {
 
     pub fn for_aggregation(&self) -> BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E> {
         BoundCheckLegoGroth16ProofWhenAggregatingSnarks {
-            commitment: self.snark_proof.d.clone(),
+            commitment: self.snark_proof.d,
             sp: self.sp.clone(),
         }
     }
@@ -175,7 +219,7 @@ impl<E: Pairing> R1CSLegoGroth16Proof<E> {
 
     pub fn for_aggregation(&self) -> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
         R1CSLegoGroth16ProofWhenAggregatingSnarks {
-            commitment: self.snark_proof.d.clone(),
+            commitment: self.snark_proof.d,
             sp: self.sp.clone(),
         }
     }
@@ -210,18 +254,7 @@ mod serialization {
 
     impl<E: Pairing, G: AffineRepr> Valid for StatementProof<E, G> {
         fn check(&self) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => s.check(),
-                Self::AccumulatorMembership(s) => s.check(),
-                Self::AccumulatorNonMembership(s) => s.check(),
-                Self::PedersenCommitment(s) => s.check(),
-                Self::Saver(s) => s.check(),
-                Self::BoundCheckLegoGroth16(s) => s.check(),
-                Self::R1CSLegoGroth16(s) => s.check(),
-                Self::SaverWithAggregation(s) => s.check(),
-                Self::BoundCheckLegoGroth16WithAggregation(s) => s.check(),
-                Self::R1CSLegoGroth16WithAggregation(s) => s.check(),
-            }
+            delegate!(self.check())
         }
     }
 
@@ -231,81 +264,16 @@ mod serialization {
             mut writer: W,
             compress: Compress,
         ) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    CanonicalSerialize::serialize_with_mode(&0u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::AccumulatorMembership(s) => {
-                    CanonicalSerialize::serialize_with_mode(&1u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    CanonicalSerialize::serialize_with_mode(&2u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::PedersenCommitment(s) => {
-                    CanonicalSerialize::serialize_with_mode(&3u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::Saver(s) => {
-                    CanonicalSerialize::serialize_with_mode(&4u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::BoundCheckLegoGroth16(s) => {
-                    CanonicalSerialize::serialize_with_mode(&5u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::R1CSLegoGroth16(s) => {
-                    CanonicalSerialize::serialize_with_mode(&6u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::SaverWithAggregation(s) => {
-                    CanonicalSerialize::serialize_with_mode(&7u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::BoundCheckLegoGroth16WithAggregation(s) => {
-                    CanonicalSerialize::serialize_with_mode(&8u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::R1CSLegoGroth16WithAggregation(s) => {
-                    CanonicalSerialize::serialize_with_mode(&9u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-            }
+            delegate!([idx]self with variant as s {
+                CanonicalSerialize::serialize_with_mode(&idx, &mut writer, compress)?;
+                CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+            })
         }
 
         fn serialized_size(&self, compress: Compress) -> usize {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::AccumulatorMembership(s) => {
-                    1u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::PedersenCommitment(s) => {
-                    3u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::Saver(s) => 4u8.serialized_size(compress) + s.serialized_size(compress),
-                Self::BoundCheckLegoGroth16(s) => {
-                    5u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::R1CSLegoGroth16(s) => {
-                    6u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::SaverWithAggregation(s) => {
-                    7u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::BoundCheckLegoGroth16WithAggregation(s) => {
-                    8u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::R1CSLegoGroth16WithAggregation(s) => {
-                    9u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-            }
+            delegate!([idx]self with variant as s {
+                idx.serialized_size(compress) + s.serialized_size(compress)
+            })
         }
     }
 
@@ -315,43 +283,13 @@ mod serialization {
             compress: Compress,
             validate: Validate,
         ) -> Result<Self, SerializationError> {
-            let t: u8 =
+            let idx: u8 =
                 CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
-            match t {
-                0u8 => Ok(Self::PoKBBSSignatureG1(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                4u8 => Ok(Self::Saver(CanonicalDeserialize::deserialize_with_mode(
-                    &mut reader,
-                    compress,
-                    validate,
-                )?)),
-                5u8 => Ok(Self::BoundCheckLegoGroth16(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                6u8 => Ok(Self::R1CSLegoGroth16(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                7u8 => Ok(Self::SaverWithAggregation(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                8u8 => Ok(Self::BoundCheckLegoGroth16WithAggregation(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                9u8 => Ok(Self::R1CSLegoGroth16WithAggregation(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
+
+            delegate_reverse!(
+                idx or else Err(SerializationError::InvalidData) => with variant as build
+                CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate).map(build)
+            )
         }
     }
 }
