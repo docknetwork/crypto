@@ -4,9 +4,9 @@ use ark_std::{collections::BTreeMap, io::Write, vec::Vec};
 
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
+use coconut::proof::*;
+use coconut::setup::*;
 use itertools::{EitherOrBoth, Itertools};
-use ps_signature::proof::*;
-use ps_signature::setup::*;
 
 use crate::error::ProofSystemError;
 use crate::statement_proof::StatementProof;

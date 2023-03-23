@@ -104,22 +104,22 @@ macro_rules! multi_pairing {
     }
 }
 
-/// `rayon::join(|| expr1, || rayon::join(|| expr2, || ...))`
+/// Flattened `rayon::join(|| expr1, || rayon::join(|| expr2, || ...))`
 #[cfg(feature = "parallel")]
 #[macro_export]
 macro_rules! join {
-    ($a: expr) => { $a };
-    ($a: expr, $b: expr) => {
+    (@ $a: expr) => { $a };
+    (@ $a: expr, $b: expr) => {
         rayon::join(|| $a, || $b)
     };
-    ($a: expr, $b: expr, $($c: expr),+) => {{
+    (@ $a: expr, $b: expr, $($c: expr),+) => {{
+        join!(@ $a, join!(@ $b, $($c),+))
+    }};
+    ($($e: expr),+) => {{
         $crate::unnest_tuple!(
-            $a, $b, $($c),+
+            $($e),+
             =>
-            join!(
-                $a,
-                join!($b, $($c),+)
-            )
+            join!(@ $($e),+)
         )
     }}
 }
@@ -149,17 +149,17 @@ macro_rules! unnest_tuple {
 
         (_a, _b, _c)
     }};
-    ($a: expr, $b: expr, $d: expr => $v: expr) => {{
+    ($a: expr, $b: expr, $c: expr, $d: expr => $v: expr) => {{
         let (_a, (_b, (_c, _d))) = $v;
 
         (_a, _b, _c, _d)
     }};
-    ($a: expr, $b: expr, $d: expr, $e: expr => $v: expr) => {{
+    ($a: expr, $b: expr, $c: expr, $d: expr, $e: expr => $v: expr) => {{
         let (_a, (_b, (_c, (_d, _e)))) = $v;
 
         (_a, _b, _c, _d, _e)
     }};
-    ($a: expr, $b: expr, $d: expr, $e: expr, $f: expr => $v: expr) => {{
+    ($a: expr, $b: expr, $c: expr, $d: expr, $e: expr, $f: expr => $v: expr) => {{
         let (_a, (_b, (_c, (_d, (_e, _f))))) = $v;
 
         (_a, _b, _c, _d, _e, _f)
@@ -220,4 +220,40 @@ macro_rules! impl_into_indexed_iter {
 #[cfg(not(feature = "parallel"))]
 macro_rules! impl_into_indexed_iter {
     (<Item = $item: ty> $($tt: tt)*) => { impl core::iter::IntoIterator<Item = $item, IntoIter = impl $crate::helpers::DoubleEndedExactSizeIterator<Item = $item> $($tt)*> $($tt)* }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn unnest_tuple() {
+        let a = unnest_tuple!(1 => 1);
+        assert_eq!([a], [1]);
+        let (a, b) = unnest_tuple!(_a, _b => (1, 2));
+        assert_eq!([a, b], [1, 2]);
+        let (a, b, c) = unnest_tuple!(_a, _b, _c => (1, (2, 3)));
+        assert_eq!([a, b, c], [1, 2, 3]);
+        let (a, b, c, d) = unnest_tuple!(_a, _b, _c, _d => (1, (2, (3, 4))));
+        assert_eq!([a, b, c, d], [1, 2, 3, 4]);
+        let (a, b, c, d, e) = unnest_tuple!(_a, _b, _c, _d, _e => (1, (2, (3, (4, 5)))));
+        assert_eq!([a, b, c, d, e], [1, 2, 3, 4, 5]);
+        let (a, b, c, d, e, f) =
+            unnest_tuple!(_a, _b, _c, _d, _e, _f => (1, (2, (3, (4, (5, 6))))));
+        assert_eq!([a, b, c, d, e, f], [1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn join() {
+        let a = join!(1);
+        assert_eq!([a], [1]);
+        let (a, b) = join!(1, 2);
+        assert_eq!([a, b], [1, 2]);
+        let (a, b, c) = join!(1, 2, 3);
+        assert_eq!([a, b, c], [1, 2, 3]);
+        let (a, b, c, d) = join!(1, 2, 3, 4);
+        assert_eq!([a, b, c, d], [1, 2, 3, 4]);
+        let (a, b, c, d, e) = join!(1, 2, 3, 4, 5);
+        assert_eq!([a, b, c, d, e], [1, 2, 3, 4, 5]);
+        let (a, b, c, d, e, f) = join!(1, 2, 3, 4, 5, 6);
+        assert_eq!([a, b, c, d, e, f], [1, 2, 3, 4, 5, 6]);
+    }
 }

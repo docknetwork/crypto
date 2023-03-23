@@ -135,7 +135,7 @@ mod serialization {
             mut writer: W,
             compress: Compress,
         ) -> Result<(), SerializationError> {
-            delegate!([index]self: |statement| {
+            delegate!([index]self with variant as statement {
                 CanonicalSerialize::serialize_with_mode(&index, &mut writer, compress)?;
                 CanonicalSerialize::serialize_with_mode(statement, &mut writer, compress)?;
 
@@ -144,7 +144,7 @@ mod serialization {
         }
 
         fn serialized_size(&self, compress: Compress) -> usize {
-            delegate!([index]self: |statement| {
+            delegate!([index]self with variant as statement {
                 index.serialized_size(compress) + CanonicalSerialize::serialized_size(statement, compress)
             })
         }

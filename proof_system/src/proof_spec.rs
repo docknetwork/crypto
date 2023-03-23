@@ -15,13 +15,13 @@ use bbs_plus::setup::{
     PreparedSignatureParamsG1 as PreparedBBSPlusSigParams, PublicKeyG2 as BBSPlusPk,
     SignatureParamsG1 as BBSPlusSigParams,
 };
+use coconut::setup::{
+    PreparedPublicKey as PreparedPSPk, PreparedSignatureParams as PreparedPSSigParams,
+    PublicKey as PSPk, SignatureParams as PSSigParams,
+};
 use legogroth16::{
     aggregation::srs::{ProverSRS, VerifierSRS},
     PreparedVerifyingKey as LegoPreparedVerifyingKey, VerifyingKey as LegoVerifyingKey,
-};
-use ps_signature::setup::{
-    PreparedPublicKey as PreparedPSPk, PreparedSignatureParams as PreparedPSSigParams,
-    PublicKey as PSPk, SignatureParams as PSSigParams,
 };
 use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, PreparedEncryptionGens,

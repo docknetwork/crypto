@@ -5,13 +5,13 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
 use blake2::Blake2b512;
-use ps_signature::setup::*;
+use coconut::setup::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use ps_signature::MultiMessageCommitment;
-use ps_signature::{helpers::*, BlindSignature, CommitmentOrMessage};
-use ps_signature::{MessageCommitment, Signature};
+use coconut::MultiMessageCommitment;
+use coconut::{helpers::*, BlindSignature, CommitmentOrMessage};
+use coconut::{MessageCommitment, Signature};
 use std::time::Instant;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 

@@ -19,7 +19,7 @@ use rayon::prelude::*;
 
 type Result<T, E = AggregatedPSError> = core::result::Result<T, E>;
 
-/// Signature produced by combining `S` signatures together.
+/// Signature produced by combining several Pointcheval-Sanders signatures together.
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]

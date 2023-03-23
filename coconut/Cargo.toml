@@ -1,5 +1,5 @@
 [package]
-name = "ps-signature"
+name = "coconut"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true

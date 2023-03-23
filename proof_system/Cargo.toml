@@ -29,7 +29,7 @@ ark-groth16 = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { version = "^0.4.0", default-features = false }
 ark-relations = { version = "^0.4.0", default-features = false }
 zeroize.workspace = true
-ps-signature = { version = "0.1.0", default-features = false, path = "../ps-signature" }
+coconut = { version = "0.1.0", default-features = false, path = "../coconut" }
 merlin = { workspace = true, default-features = false }
 legogroth16 = { workspace = true, default-features = false, features = ["circom", "aggregation"] }
 itertools = "0.10.5"
@@ -44,8 +44,8 @@ test_utils = { version = "0.1.0", default-features = false, path = "../test_util
 
 [features]
 default = ["parallel"]
-std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "merlin/std", "ps-signature/std"]
+std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "merlin/std", "coconut/std"]
 print-trace = ["ark-std/print-trace", "schnorr_pok/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace", "dock_crypto_utils/print-trace"]
-parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel", "legogroth16/parallel", "ark-r1cs-std/parallel", "dock_crypto_utils/parallel", "ps-signature/parallel"]
+parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel", "legogroth16/parallel", "ark-r1cs-std/parallel", "dock_crypto_utils/parallel", "coconut/parallel"]
 wasmer-js = ["legogroth16/wasmer-js"]
 wasmer-sys = ["legogroth16/wasmer-sys"]

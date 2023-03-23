@@ -47,8 +47,8 @@ pub enum SetupParams<E: Pairing, G: AffineRepr> {
     R1CS(#[serde_as(as = "ArkObjectBytes")] R1CS<E>),
     Bytes(Vec<u8>),
     FieldElemVec(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
-    PSSignatureParams(ps_signature::setup::SignatureParams<E>),
-    PSSignaturePublicKey(ps_signature::setup::PublicKey<E>),
+    PSSignatureParams(coconut::setup::SignatureParams<E>),
+    PSSignaturePublicKey(coconut::setup::PublicKey<E>),
 }
 
 macro_rules! delegate {

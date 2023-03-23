@@ -2,8 +2,8 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cmp, collections::BTreeMap, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::signature::SignatureG1 as BBSSignatureG1;
+use coconut::Signature;
 use dock_crypto_utils::serde_utils::*;
-use ps_signature::Signature;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
@@ -335,15 +335,15 @@ mod serialization {
             mut writer: W,
             compress: Compress,
         ) -> Result<(), SerializationError> {
-            delegate!([index]self with variant as s {
+            delegate!([index]self with variant as witness {
                 CanonicalSerialize::serialize_with_mode(&index, &mut writer, compress)?;
-                CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
+                CanonicalSerialize::serialize_with_mode(witness, &mut writer, compress)
             })
         }
 
         fn serialized_size(&self, compress: Compress) -> usize {
-            delegate!([index]self: |statement| {
-                index.serialized_size(compress) + CanonicalSerialize::serialized_size(statement, compress)
+            delegate!([index]self with variant as witness {
+                index.serialized_size(compress) + CanonicalSerialize::serialized_size(witness, compress)
             })
         }
     }

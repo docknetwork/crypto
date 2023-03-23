@@ -5,9 +5,9 @@ use ark_std::{
     UniformRand,
 };
 use benches::setup_ps;
+use coconut::setup::*;
+use coconut::Signature;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use ps_signature::setup::*;
-use ps_signature::Signature;
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 

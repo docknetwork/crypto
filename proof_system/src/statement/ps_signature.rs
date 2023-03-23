@@ -8,8 +8,8 @@ use serde_with::{serde_as, Same};
 use crate::error::ProofSystemError;
 use crate::setup_params::SetupParams;
 use crate::statement::Statement;
+use coconut::{proof::*, setup::*};
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use ps_signature::{proof::*, setup::*};
 
 /// Public values like setup params, public key and revealed messages for proving knowledge of PS signature.
 #[serde_as]
