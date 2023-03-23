@@ -4,9 +4,9 @@ use alloc::string::String;
 // TODO replace by `SchnorrError` when it will derive `Eq`, `PartialEq`, `Clone`
 type SchnorrError = String;
 
-/// An error originated from `CommitmentsPoK`.
+/// An error originated from `MessagesPoK`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CommitmentsPoKError {
+pub enum MessagesPoKError {
     MessageInputError(MessageUnpackingError),
     RevealedIndicesMustBeUniqueAndSorted {
         previous: usize,
@@ -30,7 +30,7 @@ pub enum CommitmentsPoKError {
     },
 }
 
-impl From<MessageUnpackingError> for CommitmentsPoKError {
+impl From<MessageUnpackingError> for MessagesPoKError {
     fn from(err: MessageUnpackingError) -> Self {
         Self::MessageInputError(err)
     }

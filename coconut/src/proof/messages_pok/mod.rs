@@ -34,17 +34,17 @@ use witnesses::*;
 
 /// Generates proof of knowledge for the supplied messages.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommitmentsPoKGenerator<'a, E: Pairing> {
+pub struct MessagesPoKGenerator<'a, E: Pairing> {
     /// `com = g * o + \sum_{i}(h_{i} * m_{i})`
     com: WithSchnorrAndBlindings<E::G1Affine, MultiMessageCommitment<E>>,
     /// `com_{j} = g * o_{j} + h * m_{j}`
     com_j: Vec<WithSchnorrAndBlindings<E::G1Affine, MessageCommitment<E>>>,
-    witnesses: CommitmentsPoKWitnesses<'a, E>,
+    witnesses: MessagesPoKWitnesses<'a, E>,
 }
 
-type Result<T, E = CommitmentsPoKError> = core::result::Result<T, E>;
+type Result<T, E = MessagesPoKError> = core::result::Result<T, E>;
 
-impl<'a, E: Pairing> CommitmentsPoKGenerator<'a, E> {
+impl<'a, E: Pairing> MessagesPoKGenerator<'a, E> {
     /// Initializes Commitments Proof of Knowledge generator with supplied params.
     /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
     /// By default, a message is blinded with random blinding.
@@ -62,7 +62,7 @@ impl<'a, E: Pairing> CommitmentsPoKGenerator<'a, E> {
             UnpackedBlindedMessages::new(rng, messages_to_commit, &params.h)?;
 
         // Capture `m` and generates random `o` along with a vector of `o` paired with `m`
-        let witnesses = CommitmentsPoKWitnesses::new(rng, messages);
+        let witnesses = MessagesPoKWitnesses::new(rng, messages);
 
         let h_blinging_pairs = pairs!(h_arr, blindings);
         // Create new randomness `o` and capture `blindings`, `g`, and `h` from signature params.
@@ -71,7 +71,7 @@ impl<'a, E: Pairing> CommitmentsPoKGenerator<'a, E> {
         // Create new randomness `o` and captures `blindings` along with `h`, and `g` from signature params.
         let com_j_randomness = MessageCommitmentRandomness::init(rng, &blindings, h, params);
 
-        let CommitmentsPoKWitnesses { o, o_m_pairs } = &witnesses;
+        let MessagesPoKWitnesses { o, o_m_pairs } = &witnesses;
         let (o_arr, m) = o_m_pairs.as_ref().split();
 
         let h_m_pairs = pairs!(h_arr, m);
@@ -117,9 +117,9 @@ impl<'a, E: Pairing> CommitmentsPoKGenerator<'a, E> {
     }
 
     /// Generate proof. Post-challenge phase of the protocol.
-    pub fn gen_proof(&self, challenge: &E::ScalarField) -> Result<CommitmentsPoK<E>> {
+    pub fn gen_proof(&self, challenge: &E::ScalarField) -> Result<MessagesPoK<E>> {
         let Self {
-            witnesses: CommitmentsPoKWitnesses { o, o_m_pairs },
+            witnesses: MessagesPoKWitnesses { o, o_m_pairs },
             ..
         } = self;
 
@@ -131,12 +131,12 @@ impl<'a, E: Pairing> CommitmentsPoKGenerator<'a, E> {
                 self.com
                     .response(o, m.iter().copied(), challenge)
                     .map_err(schnorr_error)
-                    .map_err(CommitmentsPoKError::ComProofGenerationFailed)
+                    .map_err(MessagesPoKError::ComProofGenerationFailed)
             },
             {
                 // Schnorr responses for relation `com_{j} = g * o_{j} + h * m_{j}`
                 if self.com_j.len() != o_m_pairs.len() {
-                    Err(CommitmentsPoKError::IncompatibleComJAndMessages {
+                    Err(MessagesPoKError::IncompatibleComJAndMessages {
                         com_j_len: self.com_j.len(),
                         messages_len: o_m_pairs.len(),
                     })?
@@ -149,7 +149,7 @@ impl<'a, E: Pairing> CommitmentsPoKGenerator<'a, E> {
                         com_j
                             .response(o, m, challenge)
                             .map_err(schnorr_error)
-                            .map_err(|error| CommitmentsPoKError::ComJProofGenerationFailed {
+                            .map_err(|error| MessagesPoKError::ComJProofGenerationFailed {
                                 index,
                                 error,
                             })
@@ -158,7 +158,7 @@ impl<'a, E: Pairing> CommitmentsPoKGenerator<'a, E> {
             }
         );
 
-        Ok(CommitmentsPoK {
+        Ok(MessagesPoK {
             com_resp: com_resp?,
             com_j_resp: com_j_resp?,
         })
@@ -189,11 +189,11 @@ mod tests {
     use crate::{
         helpers::{rand, IndexIsOutOfBounds},
         setup::test_setup,
-        CommitMessage, CommitmentsPoKError, MessageUnpackingError,
+        CommitMessage, MessageUnpackingError, MessagesPoKError,
     };
     use ark_std::UniformRand;
 
-    use super::CommitmentsPoKGenerator;
+    use super::MessagesPoKGenerator;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
     type G1 = <Bls12_381 as Pairing>::G1;
@@ -207,7 +207,7 @@ mod tests {
 
             let h = G1::rand(&mut rng).into_affine();
 
-            let pok = CommitmentsPoKGenerator::init(&mut rng, &messages, &params, &h).unwrap();
+            let pok = MessagesPoKGenerator::init(&mut rng, &messages, &params, &h).unwrap();
 
             let mut chal_bytes_prover = vec![];
             pok.challenge_contribution(&mut chal_bytes_prover, &params, &h)
@@ -232,7 +232,7 @@ mod tests {
 
             let h = G1::rand(&mut rng).into_affine();
 
-            let pok = CommitmentsPoKGenerator::init(
+            let pok = MessagesPoKGenerator::init(
                 &mut rng,
                 messages.iter().enumerate().map(|(idx, msg)| {
                     if idx % 2 == 0 {
@@ -277,7 +277,7 @@ mod tests {
         let h = G1::rand(&mut rng).into_affine();
 
         assert_eq!(
-            CommitmentsPoKGenerator::init(
+            MessagesPoKGenerator::init(
                 &mut rng,
                 messages
                     .iter()
@@ -293,12 +293,12 @@ mod tests {
                 &h
             )
             .unwrap_err(),
-            CommitmentsPoKError::MessageInputError(
-                MessageUnpackingError::MessageIndexIsOutOfBounds(IndexIsOutOfBounds {
+            MessagesPoKError::MessageInputError(MessageUnpackingError::MessageIndexIsOutOfBounds(
+                IndexIsOutOfBounds {
                     index: 10,
                     length: message_count
-                })
-            )
+                }
+            ))
         );
     }
 
@@ -312,7 +312,7 @@ mod tests {
         let h = G1::rand(&mut rng).into_affine();
 
         assert_eq!(
-            CommitmentsPoKGenerator::init(
+            MessagesPoKGenerator::init(
                 &mut rng,
                 messages
                     .iter()
@@ -328,12 +328,10 @@ mod tests {
                 &h
             )
             .unwrap_err(),
-            CommitmentsPoKError::MessageInputError(
-                MessageUnpackingError::LessMessagesThanExpected {
-                    provided: 9,
-                    expected: 10
-                }
-            )
+            MessagesPoKError::MessageInputError(MessageUnpackingError::LessMessagesThanExpected {
+                provided: 9,
+                expected: 10
+            })
         );
     }
 
@@ -346,7 +344,7 @@ mod tests {
 
             let h = G1::rand(&mut rng).into_affine();
 
-            let pok = CommitmentsPoKGenerator::init(
+            let pok = MessagesPoKGenerator::init(
                 &mut rng,
                 messages.iter().enumerate().map(|(idx, msg)| {
                     if idx % 2 == 0 {
@@ -373,7 +371,7 @@ mod tests {
 
             assert_eq!(
                 proof.verify(&challenge_prover, indices.clone(), &params, &h,),
-                Err(CommitmentsPoKError::RevealedIndicesMustBeUniqueAndSorted {
+                Err(MessagesPoKError::RevealedIndicesMustBeUniqueAndSorted {
                     previous: indices.next().unwrap(),
                     current: indices.next().unwrap()
                 })
@@ -390,7 +388,7 @@ mod tests {
 
             let h = G1::rand(&mut rng).into_affine();
 
-            let pok = CommitmentsPoKGenerator::init(
+            let pok = MessagesPoKGenerator::init(
                 &mut rng,
                 messages
                     .iter()
@@ -424,7 +422,7 @@ mod tests {
 
         let h = G1::rand(&mut rng).into_affine();
 
-        let pok = CommitmentsPoKGenerator::init(
+        let pok = MessagesPoKGenerator::init(
             &mut rng,
             messages
                 .iter()
@@ -462,7 +460,7 @@ mod tests {
 
         let h = G1::rand(&mut rng).into_affine();
 
-        let pok = CommitmentsPoKGenerator::init(
+        let pok = MessagesPoKGenerator::init(
             &mut rng,
             messages
                 .iter()
@@ -500,7 +498,7 @@ mod tests {
 
         let h = G1::rand(&mut rng).into_affine();
 
-        let pok = CommitmentsPoKGenerator::init(
+        let pok = MessagesPoKGenerator::init(
             &mut rng,
             messages
                 .iter()
@@ -539,8 +537,8 @@ mod tests {
         let h = G1::rand(&mut rng).into_affine();
 
         assert_eq!(
-            CommitmentsPoKGenerator::init(&mut rng, &[], &params, &h),
-            Err(CommitmentsPoKError::MessageInputError(
+            MessagesPoKGenerator::init(&mut rng, &[], &params, &h),
+            Err(MessagesPoKError::MessageInputError(
                 MessageUnpackingError::NoMessagesProvided
             ))
         );

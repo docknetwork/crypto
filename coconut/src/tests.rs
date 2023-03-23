@@ -17,7 +17,7 @@ type G1 = <Bls12_381 as Pairing>::G1;
 use schnorr_pok::compute_random_oracle_challenge;
 
 use crate::{
-    setup::test_setup, BlindSignature, CommitMessage, CommitmentOrMessage, CommitmentsPoKGenerator,
+    setup::test_setup, BlindSignature, CommitMessage, CommitmentOrMessage, MessagesPoKGenerator,
     SignaturePoKGenerator,
 };
 
@@ -41,8 +41,7 @@ fn construction_pac_workflow() {
             let blind_indices = 0..blind_msgs.len();
             let revealed_indices = blind_msgs.len()..blind_msgs.len() + reveal_msgs.len();
 
-            let com_pok =
-                CommitmentsPoKGenerator::init(&mut rng, comms.clone(), &params, &h).unwrap();
+            let com_pok = MessagesPoKGenerator::init(&mut rng, comms.clone(), &params, &h).unwrap();
 
             let mut chal_bytes_prover = vec![];
             com_pok

@@ -20,14 +20,14 @@ use super::*;
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct CommitmentsPoK<E: Pairing> {
+pub struct MessagesPoK<E: Pairing> {
     /// `com = g * o + \sum_{i}(h_{i} * m_{i})`
     pub(super) com_resp: WithSchnorrResponse<E::G1Affine, MultiMessageCommitment<E>>,
     /// `com_{j} = g * o_{j} + h * m_{j}`
     pub(super) com_j_resp: Vec<WithSchnorrResponse<E::G1Affine, MessageCommitment<E>>>,
 }
 
-impl<E: Pairing> CommitmentsPoK<E> {
+impl<E: Pairing> MessagesPoK<E> {
     /// Verifies underlying proof of knowledge using supplied arguments.
     /// `unique_sorted_revealed_indices` must produce sorted unique indices, otherwise, an error will be returned.
     pub fn verify<I>(
@@ -85,7 +85,7 @@ impl<E: Pairing> CommitmentsPoK<E> {
     /// Verifies equality of the corresponding Schnorr responses for `m_{i}` in both commitments.
     fn verify_responses(&self) -> Result<()> {
         if self.com_resp.response.0.len() != self.com_j_resp.len() + 1 {
-            Err(CommitmentsPoKError::SchnorrResponsesHaveDifferentLength)?
+            Err(MessagesPoKError::SchnorrResponsesHaveDifferentLength)?
         }
 
         let m_i_resp = cfg_iter!(self.com_resp.response.0).skip(1).map(Some);
@@ -102,7 +102,7 @@ impl<E: Pairing> CommitmentsPoK<E> {
         );
 
         if let Some(idx) = invalid_idx {
-            Err(CommitmentsPoKError::SchnorrResponsesNotEqual(idx))
+            Err(MessagesPoKError::SchnorrResponsesNotEqual(idx))
         } else {
             Ok(())
         }
@@ -126,10 +126,10 @@ impl<E: Pairing> CommitmentsPoK<E> {
             .com_resp
             .verify_challenge(challenge, g, committed_h)
             .map_err(schnorr_error)
-            .map_err(CommitmentsPoKError::InvalidComProof);
+            .map_err(MessagesPoKError::InvalidComProof);
 
         if let Some((previous, current)) = invalid_idx_pair {
-            Err(CommitmentsPoKError::RevealedIndicesMustBeUniqueAndSorted { previous, current })
+            Err(MessagesPoKError::RevealedIndicesMustBeUniqueAndSorted { previous, current })
         } else {
             verification_res
         }
@@ -148,7 +148,7 @@ impl<E: Pairing> CommitmentsPoK<E> {
                 com_j
                     .verify_challenge(challenge, g, h)
                     .map_err(schnorr_error)
-                    .map_err(|error| CommitmentsPoKError::InvalidComJProof { index, error })
+                    .map_err(|error| MessagesPoKError::InvalidComJProof { index, error })
             })
             .collect()
     }

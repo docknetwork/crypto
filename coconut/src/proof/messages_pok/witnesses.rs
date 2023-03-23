@@ -8,14 +8,14 @@ use crate::{
     owned_pairs,
 };
 
-/// Witnesses for `CommitmentsPoK`.
+/// Witnesses for `MessagesPoK`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct CommitmentsPoKWitnesses<'a, E: Pairing> {
+pub(super) struct MessagesPoKWitnesses<'a, E: Pairing> {
     pub o: E::ScalarField,
     pub o_m_pairs: OwnedPairs<E::ScalarField, &'a E::ScalarField>,
 }
 
-impl<'a, E: Pairing> CommitmentsPoKWitnesses<'a, E> {
+impl<'a, E: Pairing> MessagesPoKWitnesses<'a, E> {
     /// Captures `m` and generates random `o` along with a vector of `o` paired with the provided `m`.
     pub fn new<R: RngCore>(rng: &mut R, m: Vec<&'a E::ScalarField>) -> Self {
         let o = rand(rng);

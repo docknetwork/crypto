@@ -1,13 +1,13 @@
 //! Proofs of knowledge for the signature and commitments.
 use alloc::vec::Vec;
 
-pub mod commitments_pok;
+pub mod messages_pok;
 pub mod signature_pok;
 
 use ark_ff::PrimeField;
 use ark_std::rand::RngCore;
-pub use commitments_pok::*;
 use itertools::process_results;
+pub use messages_pok::*;
 pub use signature_pok::*;
 
 use crate::helpers::{pair_with_slice, rand, IndexIsOutOfBounds};
