@@ -198,7 +198,7 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng, T: Transcript>(
     proof: &AggregateProof<E>,
     ciphertexts: &[Ciphertext<E>],
     rng: &mut R,
-    mut transcript: &mut T,
+    transcript: &mut T,
     pairing_check: Option<&mut RandomizedPairingChecker<E>>,
 ) -> Result<(), SaverError> {
     use legogroth16::aggregation::{error::AggregationError, groth16::verifier::verify_tipp_mipp};
@@ -220,14 +220,14 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng, T: Transcript>(
     let r = transcript.challenge_scalar::<E::ScalarField>(b"r-random-fiatshamir");
 
     let mut c = RandomizedPairingChecker::new_using_rng(rng, true);
-    let checker = pairing_check.unwrap_or_else(|| &mut c);
+    let checker = pairing_check.unwrap_or(&mut c);
 
     let ver_srs_proj = ip_verifier_srs.to_projective();
     verify_tipp_mipp::<E, T>(
         &ver_srs_proj,
         proof,
         &r, // we give the extra r as it's not part of the proof itself - it is simply used on top for the groth16 aggregation
-        &mut transcript,
+        transcript,
         checker,
     )
     .map_err(|e| SaverError::LegoGroth16Error(e.into()))?;
@@ -323,26 +323,22 @@ mod tests {
             println!("For chunk_bit_size {}, encryption key has compressed size {} and uncompressed size {}", chunk_bit_size, ek.compressed_size(), ek.uncompressed_size());
 
             let (ct, r) =
-                Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i).unwrap();
+                Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, g_i).unwrap();
 
             let (m_, _) = Encryption::decrypt_to_chunks(
                 &ct[0],
                 &ct[1..n as usize + 1],
                 &sk,
-                dk.clone(),
-                &g_i,
+                dk,
+                g_i,
                 chunk_bit_size,
             )
             .unwrap();
 
             assert_eq!(m_, msgs);
 
-            let circuit = BitsizeCheckCircuit::new(
-                chunk_bit_size,
-                Some(n),
-                Some(msgs_as_field_elems.clone()),
-                true,
-            );
+            let circuit =
+                BitsizeCheckCircuit::new(chunk_bit_size, Some(n), Some(msgs_as_field_elems), true);
 
             let start = Instant::now();
             let proof = create_proof(circuit, &r, &snark_srs, &ek, &mut rng).unwrap();
@@ -364,9 +360,9 @@ mod tests {
             let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
 
             let ct = Ciphertext {
-                X_r: ct[0].clone(),
-                enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
-                commitment: ct[n as usize + 1].clone(),
+                X_r: ct[0],
+                enc_chunks: ct[1..n as usize + 1].to_vec(),
+                commitment: ct[n as usize + 1],
             };
             verify_proof(&pvk, &proof, &ct).unwrap();
             println!(
@@ -464,7 +460,7 @@ mod tests {
                 &decrypted_message,
                 &nu,
                 chunk_bit_size,
-                dk.clone(),
+                dk,
                 &snark_srs.pk.vk,
                 gens.clone(),
             )
@@ -521,7 +517,7 @@ mod tests {
 
         let mut prover_transcript = new_merlin_transcript(b"test aggregation");
         let aggregate_proof = legogroth16::aggregation::groth16::aggregate_proofs(
-            prover_srs.clone(),
+            prover_srs,
             &mut prover_transcript,
             &proofs,
         )

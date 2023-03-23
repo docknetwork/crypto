@@ -72,12 +72,12 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let chunk_bit_size = 16;
 
     let (snark_pk, sk, ek, dk) = setup_for_groth16(&mut rng, chunk_bit_size, &enc_gens).unwrap();
-    let prepared_dk = PreparedDecryptionKey::from(dk.clone());
+    let prepared_dk = PreparedDecryptionKey::from(dk);
     let prepared_enc_gens = PreparedEncryptionGens::from(enc_gens.clone());
 
     // Message with index `enc_msg_idx` is verifiably encrypted
     let enc_msg_idx = 1;
-    let enc_msg = msgs[enc_msg_idx].clone();
+    let enc_msg = msgs[enc_msg_idx];
 
     let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -124,7 +124,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
         sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     witnesses.add(Witness::Saver(enc_msg));
 
@@ -149,7 +149,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
+        sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
@@ -232,7 +232,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         &proof,
         1,
         &snark_pk.pk.vk,
-        msgs[enc_msg_idx].clone(),
+        msgs[enc_msg_idx],
         &sk,
         prepared_dk.clone(),
         prepared_enc_gens.clone(),
@@ -282,10 +282,10 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
         &proof,
         1,
         &snark_pk.pk.vk,
-        msgs[enc_msg_idx].clone(),
+        msgs[enc_msg_idx],
         &sk,
-        prepared_dk.clone(),
-        prepared_enc_gens.clone(),
+        prepared_dk,
+        prepared_enc_gens,
         chunk_bit_size,
     );
 
@@ -306,7 +306,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        prover_proof_spec.clone(),
+        prover_proof_spec,
         witnesses.clone(),
         None,
         Default::default(),
@@ -322,19 +322,14 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
     );
     verifier_proof_spec.validate().unwrap();
     assert!(proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec.clone(),
-            None,
-            Default::default()
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec, None, Default::default())
         .is_err());
 
     // Verifiably encrypt a message which was not signed
     let mut witnesses_wrong = Witnesses::new();
     witnesses_wrong.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig,
+        msgs.into_iter().enumerate().collect(),
     ));
     witnesses_wrong.add(Witness::Saver(Fr::rand(&mut rng)));
 
@@ -344,7 +339,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        prover_proof_spec.clone(),
+        prover_proof_spec,
         witnesses_wrong,
         None,
         Default::default(),
@@ -458,8 +453,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
 
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-            sig.clone(),
-            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+            sig,
+            msgs.clone().into_iter().enumerate().collect(),
         ));
         for m in enc_msgs {
             witnesses.add(Witness::Saver(m));
@@ -492,7 +487,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
 
         let mut verifier_statements = Statements::new();
         verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-            sig_params.clone(),
+            sig_params,
             sig_keypair.public_key.clone(),
             BTreeMap::new(),
         ));
@@ -590,7 +585,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages() {
                 &proof,
                 i + 1,
                 &snark_pk.pk.vk,
-                msgs[*j].clone(),
+                msgs[*j],
                 &sk,
                 dk.clone(),
                 enc_gens.clone(),
@@ -690,15 +685,15 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
 
         // Message with index `enc_msg_idx_1` is verifiably encrypted for both decryptors
         let enc_msg_idx_1 = 1;
-        let enc_msg_1 = msgs[enc_msg_idx_1].clone();
+        let enc_msg_1 = msgs[enc_msg_idx_1];
 
         // Message with index `enc_msg_idx_2` is verifiably encrypted both 1st decryptor only
         let enc_msg_idx_2 = 2;
-        let enc_msg_2 = msgs[enc_msg_idx_2].clone();
+        let enc_msg_2 = msgs[enc_msg_idx_2];
 
         // Message with index `enc_msg_idx_3` is verifiably encrypted both 2nd decryptor only
         let enc_msg_idx_3 = 3;
-        let enc_msg_3 = msgs[enc_msg_idx_3].clone();
+        let enc_msg_3 = msgs[enc_msg_idx_3];
 
         let mut prover_setup_params = vec![];
         if reuse_setup_params {
@@ -845,8 +840,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
 
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-            sig.clone(),
-            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+            sig,
+            msgs.clone().into_iter().enumerate().collect(),
         ));
         witnesses.add(Witness::Saver(enc_msg_1));
         witnesses.add(Witness::Saver(enc_msg_1));
@@ -886,7 +881,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
 
         let mut verifier_statements = Statements::new();
         verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-            sig_params.clone(),
+            sig_params,
             sig_keypair.public_key.clone(),
             BTreeMap::new(),
         ));
@@ -949,8 +944,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
                 SaverVerifierStmt::new_statement_from_params(
                     chunk_bit_size,
                     enc_gens_1.clone(),
-                    chunked_comm_gens_1.clone(),
-                    ek_1.clone(),
+                    chunked_comm_gens_1,
+                    ek_1,
                     snark_pk_1.pk.vk.clone(),
                 )
                 .unwrap(),
@@ -971,8 +966,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
                 SaverVerifierStmt::new_statement_from_params(
                     chunk_bit_size,
                     enc_gens_2.clone(),
-                    chunked_comm_gens_2.clone(),
-                    ek_2.clone(),
+                    chunked_comm_gens_2,
+                    ek_2,
                     snark_pk_2.pk.vk.clone(),
                 )
                 .unwrap(),
@@ -1043,7 +1038,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             &proof,
             1,
             &snark_pk_1.pk.vk,
-            msgs[enc_msg_idx_1].clone(),
+            msgs[enc_msg_idx_1],
             &sk_1,
             dk_1.clone(),
             enc_gens_1.clone(),
@@ -1053,7 +1048,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             &proof,
             2,
             &snark_pk_2.pk.vk,
-            msgs[enc_msg_idx_1].clone(),
+            msgs[enc_msg_idx_1],
             &sk_2,
             dk_2.clone(),
             enc_gens_2.clone(),
@@ -1063,20 +1058,20 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
             &proof,
             3,
             &snark_pk_1.pk.vk,
-            msgs[enc_msg_idx_2].clone(),
+            msgs[enc_msg_idx_2],
             &sk_1,
-            dk_1.clone(),
-            enc_gens_1.clone(),
+            dk_1,
+            enc_gens_1,
             chunk_bit_size,
         );
         decrypt_and_verify(
             &proof,
             4,
             &snark_pk_2.pk.vk,
-            msgs[enc_msg_idx_3].clone(),
+            msgs[enc_msg_idx_3],
             &sk_2,
-            dk_2.clone(),
-            enc_gens_2.clone(),
+            dk_2,
+            enc_gens_2,
             chunk_bit_size,
         );
 
@@ -1173,7 +1168,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     let max = 200;
     let msg_count = 5;
     let msgs = (0..msg_count)
-        .into_iter()
         .map(|i| Fr::from(min + 1 + i as u64))
         .collect::<Vec<_>>();
     let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
@@ -1191,11 +1185,11 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
 
     // Following message's bounds will be checked
     let msg_idx = 1;
-    let msg = msgs[msg_idx].clone();
+    let msg = msgs[msg_idx];
 
     // Message with index `enc_msg_idx` is verifiably encrypted and its bounds are checked as well
     let enc_msg_idx = 3;
-    let enc_msg = msgs[enc_msg_idx].clone();
+    let enc_msg = msgs[enc_msg_idx];
 
     let mut prover_setup_params = vec![];
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(bound_snark_pk.clone()));
@@ -1252,8 +1246,8 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig,
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     witnesses.add(Witness::BoundCheckLegoGroth16(msg));
     witnesses.add(Witness::BoundCheckLegoGroth16(enc_msg));
@@ -1279,13 +1273,11 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     test_serialization!(ProofG1, proof);
 
     let mut verifier_setup_params = vec![];
-    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(
-        bound_snark_pk.vk.clone(),
-    ));
+    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(bound_snark_pk.vk));
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
+        sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
@@ -1351,9 +1343,9 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         &proof,
         3,
         &snark_pk.pk.vk,
-        msgs[enc_msg_idx].clone(),
+        msgs[enc_msg_idx],
         &sk,
-        dk.clone(),
+        dk,
         enc_gens.clone(),
         chunk_bit_size,
     );

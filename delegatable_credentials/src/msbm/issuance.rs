@@ -92,7 +92,7 @@ impl<E: Pairing> Credential<E> {
             new_update_key_index,
             update_key,
             rho,
-            &set_comm_srs,
+            set_comm_srs,
         )?;
         self.attributes.push(attributes);
         self.commitments.push(comm);
@@ -189,7 +189,7 @@ impl<E: Pairing> Credential<E> {
             user_public_key,
             update_key,
             issuer_public_key,
-            &mu,
+            mu,
             &psi,
             &chi,
             self.max_attributes_per_commitment,
@@ -223,7 +223,7 @@ impl<E: Pairing> Credential<E> {
                 &self.openings,
                 user_public_key,
                 X_0,
-                &mu,
+                mu,
                 &psi,
                 &chi,
                 set_comm_srs,
@@ -382,7 +382,7 @@ impl<E: Pairing> Credential<E> {
             update_key,
             user_public_key,
             issuer_public_key.clone(),
-            &set_comm_srs,
+            set_comm_srs,
         )?;
         let (cred_rand, new_uk, nym, psi, chi) = self
             .randomize(
@@ -390,7 +390,7 @@ impl<E: Pairing> Credential<E> {
                 user_public_key,
                 update_key,
                 issuer_public_key,
-                &set_comm_srs,
+                set_comm_srs,
             )
             .unwrap();
         let secret = user_secret_key.randomize(&psi, &chi);
@@ -413,7 +413,7 @@ impl<E: Pairing> Credential<E> {
             update_key,
             user_public_key,
             issuer_public_key.clone(),
-            &set_comm_srs,
+            set_comm_srs,
         )?;
         let (cred_rand, new_uk, nym) = self
             .randomize_with_given_randomness(
@@ -423,7 +423,7 @@ impl<E: Pairing> Credential<E> {
                 user_public_key,
                 update_key,
                 issuer_public_key,
-                &set_comm_srs,
+                set_comm_srs,
             )
             .unwrap();
         let secret = user_secret_key.randomize(&psi, &chi);
@@ -526,7 +526,7 @@ pub mod tests {
         let usk = UserSecretKey::<Bls12_381>::new::<StdRng>(&mut rng);
         let upk = UserPublicKey::new(&usk, set_comm_srs.get_P1());
 
-        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk.clone());
+        let prep_ipk = PreparedRootIssuerPublicKey::from(ipk);
 
         let msgs_1 = (0..max_attributes - 2)
             .map(|_| Fr::rand(&mut rng))
@@ -541,7 +541,7 @@ pub mod tests {
         for msgs in vec![
             vec![msgs_1.clone()],
             vec![msgs_1.clone(), msgs_2.clone()],
-            vec![msgs_1.clone(), msgs_2.clone(), msgs_3.clone()],
+            vec![msgs_1, msgs_2, msgs_3],
         ] {
             let l = msgs.len();
             let (cred, _) = Credential::issue_root(
@@ -590,11 +590,7 @@ pub mod tests {
 
             for i in 0..l {
                 commit_to_rands.push(P1.mul_bigint(randoms[i].into_bigint()).into_affine());
-                protocols.push(RandCommitmentProtocol::init(
-                    randoms[i].clone(),
-                    blindings[i].clone(),
-                    P1,
-                ));
+                protocols.push(RandCommitmentProtocol::init(randoms[i], blindings[i], P1));
                 protocols[i]
                     .challenge_contribution(P1, &commit_to_rands[i], &mut challenge_bytes)
                     .unwrap();
@@ -622,7 +618,7 @@ pub mod tests {
                 .unwrap();
             let openings = randoms
                 .into_iter()
-                .map(|r| SetCommitmentOpening::SetWithoutTrapdoor(r))
+                .map(SetCommitmentOpening::SetWithoutTrapdoor)
                 .collect::<Vec<_>>();
             let cred = cred.to_credential(openings);
             cred.verify(None, &upk, prep_ipk.clone(), &set_comm_srs)
@@ -664,7 +660,7 @@ pub mod tests {
 
         let (root_cred, uk) = Credential::issue_root(
             &mut rng,
-            vec![msgs_1.clone()],
+            vec![msgs_1],
             &upk,
             Some(3),
             &isk,
@@ -728,7 +724,6 @@ pub mod tests {
 
         // Delegate with attributes from root
         let (cred2, uk2) = root_cred_rand
-            .clone()
             .delegate_with_new_attributes(
                 &mut rng,
                 msgs_2.clone(),
@@ -767,7 +762,6 @@ pub mod tests {
 
         // Delegate without attributes
         let (cred3, uk3) = cred1_rand
-            .clone()
             .delegate_without_new_attributes(&pseudonym1.secret, &ipk.X_0, Some(3), &uk1)
             .unwrap();
         assert_eq!(cred3.commitments.len(), 1);
@@ -798,10 +792,9 @@ pub mod tests {
 
         // Delegate with attributes
         let (cred4, uk4) = cred2_rand
-            .clone()
             .delegate_with_new_attributes(
                 &mut rng,
-                msgs_2.clone(),
+                msgs_2,
                 &pseudonym2.secret,
                 &ipk.X_0,
                 Some(3),

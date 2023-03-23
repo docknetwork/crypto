@@ -71,7 +71,7 @@ pub fn deal_random_secret<R: RngCore, G: AffineRepr>(
 > {
     let secret = G::ScalarField::rand(rng);
     let (t, shares, coeff_comms, s_poly, t_poly) =
-        deal_secret(rng, secret.clone(), threshold, total, comm_key)?;
+        deal_secret(rng, secret, threshold, total, comm_key)?;
     Ok((secret, t, shares, coeff_comms, s_poly, t_poly))
 }
 

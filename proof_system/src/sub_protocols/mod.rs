@@ -1,6 +1,7 @@
 pub mod accumulator;
 pub mod bbs_plus;
 pub mod bound_check_legogroth16;
+pub mod ps_signature;
 pub mod r1cs_legogorth16;
 pub mod saver;
 pub mod schnorr;
@@ -27,6 +28,24 @@ pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
     /// For range proof using LegoGroth16
     BoundCheckProtocol(BoundCheckProtocol<'a, E>),
     R1CSLegogroth16Protocol(R1CSLegogroth16Protocol<'a, E>),
+    PSSignaturePoK(self::ps_signature::PSSignaturePoK<'a, E>),
+}
+
+macro_rules! delegate {
+    ($self: ident $($tt: tt)+) => {{
+        $crate::delegate_indexed! {
+            $self =>
+                PoKBBSSignatureG1,
+                AccumulatorMembership,
+                AccumulatorNonMembership,
+                PoKDiscreteLogs,
+                Saver,
+                BoundCheckProtocol,
+                R1CSLegogroth16Protocol,
+                PSSignaturePoK
+            : $($tt)+
+        }
+    }};
 }
 
 pub trait ProofSubProtocol<E: Pairing, G: AffineRepr<ScalarField = E::ScalarField>> {
@@ -39,29 +58,13 @@ pub trait ProofSubProtocol<E: Pairing, G: AffineRepr<ScalarField = E::ScalarFiel
 
 impl<'a, E: Pairing, G: AffineRepr<ScalarField = E::ScalarField>> SubProtocol<'a, E, G> {
     pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ProofSystemError> {
-        match self {
-            SubProtocol::PoKBBSSignatureG1(s) => s.challenge_contribution(writer),
-            SubProtocol::AccumulatorMembership(s) => s.challenge_contribution(writer),
-            SubProtocol::AccumulatorNonMembership(s) => s.challenge_contribution(writer),
-            SubProtocol::PoKDiscreteLogs(s) => s.challenge_contribution(writer),
-            SubProtocol::Saver(s) => s.challenge_contribution(writer),
-            SubProtocol::BoundCheckProtocol(s) => s.challenge_contribution(writer),
-            SubProtocol::R1CSLegogroth16Protocol(s) => s.challenge_contribution(writer),
-        }
+        delegate!(self.challenge_contribution(writer))
     }
 
     pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
-        match self {
-            SubProtocol::PoKBBSSignatureG1(s) => s.gen_proof_contribution(challenge),
-            SubProtocol::AccumulatorMembership(s) => s.gen_proof_contribution(challenge),
-            SubProtocol::AccumulatorNonMembership(s) => s.gen_proof_contribution(challenge),
-            SubProtocol::PoKDiscreteLogs(s) => s.gen_proof_contribution(challenge),
-            SubProtocol::Saver(s) => s.gen_proof_contribution(challenge),
-            SubProtocol::BoundCheckProtocol(s) => s.gen_proof_contribution(challenge),
-            SubProtocol::R1CSLegogroth16Protocol(s) => s.gen_proof_contribution(challenge),
-        }
+        delegate!(self.gen_proof_contribution(challenge))
     }
 }

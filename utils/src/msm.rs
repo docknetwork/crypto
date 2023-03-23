@@ -199,8 +199,8 @@ pub mod tests {
         for _ in 0..100 {
             let g1 = G1::rand(&mut rng).into_affine();
             let g2 = <Bls12_381 as Pairing>::G2::rand(&mut rng).into_affine();
-            let g3 = <Bls12_381 as Pairing>::G1Prepared::from(g1.clone());
-            let g4 = <Bls12_381 as Pairing>::G2Prepared::from(g2.clone());
+            let g3 = <Bls12_381 as Pairing>::G1Prepared::from(g1);
+            let g4 = <Bls12_381 as Pairing>::G2Prepared::from(g2);
 
             let start = Instant::now();
             let _ = <Bls12_381 as Pairing>::pairing(g1, g2);

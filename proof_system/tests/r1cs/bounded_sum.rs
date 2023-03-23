@@ -116,7 +116,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     for i in 0..12 {
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
             sigs[i].clone(),
-            msgs[i].clone().into_iter().enumerate().map(|t| t).collect(),
+            msgs[i].clone().into_iter().enumerate().collect(),
         ));
     }
 
@@ -133,7 +133,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover.clone(),
+        proof_spec_prover,
         witnesses.clone(),
         None,
         Default::default(),
@@ -147,7 +147,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     let mut verifier_setup_params = vec![];
     verifier_setup_params.push(SetupParams::BBSPlusSignatureParams(params));
     verifier_setup_params.push(SetupParams::BBSPlusPublicKey(keypair.public_key.clone()));
-    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(sum_snark_pk.vk.clone()));
+    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(sum_snark_pk.vk));
     verifier_setup_params.push(SetupParams::FieldElemVec(vec![Fr::one(), sum_bound]));
 
     let mut verifier_statements = Statements::new();
@@ -170,12 +170,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     );
     verifier_proof_spec.validate().unwrap();
     proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec.clone(),
-            None,
-            Default::default(),
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec, None, Default::default())
         .unwrap();
     println!(
         "Verifying proof for bounded sum takes {:?}",

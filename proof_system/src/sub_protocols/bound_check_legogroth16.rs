@@ -312,7 +312,7 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
         )?;
 
         let max = FpVar::new_variable(
-            cs.clone(),
+            cs,
             || self.max.ok_or(SynthesisError::AssignmentMissing),
             AllocationMode::Input,
         )?;

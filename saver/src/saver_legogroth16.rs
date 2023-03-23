@@ -227,7 +227,7 @@ mod tests {
 
             // Using the version of encrypt that outputs the sum X_i^r as well
             let (ct, r) =
-                Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, &g_i).unwrap();
+                Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, g_i).unwrap();
             let x_r_sum =
                 ek.X.iter()
                     .fold(<Bls12_381 as Pairing>::G1::zero(), |a, &b| a.add(b))
@@ -238,8 +238,8 @@ mod tests {
                 &ct[0],
                 &ct[1..n as usize + 1],
                 &sk,
-                dk.clone(),
-                &g_i,
+                dk,
+                g_i,
                 chunk_bit_size,
             )
             .unwrap();
@@ -258,7 +258,7 @@ mod tests {
 
             let start = Instant::now();
             let proof_2 =
-                protocol_2::create_proof(circuit.clone(), v.clone(), &r, &snark_srs, &ek, &mut rng)
+                protocol_2::create_proof(circuit.clone(), v, &r, &snark_srs, &ek, &mut rng)
                     .unwrap();
             println!(
                 "Time taken to create LegoGroth16 proof with chunk_bit_size {} as per protocol 2 {:?}",
@@ -277,9 +277,9 @@ mod tests {
             )
             .unwrap();
             let ct2 = CiphertextAlt {
-                X_r: ct[0].clone(),
-                enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
-                commitment: ct[n as usize + 1].clone(),
+                X_r: ct[0],
+                enc_chunks: ct[1..n as usize + 1].to_vec(),
+                commitment: ct[n as usize + 1],
                 X_r_sum: x_r_sum,
             };
             protocol_2::verify_proof(&pvk, &proof_2, &ct2).unwrap();
@@ -311,9 +311,9 @@ mod tests {
             )
             .unwrap();
             let ct1 = Ciphertext {
-                X_r: ct[0].clone(),
-                enc_chunks: ct[1..n as usize + 1].to_vec().clone(),
-                commitment: ct[n as usize + 1].clone(),
+                X_r: ct[0],
+                enc_chunks: ct[1..n as usize + 1].to_vec(),
+                commitment: ct[n as usize + 1],
             };
             protocol_1::verify_proof(&pvk, &proof_1, &ct1).unwrap();
             println!(

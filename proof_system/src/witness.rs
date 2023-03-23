@@ -2,6 +2,7 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cmp, collections::BTreeMap, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::signature::SignatureG1 as BBSSignatureG1;
+use coconut::Signature;
 use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
@@ -25,6 +26,43 @@ pub enum Witness<E: Pairing> {
     /// Message whose bounds are checked
     BoundCheckLegoGroth16(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     R1CSLegoGroth16(R1CSCircomWitness<E>),
+    PoKPSSignature(PoKPSSignature<E>),
+}
+
+macro_rules! delegate {
+    ($([$idx: ident])? $self: ident $($tt: tt)+) => {{
+        $crate::delegate_indexed! {
+            $self $([$idx 0u8])? =>
+                PoKBBSSignatureG1,
+                AccumulatorMembership,
+                AccumulatorNonMembership,
+                PedersenCommitment,
+                Saver,
+                BoundCheckLegoGroth16,
+                R1CSLegoGroth16,
+                PoKPSSignature
+            : $($tt)+
+        }
+    }}
+}
+
+macro_rules! delegate_reverse {
+    ($val: ident or else $err: expr => $($tt: tt)+) => {{
+        $crate::delegate_indexed_reverse! {
+            $val[_idx 0u8] =>
+                PoKBBSSignatureG1,
+                AccumulatorMembership,
+                AccumulatorNonMembership,
+                PedersenCommitment,
+                Saver,
+                BoundCheckLegoGroth16,
+                R1CSLegoGroth16,
+                PoKPSSignature
+            : $($tt)+
+        }
+
+        $err
+    }}
 }
 
 #[derive(
@@ -34,6 +72,31 @@ pub enum Witness<E: Pairing> {
 pub struct Witnesses<E>(pub Vec<Witness<E>>)
 where
     E: Pairing;
+
+/// Secret data when proving knowledge of PS sig
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct PoKPSSignature<E: Pairing> {
+    pub signature: Signature<E>,
+    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    pub unrevealed_messages: BTreeMap<usize, E::ScalarField>,
+}
+
+impl<E: Pairing> PoKPSSignature<E> {
+    /// Create a `Witness` variant for proving knowledge of BBS+ signature
+    pub fn new_as_witness(
+        signature: Signature<E>,
+        unrevealed_messages: BTreeMap<usize, E::ScalarField>,
+    ) -> Witness<E> {
+        Witness::PoKPSSignature(PoKPSSignature {
+            signature,
+            unrevealed_messages,
+        })
+    }
+}
 
 /// Secret data when proving knowledge of BBS+ sig
 #[serde_as]
@@ -262,21 +325,7 @@ mod serialization {
 
     impl<E: Pairing> Valid for Witness<E> {
         fn check(&self) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => s.check(),
-                Self::AccumulatorMembership(s) => {
-                    s.element.check()?;
-                    s.witness.check()
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    s.element.check()?;
-                    s.witness.check()
-                }
-                Self::PedersenCommitment(s) => s.check(),
-                Self::Saver(s) => s.check(),
-                Self::BoundCheckLegoGroth16(s) => s.check(),
-                Self::R1CSLegoGroth16(s) => s.check(),
-            }
+            delegate!(self.check())
         }
     }
 
@@ -286,60 +335,16 @@ mod serialization {
             mut writer: W,
             compress: Compress,
         ) -> Result<(), SerializationError> {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    CanonicalSerialize::serialize_with_mode(&0u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::AccumulatorMembership(s) => {
-                    CanonicalSerialize::serialize_with_mode(&1u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    CanonicalSerialize::serialize_with_mode(&2u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::PedersenCommitment(s) => {
-                    CanonicalSerialize::serialize_with_mode(&3u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::Saver(s) => {
-                    CanonicalSerialize::serialize_with_mode(&4u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::BoundCheckLegoGroth16(s) => {
-                    CanonicalSerialize::serialize_with_mode(&5u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-                Self::R1CSLegoGroth16(s) => {
-                    CanonicalSerialize::serialize_with_mode(&6u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(s, &mut writer, compress)
-                }
-            }
+            delegate!([index]self with variant as witness {
+                CanonicalSerialize::serialize_with_mode(&index, &mut writer, compress)?;
+                CanonicalSerialize::serialize_with_mode(witness, &mut writer, compress)
+            })
         }
 
         fn serialized_size(&self, compress: Compress) -> usize {
-            match self {
-                Self::PoKBBSSignatureG1(s) => {
-                    0u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::AccumulatorMembership(s) => {
-                    1u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::AccumulatorNonMembership(s) => {
-                    2u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::PedersenCommitment(s) => {
-                    3u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::Saver(s) => 4u8.serialized_size(compress) + s.serialized_size(compress),
-                Self::BoundCheckLegoGroth16(s) => {
-                    5u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-                Self::R1CSLegoGroth16(s) => {
-                    6u8.serialized_size(compress) + s.serialized_size(compress)
-                }
-            }
+            delegate!([index]self with variant as witness {
+                index.serialized_size(compress) + CanonicalSerialize::serialized_size(witness, compress)
+            })
         }
     }
 
@@ -349,34 +354,13 @@ mod serialization {
             compress: Compress,
             validate: Validate,
         ) -> Result<Self, SerializationError> {
-            let t: u8 =
+            let idx: u8 =
                 CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
-            match t {
-                0u8 => Ok(Self::PoKBBSSignatureG1(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                1u8 => Ok(Self::AccumulatorMembership(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                2u8 => Ok(Self::AccumulatorNonMembership(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                3u8 => Ok(Self::PedersenCommitment(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                4u8 => Ok(Self::Saver(CanonicalDeserialize::deserialize_with_mode(
-                    &mut reader,
-                    compress,
-                    validate,
-                )?)),
-                5u8 => Ok(Self::BoundCheckLegoGroth16(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                6u8 => Ok(Self::R1CSLegoGroth16(
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
-                )),
-                _ => Err(SerializationError::InvalidData),
-            }
+
+            delegate_reverse!(
+                idx or else Err(SerializationError::InvalidData) => with variant as build
+                CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate).map(build)
+            )
         }
     }
 }

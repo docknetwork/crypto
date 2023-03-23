@@ -32,7 +32,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     let max = 200;
     let msg_count = 5;
     let msgs = (0..msg_count)
-        .into_iter()
         .map(|i| Fr::from(min + 1 + i as u64))
         .collect::<Vec<_>>();
     let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
@@ -43,7 +42,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
 
     // Following message's bounds will be checked
     let msg_idx = 1;
-    let msg = msgs[msg_idx].clone();
+    let msg = msgs[msg_idx];
 
     let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -81,7 +80,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
         sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     witnesses.add(Witness::BoundCheckLegoGroth16(msg));
 
@@ -106,13 +105,12 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
+        sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    verifier_statements.add(
-        BoundCheckVerifierStmt::new_statement_from_params(min, max, snark_pk.vk.clone()).unwrap(),
-    );
+    verifier_statements
+        .add(BoundCheckVerifierStmt::new_statement_from_params(min, max, snark_pk.vk).unwrap());
 
     test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
 
@@ -188,7 +186,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
         )
         .unwrap();
     proof
-        .clone()
         .verify::<StdRng, Blake2b512>(
             &mut rng,
             verifier_proof_spec.clone(),
@@ -216,7 +213,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover.clone(),
+        proof_spec_prover,
         witnesses.clone(),
         None,
         Default::default(),
@@ -243,7 +240,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     assert!(proof
         .verify::<StdRng, Blake2b512>(
             &mut rng,
-            proof_spec_verifier.clone(),
+            proof_spec_verifier,
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
@@ -254,8 +251,8 @@ fn pok_of_bbs_plus_sig_and_bounded_message() {
     // Prove bound over a message which was not signed
     let mut witnesses_wrong = Witnesses::new();
     witnesses_wrong.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig,
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     witnesses_wrong.add(Witness::BoundCheckLegoGroth16(Fr::from(min)));
 
@@ -305,7 +302,6 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     let max = 200;
     let msg_count = 5;
     let msgs = (0..msg_count)
-        .into_iter()
         .map(|i| Fr::from(min + 1 + i as u64))
         .collect::<Vec<_>>();
     let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
@@ -316,7 +312,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
 
     // Following message's bounds will be checked
     let msg_idx = 1;
-    let msg = msgs[msg_idx].clone();
+    let msg = msgs[msg_idx];
 
     // Message same as minimum
     let mut prover_statements = Statements::new();
@@ -351,13 +347,13 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
         sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     witnesses.add(Witness::BoundCheckLegoGroth16(msg));
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover.clone(),
+        proof_spec_prover,
         witnesses.clone(),
         None,
         Default::default(),
@@ -387,12 +383,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     );
     proof_spec_verifier.validate().unwrap();
     proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            proof_spec_verifier.clone(),
-            None,
-            Default::default(),
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_verifier, None, Default::default())
         .unwrap();
 
     // Message same as maximum
@@ -427,14 +418,14 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig,
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     witnesses.add(Witness::BoundCheckLegoGroth16(msg));
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover.clone(),
+        proof_spec_prover,
         witnesses.clone(),
         None,
         Default::default(),
@@ -444,7 +435,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
+        sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
@@ -452,7 +443,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
         BoundCheckVerifierStmt::new_statement_from_params(
             min,
             msg.into_bigint().as_ref()[0],
-            snark_pk.vk.clone(),
+            snark_pk.vk,
         )
         .unwrap(),
     );
@@ -464,12 +455,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     );
     proof_spec_verifier.validate().unwrap();
     proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            proof_spec_verifier.clone(),
-            None,
-            Default::default(),
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_verifier, None, Default::default())
         .unwrap();
 }
 
@@ -487,7 +473,6 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         let max_3 = 380;
         let msg_count = 5;
         let msgs = (0..msg_count)
-            .into_iter()
             .map(|i| Fr::from(101u64 + i as u64))
             .collect::<Vec<_>>();
         let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
@@ -500,9 +485,9 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
         let msg_idx_1 = 1;
         let msg_idx_2 = 2;
         let msg_idx_3 = 4;
-        let msg_1 = msgs[msg_idx_1].clone();
-        let msg_2 = msgs[msg_idx_2].clone();
-        let msg_3 = msgs[msg_idx_3].clone();
+        let msg_1 = msgs[msg_idx_1];
+        let msg_2 = msgs[msg_idx_2];
+        let msg_3 = msgs[msg_idx_3];
 
         let mut prover_setup_params = vec![];
         if reuse_key {
@@ -569,8 +554,8 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
 
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-            sig.clone(),
-            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+            sig,
+            msgs.clone().into_iter().enumerate().collect(),
         ));
         witnesses.add(Witness::BoundCheckLegoGroth16(msg_1));
         witnesses.add(Witness::BoundCheckLegoGroth16(msg_2));
@@ -601,7 +586,7 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
 
         let mut verifier_statements = Statements::new();
         verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-            sig_params.clone(),
+            sig_params,
             sig_keypair.public_key.clone(),
             BTreeMap::new(),
         ));
@@ -633,12 +618,8 @@ fn pok_of_bbs_plus_sig_and_many_bounded_messages() {
                 .unwrap(),
             );
             verifier_statements.add(
-                BoundCheckVerifierStmt::new_statement_from_params(
-                    min_3,
-                    max_3,
-                    snark_pk.vk.clone(),
-                )
-                .unwrap(),
+                BoundCheckVerifierStmt::new_statement_from_params(min_3, max_3, snark_pk.vk)
+                    .unwrap(),
             );
         }
 

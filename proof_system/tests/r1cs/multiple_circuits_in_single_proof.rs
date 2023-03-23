@@ -32,10 +32,7 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
 
     // 1st BBS+ sig
     let msg_count_1 = 5;
-    let mut msgs_1: Vec<Fr> = (0..msg_count_1)
-        .into_iter()
-        .map(|_| Fr::rand(&mut rng))
-        .collect();
+    let mut msgs_1: Vec<Fr> = (0..msg_count_1).map(|_| Fr::rand(&mut rng)).collect();
     msgs_1[1] = Fr::from(100u64);
     msgs_1[3] = Fr::from(300u64);
     let (sig_params_1, sig_keypair_1, sig_1) = sig_setup_given_messages(&mut rng, &msgs_1);
@@ -43,7 +40,6 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     // 2nd BBS+ sig
     let msg_count_2 = 10;
     let msgs_2: Vec<Fr> = (0..msg_count_2)
-        .into_iter()
         .map(|_| Fr::from(u64::MAX - u64::rand(&mut rng)))
         .collect();
     let (sig_params_2, sig_keypair_2, sig_2) = sig_setup_given_messages(&mut rng, &msgs_2);
@@ -68,11 +64,11 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
 
     let mut prover_setup_params = vec![];
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk_1.clone()));
-    prover_setup_params.push(SetupParams::R1CS(r1cs_1.clone()));
-    prover_setup_params.push(SetupParams::Bytes(wasm_bytes_1.clone()));
+    prover_setup_params.push(SetupParams::R1CS(r1cs_1));
+    prover_setup_params.push(SetupParams::Bytes(wasm_bytes_1));
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk_2.clone()));
-    prover_setup_params.push(SetupParams::R1CS(r1cs_2.clone()));
-    prover_setup_params.push(SetupParams::Bytes(wasm_bytes_2.clone()));
+    prover_setup_params.push(SetupParams::R1CS(r1cs_2));
+    prover_setup_params.push(SetupParams::Bytes(wasm_bytes_2));
 
     test_serialization!(Vec<SetupParams<Bls12_381, G1>>, prover_setup_params);
 
@@ -121,12 +117,12 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig_1.clone(),
-        msgs_1.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig_1,
+        msgs_1.clone().into_iter().enumerate().collect(),
     ));
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig_2.clone(),
-        msgs_2.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig_2,
+        msgs_2.clone().into_iter().enumerate().collect(),
     ));
 
     let mut r1cs_wit = R1CSCircomWitness::new();
@@ -143,7 +139,7 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover.clone(),
+        proof_spec_prover,
         witnesses.clone(),
         None,
         Default::default(),
@@ -152,9 +148,9 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     .0;
 
     let mut verifier_setup_params = vec![];
-    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk_1.vk.clone()));
+    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk_1.vk));
     verifier_setup_params.push(SetupParams::FieldElemVec(vec![Fr::one()]));
-    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk_2.vk.clone()));
+    verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk_2.vk));
     verifier_setup_params.push(SetupParams::FieldElemVec(vec![
         Fr::one(),
         Fr::from(u64::MAX),
@@ -163,12 +159,12 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params_1.clone(),
+        sig_params_1,
         sig_keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params_2.clone(),
+        sig_params_2,
         sig_keypair_2.public_key.clone(),
         BTreeMap::new(),
     ));
@@ -187,12 +183,6 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     );
     verifier_proof_spec.validate().unwrap();
     proof
-        .clone()
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec.clone(),
-            None,
-            Default::default(),
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec, None, Default::default())
         .unwrap();
 }

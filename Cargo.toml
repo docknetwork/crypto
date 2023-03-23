@@ -6,6 +6,7 @@ members = [
     "bbs_plus",
     "vb_accumulator",
     "proof_system",
+    "coconut",
     "saver",
     "compressed_sigma",
     "benches",

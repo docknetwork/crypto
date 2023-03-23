@@ -174,7 +174,7 @@ impl<E: Pairing> SignatureRequestProtocol<E> {
             self.auditable_sig,
             &self.usk_protocol,
             user_pk,
-            &P1,
+            P1,
             &mut writer,
         )?;
         if let Some(rev) = self.rev.as_ref() {
@@ -375,7 +375,7 @@ impl<E: Pairing> SignatureRequest<E> {
         if self.auditable_sig & !issuer_sk.supports_audit {
             return Err(DelegationError::IssuerKeyDoesNotSupportAuditableSignature);
         }
-        let messages = self.create_msgs(user_pk, auditor_pk, P1.clone())?;
+        let messages = self.create_msgs(user_pk, auditor_pk, *P1)?;
         Signature::new(rng, &messages, &issuer_sk.secret_key, P1, P2)
     }
 
@@ -408,7 +408,7 @@ impl<E: Pairing> SignatureRequest<E> {
     }
 
     pub fn supports_revocation(&self) -> bool {
-        return self.rev.is_some();
+        self.rev.is_some()
     }
 }
 
@@ -447,7 +447,7 @@ impl<E: Pairing> Credential<E> {
     }
 
     pub fn supports_revocation(&self) -> bool {
-        return self.rev.is_some();
+        self.rev.is_some()
     }
 }
 
@@ -571,8 +571,8 @@ pub mod tests {
         let sig_req_p = if supports_revocation {
             SignatureRequestProtocol::init_with_revocation(
                 rng,
-                *(nym.clone().unwrap()),
-                &usk,
+                *(nym.unwrap()),
+                usk,
                 auditable,
                 set_comm_srs.get_P1(),
                 s_P1_from_accumulator.unwrap(),
@@ -585,16 +585,16 @@ pub mod tests {
 
         let mut chal_bytes = vec![];
         sig_req_p
-            .challenge_contribution(&upk, set_comm_srs.get_P1(), Q, &mut chal_bytes)
+            .challenge_contribution(upk, set_comm_srs.get_P1(), Q, &mut chal_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
         let (sig_req, sig_req_opn) = sig_req_p
-            .gen_request(rng, attributes.clone(), &usk, &challenge, &set_comm_srs)
+            .gen_request(rng, attributes.clone(), usk, &challenge, set_comm_srs)
             .unwrap();
         sig_req
             .verify(
                 attributes.clone(),
-                &upk,
+                upk,
                 &challenge,
                 Q,
                 s_P2_from_accumulator,
@@ -608,9 +608,9 @@ pub mod tests {
             .clone()
             .sign(
                 rng,
-                &isk,
-                auditable.then(|| upk),
-                auditable.then(|| apk),
+                isk,
+                auditable.then_some(upk),
+                auditable.then_some(apk),
                 set_comm_srs.get_P1(),
                 set_comm_srs.get_P2(),
             )
@@ -621,8 +621,8 @@ pub mod tests {
             sig,
             attributes,
             prep_ipk,
-            auditable.then(|| upk),
-            auditable.then(|| apk),
+            auditable.then_some(upk),
+            auditable.then_some(apk),
             set_comm_srs.get_P1(),
             prep_set_comm_srs.prepared_P2,
         )

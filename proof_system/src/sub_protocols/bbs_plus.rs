@@ -57,7 +57,7 @@ impl<'a, E: Pairing> PoKBBSSigG1SubProtocol<'a, E> {
                 messages.push(witness.unrevealed_messages.remove(&i).unwrap());
             } else if self.revealed_messages.contains_key(&i) {
                 revealed_indices.insert(i);
-                messages.push(self.revealed_messages.get(&i).unwrap().clone());
+                messages.push(*self.revealed_messages.get(&i).unwrap());
             } else {
                 return Err(ProofSystemError::BBSPlusProtocolMessageAbsent(self.id, i));
             }
@@ -98,7 +98,7 @@ impl<'a, E: Pairing> PoKBBSSigG1SubProtocol<'a, E> {
             ));
         }
         let protocol = self.protocol.take().unwrap();
-        let proof = protocol.gen_proof(&challenge)?;
+        let proof = protocol.gen_proof(challenge)?;
         Ok(StatementProof::PoKBBSSignatureG1(proof))
     }
 

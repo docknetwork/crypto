@@ -167,7 +167,7 @@ mod tests {
         .is_ok());
         assert!(BoundCheckLegoGroth16Verifier::new_statement_from_params::<
             <Bls12_381 as Pairing>::G1Affine,
-        >(5, 6, snark_pk.vk.clone())
+        >(5, 6, snark_pk.vk)
         .is_ok());
     }
 }

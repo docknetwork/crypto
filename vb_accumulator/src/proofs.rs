@@ -968,28 +968,28 @@ pub(crate) trait ProofProtocol<E: Pairing> {
     ) -> Result<(), VBAccumulatorError> {
         // R_sigma = schnorr_response.s_sigma * prk.X - challenge * randomized_witness.T_sigma
         let mut R_sigma = context
-            .mul_with_table(&X_table, &schnorr_response.s_sigma)
+            .mul_with_table(X_table, &schnorr_response.s_sigma)
             .unwrap();
-        R_sigma -= context.mul_with_table(&T_sigma_table, challenge).unwrap();
+        R_sigma -= context.mul_with_table(T_sigma_table, challenge).unwrap();
         if R_sigma.into_affine() != schnorr_commit.R_sigma {
             return Err(VBAccumulatorError::SigmaResponseInvalid);
         }
 
         // R_rho = schnorr_response.s_rho * prk.Y - challenge * randomized_witness.T_rho;
         let mut R_rho = context
-            .mul_with_table(&Y_table, &schnorr_response.s_rho)
+            .mul_with_table(Y_table, &schnorr_response.s_rho)
             .unwrap();
-        R_rho -= context.mul_with_table(&T_rho_table, challenge).unwrap();
+        R_rho -= context.mul_with_table(T_rho_table, challenge).unwrap();
         if R_rho.into_affine() != schnorr_commit.R_rho {
             return Err(VBAccumulatorError::RhoResponseInvalid);
         }
 
         // R_delta_sigma = schnorr_response.s_y * randomized_witness.T_sigma - schnorr_response.s_delta_sigma * prk.X;
         let mut R_delta_sigma = context
-            .mul_with_table(&T_sigma_table, &schnorr_response.s_y)
+            .mul_with_table(T_sigma_table, &schnorr_response.s_y)
             .unwrap();
         R_delta_sigma -= context
-            .mul_with_table(&X_table, &schnorr_response.s_delta_sigma)
+            .mul_with_table(X_table, &schnorr_response.s_delta_sigma)
             .unwrap();
         if R_delta_sigma.into_affine() != schnorr_commit.R_delta_sigma {
             return Err(VBAccumulatorError::DeltaSigmaResponseInvalid);
@@ -997,10 +997,10 @@ pub(crate) trait ProofProtocol<E: Pairing> {
 
         // R_delta_rho = schnorr_response.s_y * randomized_witness.T_rho - schnorr_response.s_delta_rho * prk.Y;
         let mut R_delta_rho = context
-            .mul_with_table(&T_rho_table, &schnorr_response.s_y)
+            .mul_with_table(T_rho_table, &schnorr_response.s_y)
             .unwrap();
         R_delta_rho -= context
-            .mul_with_table(&Y_table, &schnorr_response.s_delta_rho)
+            .mul_with_table(Y_table, &schnorr_response.s_delta_rho)
             .unwrap();
         if R_delta_rho.into_affine() != schnorr_commit.R_delta_rho {
             return Err(VBAccumulatorError::DeltaRhoResponseInvalid);
@@ -1024,12 +1024,12 @@ pub(crate) trait ProofProtocol<E: Pairing> {
 
         // s_y * E_C
         let E_C_p = context
-            .mul_with_table(&E_C_table, &schnorr_response.s_y)
+            .mul_with_table(E_C_table, &schnorr_response.s_y)
             .unwrap();
         // (s_delta_sigma - s_delta_rho) * Z
         let z_p = context
             .mul_with_table(
-                &Z_table,
+                Z_table,
                 &(-schnorr_response.s_delta_sigma - schnorr_response.s_delta_rho),
             )
             .unwrap();
@@ -1044,12 +1044,12 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         // (s_sigma - s_rho) * Z
         let z_q = context
             .mul_with_table(
-                &Z_table,
+                Z_table,
                 &(-schnorr_response.s_sigma - schnorr_response.s_rho),
             )
             .unwrap();
         // challenge * E_C
-        let E_C_q = context.mul_with_table(&E_C_table, challenge).unwrap();
+        let E_C_q = context.mul_with_table(E_C_table, challenge).unwrap();
         let q = z_q + E_C_q;
         (p.into_affine(), q.into_affine())
     }
@@ -1199,7 +1199,7 @@ where
         // => new R_E = e(prk.K, params.P_tilde)^-r_v * sc.R_E = e(-r_v * prk.K, params.P_tilde) * sc.R_E
         let (rw, sc, bl) = Self::randomize_witness_and_compute_commitments(
             rng,
-            &element,
+            element,
             element_blinding,
             &witness.C,
             Some(K_table.multiply(&-r_v)),
@@ -1481,12 +1481,12 @@ where
     ) -> Result<(), VBAccumulatorError> {
         // R_A = schnorr_response.s_u * params.P + schnorr_response.s_v * prk.K - challenge * randomized_witness.E_d;
         let mut R_A = context
-            .mul_with_table(&P_table, &self.schnorr_response.s_u)
+            .mul_with_table(P_table, &self.schnorr_response.s_u)
             .unwrap();
         R_A += context
-            .mul_with_table(&K_table, &self.schnorr_response.s_v)
+            .mul_with_table(K_table, &self.schnorr_response.s_v)
             .unwrap();
-        R_A -= context.mul_with_table(&E_d_table, challenge).unwrap();
+        R_A -= context.mul_with_table(E_d_table, challenge).unwrap();
 
         if R_A.into_affine() != self.schnorr_commit.R_A {
             return Err(VBAccumulatorError::E_d_ResponseInvalid);
@@ -1494,13 +1494,13 @@ where
 
         // R_B = schnorr_response.s_w * prk.K + schnorr_response.s_u * randomized_witness.E_d_inv - challenge * params.P;
         let mut R_B = context
-            .mul_with_table(&K_table, &self.schnorr_response.s_w)
+            .mul_with_table(K_table, &self.schnorr_response.s_w)
             .unwrap();
         R_B += self
             .randomized_witness
             .E_d_inv
             .mul_bigint(self.schnorr_response.s_u.into_bigint());
-        R_B -= context.mul_with_table(&P_table, challenge).unwrap();
+        R_B -= context.mul_with_table(P_table, challenge).unwrap();
 
         if R_B.into_affine() != self.schnorr_commit.R_B {
             return Err(VBAccumulatorError::E_d_inv_ResponseInvalid);
@@ -1517,9 +1517,9 @@ where
     ) -> E::G1 {
         // -schnorr_response.s_v * prk.K + challenge * randomized_witness.E_d
         context
-            .mul_with_table(&K_table, &-self.schnorr_response.s_v)
+            .mul_with_table(K_table, &-self.schnorr_response.s_v)
             .unwrap()
-            + context.mul_with_table(&E_d_table, challenge).unwrap()
+            + context.mul_with_table(E_d_table, challenge).unwrap()
     }
 
     /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this

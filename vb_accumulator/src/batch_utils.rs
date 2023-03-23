@@ -50,9 +50,8 @@ fn poly_from_given_updates<F: PrimeField>(updates: &[F]) -> DensePolynomial<F> {
         .collect();
 
     // Product (updates[0]-x) * (updates[1]-x) * (updates[2] - x)...(updates[last] - x)
-    let r = multiply_many_polys(x_i);
 
-    r
+    multiply_many_polys(x_i)
     // Note: Using multiply operator from ark-poly is orders of magnitude slower than naive multiplication
     // x_i.into_iter().reduce(|a, b| &a * &b).unwrap()
 }
@@ -446,7 +445,7 @@ where
     ) -> Vec<G::ScalarField> {
         let mut powers = Vec::with_capacity(n);
         if n > 0 {
-            powers.push(scalar.clone());
+            powers.push(*scalar);
         }
         for i in 1..n {
             powers.push(powers[i - 1] * y);

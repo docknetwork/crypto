@@ -368,13 +368,13 @@ pub trait Witness<G: AffineRepr> {
             let d_D = removals
                 .iter()
                 .take(t)
-                .map(|r| Poly_d::eval_direct(*r, element))
+                .map(|r| Poly_d::eval_direct(r, element))
                 .fold(G::ScalarField::one(), |a, b| a * b);
             // `d_{A_{t->j}}`
             let d_A = additions
                 .iter()
                 .skip(t + 1)
-                .map(|a| Poly_d::eval_direct(*a, element))
+                .map(|a| Poly_d::eval_direct(a, element))
                 .fold(G::ScalarField::one(), |a, b| a * b);
 
             let d_A_times_d_D = d_A * d_D;

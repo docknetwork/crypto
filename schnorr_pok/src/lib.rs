@@ -149,7 +149,7 @@ where
                 bases.len(),
             ));
         }
-        if (G::Group::msm_unchecked(&bases, &self.0).add(y.mul_bigint((-*challenge).into_bigint())))
+        if (G::Group::msm_unchecked(bases, &self.0).add(y.mul_bigint((-*challenge).into_bigint())))
             .into_affine()
             == *t
         {

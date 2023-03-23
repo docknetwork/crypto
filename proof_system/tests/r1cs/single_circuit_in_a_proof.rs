@@ -33,10 +33,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
 
     let mut rng = StdRng::seed_from_u64(0u64);
     let msg_count = 5;
-    let msgs: Vec<Fr> = (0..msg_count)
-        .into_iter()
-        .map(|_| Fr::rand(&mut rng))
-        .collect();
+    let msgs: Vec<Fr> = (0..msg_count).map(|_| Fr::rand(&mut rng)).collect();
 
     let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
 
@@ -62,12 +59,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         BTreeMap::new(),
     ));
     prover_statements.add(
-        R1CSProverStmt::new_statement_from_params(
-            r1cs.clone(),
-            wasm_bytes.clone(),
-            snark_pk.clone(),
-        )
-        .unwrap(),
+        R1CSProverStmt::new_statement_from_params(r1cs, wasm_bytes, snark_pk.clone()).unwrap(),
     );
     let mut meta_statements = MetaStatements::new();
     meta_statements.add_witness_equality(EqualWitnesses(
@@ -90,8 +82,8 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig,
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
     r1cs_wit.set_private("in".to_string(), vec![msgs[unequal_msg_idx]]);
@@ -153,14 +145,14 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     // Proof with wrong public input fails
     let mut verifier_statements_1 = Statements::new();
     verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
+        sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     verifier_statements_1.add(
         R1CSVerifierStmt::new_statement_from_params(
             vec![Fr::one(), msgs[unequal_msg_idx]],
-            snark_pk.vk.clone(),
+            snark_pk.vk,
         )
         .unwrap(),
     );
@@ -172,12 +164,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     );
     verifier_proof_spec_1.validate().unwrap();
     assert!(proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec_1.clone(),
-            None,
-            Default::default()
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec_1, None, Default::default())
         .is_err());
 
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
@@ -199,7 +186,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover_1.clone(),
+        proof_spec_prover_1,
         witnesses.clone(),
         None,
         Default::default(),
@@ -215,12 +202,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     );
     proof_spec_verifier_2.validate().unwrap();
     assert!(proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            proof_spec_verifier_2.clone(),
-            None,
-            Default::default()
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_verifier_2, None, Default::default())
         .is_err());
 }
 
@@ -233,20 +215,14 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
     // 1st BBS+ sig
     let msg_count_1 = 5;
-    let mut msgs_1: Vec<Fr> = (0..msg_count_1)
-        .into_iter()
-        .map(|_| Fr::rand(&mut rng))
-        .collect();
+    let mut msgs_1: Vec<Fr> = (0..msg_count_1).map(|_| Fr::rand(&mut rng)).collect();
     msgs_1[1] = Fr::from(100u64);
     msgs_1[3] = Fr::from(300u64);
     let (sig_params_1, sig_keypair_1, sig_1) = sig_setup_given_messages(&mut rng, &msgs_1);
 
     // 2nd BBS+ sig
     let msg_count_2 = 10;
-    let mut msgs_2: Vec<Fr> = (0..msg_count_2)
-        .into_iter()
-        .map(|_| Fr::rand(&mut rng))
-        .collect();
+    let mut msgs_2: Vec<Fr> = (0..msg_count_2).map(|_| Fr::rand(&mut rng)).collect();
     msgs_2[4] = Fr::from(50u64);
     msgs_2[5] = Fr::from(200u64);
     let (sig_params_2, sig_keypair_2, sig_2) = sig_setup_given_messages(&mut rng, &msgs_2);
@@ -311,7 +287,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
             sig.clone(),
-            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+            msgs.clone().into_iter().enumerate().collect(),
         ));
         let mut r1cs_wit = R1CSCircomWitness::new();
         r1cs_wit.set_private("a".to_string(), vec![msgs[l_msg_idx]]);
@@ -384,12 +360,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         );
         verifier_proof_spec_1.validate().unwrap();
         assert!(proof
-            .verify::<StdRng, Blake2b512>(
-                rng,
-                verifier_proof_spec_1.clone(),
-                None,
-                Default::default()
-            )
+            .verify::<StdRng, Blake2b512>(rng, verifier_proof_spec_1, None, Default::default())
             .is_err());
 
         // -----------------------------------------------------------------------------
@@ -417,8 +388,8 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         let mut witnesses_1 = Witnesses::new();
         witnesses_1.add(PoKSignatureBBSG1Wit::new_as_witness(
-            sig.clone(),
-            msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+            sig,
+            msgs.clone().into_iter().enumerate().collect(),
         ));
         let mut r1cs_wit = R1CSCircomWitness::new();
         r1cs_wit.set_private("a".to_string(), vec![msgs[g_msg_idx]]);
@@ -427,7 +398,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         let proof_1 = ProofG1::new::<StdRng, Blake2b512>(
             rng,
-            proof_spec_prover_1.clone(),
+            proof_spec_prover_1,
             witnesses_1.clone(),
             None,
             Default::default(),
@@ -455,24 +426,18 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         verifier_proof_spec_2.validate().unwrap();
         proof_1
             .clone()
-            .verify::<StdRng, Blake2b512>(
-                rng,
-                verifier_proof_spec_2.clone(),
-                None,
-                Default::default(),
-            )
+            .verify::<StdRng, Blake2b512>(rng, verifier_proof_spec_2, None, Default::default())
             .unwrap();
 
         // Proof with wrong public input fails
         let mut verifier_statements_3 = Statements::new();
         verifier_statements_3.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-            sig_params.clone(),
-            pk.clone(),
+            sig_params,
+            pk,
             BTreeMap::new(),
         ));
         verifier_statements_3.add(
-            R1CSVerifierStmt::new_statement_from_params(vec![Fr::one()], snark_pk.vk.clone())
-                .unwrap(),
+            R1CSVerifierStmt::new_statement_from_params(vec![Fr::one()], snark_pk.vk).unwrap(),
         );
         let verifier_proof_spec_3 = ProofSpec::new(
             verifier_statements_3.clone(),
@@ -482,12 +447,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         );
         verifier_proof_spec_3.validate().unwrap();
         assert!(proof_1
-            .verify::<StdRng, Blake2b512>(
-                rng,
-                verifier_proof_spec_3.clone(),
-                None,
-                Default::default()
-            )
+            .verify::<StdRng, Blake2b512>(rng, verifier_proof_spec_3, None, Default::default())
             .is_err());
     }
 
@@ -520,8 +480,8 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
     let mut prover_setup_params = vec![];
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk.clone()));
-    prover_setup_params.push(SetupParams::R1CS(r1cs.clone()));
-    prover_setup_params.push(SetupParams::Bytes(wasm_bytes.clone()));
+    prover_setup_params.push(SetupParams::R1CS(r1cs));
+    prover_setup_params.push(SetupParams::Bytes(wasm_bytes));
     test_serialization!(Vec<SetupParams<Bls12_381, G1>>, prover_setup_params);
 
     let mut prover_statements = Statements::new();
@@ -570,12 +530,12 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig_1.clone(),
-        msgs_1.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig_1,
+        msgs_1.clone().into_iter().enumerate().collect(),
     ));
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig_2.clone(),
-        msgs_2.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig_2,
+        msgs_2.clone().into_iter().enumerate().collect(),
     ));
 
     let mut r1cs_wit_1 = R1CSCircomWitness::new();
@@ -590,7 +550,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover.clone(),
+        proof_spec_prover,
         witnesses.clone(),
         None,
         Default::default(),
@@ -631,32 +591,26 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     verifier_proof_spec.validate().unwrap();
     proof
         .clone()
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec.clone(),
-            None,
-            Default::default(),
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec, None, Default::default())
         .unwrap();
 
     // Proof with wrong public input fails
     let mut verifier_statements_1 = Statements::new();
     verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params_1.clone(),
+        sig_params_1,
         sig_keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
     verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params_2.clone(),
+        sig_params_2,
         sig_keypair_2.public_key.clone(),
         BTreeMap::new(),
     ));
     verifier_statements_1.add(
         R1CSVerifierStmt::new_statement_from_params(vec![Fr::zero()], snark_pk.vk.clone()).unwrap(),
     );
-    verifier_statements_1.add(
-        R1CSVerifierStmt::new_statement_from_params(vec![Fr::zero()], snark_pk.vk.clone()).unwrap(),
-    );
+    verifier_statements_1
+        .add(R1CSVerifierStmt::new_statement_from_params(vec![Fr::zero()], snark_pk.vk).unwrap());
     let verifier_proof_spec_1 = ProofSpec::new(
         verifier_statements_1.clone(),
         meta_statements.clone(),
@@ -665,12 +619,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     );
     verifier_proof_spec_1.validate().unwrap();
     assert!(proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec_1.clone(),
-            None,
-            Default::default()
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec_1, None, Default::default())
         .is_err());
 }
 
@@ -684,8 +633,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     let mut rng = StdRng::seed_from_u64(0u64);
     let msg_count = 5;
     let msgs: Vec<Fr> = (0..msg_count)
-        .into_iter()
-        .map(|i| Fr::from((100 + i) * 10 as u64))
+        .map(|i| Fr::from((100 + i) * 10_u64))
         .collect();
 
     let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
@@ -751,7 +699,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
         sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
     r1cs_wit.set_private("a".to_string(), vec![msgs[msg_1_idx]]);
@@ -825,12 +773,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     verifier_proof_spec_1.validate().unwrap();
     assert!(proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec_1.clone(),
-            None,
-            Default::default()
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec_1, None, Default::default())
         .is_err());
 
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
@@ -857,7 +800,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover_1.clone(),
+        proof_spec_prover_1,
         witnesses.clone(),
         None,
         Default::default(),
@@ -873,12 +816,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     proof_spec_verifier_2.validate().unwrap();
     assert!(proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            proof_spec_verifier_2.clone(),
-            None,
-            Default::default()
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_verifier_2, None, Default::default())
         .is_err());
 
     // ---------------- Case 2 ----------------------------------------------
@@ -890,12 +828,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         BTreeMap::new(),
     ));
     prover_statements.add(
-        R1CSProverStmt::new_statement_from_params(
-            r1cs.clone(),
-            wasm_bytes.clone(),
-            snark_pk.clone(),
-        )
-        .unwrap(),
+        R1CSProverStmt::new_statement_from_params(r1cs, wasm_bytes, snark_pk.clone()).unwrap(),
     );
     let mut meta_statements = MetaStatements::new();
     meta_statements.add_witness_equality(EqualWitnesses(
@@ -918,8 +851,8 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig.clone(),
-        msgs.clone().into_iter().enumerate().map(|t| t).collect(),
+        sig,
+        msgs.clone().into_iter().enumerate().collect(),
     ));
     let mut r1cs_wit = R1CSCircomWitness::<Bls12_381>::new();
     r1cs_wit.set_private("a".to_string(), vec![msgs[msg_1_idx]]);
@@ -977,13 +910,12 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     // Proof with wrong public input fails
     let mut verifier_statements_1 = Statements::new();
     verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
+        sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     verifier_statements_1.add(
-        R1CSVerifierStmt::new_statement_from_params(vec![Fr::rand(&mut rng)], snark_pk.vk.clone())
-            .unwrap(),
+        R1CSVerifierStmt::new_statement_from_params(vec![Fr::rand(&mut rng)], snark_pk.vk).unwrap(),
     );
     let verifier_proof_spec_1 = ProofSpec::new(
         verifier_statements_1.clone(),
@@ -993,12 +925,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     verifier_proof_spec_1.validate().unwrap();
     assert!(proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            verifier_proof_spec_1.clone(),
-            None,
-            Default::default()
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec_1, None, Default::default())
         .is_err());
 
     // Proof with wrong meta statement fails. Here the relation being proven in Circom is correct but
@@ -1020,7 +947,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     let proof = ProofG1::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec_prover_1.clone(),
+        proof_spec_prover_1,
         witnesses.clone(),
         None,
         Default::default(),
@@ -1036,11 +963,6 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     proof_spec_verifier_2.validate().unwrap();
     assert!(proof
-        .verify::<StdRng, Blake2b512>(
-            &mut rng,
-            proof_spec_verifier_2.clone(),
-            None,
-            Default::default()
-        )
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_verifier_2, None, Default::default())
         .is_err());
 }

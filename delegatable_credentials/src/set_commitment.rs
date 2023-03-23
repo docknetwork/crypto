@@ -319,7 +319,7 @@ impl<E: Pairing> SetCommitment<E> {
     ) -> Result<SubsetWitness<E>, DelegationError> {
         let subset_size = subset.len();
         if subset_size == 0 {
-            return Ok(SubsetWitness(self.0.clone()));
+            return Ok(SubsetWitness(self.0));
         }
         match opening {
             SetCommitmentOpening::SetWithTrapdoor(_, s) => {
@@ -388,7 +388,7 @@ impl<E: Pairing> SubsetWitness<E> {
         set_commitment: &SetCommitment<E>,
         srs: impl Into<&'a PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
-        if subset.len() == 0 {
+        if subset.is_empty() {
             return if self.0 == set_commitment.0 {
                 Ok(())
             } else {
@@ -406,7 +406,7 @@ impl<E: Pairing> SubsetWitness<E> {
         }
         // Check if e(witness, Ch(subset)) == e(set_commitment, P2) => e(witness, Ch(subset))*e(-set_commitment, P2) == 1
         if E::multi_pairing(
-            &[self.0, (-set_commitment.0.into_group()).into_affine()],
+            [self.0, (-set_commitment.0.into_group()).into_affine()],
             [
                 E::G2Prepared::from(srs.eval_P2(subset)),
                 srs.prepared_P2.clone(),
@@ -693,7 +693,7 @@ mod tests {
 
         let set = ls.iter().cloned().collect::<BTreeSet<_>>();
         assert_eq!(
-            srs.eval_P1(set.clone()).into_affine(),
+            srs.eval_P1(set).into_affine(),
             srs.get_P1().mul_bigint(eval.into_bigint()).into_affine()
         );
     }
@@ -718,14 +718,14 @@ mod tests {
                 .collect::<BTreeSet<_>>();
 
             let start = Instant::now();
-            let (comm, o) = SetCommitment::new(rng, set.clone(), &pp).unwrap();
+            let (comm, o) = SetCommitment::new(rng, set.clone(), pp).unwrap();
             println!(
                 "Time to commit to set of size {}: {:?}",
                 set_size,
                 start.elapsed()
             );
 
-            comm.open_set(&o, set.clone(), &pp).unwrap();
+            comm.open_set(&o, set.clone(), pp).unwrap();
 
             // Commitment with given randomness
             let r = Fr::rand(rng);
@@ -736,7 +736,7 @@ mod tests {
                 P_r,
                 trapdoor,
                 set.clone(),
-                &pp,
+                pp,
             )
             .unwrap();
             println!(
@@ -746,25 +746,25 @@ mod tests {
             );
 
             let o1 = SetCommitmentOpening::SetWithoutTrapdoor(r);
-            comm1.open_set(&o1, set.clone(), &pp).unwrap();
+            comm1.open_set(&o1, set.clone(), pp).unwrap();
 
             // Randomize commitment and opening
             let r = Fr::rand(rng);
             let (comm, o) = comm.randomize(o, r);
-            comm.open_set(&o, set, &pp).unwrap();
+            comm.open_set(&o, set, pp).unwrap();
 
             // Create a new set with trapdoor and check opening
             let mut new_set = (0..set_size - 1)
                 .map(|_| Fr::rand(rng))
                 .collect::<BTreeSet<_>>();
             new_set.insert(*trapdoor);
-            let (comm, o) = SetCommitment::new(rng, new_set.clone(), &pp).unwrap();
-            comm.open_set(&o, new_set.clone(), &pp).unwrap();
+            let (comm, o) = SetCommitment::new(rng, new_set.clone(), pp).unwrap();
+            comm.open_set(&o, new_set.clone(), pp).unwrap();
 
             // Randomize commitment and opening
             let r = Fr::rand(rng);
             let (comm, o) = comm.randomize(o, r);
-            comm.open_set(&o, new_set, &pp).unwrap();
+            comm.open_set(&o, new_set, pp).unwrap();
         }
 
         // When set is same of same size as public params
@@ -789,8 +789,8 @@ mod tests {
             pp: &SetCommitmentSRS<Bls12_381>,
             subset_has_trapdoor: bool,
         ) {
-            let (comm, o) = SetCommitment::new(rng, set.clone(), &pp).unwrap();
-            comm.open_set(&o, set.clone(), &pp).unwrap();
+            let (comm, o) = SetCommitment::new(rng, set.clone(), pp).unwrap();
+            comm.open_set(&o, set.clone(), pp).unwrap();
 
             let prep_pp = PreparedSetCommitmentSRS::from(pp.clone());
 
@@ -801,22 +801,22 @@ mod tests {
             subset.insert(iter.next().unwrap());
             subset.insert(iter.next().unwrap());
             let witness = comm
-                .open_subset(&o, subset.clone(), set.clone(), &pp)
+                .open_subset(&o, subset.clone(), set.clone(), pp)
                 .unwrap();
 
             witness.verify(subset.clone(), &comm, &prep_pp).unwrap();
 
             // When subset is same as set
             if subset_has_trapdoor {
-                assert!(comm.open_subset(&o, set.clone(), set.clone(), &pp).is_err());
+                assert!(comm.open_subset(&o, set.clone(), set.clone(), pp).is_err());
             } else {
-                let witness = comm.open_subset(&o, set.clone(), set.clone(), &pp).unwrap();
+                let witness = comm.open_subset(&o, set.clone(), set.clone(), pp).unwrap();
                 witness.verify(set.clone(), &comm, &prep_pp).unwrap();
             }
 
             // When subset is empty
             let witness = comm
-                .open_subset(&o, BTreeSet::new(), set.clone(), &pp)
+                .open_subset(&o, BTreeSet::new(), set.clone(), pp)
                 .unwrap();
             witness.verify(BTreeSet::new(), &comm, &prep_pp).unwrap();
 
@@ -824,7 +824,7 @@ mod tests {
             let r = Fr::rand(rng);
             let (comm, o) = comm.randomize(o, r);
             let witness = comm
-                .open_subset(&o, subset.clone(), set.clone(), &pp)
+                .open_subset(&o, subset.clone(), set.clone(), pp)
                 .unwrap();
             witness.verify(subset.clone(), &comm, &prep_pp).unwrap();
 
@@ -832,17 +832,17 @@ mod tests {
             let new_set = (0..pp.size() - 2)
                 .map(|_| Fr::rand(rng))
                 .collect::<BTreeSet<_>>();
-            let (comm1, o1) = SetCommitment::new(rng, new_set.clone(), &pp).unwrap();
+            let (comm1, o1) = SetCommitment::new(rng, new_set.clone(), pp).unwrap();
 
             let witness_with_invalid_opening = comm
-                .open_subset_unchecked(&o1, subset.clone(), set.clone(), &pp)
+                .open_subset_unchecked(&o1, subset.clone(), set.clone(), pp)
                 .unwrap();
             assert!(witness_with_invalid_opening
                 .verify(subset.clone(), &comm, &prep_pp)
                 .is_err());
 
             let witness_with_invalid_subset = comm1
-                .open_subset_unchecked(&o1, subset.clone(), new_set.clone(), &pp)
+                .open_subset_unchecked(&o1, subset.clone(), new_set, pp)
                 .unwrap();
             assert!(witness_with_invalid_subset
                 .verify(subset, &comm1, &prep_pp)
@@ -1038,7 +1038,7 @@ mod tests {
         let witness = AggregateSubsetWitness::new::<Blake2b512>(
             commitments[0..3].to_vec(),
             vec![sets[0].clone(), sets[1].clone(), sets[2].clone()],
-            vec![witness0.clone(), witness1.clone(), witness2.clone()],
+            vec![witness0, witness1, witness2],
         )
         .unwrap();
         witness

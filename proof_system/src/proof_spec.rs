@@ -15,6 +15,10 @@ use bbs_plus::setup::{
     PreparedSignatureParamsG1 as PreparedBBSPlusSigParams, PublicKeyG2 as BBSPlusPk,
     SignatureParamsG1 as BBSPlusSigParams,
 };
+use coconut::setup::{
+    PreparedPublicKey as PreparedPSPk, PreparedSignatureParams as PreparedPSSigParams,
+    PublicKey as PSPk, SignatureParams as PSSigParams,
+};
 use legogroth16::{
     aggregation::srs::{ProverSRS, VerifierSRS},
     PreparedVerifyingKey as LegoPreparedVerifyingKey, VerifyingKey as LegoVerifyingKey,
@@ -182,6 +186,11 @@ where
                         revealed_wit_refs.insert((i, *k));
                     }
                 }
+                Statement::PoKPSSignature(s) => {
+                    for k in s.revealed_messages.keys() {
+                        revealed_wit_refs.insert((i, *k));
+                    }
+                }
                 _ => continue,
             }
         }
@@ -319,6 +328,8 @@ where
             StatementDerivedParams<PreparedBBSPlusPk<E>>,
             StatementDerivedParams<PreparedAccumParams<E>>,
             StatementDerivedParams<PreparedAccumPk<E>>,
+            StatementDerivedParams<PreparedPSSigParams<E>>,
+            StatementDerivedParams<PreparedPSPk<E>>,
         ),
         ProofSystemError,
     > {
@@ -337,6 +348,9 @@ where
         let mut derived_accum_p =
             DerivedParamsTracker::<AccumParams<E>, PreparedAccumParams<E>, E>::new();
         let mut derived_accum_pk = DerivedParamsTracker::<AccumPk<E>, PreparedAccumPk<E>, E>::new();
+        let mut derived_ps_p =
+            DerivedParamsTracker::<PSSigParams<E>, PreparedPSSigParams<E>, E>::new();
+        let mut derived_ps_pk = DerivedParamsTracker::<PSPk<E>, PreparedPSPk<E>, E>::new();
 
         for (s_idx, statement) in self.statements.0.iter().enumerate() {
             match statement {
@@ -379,6 +393,13 @@ where
                     let verifying_key = s.get_verifying_key(&self.setup_params, s_idx)?;
                     derived_lego_vk.on_new_statement_idx(verifying_key, s_idx);
                 }
+                Statement::PoKPSSignature(s) => {
+                    let params = s.get_sig_params(&self.setup_params, s_idx)?;
+                    derived_ps_p.on_new_statement_idx(params, s_idx);
+
+                    let pk = s.get_public_key(&self.setup_params, s_idx)?;
+                    derived_ps_pk.on_new_statement_idx(pk, s_idx);
+                }
                 _ => (),
             }
         }
@@ -391,6 +412,8 @@ where
             derived_bbs_pk.finish(),
             derived_accum_p.finish(),
             derived_accum_pk.finish(),
+            derived_ps_p.finish(),
+            derived_ps_pk.finish(),
         ))
     }
 }

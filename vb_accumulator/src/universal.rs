@@ -306,7 +306,7 @@ where
             return Err(VBAccumulatorError::BatchExceedsAccumulatorCapacity);
         }
         for element in elements.iter() {
-            if !self.is_element_acceptable(&element, initial_elements_store) {
+            if !self.is_element_acceptable(element, initial_elements_store) {
                 return Err(VBAccumulatorError::ProhibitedElement);
             }
         }

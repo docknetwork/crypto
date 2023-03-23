@@ -149,8 +149,8 @@ pub fn show(
                     accum.clone().unwrap().accumulated(),
                     &non_mem_wit.unwrap(),
                     &usk,
-                    auditable.then(|| &upk),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&upk),
+                    auditable.then_some(&apk),
                     &Q.unwrap(),
                     &set_comm_srs,
                 )
@@ -160,8 +160,8 @@ pub fn show(
                     rng,
                     cred,
                     disclosed_attrs.clone(),
-                    auditable.then(|| &upk),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&upk),
+                    auditable.then_some(&apk),
                     &set_comm_srs,
                 )
                 .unwrap()
@@ -172,7 +172,7 @@ pub fn show(
                 .challenge_contribution(
                     accum.as_ref().map(|a| a.accumulated()),
                     Q.as_ref(),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&apk),
                     set_comm_srs.get_P1(),
                     &nonce,
                     &mut chal_bytes,
@@ -181,7 +181,10 @@ pub fn show(
             let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let show = show_proto
-                .gen_show((auditable || supports_revocation).then(|| &usk), &challenge)
+                .gen_show(
+                    (auditable || supports_revocation).then_some(&usk),
+                    &challenge,
+                )
                 .unwrap();
             let show_time = start.elapsed();
 
@@ -198,7 +201,7 @@ pub fn show(
                     accum.unwrap().accumulated(),
                     &Q.unwrap(),
                     prep_rpk.unwrap(),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&apk),
                     prep_set_comm_srs,
                 )
                 .unwrap()
@@ -207,7 +210,7 @@ pub fn show(
                     &challenge,
                     disclosed_attrs,
                     prep_ipk,
-                    auditable.then(|| &apk),
+                    auditable.then_some(&apk),
                     prep_set_comm_srs,
                 )
                 .unwrap()
@@ -251,8 +254,8 @@ pub fn show(
                     &decoy_issuer_keys,
                     &one_of_n_srs,
                     &usk,
-                    auditable.then(|| &upk),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&upk),
+                    auditable.then_some(&apk),
                     &Q.unwrap(),
                     &set_comm_srs,
                 )
@@ -265,8 +268,8 @@ pub fn show(
                     &ipk,
                     &decoy_issuer_keys,
                     &one_of_n_srs,
-                    auditable.then(|| &upk),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&upk),
+                    auditable.then_some(&apk),
                     &set_comm_srs,
                 )
                 .unwrap()
@@ -277,7 +280,7 @@ pub fn show(
                 .challenge_contribution(
                     accum.as_ref().map(|a| a.accumulated()),
                     Q.as_ref(),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&apk),
                     set_comm_srs.get_P1(),
                     &nonce,
                     &mut chal_bytes,
@@ -286,7 +289,10 @@ pub fn show(
             let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let show = show_proto
-                .gen_show((auditable || supports_revocation).then(|| &usk), &challenge)
+                .gen_show(
+                    (auditable || supports_revocation).then_some(&usk),
+                    &challenge,
+                )
                 .unwrap();
             let show_time = start.elapsed();
 
@@ -302,7 +308,7 @@ pub fn show(
                     &Q.unwrap(),
                     prep_rpk.unwrap(),
                     &one_of_n_srs,
-                    auditable.then(|| &apk),
+                    auditable.then_some(&apk),
                     prep_set_comm_srs,
                 )
                 .unwrap()
@@ -314,7 +320,7 @@ pub fn show(
                     disclosed_attrs,
                     &possible_keys,
                     &one_of_n_srs,
-                    auditable.then(|| &apk),
+                    auditable.then_some(&apk),
                     prep_set_comm_srs,
                 )
                 .unwrap()
@@ -348,8 +354,8 @@ pub fn show(
                     &ipk,
                     &policy_sig,
                     &usk,
-                    auditable.then(|| &upk),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&upk),
+                    auditable.then_some(&apk),
                     &Q.unwrap(),
                     &set_comm_srs,
                 )
@@ -361,8 +367,8 @@ pub fn show(
                     disclosed_attrs.clone(),
                     &ipk,
                     &policy_sig,
-                    auditable.then(|| &upk),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&upk),
+                    auditable.then_some(&apk),
                     &set_comm_srs,
                 )
                 .unwrap()
@@ -373,7 +379,7 @@ pub fn show(
                 .challenge_contribution(
                     accum.as_ref().map(|a| a.accumulated()),
                     Q.as_ref(),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&apk),
                     set_comm_srs.get_P1(),
                     &nonce,
                     &mut chal_bytes,
@@ -382,7 +388,10 @@ pub fn show(
             let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let show = show_proto
-                .gen_show((auditable || supports_revocation).then(|| &usk), &challenge)
+                .gen_show(
+                    (auditable || supports_revocation).then_some(&usk),
+                    &challenge,
+                )
                 .unwrap();
             let show_time = start.elapsed();
 
@@ -395,7 +404,7 @@ pub fn show(
                     accum.unwrap().accumulated(),
                     &Q.unwrap(),
                     prep_rpk.unwrap(),
-                    auditable.then(|| &apk),
+                    auditable.then_some(&apk),
                     prep_set_comm_srs,
                 )
                 .unwrap()
@@ -404,7 +413,7 @@ pub fn show(
                     &challenge,
                     disclosed_attrs,
                     &policy_pk,
-                    auditable.then(|| &apk),
+                    auditable.then_some(&apk),
                     prep_set_comm_srs,
                 )
                 .unwrap()
@@ -430,13 +439,9 @@ fn credential_show_with_known_signer() {
 
     for disclosed in vec![
         vec![],
-        vec![attributes[0].clone()],
-        vec![attributes[1].clone(), attributes[3].clone()],
-        vec![
-            attributes[1].clone(),
-            attributes[3].clone(),
-            attributes[4].clone(),
-        ],
+        vec![attributes[0]],
+        vec![attributes[1], attributes[3]],
+        vec![attributes[1], attributes[3], attributes[4]],
     ] {
         show(
             &mut rng,
@@ -474,7 +479,7 @@ fn credential_show_with_known_signer_and_revocation() {
         &mut rng,
         max_attributes,
         attributes.clone(),
-        vec![attributes[1].clone(), attributes[3].clone()],
+        vec![attributes[1], attributes[3]],
         false,
         true,
         0,
@@ -484,7 +489,7 @@ fn credential_show_with_known_signer_and_revocation() {
         &mut rng,
         max_attributes,
         attributes.clone(),
-        vec![attributes[1].clone(), attributes[3].clone()],
+        vec![attributes[1], attributes[3]],
         true,
         true,
         0,
@@ -506,7 +511,7 @@ fn credential_show_with_hidden_signer() {
             &mut rng,
             max_attributes,
             attributes.clone(),
-            vec![attributes[1].clone(), attributes[3].clone()],
+            vec![attributes[1], attributes[3]],
             false,
             false,
             1,
@@ -516,7 +521,7 @@ fn credential_show_with_hidden_signer() {
             &mut rng,
             max_attributes,
             attributes.clone(),
-            vec![attributes[1].clone(), attributes[3].clone()],
+            vec![attributes[1], attributes[3]],
             true,
             false,
             1,
@@ -539,7 +544,7 @@ fn credential_show_with_hidden_signer_and_revocation() {
             &mut rng,
             max_attributes,
             attributes.clone(),
-            vec![attributes[1].clone(), attributes[3].clone()],
+            vec![attributes[1], attributes[3]],
             false,
             true,
             1,
@@ -549,7 +554,7 @@ fn credential_show_with_hidden_signer_and_revocation() {
             &mut rng,
             max_attributes,
             attributes.clone(),
-            vec![attributes[1].clone(), attributes[3].clone()],
+            vec![attributes[1], attributes[3]],
             true,
             true,
             1,
@@ -571,7 +576,7 @@ fn credential_show_with_delegation_policy() {
         &mut rng,
         max_attributes,
         attributes.clone(),
-        vec![attributes[1].clone(), attributes[3].clone()],
+        vec![attributes[1], attributes[3]],
         false,
         false,
         2,
@@ -579,9 +584,9 @@ fn credential_show_with_delegation_policy() {
     );
     show(
         &mut rng,
-        max_attributes.clone(),
+        max_attributes,
         attributes.clone(),
-        vec![attributes[1].clone(), attributes[3].clone()],
+        vec![attributes[1], attributes[3]],
         true,
         false,
         2,
@@ -602,7 +607,7 @@ fn credential_show_with_delegation_policy_and_revocation() {
         &mut rng,
         max_attributes,
         attributes.clone(),
-        vec![attributes[1].clone(), attributes[3].clone()],
+        vec![attributes[1], attributes[3]],
         false,
         true,
         2,
@@ -612,7 +617,7 @@ fn credential_show_with_delegation_policy_and_revocation() {
         &mut rng,
         max_attributes,
         attributes.clone(),
-        vec![attributes[1].clone(), attributes[3].clone()],
+        vec![attributes[1], attributes[3]],
         true,
         true,
         2,
