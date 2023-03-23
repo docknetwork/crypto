@@ -1,4 +1,4 @@
-//! Proof of knowledge for the commitments.
+//! Proof of knowledge for the messages.
 
 use alloc::vec::Vec;
 

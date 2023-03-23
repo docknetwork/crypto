@@ -1,4 +1,4 @@
-//! Proofs of knowledge for the signature and commitments.
+//! Proofs of knowledge for the signature and messages.
 use alloc::vec::Vec;
 
 pub mod messages_pok;
@@ -101,6 +101,7 @@ where
             .filter_map(|(idx, msg_with_blinding)| {
                 msg_with_blinding.split(rng).map(|split| (idx, split))
             });
+
         // Pair each indexed blinded message with an item from the provided slice.
         let paired = pair_with_slice(indexed_blinded_msgs, pair_with);
 

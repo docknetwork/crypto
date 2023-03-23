@@ -122,7 +122,7 @@ impl<'a, E: Pairing> MessageCommitmentRandomness<'a, E> {
     }
 
     /// Produces an iterator of `SchnorrCommitment`s for `MessageCommitment`s.
-    pub fn commit(&'a self) -> impl_indexed_iter!(<Item = SchnorrCommitment<E::G1Affine>> + 'a) {
+    pub fn commit(&self) -> impl_indexed_iter!(<Item = SchnorrCommitment<E::G1Affine>> + '_) {
         let &Self {
             ref o,
             blindings,
