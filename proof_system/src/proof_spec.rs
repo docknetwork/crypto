@@ -15,7 +15,7 @@ use bbs_plus::setup::{
     PreparedSignatureParamsG1 as PreparedBBSPlusSigParams, PublicKeyG2 as BBSPlusPk,
     SignatureParamsG1 as BBSPlusSigParams,
 };
-use coconut::setup::{
+use coconut_crypto::setup::{
     PreparedPublicKey as PreparedPSPk, PreparedSignatureParams as PreparedPSSigParams,
     PublicKey as PSPk, SignatureParams as PSSigParams,
 };

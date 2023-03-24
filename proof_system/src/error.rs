@@ -75,7 +75,7 @@ pub enum ProofSystemError {
     NoAggregateLegoGroth16ProofFound,
     InvalidNumberOfAggregateLegoGroth16Proofs(usize, usize),
     NotFoundAggregateLegoGroth16ProofForRequiredStatements(usize, BTreeSet<usize>),
-    PSSignaturePoKError(coconut::SignaturePoKError),
+    PSSignaturePoKError(coconut_crypto::SignaturePoKError),
 }
 
 impl From<SchnorrError> for ProofSystemError {
@@ -120,8 +120,8 @@ impl From<CircomError> for ProofSystemError {
     }
 }
 
-impl From<coconut::SignaturePoKError> for ProofSystemError {
-    fn from(e: coconut::SignaturePoKError) -> Self {
+impl From<coconut_crypto::SignaturePoKError> for ProofSystemError {
+    fn from(e: coconut_crypto::SignaturePoKError) -> Self {
         Self::PSSignaturePoKError(e)
     }
 }

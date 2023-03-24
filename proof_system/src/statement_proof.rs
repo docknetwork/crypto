@@ -3,7 +3,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError
 use ark_std::io::{Read, Write};
 use ark_std::vec::Vec;
 use bbs_plus::prelude::PoKOfSignatureG1Proof;
-use coconut::SignaturePoK as PSSignaturePoK;
+use coconut_crypto::SignaturePoK as PSSignaturePoK;
 use dock_crypto_utils::serde_utils::*;
 use saver::encryption::Ciphertext;
 use schnorr_pok::SchnorrResponse;

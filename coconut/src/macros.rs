@@ -26,20 +26,6 @@ macro_rules! impl_deref {
     };
 }
 
-/// Implements `From<type>` for the wrapper.
-#[macro_export]
-macro_rules! impl_deref_from_type_conversion {
-    ($wrapper: ident: $($type: ty),+) => {
-        $(
-            impl From<$type> for $wrapper {
-                fn from(value: $type) -> $wrapper {
-                    $wrapper(value.into())
-                }
-            }
-        )+
-    }
-}
-
 /// Convert given slices to `OwnedPairs`, panics in case of error.
 #[macro_export]
 macro_rules! owned_pairs {

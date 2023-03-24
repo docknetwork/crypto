@@ -2,7 +2,7 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cmp, collections::BTreeMap, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::signature::SignatureG1 as BBSSignatureG1;
-use coconut::Signature;
+use coconut_crypto::Signature;
 use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
