@@ -155,7 +155,7 @@ macro_rules! impl_indexed_iter {
 #[macro_export]
 #[cfg(not(feature = "parallel"))]
 macro_rules! impl_indexed_iter {
-    (<Item = $item: ty> $($tt: tt)*) => { impl $crate::helpers::DoubleEndedExactSizeIterator<Item = $item> $($tt)* }
+    (<Item = $item: ty> $($tt: tt)*) => { impl $crate::aliases::DoubleEndedExactSizeIterator<Item = $item> $($tt)* }
 }
 
 /// `impl IntoIterator` where `IntoIter: DoubleEndedIterator + ExactSizeIterator`  or `impl IntoParallelIterator` where `Iter: IndexedParallelIterator` depending on the `parallel` feature.
@@ -169,7 +169,7 @@ macro_rules! impl_into_indexed_iter {
 #[macro_export]
 #[cfg(not(feature = "parallel"))]
 macro_rules! impl_into_indexed_iter {
-    (<Item = $item: ty> $($tt: tt)*) => { impl core::iter::IntoIterator<Item = $item, IntoIter = impl $crate::helpers::DoubleEndedExactSizeIterator<Item = $item> $($tt)*> $($tt)* }
+    (<Item = $item: ty> $($tt: tt)*) => { impl core::iter::IntoIterator<Item = $item, IntoIter = impl $crate::aliases::DoubleEndedExactSizeIterator<Item = $item> $($tt)*> $($tt)* }
 }
 
 #[cfg(test)]
