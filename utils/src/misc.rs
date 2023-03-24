@@ -1,4 +1,5 @@
 use crate::msm::multiply_field_elems_with_same_group_elem;
+use alloc::vec::Vec;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_std::{rand::RngCore, UniformRand};
 

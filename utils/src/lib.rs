@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate alloc;
+
 pub mod aliases;
 pub mod extend_some;
 // TODO: Feature gate this
