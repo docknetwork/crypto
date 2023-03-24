@@ -1,9 +1,10 @@
 use core::convert::identity;
+use serde::{Deserialize, Serialize};
 
 use itertools::Itertools;
 
 /// Provided index is out of bounds.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexIsOutOfBounds {
     pub index: usize,
     pub length: usize,
@@ -35,7 +36,7 @@ where
 }
 
 /// This pair was invalid according to the supplied predicate.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InvalidPair<I>(pub I, pub I);
 
 impl<I> InvalidPair<I> {

@@ -2,7 +2,10 @@
 
 use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
-use dock_crypto_utils::serde_utils::ArkSerializationError;
+use dock_crypto_utils::{
+    serde_utils::ArkSerializationError,
+    try_iter::{IndexIsOutOfBounds, InvalidPair},
+};
 use schnorr_pok::error::SchnorrError;
 use serde::Serialize;
 
@@ -11,7 +14,6 @@ pub enum BBSPlusError {
     CannotInvert0,
     NoMessageToSign,
     MessageCountIncompatibleWithSigParams(usize, usize),
-    InvalidMessageIdx(usize),
     /// Signature's `A` is 0
     ZeroSignature,
     InvalidSignature,
@@ -25,11 +27,25 @@ pub enum BBSPlusError {
     #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
+    MessageIndicesMustBeUniqueAndSorted(InvalidPair<usize>),
+    MessageIndexIsOutOfBounds(IndexIsOutOfBounds),
 }
 
 impl From<SchnorrError> for BBSPlusError {
     fn from(e: SchnorrError) -> Self {
         Self::SchnorrError(e)
+    }
+}
+
+impl<T> From<InvalidPair<(usize, T)>> for BBSPlusError {
+    fn from(err: InvalidPair<(usize, T)>) -> Self {
+        Self::MessageIndicesMustBeUniqueAndSorted(err.map(|(idx, _)| idx))
+    }
+}
+
+impl From<IndexIsOutOfBounds> for BBSPlusError {
+    fn from(err: IndexIsOutOfBounds) -> Self {
+        Self::MessageIndexIsOutOfBounds(err)
     }
 }
 

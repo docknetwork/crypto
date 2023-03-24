@@ -34,7 +34,6 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::BTreeMap;
 use ark_std::{
     cfg_into_iter, cfg_iter, fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand,
 };
@@ -42,9 +41,11 @@ use digest::{Digest, DynDigest};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 use zeroize::Zeroize;
 
-use dock_crypto_utils::concat_slices;
+use core::iter::once;
 use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
 use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{concat_slices, iter::*};
+use itertools::process_results;
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -186,59 +187,46 @@ macro_rules! impl_sig_params {
             }
 
             /// Commit to given messages using the parameters and the given blinding as a Pedersen commitment.
-            /// Eg. if given messages `m_i`, `m_j`, and `m_k` in the map, the commitment converts messages to
+            /// `indexed_messages_sorted_by_index` must produce items sorted by unique indices, otherwise,
+            /// an error will be returned.
+            /// Eg. if given messages `m_i`, `m_j`, and `m_k` in the iterator, the commitment converts messages to
             /// scalars and multiplies them by the parameter curve points:
             /// `params.h_0 * blinding + params.h_i * m_i + params.h_j * m_j + params.h_k * m_k`
             /// Computes using multi-scalar multiplication
-            pub fn commit_to_messages(
+            pub fn commit_to_messages<'a, MI>(
                 &self,
-                messages: BTreeMap<usize, &E::ScalarField>,
-                blinding: &E::ScalarField,
-            ) -> Result<E::$group_affine, BBSPlusError> {
-                #[cfg(feature = "parallel")]
-                let (mut bases, mut scalars): (Vec<E::$group_affine>, Vec<E::ScalarField>) = {
-                    // Need to manually check that no message index exceeds the maximum number of messages allowed
-                    // because this function can be called with only uncommitted messages; so size of BTreeMap is
-                    // not representative of the number of messages
-                    for (i, _) in messages.iter() {
-                        if *i >= self.supported_message_count() {
-                            return Err(BBSPlusError::InvalidMessageIdx(*i));
-                        }
-                    }
-                    cfg_into_iter!(messages)
-                        .map(|(i, msg)| (self.h[i].clone(), *msg))
-                        .unzip()
-                };
+                indexed_messages_sorted_by_index: MI,
+                blinding: &'a E::ScalarField,
+            ) -> Result<E::$group_affine, BBSPlusError>
+            where
+                MI: IntoIterator<Item = (usize, &'a E::ScalarField)>,
+            {
+                let (bases, scalars): (Vec<_>, Vec<_>) = process_results(
+                    pair_valid_pairs_with_slice::<_, _, _, BBSPlusError, _>(
+                        indexed_messages_sorted_by_index,
+                        |(a, _), (b, _)| a < b,
+                        &self.h,
+                    ),
+                    |iter| iter.chain(once((&self.h_0, blinding))).unzip(),
+                )?;
 
-                #[cfg(not(feature = "parallel"))]
-                let (mut bases, mut scalars): (Vec<E::$group_affine>, Vec<E::ScalarField>) = {
-                    let mut bases = Vec::with_capacity(messages.len());
-                    let mut scalars = Vec::with_capacity(messages.len());
-                    for (i, msg) in messages.into_iter() {
-                        // No message index should be >= max supported messages
-                        if i >= self.supported_message_count() {
-                            return Err(BBSPlusError::InvalidMessageIdx(i));
-                        }
-                        bases.push(self.h[i].clone());
-                        scalars.push(*msg);
-                    }
-                    (bases, scalars)
-                };
-
-                bases.push(self.h_0.clone());
-                scalars.push(*blinding);
                 Ok(E::$group_projective::msm_unchecked(&bases, &scalars).into_affine())
             }
 
             /// Compute `b` from the paper (equivalently 'A*{e+x}').
+            /// `indexed_messages_sorted_by_index` must produce items sorted by unique indices, otherwise,
+            /// an error will be returned.
             /// Commits to the given messages and adds `self.g1` to it,
             /// `b = g_1 + h_0 * s + sum(h_i * m_i)` for all indices `i` in the map.
-            pub fn b(
+            pub fn b<'a, MI>(
                 &self,
-                messages: BTreeMap<usize, &E::ScalarField>,
-                s: &E::ScalarField,
-            ) -> Result<E::$group_projective, BBSPlusError> {
-                let commitment = self.commit_to_messages(messages, s)?;
+                indexed_messages_sorted_by_index: MI,
+                s: &'a E::ScalarField,
+            ) -> Result<E::$group_projective, BBSPlusError>
+            where
+                MI: IntoIterator<Item = (usize, &'a E::ScalarField)>,
+            {
+                let commitment = self.commit_to_messages(indexed_messages_sorted_by_index, s)?;
                 Ok(commitment + self.g1)
             }
         }

@@ -5,7 +5,7 @@ use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
-use bbs_plus::proof::PoKOfSignatureG1Protocol;
+use bbs_plus::proof::{MessageOrBlinding, PoKOfSignatureG1Protocol};
 use bbs_plus::setup::{KeypairG2, SignatureParamsG1};
 use bbs_plus::signature::SignatureG1;
 use benches::setup_bbs_plus;
@@ -86,9 +86,13 @@ fn pok_sig_benchmark(c: &mut Criterion) {
                             &mut rng,
                             black_box(sig),
                             black_box(params),
-                            black_box(messages),
-                            black_box(BTreeMap::new()),
-                            black_box(revealed_indices[j].clone()),
+                            black_box(messages.iter().enumerate().map(|(idx, msg)| {
+                                if revealed_indices[j].contains(&idx) {
+                                    MessageOrBlinding::RevealMessage(msg)
+                                } else {
+                                    MessageOrBlinding::BlindMessageRandomly(msg)
+                                }
+                            })),
                         )
                         .unwrap();
                         let challenge = Fr::rand(&mut rng);
@@ -119,9 +123,13 @@ fn pok_sig_benchmark(c: &mut Criterion) {
                 &mut rng,
                 sig,
                 params,
-                messages,
-                BTreeMap::new(),
-                revealed_indices_range[i][j].clone(),
+                messages.iter().enumerate().map(|(idx, msg)| {
+                    if revealed_indices_range[i][j].contains(&idx) {
+                        MessageOrBlinding::RevealMessage(msg)
+                    } else {
+                        MessageOrBlinding::BlindMessageRandomly(msg)
+                    }
+                }),
             )
             .unwrap();
 
