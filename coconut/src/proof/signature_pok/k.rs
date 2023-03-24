@@ -32,7 +32,7 @@ use crate::{
     Deserialize,
 )]
 pub struct K<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G2Affine);
-crate::impl_deref! { K<E: Pairing>(E::G2Affine) }
+dock_crypto_utils::impl_deref! { K<E: Pairing>(E::G2Affine) }
 
 impl<E: Pairing> K<E> {
     /// `\sum_{j}(beta_tilde_{j} * m_{l}{j} + g_tilde * r_{l})`

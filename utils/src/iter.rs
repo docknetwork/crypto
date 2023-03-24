@@ -1,6 +1,6 @@
 use itertools::{EitherOrBoth, Itertools};
 
-use super::{try_pair_with_slice, try_validate_pairs, IndexIsOutOfBounds, InvalidPair};
+use super::try_iter::{try_pair_with_slice, try_validate_pairs, IndexIsOutOfBounds, InvalidPair};
 
 /// Plucks items from the supplied iterator corresponding to missed indices.
 /// This function implies that both iterators are sorted.

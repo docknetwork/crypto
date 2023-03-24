@@ -9,7 +9,8 @@ use ark_serialize::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::{helpers::points, join, setup::SignatureParams};
+use crate::{helpers::points, setup::SignatureParams};
+use dock_crypto_utils::join;
 
 use super::SecretKey;
 
