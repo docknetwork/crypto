@@ -9,8 +9,8 @@ use benches::setup_ps;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use itertools::{EitherOrBoth, Itertools};
 
-use coconut::signature::Signature;
-use coconut::{setup::*, SignaturePoKGenerator};
+use coconut_crypto::signature::Signature;
+use coconut_crypto::{setup::*, SignaturePoKGenerator};
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 

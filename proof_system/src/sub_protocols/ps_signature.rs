@@ -4,8 +4,8 @@ use ark_std::{collections::BTreeMap, io::Write, vec::Vec};
 
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
-use coconut::proof::*;
-use coconut::setup::*;
+use coconut_crypto::proof::*;
+use coconut_crypto::setup::*;
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::error::ProofSystemError;
@@ -85,17 +85,23 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
             .slice
             .iter()
             .merge_join_by(blindings, |(m_idx, _), (b_idx, _)| m_idx.cmp(b_idx))
-            .map(|either| match either {
-                EitherOrBoth::Left((idx, msg)) => (*idx, CommitMessage::BlindMessageRandomly(msg)),
-                EitherOrBoth::Right((idx, _)) => {
-                    invalid_blinding_idx.replace(idx);
+            .scan((), |(), either| {
+                let item = match either {
+                    EitherOrBoth::Left((idx, msg)) => {
+                        (*idx, CommitMessage::BlindMessageRandomly(msg))
+                    }
+                    EitherOrBoth::Both((idx, message), (_, blinding)) => (
+                        *idx,
+                        CommitMessage::BlindMessageWithConcreteBlinding { message, blinding },
+                    ),
+                    EitherOrBoth::Right((idx, _)) => {
+                        invalid_blinding_idx.replace(idx);
 
-                    (idx, CommitMessage::RevealMessage)
-                }
-                EitherOrBoth::Both((idx, message), (_, blinding)) => (
-                    *idx,
-                    CommitMessage::BlindMessageWithConcreteBlinding { message, blinding },
-                ),
+                        return None;
+                    }
+                };
+
+                Some(item)
             });
 
         let revealed_messages = self
