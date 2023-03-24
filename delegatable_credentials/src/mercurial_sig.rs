@@ -44,23 +44,25 @@ impl<E: Pairing> Drop for SecretKey<E> {
     }
 }
 
-/// Public key used to verify signatures in group G1
+/// Public key used to verify `Signature`
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct PublicKey<E: Pairing>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<E::G2Affine>);
 
-/// Public key used to verify signatures in group G2
+/// Public key used to verify `SignatureG2`
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct PublicKeyG1<E: Pairing>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<E::G1Affine>);
 
+/// Prepared version of `PublicKey` for faster pairing checks
 #[derive(Clone, Debug)]
 pub struct PreparedPublicKey<E: Pairing>(pub Vec<E::G2Prepared>);
 
+/// Signature with 2 elements in group G1 and 1 element in G2
 #[serde_as]
 #[derive(
     Clone,
@@ -82,6 +84,7 @@ pub struct Signature<E: Pairing> {
     pub Y_tilde: E::G2Affine,
 }
 
+/// Signature with 2 elements in group G2 and 1 element in G1
 #[serde_as]
 #[derive(
     Clone,
@@ -220,6 +223,9 @@ macro_rules! impl_signature_struct {
                     secret_key.size(),
                 ));
             }
+            // Z = \sum_{i}(m_i * sk_i)*y
+            // Y = sig_grp_gen * 1/y
+            // Y_tilde = pk_grp_gen * 1/y
             let Z = <$msg_group as AffineRepr>::Group::msm_unchecked(messages, &secret_key.0)
                 .mul_bigint(y.into_bigint())
                 .into_affine();
@@ -273,6 +279,9 @@ macro_rules! impl_signature_struct {
             psi: &E::ScalarField,
         ) -> Self {
             let psi_inv_repr = psi.inverse().unwrap().into_bigint();
+            // Z = Z * converter * psi
+            // Y = Y * 1/psi
+            // Y_tilde = Y_tilde * 1/psi
             Self {
                 Z: self
                     .Z
@@ -291,6 +300,7 @@ macro_rules! impl_signature_struct {
             messages: &[$msg_group],
         ) -> (Self, Vec<$msg_group>) {
             let mu_repr = message_converter.into_bigint();
+            // new_msgs_i = messages_i * message_converter
             let new_msgs = cfg_iter!(messages)
                 .map(|m| m.mul_bigint(mu_repr))
                 .collect::<Vec<_>>();

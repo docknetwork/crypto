@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Compressed Sigma Protocols and proofs of k-Out-Of-n Partial Knowledge"
 
 [dependencies]
 ark-serialize.workspace = true

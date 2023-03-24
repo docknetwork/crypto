@@ -1,3 +1,5 @@
+//! Credential show and verification from Fig. 3 of the paper
+
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};

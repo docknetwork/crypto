@@ -1,3 +1,5 @@
+//! Root and delegated credential issuance from Fig. 3 of the paper
+
 use crate::error::DelegationError;
 use crate::msbm::keys::{
     PreparedRootIssuerPublicKey, RootIssuerSecretKey, UpdateKey, UserPublicKey, UserSecretKey,

@@ -101,8 +101,10 @@ pub mod tests {
             d0 += start.elapsed();
 
             let start = Instant::now();
-            let _ = context.mul_with_table(&table, &e).unwrap();
+            let temp1 = context.mul_with_table(&table, &e).unwrap();
             d1 += start.elapsed();
+
+            assert_eq!(temp, temp1);
 
             let start = Instant::now();
             group_elem *= e;
@@ -127,12 +129,14 @@ pub mod tests {
             let e2 = Fr::rand(&mut rng);
 
             let start = Instant::now();
-            let _ = g1.mul_bigint(e1.into_bigint()) + g2.mul_bigint(e2.into_bigint());
+            let temp = g1.mul_bigint(e1.into_bigint()) + g2.mul_bigint(e2.into_bigint());
             d5 += start.elapsed();
 
             let start = Instant::now();
-            let _ = G1::msm(&[g1, g2], &[e1, e2]);
+            let temp1 = G1::msm(&[g1, g2], &[e1, e2]).unwrap();
             d6 += start.elapsed();
+
+            assert_eq!(temp, temp1);
         }
 
         println!("d5={:?}", d5);
@@ -157,15 +161,17 @@ pub mod tests {
             let g = G1::rand(&mut rng);
 
             let start = Instant::now();
-            multiply_field_elems_with_same_group_elem(g, scalars.as_slice());
+            let temp = multiply_field_elems_with_same_group_elem(g, scalars.as_slice());
             d9 += start.elapsed();
 
             let start = Instant::now();
             let a = g.into_affine();
-            let _ = cfg_iter!(scalars)
+            let temp1 = cfg_iter!(scalars)
                 .map(|s| a.mul_bigint(s.into_bigint()))
                 .collect::<Vec<_>>();
             d10 += start.elapsed();
+
+            assert_eq!(temp, temp1);
         }
 
         println!("d9={:?}", d9);
@@ -181,12 +187,14 @@ pub mod tests {
             let e2 = Fr::rand(&mut rng);
 
             let start = Instant::now();
-            let _ = g1.mul_bigint(e1.into_bigint()) + g2.mul_bigint(e2.into_bigint());
+            let temp = g1.mul_bigint(e1.into_bigint()) + g2.mul_bigint(e2.into_bigint());
             d11 += start.elapsed();
 
             let start = Instant::now();
-            let _ = G1::msm(&[g1, g2], &[e1, e2]);
+            let temp1 = G1::msm(&[g1, g2], &[e1, e2]).unwrap();
             d12 += start.elapsed();
+
+            assert_eq!(temp, temp1);
         }
 
         println!("d11={:?}", d11);
@@ -203,12 +211,14 @@ pub mod tests {
             let g4 = <Bls12_381 as Pairing>::G2Prepared::from(g2);
 
             let start = Instant::now();
-            let _ = <Bls12_381 as Pairing>::pairing(g1, g2);
+            let temp = <Bls12_381 as Pairing>::pairing(g1, g2);
             d13 += start.elapsed();
 
             let start = Instant::now();
-            let _ = <Bls12_381 as Pairing>::pairing(g3, g4);
+            let temp1 = <Bls12_381 as Pairing>::pairing(g3, g4);
             d14 += start.elapsed();
+
+            assert_eq!(temp, temp1);
         }
 
         println!("d13={:?}", d13);
@@ -232,12 +242,14 @@ pub mod tests {
             let e = Fr::rand(&mut rng);
 
             let start = Instant::now();
-            let _ = FixedBase::windowed_mul::<G1>(outerc, window_size, &table, &e);
+            let temp = FixedBase::windowed_mul::<G1>(outerc, window_size, &table, &e);
             d15 += start.elapsed();
 
             let start = Instant::now();
-            let _ = g.mul_bigint(e.into_bigint());
+            let temp1 = g.mul_bigint(e.into_bigint());
             d16 += start.elapsed();
+
+            assert_eq!(temp, temp1);
         }
 
         println!("d15={:?}", d15);

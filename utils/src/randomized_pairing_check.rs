@@ -13,6 +13,12 @@ use rayon::prelude::*;
 /// from keeping the results from the miller loop output before proceeding to a final
 /// exponentiation when verifying if all checks are verified.
 /// For each pairing equation, multiply by a power of a random element created during initialization
+/// eg. to check 3 pairing equations `e(A1, B1) == O1, e(A2, B2) == O2 and e(A3, B3) == O3`, a single
+/// equation can be checked as `e(A1, B1) + e(A2, B2)*r + e(A3, B3)*r^2 == O1 + O2*r + O3*r^2` which is
+/// same as checking `e(A1, B1) + e(A2*r, B2) + e(A3*r^2, B3) == O1 + O2*r + O3*r^2`
+/// Similarly to check 3 pairing equations `e(A1, B1) == e(C1, D1), e(A2, B2) == e(C2, D2) and e(A3, B3) == e(C3, D3)`,
+/// a single check can done as `e(A1, B1) + e(A2, B2)*r + e(A3, B3)*r^2 == e(C1, D1) + e(C2, D2)*r + e(C3, D3)*r^2` which
+/// is same as checking `e(A1, B1) + e(A2*r, B2) + e(A3*r^2, B3) + e(C1*-1, D1) + e(C2*-r, D2) + e(C3*-r^2, D3)== 1`
 #[derive(Debug, Clone)]
 pub struct RandomizedPairingChecker<E: Pairing> {
     /// a miller loop result that is to be multiplied by other miller loop results
@@ -98,6 +104,7 @@ where
         lazy: bool,
     ) {
         let m = self.current_random.into_bigint();
+        // {a_m}_i = a_i * m
         let mut a_m = cfg_iter!(a)
             .map(|a| E::G1Prepared::from(a.mul_bigint(m)))
             .collect::<Vec<_>>();
@@ -124,9 +131,11 @@ where
         lazy: bool,
     ) {
         let m = self.current_random.into_bigint();
+        // {a_m}_i = a_i * m
         let mut a_m = cfg_iter!(a)
             .map(|a| E::G1Prepared::from(a.mul_bigint(m)))
             .collect::<Vec<_>>();
+        // {c_m}_i = c_i * -m
         let mut c_m = cfg_iter!(c)
             .map(|c| E::G1Prepared::from(-c.mul_bigint(m)))
             .collect::<Vec<_>>();
