@@ -2,12 +2,12 @@ use alloc::vec::Vec;
 use ark_ec::{pairing::Pairing, AffineRepr, Group};
 use ark_ff::PrimeField;
 use ark_serialize::*;
+use dock_crypto_utils::join;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     helpers::{pair_valid_pairs_with_slice, OwnedPairs},
-    join,
     setup::{PreparedSignatureParams, PublicKey, SignatureParams},
     signature_pok::K,
     PSError, Signature,

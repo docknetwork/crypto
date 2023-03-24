@@ -16,10 +16,11 @@ mod witnesses;
 use super::UnpackedBlindedMessages;
 use crate::{
     helpers::{schnorr_error, WithSchnorrAndBlindings},
-    join, pairs,
+    pairs,
     setup::{PublicKey, SignatureParams},
     CommitMessage, Signature,
 };
+use dock_crypto_utils::join;
 
 pub use error::*;
 use k::*;

@@ -5,12 +5,12 @@ use ark_ec::pairing::Pairing;
 use alloc::vec::Vec;
 use ark_serialize::*;
 use ark_std::cfg_into_iter;
+use dock_crypto_utils::join;
 use itertools::{process_results, Itertools};
 
 use super::{error::BlindPSError, ps_signature::Signature};
 use crate::{
     helpers::{pair_valid_pairs_with_slice, pair_with_slice, ExtendSome, OwnedPairs},
-    join,
     setup::{PublicKey, SecretKey},
     MessageCommitment,
 };

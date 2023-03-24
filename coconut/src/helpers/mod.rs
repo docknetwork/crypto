@@ -12,17 +12,15 @@ use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
 use schnorr_pok::error::SchnorrError;
 
-pub mod aliases;
-pub mod extend_some;
-pub mod iter;
 pub mod owned_pairs;
 pub mod pairs;
-pub mod try_iter;
 pub mod with_schnorr_and_blindings;
 pub mod with_schnorr_response;
 
-pub use aliases::*;
-pub use extend_some::*;
+pub use dock_crypto_utils::aliases::*;
+pub use dock_crypto_utils::extend_some::*;
+pub use dock_crypto_utils::iter::{self, *};
+pub use dock_crypto_utils::try_iter::{self, *};
 pub use iter::*;
 pub use owned_pairs::*;
 pub use pairs::*;
@@ -30,7 +28,7 @@ pub use try_iter::*;
 pub use with_schnorr_and_blindings::*;
 pub use with_schnorr_response::*;
 
-use crate::{impl_indexed_iter, impl_into_indexed_iter, join};
+use dock_crypto_utils::{impl_indexed_iter, impl_into_indexed_iter, join};
 
 /// Generates an iterator of randoms producing `count` elements using the supplied `rng`.
 pub fn n_rand<T: UniformRand, R: RngCore>(

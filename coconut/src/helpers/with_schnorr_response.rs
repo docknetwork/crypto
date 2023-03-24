@@ -28,7 +28,7 @@ pub struct WithSchnorrResponse<G: AffineRepr, V: CanonicalSerialize + CanonicalD
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndiceRange(Range<usize>);
-crate::impl_deref! { IndiceRange(Range<usize>) }
+dock_crypto_utils::impl_deref! { IndiceRange(Range<usize>) }
 
 impl CanonicalSerialize for IndiceRange {
     fn serialized_size(&self, compress: Compress) -> usize {

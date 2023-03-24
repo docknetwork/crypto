@@ -8,10 +8,8 @@ use ark_serialize::*;
 use ark_std::rand::RngCore;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{
-    helpers::{n_rand, rand, FullDigest},
-    join,
-};
+use crate::helpers::{n_rand, rand, FullDigest};
+use dock_crypto_utils::join;
 
 /// `SecretKey` used in Pointcheval-Sanders signature scheme.
 #[derive(

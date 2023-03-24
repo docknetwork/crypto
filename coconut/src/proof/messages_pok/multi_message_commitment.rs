@@ -22,7 +22,7 @@ use crate::{
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct MultiMessageCommitment<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G1Affine);
-crate::impl_deref! { MultiMessageCommitment<E: Pairing>(E::G1Affine) }
+dock_crypto_utils::impl_deref! { MultiMessageCommitment<E: Pairing>(E::G1Affine) }
 
 impl<E: Pairing> MultiMessageCommitment<E> {
     /// `g * o + \sum_{i}(h_{i} * m_{i})`

@@ -13,9 +13,11 @@ use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use rayon::prelude::*;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment};
 
+use dock_crypto_utils::{impl_indexed_iter, impl_into_indexed_iter};
+
 use crate::{
     helpers::{n_rand, WithSchnorrAndBlindings, WithSchnorrResponse},
-    impl_indexed_iter, impl_into_indexed_iter, pairs,
+    pairs,
     setup::SignatureParams,
 };
 
@@ -25,7 +27,7 @@ use crate::{
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct MessageCommitment<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G1Affine);
-crate::impl_deref! { MessageCommitment<E: Pairing>(E::G1Affine) }
+dock_crypto_utils::impl_deref! { MessageCommitment<E: Pairing>(E::G1Affine) }
 
 impl<E: Pairing> MessageCommitment<E> {
     /// `g * o + h * m`.

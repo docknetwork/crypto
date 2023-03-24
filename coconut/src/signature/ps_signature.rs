@@ -15,10 +15,10 @@ use rayon::prelude::*;
 
 use crate::{
     helpers::Pairs,
-    multi_pairing,
     setup::{PublicKey, SecretKey, SignatureParams},
     try_pairs, PSError,
 };
+use dock_crypto_utils::multi_pairing;
 
 type Result<T, E = PSError> = core::result::Result<T, E>;
 

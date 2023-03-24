@@ -22,6 +22,7 @@ serde.workspace = true
 serde_with.workspace = true
 rayon = {workspace = true, optional = true}
 merlin = { version = "^3.0", default-features = false }
+itertools = "0.10.5"
 
 [dev-dependencies]
 blake2.workspace = true
