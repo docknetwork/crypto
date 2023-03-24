@@ -187,13 +187,9 @@ fn mimc_legogroth16<E: Pairing>() {
     };
 
     // Parameters for generating proof containing CP_link as well
-    let params_link = generate_random_parameters_incl_cp_link::<E, _, _>(
-        c.clone(),
-        link_gens.clone(),
-        2,
-        &mut rng,
-    )
-    .unwrap();
+    let params_link =
+        generate_random_parameters_incl_cp_link::<E, _, _>(c.clone(), link_gens, 2, &mut rng)
+            .unwrap();
     // Parameters for generating proof without CP_link
     let params = generate_random_parameters::<E, _, _>(c, 2, &mut rng).unwrap();
 

@@ -1,10 +1,6 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::rand::RngCore;
-use ark_std::{
-    collections::{BTreeMap, BTreeSet},
-    io::Write,
-    vec::Vec,
-};
+use ark_std::{collections::BTreeMap, io::Write};
 use bbs_plus::prelude::{
     PoKOfSignatureG1Proof, PreparedPublicKeyG2, PreparedSignatureParamsG1, PublicKeyG2,
     SignatureParamsG1,

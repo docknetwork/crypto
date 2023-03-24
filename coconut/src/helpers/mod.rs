@@ -1,14 +1,11 @@
 use alloc::{format, string::String, vec::Vec};
 
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{PrimeField, UniformRand};
+use ark_ff::PrimeField;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore};
-
-use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
+use ark_std::{cfg_into_iter, cfg_iter};
 
 use schnorr_pok::error::SchnorrError;
 
