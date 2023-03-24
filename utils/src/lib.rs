@@ -9,6 +9,7 @@ pub mod ff;
 pub mod hashing_utils;
 pub mod iter;
 pub mod macros;
+pub mod misc;
 pub mod msm;
 pub mod poly;
 pub mod randomized_pairing_check;

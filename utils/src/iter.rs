@@ -83,3 +83,24 @@ where
 {
     take_while_pairs_satisfy(iter, |prev, cur| prev < cur, invalid_pair)
 }
+
+/// Skips up to `n` elements from the iterator using supplied random generator.
+pub fn skip_up_to_n<'rng, I>(
+    rng: &'rng mut impl ark_std::rand::RngCore,
+    iter: I,
+    mut allowed_to_skip: usize,
+) -> impl Iterator<Item = I::Item> + 'rng
+where
+    I: IntoIterator + 'rng,
+{
+    iter.into_iter().filter(move |_| {
+        use ark_std::rand::Rng;
+
+        let res = allowed_to_skip == 0 || rng.gen_bool(0.5);
+        if !res {
+            allowed_to_skip -= 1;
+        }
+
+        res
+    })
+}

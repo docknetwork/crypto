@@ -71,8 +71,10 @@ use ark_std::{
     vec::Vec,
     One, UniformRand,
 };
+use dock_crypto_utils::extend_some::ExtendSome;
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{misc::rand, serde_utils::*};
+use itertools::multiunzip;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -131,44 +133,49 @@ pub struct PoKOfSignatureG1Proof<E: Pairing> {
     pub sc_resp_2: SchnorrResponse<E::G1Affine>,
 }
 
+/// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
+/// By default, a message is blinded with random blinding.
+pub enum MessageOrBlinding<'a, P: PrimeField> {
+    /// Message will be blinded using random blinding.
+    BlindMessageRandomly(&'a P),
+    /// Message will be revealed, and thus won't be included in PoK.
+    RevealMessage(&'a P),
+    /// Message will be blinded using the supplied blinding.
+    BlindMessageWithConcreteBlinding { message: &'a P, blinding: P },
+}
+
 impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     /// Initiate the protocol, i.e. pre-challenge phase. This will generate the randomized signature and execute
-    /// the commit-to-randomness step (Step 1) of both Schnorr protocols. Accepts the indices of the
-    /// multi-message which are revealed to the verifier and thus their knowledge is not proven.
-    /// Accepts blindings (randomness) to be used for any messages in the multi-message. This is useful
-    /// when some messages need to be proven to be the same as they will generate the same response (step 3 in
-    /// Schnorr protocol). If extra blindings are passed, or passed for revealed messages, they are ignored.
-    /// eg. If the multi-message is `[m_0, m_1, m_2, m_3, m_4]` and the user provides blindings for messages
-    /// `m_0` and `m_2` and revealing messages `m_1`, `m_3` and `m_4`, `blindings` is `(0 -> m_0), (2 -> m_2)`
-    /// and `revealed_msg_indices` is `(1 -> m_1), (3 -> m_3), (4 -> m_4)`
-    pub fn init<R: RngCore>(
+    /// the commit-to-randomness step (Step 1) of both Schnorr protocols.
+    /// Accepts an iterator of messages. Each message can be either randomly blinded, revealed, or blinded using supplied blinding.
+    pub fn init<'a, MBI, R: RngCore>(
         rng: &mut R,
         signature: &SignatureG1<E>,
         params: &SignatureParamsG1<E>,
-        messages: &[E::ScalarField],
-        mut blindings: BTreeMap<usize, E::ScalarField>,
-        revealed_msg_indices: BTreeSet<usize>,
-    ) -> Result<Self, BBSPlusError> {
+        messages_and_blindings: MBI,
+    ) -> Result<Self, BBSPlusError>
+    where
+        MBI: IntoIterator<Item = MessageOrBlinding<'a, E::ScalarField>>,
+    {
+        let (messages, ExtendSome::<Vec<_>>(indexed_blindings)): (Vec<_>, _) =
+            messages_and_blindings
+                .into_iter()
+                .enumerate()
+                .map(|(idx, msg_or_blinding)| match msg_or_blinding {
+                    MessageOrBlinding::BlindMessageRandomly(message) => {
+                        (message, (idx, rand(rng)).into())
+                    }
+                    MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding } => {
+                        (message, (idx, blinding).into())
+                    }
+                    MessageOrBlinding::RevealMessage(message) => (message, None),
+                })
+                .unzip();
         if messages.len() != params.supported_message_count() {
-            return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
+            Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
                 messages.len(),
                 params.supported_message_count(),
-            ));
-        }
-
-        // No message index should be >= max messages
-        for idx in &revealed_msg_indices {
-            if *idx >= messages.len() {
-                return Err(BBSPlusError::InvalidMessageIdx(*idx));
-            }
-        }
-
-        // Generate any blindings that are not explicitly passed. At the end of the loop, we should have
-        // a blinding for every message whose knowledge is to be proven
-        for i in 0..messages.len() {
-            if !revealed_msg_indices.contains(&i) && !blindings.contains_key(&i) {
-                blindings.insert(i, E::ScalarField::rand(rng));
-            }
+            ))?
         }
 
         let r1 = E::ScalarField::rand(rng);
@@ -176,13 +183,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let r3 = r1.inverse().ok_or(BBSPlusError::CannotInvert0)?;
 
         // b = (e+x) * A = g1 + h_0*s + sum(h_i*m_i) for all i in I
-        let b = params.b(
-            messages
-                .iter()
-                .enumerate()
-                .collect::<BTreeMap<usize, &E::ScalarField>>(),
-            &signature.s,
-        )?;
+        let b = params.b(messages.iter().enumerate(), &signature.s)?;
 
         // A' = A * r1
         let A_prime = signature.A.mul_bigint(r1.into_bigint());
@@ -224,31 +225,23 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         // Knowledge of all unrevealed messages `m_j` need to be proven in addition to knowledge of `-r3` and `s'`. Thus
         // all `m_j`, `-r3` and `s'` are the witnesses, while all `h_j`, `d`, `h_0` and `-g1 + \sum_{i \in D}(h_i*{-m_i})` is the instance.
 
-        let mut bases_2 = Vec::with_capacity(2 + blindings.len());
-        let mut randomness_2 = Vec::with_capacity(2 + blindings.len());
-        let mut wits_2 = Vec::with_capacity(2 + blindings.len());
-        bases_2.push(d_affine);
-        randomness_2.push(E::ScalarField::rand(rng));
-        wits_2.push(-r3);
-        bases_2.push(h_0);
-        randomness_2.push(E::ScalarField::rand(rng));
-        wits_2.push(s_prime);
+        let h_blinding_message = indexed_blindings
+            .into_iter()
+            .map(|(idx, blinding)| (params.h[idx], blinding, messages[idx]));
 
-        // Capture all unrevealed messages `m_j` and corresponding `h_j`
-        for i in 0..messages.len() {
-            if !revealed_msg_indices.contains(&i) {
-                bases_2.push(params.h[i]);
-                randomness_2.push(blindings.remove(&i).unwrap());
-                wits_2.push(messages[i]);
-            }
-        }
+        let (bases_2, randomness_2, wits_2): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(
+            [(d_affine, rand(rng), -r3), (h_0, rand(rng), s_prime)]
+                .into_iter()
+                .chain(h_blinding_message),
+        );
 
         // Commit to randomness, i.e. `bases_2[0]*randomness_2[0] + bases_2[1]*randomness_2[1] + .... bases_2[j]*randomness_2[j]`
         let sc_comm_2 = SchnorrCommitment::new(&bases_2, randomness_2);
+
         Ok(Self {
             A_prime: A_prime_affine,
             A_bar: A_bar.into_affine(),
-            d: bases_2.remove(0),
+            d: bases_2[0],
             sc_comm_1,
             sc_wits_1: wits_1,
             sc_comm_2,
@@ -588,9 +581,13 @@ mod tests {
             &mut rng,
             &sig,
             &params,
-            messages.as_slice(),
-            BTreeMap::new(),
-            revealed_indices.clone(),
+            messages.iter().enumerate().map(|(idx, msg)| {
+                if revealed_indices.contains(&idx) {
+                    MessageOrBlinding::RevealMessage(msg)
+                } else {
+                    MessageOrBlinding::BlindMessageRandomly(msg)
+                }
+            }),
         )
         .unwrap();
         proof_create_duration += start.elapsed();
@@ -720,18 +717,32 @@ mod tests {
             &mut rng,
             &sig_1,
             &params_1,
-            &messages_1,
-            blindings_1,
-            BTreeSet::new(),
+            messages_1.iter().enumerate().map(|(idx, message)| {
+                if let Some(blinding) = blindings_1.remove(&idx) {
+                    MessageOrBlinding::BlindMessageWithConcreteBlinding {
+                        message,
+                        blinding: blinding,
+                    }
+                } else {
+                    MessageOrBlinding::BlindMessageRandomly(message)
+                }
+            }),
         )
         .unwrap();
         let pok_2 = PoKOfSignatureG1Protocol::init(
             &mut rng,
             &sig_2,
             &params_2,
-            &messages_2,
-            blindings_2,
-            BTreeSet::new(),
+            messages_2.iter().enumerate().map(|(idx, message)| {
+                if let Some(blinding) = blindings_2.remove(&idx) {
+                    MessageOrBlinding::BlindMessageWithConcreteBlinding {
+                        message,
+                        blinding: blinding,
+                    }
+                } else {
+                    MessageOrBlinding::BlindMessageRandomly(message)
+                }
+            }),
         )
         .unwrap();
 
@@ -802,9 +813,13 @@ mod tests {
             &mut rng,
             &sig,
             &params,
-            messages.as_slice(),
-            BTreeMap::new(),
-            revealed_indices_1.clone(),
+            messages.iter().enumerate().map(|(idx, msg)| {
+                if revealed_indices_1.contains(&idx) {
+                    MessageOrBlinding::RevealMessage(msg)
+                } else {
+                    MessageOrBlinding::BlindMessageRandomly(msg)
+                }
+            }),
         )
         .unwrap();
         let proof_1 = pok_1.gen_proof(&challenge).unwrap();
@@ -826,9 +841,13 @@ mod tests {
             &mut rng,
             &sig,
             &params,
-            messages.as_slice(),
-            BTreeMap::new(),
-            revealed_indices_2.clone(),
+            messages.iter().enumerate().map(|(idx, msg)| {
+                if revealed_indices_2.contains(&idx) {
+                    MessageOrBlinding::RevealMessage(msg)
+                } else {
+                    MessageOrBlinding::BlindMessageRandomly(msg)
+                }
+            }),
         )
         .unwrap();
         let proof_2 = pok_2.gen_proof(&challenge).unwrap();
@@ -871,9 +890,13 @@ mod tests {
             &mut rng,
             &sig,
             &params,
-            messages.as_slice(),
-            BTreeMap::new(),
-            revealed_indices_3.clone(),
+            messages.iter().enumerate().map(|(idx, msg)| {
+                if revealed_indices_3.contains(&idx) {
+                    MessageOrBlinding::RevealMessage(msg)
+                } else {
+                    MessageOrBlinding::BlindMessageRandomly(msg)
+                }
+            }),
         )
         .unwrap();
         let proof_3 = pok_3.gen_proof(&challenge).unwrap();
@@ -920,9 +943,13 @@ mod tests {
                 &mut rng,
                 &sig,
                 &params,
-                messages.as_slice(),
-                BTreeMap::new(),
-                revealed_indices.clone(),
+                messages.iter().enumerate().map(|(idx, msg)| {
+                    if revealed_indices.contains(&idx) {
+                        MessageOrBlinding::RevealMessage(msg)
+                    } else {
+                        MessageOrBlinding::BlindMessageRandomly(msg)
+                    }
+                }),
             )
             .unwrap();
             let proof = pok.gen_proof(&challenge).unwrap();
@@ -978,9 +1005,7 @@ mod tests {
                 &mut rng,
                 &sigs[i],
                 &params,
-                &msgs[i],
-                BTreeMap::new(),
-                BTreeSet::new(),
+                msgs[i].iter().map(MessageOrBlinding::BlindMessageRandomly),
             )
             .unwrap();
             pok.challenge_contribution(&BTreeMap::new(), &params, &mut chal_bytes_prover)

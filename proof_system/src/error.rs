@@ -19,6 +19,8 @@ pub enum ProofSystemError {
     ProofIncompatibleWithSaverProtocol,
     ProofIncompatibleWithBoundCheckProtocol,
     BBSPlusProtocolMessageAbsent(usize, usize),
+    BBSProtocolInvalidBlindingIndex(usize),
+    BBSProtocolInvalidMessageIndex(usize),
     PSProtocolInvalidBlindingIndex(usize),
     PSProtocolInvalidMessageIndex(usize),
     SubProtocolNotReadyToGenerateChallenge(usize),
