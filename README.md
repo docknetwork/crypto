@@ -13,6 +13,7 @@ Library providing privacy enhancing cryptographic primitives.
 3. [Dynamic accumulators, both positive and universal](./vb_accumulator). Based on the paper [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
 4. [Composite proof system](./proof_system) that combines above primitives for use cases like 
    - prove knowledge of a BBS+ signature and the corresponding messages
+   - prove knowledge of a modified PS signature and the corresponding messages
    - equality of signed messages (from same or different signatures) in zero knowledge
    - the (non)membership of a certain signed message(s)in the accumulator
    - numeric bounds (min, max) on the messages can be proved in zero-knowledge 
@@ -21,6 +22,8 @@ Library providing privacy enhancing cryptographic primitives.
 5. [Verifiable encryption](./saver) using [SAVER](https://eprint.iacr.org/2019/1270).
 6. [Compression and amortization of Sigma protocols](./compressed_sigma). This is PoC implementation.
 7. [Secret sharing schemes and DKG](./secret_sharing_and_dkg). Implements verifiable secret sharing schemes and DKG from Gennaro and FROST.
+8. [Cocount and PS signatures](./coconut/). Based on the paper [Security Analysis of Coconut, an Attribute-Based Credential Scheme with Threshold Issuance](https://eprint.iacr.org/2022/011)
+9. [LegoGroth16](./legogroth16/). 
 
 ## Composite proof system
 

@@ -1,0 +1,61 @@
+[package]
+name = "legogroth16"
+version = "0.6.0"
+authors = [ "arkworks contributors", "Dock.io" ]
+description = "An implementation of the LegoGroth16, the Legosnark variant of Groth16 zkSNARK proof system"
+repository.workspace = true
+keywords = [ "zero-knowledge", "SNARK", "LegoSNARK", "LegoGroth16", "Circom" ]
+categories = [ "cryptography" ]
+include = ["Cargo.toml", "src", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
+license = "MIT/Apache-2.0"
+edition.workspace = true
+
+################################# Dependencies ################################
+
+[dependencies]
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-serialize.workspace = true
+ark-poly.workspace = true
+ark-std.workspace = true
+ark-relations.workspace = true
+ark-r1cs-std = { workspace = true, optional = true }
+tracing = { version = "0.1", default-features = false, features = [ "attributes" ], optional = true }
+derivative = { version = "2.0", features = ["use_core"], optional = true }
+rayon = { workspace = true, optional = true }
+wasmer = { version = "2.3.0", optional = true, default-features = false }
+fnv = { version = "1.0.3", default-features = false, optional = true }
+num-bigint = { version = "0.4", default-features = false, optional = true }
+log = "0.4"
+ark-groth16 = { workspace = true, optional = true }
+ark-snark = { version = "^0.4.0", default-features = false, optional = true }
+dock_crypto_utils = { version = "0.9.0", default-features = false }
+
+[dev-dependencies]
+csv = { version = "1" }
+ark-bn254 = { version = "^0.4.0", default-features = false, features = ["curve"] }
+ark-bls12-381 = { version = "^0.4.0", default-features = false, features = ["curve"] }
+ark-bls12-377 = { version = "^0.4.0", default-features = false, features = ["curve"] }
+ark-cp6-782 = { version = "^0.4.0", default-features = false }
+ark-mnt4-298 = { version = "^0.4.0", default-features = false, features = ["r1cs", "curve"] }
+ark-mnt6-298 = { version = "^0.4.0", default-features = false, features = ["r1cs"] }
+ark-mnt4-753 = { version = "^0.4.0", default-features = false, features = ["r1cs", "curve"] }
+ark-mnt6-753 = { version = "^0.4.0", default-features = false, features = ["r1cs"] }
+tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
+tracing-subscriber = { version = "0.2" }
+hex-literal = "0.2.1"
+serde_json = "1.0.64"
+
+
+[profile.release]
+lto = true
+
+[features]
+default = ["parallel", "circom", "aggregation"]
+std = ["ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-relations/std", "ark-std/std", "wasmer-sys", "ark-groth16/std", "dock_crypto_utils/std" ]
+parallel = ["std", "ark-ff/parallel", "ark-poly/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "ark-groth16/parallel", "dock_crypto_utils/parallel"]
+print-trace = [ "ark-std/print-trace" ]
+circom = ["wasmer", "fnv", "num-bigint"]
+aggregation = ["ark-groth16", "ark-snark"]
+wasmer-js = ["wasmer/js-default"]
+wasmer-sys = ["wasmer/sys-default"]

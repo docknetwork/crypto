@@ -12,7 +12,8 @@ members = [
     "benches",
     "test_utils",
     "delegatable_credentials",
-    "secret_sharing_and_dkg"
+    "secret_sharing_and_dkg",
+    "legogroth16"
 ]
 resolver = "2"
 
@@ -28,6 +29,9 @@ ark-ec = { version = "^0.4.1", default-features = false }
 ark-std = { version = "^0.4.0", default-features = false}
 ark-poly = { version = "^0.4.1", default-features = false }
 ark-serialize = { version = "^0.4.1", default-features = false, features = [ "derive" ] }
+ark-relations = { version = "^0.4.0", default-features = false }
+ark-r1cs-std = { version = "^0.4.0", default-features = false }
+ark-groth16 = { version = "^0.4.0", default-features = false }
 rayon = { version = "1" }
 digest = { version = "0.10", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
