@@ -719,10 +719,7 @@ mod tests {
             &params_1,
             messages_1.iter().enumerate().map(|(idx, message)| {
                 if let Some(blinding) = blindings_1.remove(&idx) {
-                    MessageOrBlinding::BlindMessageWithConcreteBlinding {
-                        message,
-                        blinding: blinding,
-                    }
+                    MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
                 } else {
                     MessageOrBlinding::BlindMessageRandomly(message)
                 }
@@ -735,10 +732,7 @@ mod tests {
             &params_2,
             messages_2.iter().enumerate().map(|(idx, message)| {
                 if let Some(blinding) = blindings_2.remove(&idx) {
-                    MessageOrBlinding::BlindMessageWithConcreteBlinding {
-                        message,
-                        blinding: blinding,
-                    }
+                    MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
                 } else {
                     MessageOrBlinding::BlindMessageRandomly(message)
                 }
