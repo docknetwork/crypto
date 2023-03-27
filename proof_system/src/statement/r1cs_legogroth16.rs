@@ -6,9 +6,7 @@ pub use legogroth16::{circom::R1CS, PreparedVerifyingKey, ProvingKey, VerifyingK
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::error::ProofSystemError;
-use crate::setup_params::SetupParams;
-use crate::statement::Statement;
+use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
 
 #[serde_as]
 #[derive(

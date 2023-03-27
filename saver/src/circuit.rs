@@ -1,8 +1,10 @@
 use crate::utils::chunks_count;
 use ark_ff::PrimeField;
-use ark_r1cs_std::fields::fp::FpVar;
-use ark_r1cs_std::prelude::{AllocVar, AllocationMode, Boolean, EqGadget};
-use ark_r1cs_std::ToBitsGadget;
+use ark_r1cs_std::{
+    fields::fp::FpVar,
+    prelude::{AllocVar, AllocationMode, Boolean, EqGadget},
+    ToBitsGadget,
+};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::vec::Vec;
 

@@ -7,12 +7,17 @@ use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::aggregation::error::AggregationError;
-use crate::aggregation::groth16::verifier::verify_tipp_mipp;
-use crate::aggregation::groth16::{aggregate_proofs as g16_aggregate_proofs, AggregateProof};
-use crate::aggregation::srs::{PreparedProverSRS, VerifierSRS};
-use crate::aggregation::utils::aggregate_public_inputs;
-use crate::{PreparedVerifyingKey, Proof as LegoProof};
+use crate::{
+    aggregation::{
+        error::AggregationError,
+        groth16::{
+            aggregate_proofs as g16_aggregate_proofs, verifier::verify_tipp_mipp, AggregateProof,
+        },
+        srs::{PreparedProverSRS, VerifierSRS},
+        utils::aggregate_public_inputs,
+    },
+    PreparedVerifyingKey, Proof as LegoProof,
+};
 use dock_crypto_utils::{
     ff::{powers, sum_of_powers},
     transcript::Transcript,

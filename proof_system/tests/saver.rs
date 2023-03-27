@@ -1,31 +1,38 @@
 use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::{BTreeMap, BTreeSet};
-use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    rand::{prelude::StdRng, SeedableRng},
+    UniformRand,
+};
 use blake2::Blake2b512;
-use proof_system::prelude::{generate_snark_srs_bound_check, ProverConfig, VerifierConfig};
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
+use proof_system::{
+    prelude::{
+        generate_snark_srs_bound_check, EqualWitnesses, MetaStatements, ProofSpec, ProverConfig,
+        VerifierConfig, Witness, WitnessRef, Witnesses,
+    },
+    prover::{OldLegoGroth16Proof, OldSaverProof},
+    setup_params::SetupParams,
+    statement::{
+        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bound_check_legogroth16::{
+            BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
+            BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt,
+        },
+        saver::{SaverProver as SaverProverStmt, SaverVerifier as SaverVerifierStmt},
+        Statements,
+    },
+    witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
-use proof_system::prover::{OldLegoGroth16Proof, OldSaverProof};
-use proof_system::setup_params::SetupParams;
-use proof_system::statement::{
-    bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
-    bound_check_legogroth16::BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
-    bound_check_legogroth16::BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt,
-    saver::SaverProver as SaverProverStmt, saver::SaverVerifier as SaverVerifierStmt, Statements,
-};
-use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
-use saver::keygen::{DecryptionKey, EncryptionKey, PreparedDecryptionKey, SecretKey};
-use saver::prelude::VerifyingKey;
-use saver::saver_groth16::ProvingKey;
-use saver::setup::{
-    setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens,
+use saver::{
+    keygen::{DecryptionKey, EncryptionKey, PreparedDecryptionKey, SecretKey},
+    prelude::VerifyingKey,
+    saver_groth16::ProvingKey,
+    setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens},
 };
 use std::time::Instant;
 
-use test_utils::bbs_plus::*;
-use test_utils::{test_serialization, Fr, ProofG1};
+use test_utils::{bbs_plus::*, test_serialization, Fr, ProofG1};
 
 pub fn decrypt_and_verify(
     proof: &ProofG1,

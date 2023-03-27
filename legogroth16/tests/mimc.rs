@@ -27,10 +27,9 @@ use ark_relations::{
 };
 
 use ark_std::rand::{rngs::StdRng, SeedableRng};
-use legogroth16::prover::verify_commitments;
 use legogroth16::{
-    create_random_proof, generate_random_parameters, rerandomize_proof, rerandomize_proof_1,
-    verify_proof, verify_witness_commitment,
+    create_random_proof, generate_random_parameters, prover::verify_commitments, rerandomize_proof,
+    rerandomize_proof_1, verify_proof, verify_witness_commitment,
 };
 
 const MIMC_ROUNDS: usize = 322;

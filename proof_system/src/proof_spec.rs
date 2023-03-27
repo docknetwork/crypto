@@ -1,8 +1,10 @@
-use crate::derived_params::{DerivedParamsTracker, StatementDerivedParams};
-use crate::error::ProofSystemError;
-use crate::meta_statement::{MetaStatement, MetaStatements};
-use crate::setup_params::SetupParams;
-use crate::statement::{Statement, Statements};
+use crate::{
+    derived_params::{DerivedParamsTracker, StatementDerivedParams},
+    error::ProofSystemError,
+    meta_statement::{MetaStatement, MetaStatements},
+    setup_params::SetupParams,
+    statement::{Statement, Statements},
+};
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{

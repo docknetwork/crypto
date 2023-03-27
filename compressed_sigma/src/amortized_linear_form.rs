@@ -3,16 +3,17 @@
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{ops::Add, rand::RngCore};
-use ark_std::{vec::Vec, UniformRand};
+use ark_std::{ops::Add, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 
 use dock_crypto_utils::ff::inner_product;
 
-use crate::compressed_linear_form;
-use crate::error::CompSigmaError;
-use crate::transforms::LinearForm;
-use crate::utils::{amortized_response, get_n_powers};
+use crate::{
+    compressed_linear_form,
+    error::CompSigmaError,
+    transforms::LinearForm,
+    utils::{amortized_response, get_n_powers},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineRepr> {

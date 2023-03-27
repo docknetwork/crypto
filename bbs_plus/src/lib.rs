@@ -24,10 +24,12 @@ pub mod setup;
 pub mod signature;
 
 pub mod prelude {
-    pub use crate::error::BBSPlusError;
-    pub use crate::proof::{PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol};
-    pub use crate::setup::*;
-    pub use crate::signature::{SignatureG1, SignatureG2};
+    pub use crate::{
+        error::BBSPlusError,
+        proof::{PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol},
+        setup::*,
+        signature::{SignatureG1, SignatureG2},
+    };
 }
 
 #[cfg(test)]

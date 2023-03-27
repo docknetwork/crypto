@@ -1,15 +1,18 @@
 //! Root and delegated credential issuance from Fig. 3 of the paper
 
-use crate::error::DelegationError;
-use crate::msbm::keys::{
-    PreparedRootIssuerPublicKey, RootIssuerSecretKey, UpdateKey, UserPublicKey, UserSecretKey,
+use crate::{
+    error::DelegationError,
+    msbm::{
+        keys::{
+            PreparedRootIssuerPublicKey, RootIssuerSecretKey, UpdateKey, UserPublicKey,
+            UserSecretKey,
+        },
+        sps_eq_uc_sig::{RandCommitmentProof, Signature},
+    },
+    set_commitment::{SetCommitment, SetCommitmentOpening, SetCommitmentSRS},
 };
-use crate::msbm::sps_eq_uc_sig::{RandCommitmentProof, Signature};
-use crate::set_commitment::{SetCommitment, SetCommitmentOpening, SetCommitmentSRS};
 use ark_ec::pairing::Pairing;
-use ark_std::rand::RngCore;
-use ark_std::vec::Vec;
-use ark_std::UniformRand;
+use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 
 /// Credential issued by a root or delegated issuer when it knows the randomness for set commitments
 /// of attributes
@@ -488,8 +491,10 @@ impl<E: Pairing> CredentialWithoutOpenings<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::msbm::keys::{RootIssuerPublicKey, UserSecretKey};
-    use crate::msbm::sps_eq_uc_sig::RandCommitmentProtocol;
+    use crate::msbm::{
+        keys::{RootIssuerPublicKey, UserSecretKey},
+        sps_eq_uc_sig::RandCommitmentProtocol,
+    };
     use ark_bls12_381::Bls12_381;
     use ark_ec::{AffineRepr, CurveGroup};
     use ark_ff::PrimeField;

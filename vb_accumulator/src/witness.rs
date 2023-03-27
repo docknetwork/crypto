@@ -99,8 +99,7 @@
 //! ```
 
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::fields::Field;
-use ark_ff::{batch_inversion, One, PrimeField};
+use ark_ff::{batch_inversion, fields::Field, One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, fmt::Debug, vec::Vec};
 use dock_crypto_utils::serde_utils::*;
@@ -109,10 +108,11 @@ use zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::batch_utils::Omega;
-use crate::batch_utils::{Poly_d, Poly_v_A, Poly_v_AD, Poly_v_D};
-use crate::error::VBAccumulatorError;
-use crate::setup::SecretKey;
+use crate::{
+    batch_utils::{Omega, Poly_d, Poly_v_A, Poly_v_AD, Poly_v_D},
+    error::VBAccumulatorError,
+    setup::SecretKey,
+};
 
 use dock_crypto_utils::msm::WindowTable;
 #[cfg(feature = "parallel")]
@@ -799,14 +799,18 @@ mod tests {
 
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
-    use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
+    use ark_std::{
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
 
-    use crate::persistence::State;
-    use crate::positive::{tests::setup_positive_accum, Accumulator, PositiveAccumulator};
-    use crate::setup::{Keypair, SetupParams};
-    use crate::test_serialization;
-    use crate::universal::tests::setup_universal_accum;
-    use crate::universal::UniversalAccumulator;
+    use crate::{
+        persistence::State,
+        positive::{tests::setup_positive_accum, Accumulator, PositiveAccumulator},
+        setup::{Keypair, SetupParams},
+        test_serialization,
+        universal::{tests::setup_universal_accum, UniversalAccumulator},
+    };
 
     use super::*;
 

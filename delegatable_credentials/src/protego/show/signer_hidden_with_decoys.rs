@@ -3,22 +3,21 @@
 //! issuer whose public key is present belongs to a set, like a ring signature.
 //! This is what the paper calls Protego
 
-use crate::accumulator::NonMembershipWitness;
-use crate::auditor::AuditorPublicKey;
-use crate::error::DelegationError;
-use crate::one_of_n_proof::{OneOfNProof, OneOfNSrs};
-use crate::protego::issuance::Credential;
-use crate::protego::keys::{
-    IssuerPublicKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey,
+use crate::{
+    accumulator::NonMembershipWitness,
+    auditor::AuditorPublicKey,
+    error::DelegationError,
+    one_of_n_proof::{OneOfNProof, OneOfNSrs},
+    protego::{
+        issuance::Credential,
+        keys::{IssuerPublicKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey},
+        show::known_signer::{CredentialShow, CredentialShowProtocol},
+    },
+    set_commitment::{PreparedSetCommitmentSRS, SetCommitmentSRS},
 };
-use crate::protego::show::known_signer::{CredentialShow, CredentialShowProtocol};
-use crate::set_commitment::{PreparedSetCommitmentSRS, SetCommitmentSRS};
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::io::Write;
-use ark_std::rand::RngCore;
-use ark_std::vec::Vec;
-use ark_std::UniformRand;
+use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
 
 /// Contains the randomized issuer public key and a proof that this randomized key was created from a set
 /// containing some decoy public keys and the issuer public key.

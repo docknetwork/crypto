@@ -1,8 +1,6 @@
-use crate::error::ProofSystemError;
-use crate::statement_proof::StatementProof;
+use crate::{error::ProofSystemError, statement_proof::StatementProof};
 use ark_ec::{pairing::Pairing, AffineRepr};
-use ark_std::io::Write;
-use ark_std::rand::RngCore;
+use ark_std::{io::Write, rand::RngCore};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use vb_accumulator::prelude::{
     MembershipProof, MembershipProofProtocol, MembershipProvingKey, NonMembershipProof,

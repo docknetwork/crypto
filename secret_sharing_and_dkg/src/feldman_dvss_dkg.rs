@@ -1,12 +1,13 @@
 //! Feldman Distributed Verifiable secret sharing and distributed key generation.
 
-use crate::common::{lagrange_basis_at_0, CommitmentToCoefficients, ParticipantId, Share, ShareId};
-use crate::error::SSError;
+use crate::{
+    common::{lagrange_basis_at_0, CommitmentToCoefficients, ParticipantId, Share, ShareId},
+    error::SSError,
+};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::BTreeMap;
-use ark_std::{cfg_iter, vec, vec::Vec};
+use ark_std::{cfg_iter, collections::BTreeMap, vec, vec::Vec};
 use zeroize::Zeroize;
 
 #[cfg(feature = "parallel")]
@@ -168,13 +169,13 @@ pub fn reconstruct_threshold_public_key<G: AffineRepr>(
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::common::Shares;
-    use crate::feldman_vss::deal_random_secret;
+    use crate::{common::Shares, feldman_vss::deal_random_secret};
     use ark_bls12_381::Bls12_381;
-    use ark_ec::pairing::Pairing;
-    use ark_ec::Group;
-    use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use ark_std::UniformRand;
+    use ark_ec::{pairing::Pairing, Group};
+    use ark_std::{
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
 
     #[test]
     fn feldman_distributed_verifiable_secret_sharing() {

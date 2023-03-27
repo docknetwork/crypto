@@ -5,14 +5,15 @@
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::rand::RngCore;
-use ark_std::{cfg_iter, vec::Vec, UniformRand};
+use ark_std::{cfg_iter, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 
-use crate::compressed_homomorphism;
-use crate::error::CompSigmaError;
-use crate::transforms::Homomorphism;
-use crate::utils::{amortized_response, get_n_powers};
+use crate::{
+    compressed_homomorphism,
+    error::CompSigmaError,
+    transforms::Homomorphism,
+    utils::{amortized_response, get_n_powers},
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

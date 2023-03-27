@@ -148,9 +148,10 @@ pub mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
-    use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::SeedableRng;
-    use ark_std::UniformRand;
+    use ark_std::{
+        rand::{prelude::StdRng, SeedableRng},
+        UniformRand,
+    };
     use std::time::Instant;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;

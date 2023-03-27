@@ -89,8 +89,7 @@
 //! ```
 
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_ff::fields::Field;
-use ark_ff::{batch_inversion, PrimeField, Zero};
+use ark_ff::{batch_inversion, fields::Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, cfg_iter_mut, fmt::Debug, vec::Vec};
 use dock_crypto_utils::serde_utils::*;
@@ -99,11 +98,13 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
-use crate::batch_utils::Poly_d;
-use crate::error::VBAccumulatorError;
-use crate::persistence::State;
-use crate::setup::{PublicKey, SecretKey, SetupParams};
-use crate::witness::MembershipWitness;
+use crate::{
+    batch_utils::Poly_d,
+    error::VBAccumulatorError,
+    persistence::State,
+    setup::{PublicKey, SecretKey, SetupParams},
+    witness::MembershipWitness,
+};
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
 #[cfg(feature = "parallel")]
@@ -571,11 +572,12 @@ pub mod tests {
 
     use crate::batch_utils::Omega;
     use ark_bls12_381::Bls12_381;
-    use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
+    use ark_std::{
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
 
-    use crate::persistence::test::*;
-    use crate::setup::Keypair;
-    use crate::test_serialization;
+    use crate::{persistence::test::*, setup::Keypair, test_serialization};
 
     use super::*;
 

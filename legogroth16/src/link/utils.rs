@@ -1,12 +1,15 @@
 //! Utils for matrix and vector operations
 
-use ark_ec::scalar_mul::fixed_base::FixedBase;
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ec::{
+    pairing::Pairing, scalar_mul::fixed_base::FixedBase, AffineRepr, CurveGroup, VariableBaseMSM,
+};
 use ark_ff::{PrimeField, Zero};
-use ark_std::marker::PhantomData;
-use ark_std::ops::{AddAssign, Mul};
-use ark_std::vec;
-use ark_std::vec::Vec;
+use ark_std::{
+    marker::PhantomData,
+    ops::{AddAssign, Mul},
+    vec,
+    vec::Vec,
+};
 
 use crate::link::error::LinkError;
 

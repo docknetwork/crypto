@@ -1,6 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_std::rand::RngCore;
-use ark_std::UniformRand;
+use ark_std::{rand::RngCore, UniformRand};
 use bbs_plus::prelude::{KeypairG2, SignatureG1, SignatureParamsG1};
 
 use crate::Fr;

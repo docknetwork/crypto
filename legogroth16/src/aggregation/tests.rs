@@ -1,19 +1,22 @@
-use crate::aggregation::srs::PreparedProverSRS;
-use crate::aggregation::{groth16, legogroth16, srs};
-use crate::{create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof};
+use crate::{
+    aggregation::{groth16, legogroth16, srs, srs::PreparedProverSRS},
+    create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof,
+};
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::{Field, One};
-use ark_relations::lc;
-use ark_relations::r1cs::{
-    ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, SynthesisError, Variable,
+use ark_relations::{
+    lc,
+    r1cs::{
+        ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, SynthesisError, Variable,
+    },
 };
 use ark_snark::SNARK;
-use ark_std::rand::prelude::StdRng;
-use ark_std::rand::SeedableRng;
-use ark_std::UniformRand;
+use ark_std::{
+    rand::{prelude::StdRng, SeedableRng},
+    UniformRand,
+};
 use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
-use std::marker::PhantomData;
-use std::time::Instant;
+use std::{marker::PhantomData, time::Instant};
 
 pub struct Benchmark<F: Field> {
     num_constraints: usize,

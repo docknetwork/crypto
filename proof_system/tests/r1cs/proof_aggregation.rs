@@ -1,27 +1,31 @@
 use ark_bls12_381::Bls12_381;
 use ark_ff::{One, Zero};
-use ark_std::rand::rngs::StdRng;
-use ark_std::rand::SeedableRng;
-use ark_std::UniformRand;
+use ark_std::{
+    rand::{rngs::StdRng, SeedableRng},
+    UniformRand,
+};
 use blake2::Blake2b512;
-use legogroth16::aggregation::srs;
-use legogroth16::circom::{CircomCircuit, R1CS};
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, SnarkpackSRS,
-    Statements, VerifierConfig, Witness, WitnessRef, Witnesses,
+use legogroth16::{
+    aggregation::srs,
+    circom::{CircomCircuit, R1CS},
 };
-use proof_system::statement::{
-    bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
-    r1cs_legogroth16::{
-        R1CSCircomProver as R1CSProverStmt, R1CSCircomVerifier as R1CSVerifierStmt,
+use proof_system::{
+    prelude::{
+        EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, SnarkpackSRS,
+        Statements, VerifierConfig, Witness, WitnessRef, Witnesses,
     },
+    statement::{
+        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        r1cs_legogroth16::{
+            R1CSCircomProver as R1CSProverStmt, R1CSCircomVerifier as R1CSVerifierStmt,
+        },
+    },
+    witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
-use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::r1cs::abs_path;
-use test_utils::bbs_plus::*;
-use test_utils::{Fr, ProofG1};
+use test_utils::{bbs_plus::*, Fr, ProofG1};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {

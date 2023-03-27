@@ -1,32 +1,34 @@
 //! Credential show (presentation) protocol when the signer (public key) is disclosed to the verifier
 
-use crate::accumulator::{NonMembershipWitness, RandomizedNonMembershipWitness};
-use crate::auditor::{AuditorPublicKey, Ciphertext};
-use crate::error::DelegationError;
-use crate::mercurial_sig::Signature;
-use crate::protego::issuance::Credential;
-use crate::protego::keys::{
-    IssuerPublicKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey,
-};
-use crate::set_commitment::{
-    PreparedSetCommitmentSRS, SetCommitment, SetCommitmentSRS, SubsetWitness,
+use crate::{
+    accumulator::{NonMembershipWitness, RandomizedNonMembershipWitness},
+    auditor::{AuditorPublicKey, Ciphertext},
+    error::DelegationError,
+    mercurial_sig::Signature,
+    protego::{
+        issuance::Credential,
+        keys::{IssuerPublicKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey},
+    },
+    set_commitment::{PreparedSetCommitmentSRS, SetCommitment, SetCommitmentSRS, SubsetWitness},
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::io::Write;
-use ark_std::ops::{Add, Mul, Sub};
-use ark_std::rand::RngCore;
-use ark_std::UniformRand;
-use ark_std::{vec, vec::Vec};
+use ark_std::{
+    io::Write,
+    ops::{Add, Mul, Sub},
+    rand::RngCore,
+    vec,
+    vec::Vec,
+    UniformRand,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::error::SchnorrError;
-use schnorr_pok::impl_proof_of_knowledge_of_discrete_log;
+use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 
 impl_proof_of_knowledge_of_discrete_log!(
     AttributeCommitmentSchnorrProtocol,

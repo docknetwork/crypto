@@ -1,23 +1,27 @@
-use crate::error::ProofSystemError;
-use crate::proof::Proof;
-use crate::proof_spec::{ProofSpec, SnarkpackSRS};
-use crate::statement::Statement;
-use crate::statement_proof::StatementProof;
-use crate::sub_protocols::accumulator::{
-    AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol,
+use crate::{
+    error::ProofSystemError,
+    proof::Proof,
+    proof_spec::{ProofSpec, SnarkpackSRS},
+    statement::Statement,
+    statement_proof::StatementProof,
+    sub_protocols::{
+        accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol},
+        bbs_plus::PoKBBSSigG1SubProtocol,
+        bound_check_legogroth16::BoundCheckProtocol,
+        ps_signature::PSSignaturePoK,
+        r1cs_legogorth16::R1CSLegogroth16Protocol,
+        saver::SaverProtocol,
+        schnorr::SchnorrProtocol,
+    },
 };
-use crate::sub_protocols::bbs_plus::PoKBBSSigG1SubProtocol;
-use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
-use crate::sub_protocols::ps_signature::PSSignaturePoK;
-use crate::sub_protocols::r1cs_legogorth16::R1CSLegogroth16Protocol;
-use crate::sub_protocols::saver::SaverProtocol;
-use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec};
 use digest::Digest;
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
-use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
+use dock_crypto_utils::{
+    randomized_pairing_check::RandomizedPairingChecker,
+    transcript::{new_merlin_transcript, Transcript},
+};
 use saver::encryption::Ciphertext;
 
 /// Passed to the verifier during proof verification

@@ -13,8 +13,7 @@ use ark_std::{
 };
 use digest::Digest;
 
-use crate::error::CompSigmaError;
-use crate::transforms::LinearForm;
+use crate::{error::CompSigmaError, transforms::LinearForm};
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
 use crate::utils::{elements_to_element_products, get_g_multiples_for_verifying_compression};

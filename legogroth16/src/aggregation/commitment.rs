@@ -5,8 +5,10 @@ use ark_std::{cfg_iter, fmt::Debug, vec::Vec};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::aggregation::error::AggregationError;
-use crate::aggregation::key::{PreparedVKey, WKey};
+use crate::aggregation::{
+    error::AggregationError,
+    key::{PreparedVKey, WKey},
+};
 
 /// Commits to either a single vector of group G1 elements or 2 vectors, 1 of group G1 and 1 of group G2 elements.
 /// Both commitment outputs a pair of $F_q^k$ element.

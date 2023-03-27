@@ -10,9 +10,12 @@ use crate::error::ProofSystemError;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::io::Write;
 
-use crate::statement_proof::StatementProof;
-use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
-use crate::sub_protocols::r1cs_legogorth16::R1CSLegogroth16Protocol;
+use crate::{
+    statement_proof::StatementProof,
+    sub_protocols::{
+        bound_check_legogroth16::BoundCheckProtocol, r1cs_legogorth16::R1CSLegogroth16Protocol,
+    },
+};
 use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol};
 
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to

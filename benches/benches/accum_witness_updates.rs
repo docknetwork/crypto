@@ -5,12 +5,13 @@ use ark_std::{
     UniformRand,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::collections::HashSet;
-use std::time::Instant;
+use std::{collections::HashSet, time::Instant};
 use test_utils::accumulators::{setup_positive_accum, setup_universal_accum};
-use vb_accumulator::batch_utils::Omega;
-use vb_accumulator::positive::Accumulator;
-use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
+use vb_accumulator::{
+    batch_utils::Omega,
+    positive::Accumulator,
+    witness::{MembershipWitness, NonMembershipWitness},
+};
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 

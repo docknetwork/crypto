@@ -1,20 +1,19 @@
-use crate::error::ProofSystemError;
-use crate::statement_proof::{
-    R1CSLegoGroth16Proof, R1CSLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
+use crate::{
+    error::ProofSystemError,
+    statement_proof::{
+        R1CSLegoGroth16Proof, R1CSLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
+    },
+    sub_protocols::schnorr::SchnorrProtocol,
 };
-use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
-use ark_std::collections::BTreeMap;
-use ark_std::io::Write;
-use ark_std::rand::RngCore;
-use ark_std::UniformRand;
-use ark_std::{vec, vec::Vec};
+use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
-use legogroth16::circom::{CircomCircuit, WitnessCalculator, R1CS};
 use legogroth16::{
-    calculate_d, create_random_proof, rerandomize_proof_1, verify_proof, PreparedVerifyingKey,
-    Proof, ProvingKey, VerifyingKey,
+    calculate_d,
+    circom::{CircomCircuit, WitnessCalculator, R1CS},
+    create_random_proof, rerandomize_proof_1, verify_proof, PreparedVerifyingKey, Proof,
+    ProvingKey, VerifyingKey,
 };
 
 #[derive(Clone, Debug, PartialEq)]

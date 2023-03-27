@@ -1,14 +1,21 @@
 use crate::aggregation::key::PreparedVKey;
-use ark_ec::scalar_mul::fixed_base::FixedBase;
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
+use ark_ec::{pairing::Pairing, scalar_mul::fixed_base::FixedBase, AffineRepr, CurveGroup, Group};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
-use ark_std::ops::MulAssign;
-use ark_std::{format, rand::Rng, string::ToString, vec::Vec, One, UniformRand};
+use ark_std::{
+    format,
+    io::{Read, Write},
+    ops::MulAssign,
+    rand::Rng,
+    string::ToString,
+    vec::Vec,
+    One, UniformRand,
+};
 
-use super::error::AggregationError;
-use super::key::{VKey, WKey};
+use super::{
+    error::AggregationError,
+    key::{VKey, WKey},
+};
 
 /// Maximum size of the generic SRS constructed from Filecoin and Zcash power of
 /// taus.

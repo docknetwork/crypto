@@ -1,6 +1,8 @@
-use crate::circuit::BitsizeCheckCircuit;
-use crate::keygen::{keygen, DecryptionKey, EncryptionKey, SecretKey};
-use crate::saver_groth16;
+use crate::{
+    circuit::BitsizeCheckCircuit,
+    keygen::{keygen, DecryptionKey, EncryptionKey, SecretKey},
+    saver_groth16,
+};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec, UniformRand};
@@ -8,9 +10,9 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use dock_crypto_utils::concat_slices;
-use dock_crypto_utils::hashing_utils::affine_group_elem_from_try_and_incr;
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{
+    concat_slices, hashing_utils::affine_group_elem_from_try_and_incr, serde_utils::*,
+};
 
 /// Create "G" and "H" from the paper.
 #[serde_as]
@@ -118,11 +120,9 @@ pub fn setup_for_groth16<E: Pairing, R: RngCore>(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::saver_groth16::ProvingKey;
-    use crate::test_serialization;
+    use crate::{saver_groth16::ProvingKey, test_serialization};
     use ark_bls12_381::Bls12_381;
-    use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::SeedableRng;
+    use ark_std::rand::{prelude::StdRng, SeedableRng};
     use blake2::Blake2b512;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;

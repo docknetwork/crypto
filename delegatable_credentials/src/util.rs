@@ -1,10 +1,7 @@
-use ark_ec::pairing::Pairing;
-use ark_ec::CurveGroup;
-use ark_std::rand::RngCore;
-use ark_std::UniformRand;
+use ark_ec::{pairing::Pairing, CurveGroup};
+use ark_std::{rand::RngCore, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::concat_slices;
-use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
+use dock_crypto_utils::{concat_slices, hashing_utils::projective_group_elem_from_try_and_incr};
 
 pub type GeneratorPair<E> = (<E as Pairing>::G1Affine, <E as Pairing>::G2Affine);
 

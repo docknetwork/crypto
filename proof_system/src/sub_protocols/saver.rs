@@ -1,24 +1,34 @@
-use crate::error::ProofSystemError;
-use crate::statement_proof::{SaverProof, SaverProofWhenAggregatingSnarks, StatementProof};
-use crate::sub_protocols::schnorr::SchnorrProtocol;
-use ark_ec::pairing::PairingOutput;
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use crate::{
+    error::ProofSystemError,
+    statement_proof::{SaverProof, SaverProofWhenAggregatingSnarks, StatementProof},
+    sub_protocols::schnorr::SchnorrProtocol,
+};
+use ark_ec::{
+    pairing::{Pairing, PairingOutput},
+    AffineRepr, CurveGroup,
+};
 use ark_ff::{PrimeField, Zero};
 use ark_groth16::{PreparedVerifyingKey, VerifyingKey};
 use ark_serialize::CanonicalSerialize;
-use ark_std::rand::{Rng, RngCore};
-use ark_std::{collections::BTreeMap, io::Write, ops::Add, vec, vec::Vec, UniformRand};
-use dock_crypto_utils::ff::powers;
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
-use saver::commitment::ChunkedCommitment;
-use saver::encryption::{Ciphertext, Encryption};
-use saver::keygen::PreparedEncryptionKey;
-use saver::prelude::{
-    ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, SaverError,
+use ark_std::{
+    collections::BTreeMap,
+    io::Write,
+    ops::Add,
+    rand::{Rng, RngCore},
+    vec,
+    vec::Vec,
+    UniformRand,
 };
-use saver::saver_groth16::calculate_d;
-use saver::setup::PreparedEncryptionGens;
-use saver::utils::decompose;
+use dock_crypto_utils::{ff::powers, randomized_pairing_check::RandomizedPairingChecker};
+use saver::{
+    commitment::ChunkedCommitment,
+    encryption::{Ciphertext, Encryption},
+    keygen::PreparedEncryptionKey,
+    prelude::{ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, SaverError},
+    saver_groth16::calculate_d,
+    setup::PreparedEncryptionGens,
+    utils::decompose,
+};
 
 /// Apart from the SAVER protocol (encryption and snark proof), this also runs 3 Schnorr proof of knowledge protocols
 #[derive(Clone, Debug, PartialEq)]

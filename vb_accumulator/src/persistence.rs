@@ -41,8 +41,7 @@ pub trait UniversalAccumulatorState<'a, T: 'a>: State<T> {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use std::collections::HashSet;
-    use std::hash::Hash;
+    use std::{collections::HashSet, hash::Hash};
 
     // In-memory stores for testing.
 

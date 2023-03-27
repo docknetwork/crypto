@@ -1,11 +1,11 @@
-use crate::error::DelegationError;
-use crate::mercurial_sig::{PreparedPublicKey, PublicKey, SecretKey};
+use crate::{
+    error::DelegationError,
+    mercurial_sig::{PreparedPublicKey, PublicKey, SecretKey},
+};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::rand::RngCore;
-use ark_std::vec::Vec;
-use ark_std::UniformRand;
+use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 use digest::DynDigest;
 use zeroize::Zeroize;
 

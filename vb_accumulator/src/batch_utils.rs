@@ -6,8 +6,10 @@
 use crate::setup::SecretKey;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{batch_inversion, PrimeField, Zero};
-use ark_poly::polynomial::{univariate::DensePolynomial, DenseUVPolynomial};
-use ark_poly::Polynomial;
+use ark_poly::{
+    polynomial::{univariate::DensePolynomial, DenseUVPolynomial},
+    Polynomial,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     cfg_iter,
@@ -507,7 +509,10 @@ mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
     use ark_ff::One;
-    use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
+    use ark_std::{
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
     use std::time::Instant;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;

@@ -1,7 +1,9 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::io::{Read, Write};
-use ark_std::vec::Vec;
+use ark_std::{
+    io::{Read, Write},
+    vec::Vec,
+};
 use bbs_plus::prelude::PoKOfSignatureG1Proof;
 use coconut_crypto::SignaturePoK as PSSignaturePoK;
 use dock_crypto_utils::serde_utils::*;

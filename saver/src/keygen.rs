@@ -1,5 +1,7 @@
-use ark_ec::pairing::PairingOutput;
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
+use ark_ec::{
+    pairing::{Pairing, PairingOutput},
+    AffineRepr, CurveGroup, Group,
+};
 use ark_ff::{One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, rand::RngCore, vec::Vec, UniformRand};
@@ -10,12 +12,8 @@ use zeroize::Zeroize;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::error::SaverError;
-use crate::saver_groth16;
-use crate::setup::EncryptionGens;
-use crate::utils::chunks_count;
-use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
-use dock_crypto_utils::serde_utils::*;
+use crate::{error::SaverError, saver_groth16, setup::EncryptionGens, utils::chunks_count};
+use dock_crypto_utils::{msm::multiply_field_elems_with_same_group_elem, serde_utils::*};
 
 /// Used to decrypt
 #[serde_as]
@@ -321,8 +319,7 @@ pub(crate) mod tests {
 
     use crate::test_serialization;
     use ark_bls12_381::Bls12_381;
-    use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::SeedableRng;
+    use ark_std::rand::{prelude::StdRng, SeedableRng};
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]

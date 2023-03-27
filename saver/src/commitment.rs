@@ -1,5 +1,7 @@
-use crate::setup::ChunkedCommitmentGens;
-use crate::utils::{chunks_count, decompose};
+use crate::{
+    setup::ChunkedCommitmentGens,
+    utils::{chunks_count, decompose},
+};
 use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -7,8 +9,7 @@ use ark_std::{vec, vec::Vec};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{msm::multiply_field_elems_with_same_group_elem, serde_utils::*};
 
 /// Getting a commitment to the message as a single field element from commitment to its b-ary decomposition.
 ///
@@ -149,9 +150,10 @@ mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
 
-    use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::SeedableRng;
-    use ark_std::UniformRand;
+    use ark_std::{
+        rand::{prelude::StdRng, SeedableRng},
+        UniformRand,
+    };
 
     use std::time::Instant;
 

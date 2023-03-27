@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use itertools::Itertools;
 
-use crate::iter::PairValidator;
-
 /// Provided index is out of bounds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexIsOutOfBounds {
@@ -51,6 +49,88 @@ impl<I> InvalidPair<I> {
 impl<I> From<InvalidPair<I>> for (I, I) {
     fn from(InvalidPair(first, second): InvalidPair<I>) -> Self {
         (first, second)
+    }
+}
+
+/// Trait allowing to validate supplied pair.
+/// Prior to validation, each item must be mapped using `PairValidator::map`.
+pub trait PairValidator<I> {
+    /// Item to be used in validation.
+    type MappedItem;
+
+    /// Maps an item to prepare it for validation.
+    fn map(&self, item: &I) -> Self::MappedItem;
+
+    /// Validates given pair.
+    fn validate(&mut self, previous: &Self::MappedItem, current: &Self::MappedItem) -> bool;
+}
+
+impl<I, M, MapF, ValidateF> PairValidator<I> for (MapF, ValidateF)
+where
+    MapF: Fn(&I) -> M,
+    ValidateF: FnMut(&M, &M) -> bool,
+{
+    type MappedItem = M;
+
+    fn map(&self, item: &I) -> M {
+        self.0(item)
+    }
+
+    fn validate(&mut self, previous: &M, current: &M) -> bool {
+        self.1(previous, current)
+    }
+}
+
+impl<I: Clone, ValidateF> PairValidator<I> for ValidateF
+where
+    ValidateF: FnMut(&I, &I) -> bool,
+{
+    type MappedItem = I;
+
+    fn map(&self, item: &I) -> I {
+        item.clone()
+    }
+
+    fn validate(&mut self, previous: &I, current: &I) -> bool {
+        (self)(previous, current)
+    }
+}
+
+/// Implements `PairValidator` which ensures that for each previous - current left items pairs satisfy provided function.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CheckLeft<F>(pub F);
+
+impl<First: Clone, Second, ValidateF> PairValidator<(First, Second)> for CheckLeft<ValidateF>
+where
+    ValidateF: FnMut(&First, &First) -> bool,
+{
+    type MappedItem = First;
+
+    fn map(&self, item: &(First, Second)) -> First {
+        item.0.clone()
+    }
+
+    fn validate(&mut self, previous: &First, current: &First) -> bool {
+        self.0(previous, current)
+    }
+}
+
+/// Implements `PairValidator` which ensures that for each previous - current right items pairs satisfy provided function.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CheckRight<F>(pub F);
+
+impl<First, Second: Clone, ValidateF> PairValidator<(First, Second)> for CheckRight<ValidateF>
+where
+    ValidateF: FnMut(&Second, &Second) -> bool,
+{
+    type MappedItem = Second;
+
+    fn map(&self, item: &(First, Second)) -> Second {
+        item.1.clone()
+    }
+
+    fn validate(&mut self, previous: &Second, current: &Second) -> bool {
+        self.0(previous, current)
     }
 }
 

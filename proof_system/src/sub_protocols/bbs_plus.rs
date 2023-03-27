@@ -1,17 +1,17 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
-use ark_std::rand::RngCore;
-use ark_std::{collections::BTreeMap, io::Write};
-use bbs_plus::prelude::{
-    PoKOfSignatureG1Proof, PreparedPublicKeyG2, PreparedSignatureParamsG1, PublicKeyG2,
-    SignatureParamsG1,
+use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
+use bbs_plus::{
+    prelude::{
+        PoKOfSignatureG1Proof, PreparedPublicKeyG2, PreparedSignatureParamsG1, PublicKeyG2,
+        SignatureParamsG1,
+    },
+    proof::{MessageOrBlinding, PoKOfSignatureG1Protocol},
 };
-use bbs_plus::proof::{MessageOrBlinding, PoKOfSignatureG1Protocol};
 use coconut_crypto::helpers::{check_seq_from, take_while_pairs_satisfy, CheckLeft};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use itertools::{EitherOrBoth, Itertools};
 
-use crate::error::ProofSystemError;
-use crate::statement_proof::StatementProof;
+use crate::{error::ProofSystemError, statement_proof::StatementProof};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PoKBBSSigG1SubProtocol<'a, E: Pairing> {

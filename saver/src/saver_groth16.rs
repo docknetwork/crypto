@@ -21,15 +21,15 @@ pub use ark_groth16::{
     prepare_verifying_key, Groth16, PreparedVerifyingKey, Proof, ProvingKey as Groth16ProvingKey,
     VerifyingKey,
 };
-use dock_crypto_utils::ff::{non_zero_random, powers, sum_of_powers};
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    ff::{non_zero_random, powers, sum_of_powers},
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 
 use crate::error::SaverError;
-use dock_crypto_utils::serde_utils::*;
-use dock_crypto_utils::transcript::Transcript;
+use dock_crypto_utils::{serde_utils::*, transcript::Transcript};
 
-use crate::keygen::EncryptionKey;
-use crate::setup::EncryptionGens;
+use crate::{keygen::EncryptionKey, setup::EncryptionGens};
 
 #[serde_as]
 #[derive(
@@ -275,14 +275,15 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng, T: Transcript>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuit::BitsizeCheckCircuit;
-    use crate::encryption::{tests::gen_messages, Encryption};
-    use crate::keygen::keygen;
-    use crate::setup::setup_for_groth16;
-    use crate::utils::chunks_count;
+    use crate::{
+        circuit::BitsizeCheckCircuit,
+        encryption::{tests::gen_messages, Encryption},
+        keygen::keygen,
+        setup::setup_for_groth16,
+        utils::chunks_count,
+    };
     use ark_bls12_381::Bls12_381;
-    use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::SeedableRng;
+    use ark_std::rand::{prelude::StdRng, SeedableRng};
     use dock_crypto_utils::transcript::new_merlin_transcript;
     use legogroth16::aggregation::srs;
     use std::time::Instant;

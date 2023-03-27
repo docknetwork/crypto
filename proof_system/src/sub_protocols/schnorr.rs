@@ -1,13 +1,15 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
-use ark_std::rand::RngCore;
-use ark_std::UniformRand;
-use ark_std::{cfg_iter_mut, collections::BTreeMap, io::Write, vec::Vec};
+use ark_std::{
+    cfg_iter_mut, collections::BTreeMap, io::Write, rand::RngCore, vec::Vec, UniformRand,
+};
 use schnorr_pok::{SchnorrChallengeContributor, SchnorrCommitment};
 use zeroize::Zeroize;
 
-use crate::error::ProofSystemError;
-use crate::statement_proof::{PedersenCommitmentProof, StatementProof};
+use crate::{
+    error::ProofSystemError,
+    statement_proof::{PedersenCommitmentProof, StatementProof},
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

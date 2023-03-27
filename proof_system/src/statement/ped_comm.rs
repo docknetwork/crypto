@@ -4,9 +4,7 @@ use ark_std::vec::Vec;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::error::ProofSystemError;
-use crate::setup_params::SetupParams;
-use crate::statement::Statement;
+use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
 use dock_crypto_utils::serde_utils::*;
 
 /// Proving knowledge of scalars `s_i` in Pedersen commitment `g_0 * s_0 + g_1 * s_1 + ... + g_{n-1} * s_{n-1} = C`

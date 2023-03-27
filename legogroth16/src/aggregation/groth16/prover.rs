@@ -1,23 +1,34 @@
-use ark_ec::pairing::PairingOutput;
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ec::{
+    pairing::{Pairing, PairingOutput},
+    AffineRepr, CurveGroup, VariableBaseMSM,
+};
 use ark_ff::{batch_inversion, Field, PrimeField};
-use ark_std::ops::{AddAssign, MulAssign};
-use ark_std::{cfg_iter, cfg_iter_mut, format, string::ToString, vec::Vec, Zero};
+use ark_std::{
+    cfg_iter, cfg_iter_mut, format,
+    ops::{AddAssign, MulAssign},
+    string::ToString,
+    vec::Vec,
+    Zero,
+};
 
 use ark_groth16::Proof;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::aggregation::commitment::PairCommitment;
-use crate::aggregation::error::AggregationError;
-use crate::aggregation::key::{PreparedVKey, VKey, WKey};
+use crate::aggregation::{
+    commitment::PairCommitment,
+    error::AggregationError,
+    key::{PreparedVKey, VKey, WKey},
+};
 
 use super::proof::{AggregateProof, GipaProof, TippMippProof};
-use crate::aggregation::srs::{PreparedProverSRS, ProverSRS};
-use crate::aggregation::utils::{
-    compress, inner_product_and_double_commitments, inner_product_and_single_commitments,
-    prove_commitments,
+use crate::aggregation::{
+    srs::{PreparedProverSRS, ProverSRS},
+    utils::{
+        compress, inner_product_and_double_commitments, inner_product_and_single_commitments,
+        prove_commitments,
+    },
 };
 use dock_crypto_utils::{ff::powers, transcript::Transcript};
 

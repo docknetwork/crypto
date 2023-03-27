@@ -2,16 +2,18 @@ use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
 use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::BTreeSet;
-use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
-use blake2::Blake2b512;
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, Witness, WitnessRef, Witnesses,
+use ark_std::{
+    collections::BTreeSet,
+    rand::{prelude::StdRng, SeedableRng},
+    UniformRand,
 };
-use proof_system::proof_spec::ProofSpec;
-use proof_system::setup_params::SetupParams;
-use proof_system::statement::ped_comm::PedersenCommitment as PedersenCommitmentStmt;
-use proof_system::statement::Statements;
+use blake2::Blake2b512;
+use proof_system::{
+    prelude::{EqualWitnesses, MetaStatement, MetaStatements, Witness, WitnessRef, Witnesses},
+    proof_spec::ProofSpec,
+    setup_params::SetupParams,
+    statement::{ped_comm::PedersenCommitment as PedersenCommitmentStmt, Statements},
+};
 
 use test_utils::{test_serialization, Fr, ProofG1};
 

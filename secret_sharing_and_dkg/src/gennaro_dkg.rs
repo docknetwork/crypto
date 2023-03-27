@@ -8,19 +8,16 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_poly::univariate::DensePolynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::BTreeMap;
-use ark_std::rand::RngCore;
-use ark_std::vec::Vec;
-use ark_std::UniformRand;
+use ark_std::{collections::BTreeMap, rand::RngCore, vec::Vec, UniformRand};
 
-use crate::common::{
-    CommitmentToCoefficients, ParticipantId, Share, ShareId, VerifiableShare, VerifiableShares,
+use crate::{
+    common::{
+        CommitmentToCoefficients, ParticipantId, Share, ShareId, VerifiableShare, VerifiableShares,
+    },
+    error::SSError,
+    feldman_vss, pedersen_dvss, pedersen_vss,
+    pedersen_vss::CommitmentKey,
 };
-use crate::error::SSError;
-use crate::feldman_vss;
-use crate::pedersen_dvss;
-use crate::pedersen_vss;
-use crate::pedersen_vss::CommitmentKey;
 
 /// In Phase 1, each participant runs Pedersen VSS
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]

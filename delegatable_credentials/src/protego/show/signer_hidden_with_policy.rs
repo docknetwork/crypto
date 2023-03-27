@@ -4,22 +4,21 @@
 //! was created by an issuer whose public key was signed by the verifier.
 //! This is what the paper calls Protego Duo
 
-use crate::accumulator::NonMembershipWitness;
-use crate::auditor::AuditorPublicKey;
-use crate::error::DelegationError;
-use crate::mercurial_sig::{PublicKey, PublicKeyG1, SecretKey, SignatureG2};
-use crate::protego::issuance::Credential;
-use crate::protego::keys::{
-    IssuerPublicKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey,
+use crate::{
+    accumulator::NonMembershipWitness,
+    auditor::AuditorPublicKey,
+    error::DelegationError,
+    mercurial_sig::{PublicKey, PublicKeyG1, SecretKey, SignatureG2},
+    protego::{
+        issuance::Credential,
+        keys::{IssuerPublicKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey},
+        show::known_signer::{CredentialShow, CredentialShowProtocol},
+    },
+    set_commitment::{PreparedSetCommitmentSRS, SetCommitmentSRS},
 };
-use crate::protego::show::known_signer::{CredentialShow, CredentialShowProtocol};
-use crate::set_commitment::{PreparedSetCommitmentSRS, SetCommitmentSRS};
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::io::Write;
-use ark_std::rand::RngCore;
-use ark_std::vec::Vec;
-use ark_std::UniformRand;
+use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
 use zeroize::Zeroize;
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize)]

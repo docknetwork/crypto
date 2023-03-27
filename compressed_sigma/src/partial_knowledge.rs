@@ -16,9 +16,7 @@ use ark_std::{
     UniformRand,
 };
 
-use crate::error::CompSigmaError;
-use crate::transforms::Homomorphism;
-use crate::utils::multiples_with_n_powers_of_i;
+use crate::{error::CompSigmaError, transforms::Homomorphism, utils::multiples_with_n_powers_of_i};
 
 use dock_crypto_utils::poly::multiply_many_polys;
 #[cfg(feature = "parallel")]

@@ -1,14 +1,16 @@
-use crate::circom::error::CircomError;
-use crate::circom::r1cs::{LC, R1CS};
-use crate::error::Error;
-use crate::{generate_random_parameters, ProvingKey};
+use crate::{
+    circom::{
+        error::CircomError,
+        r1cs::{LC, R1CS},
+    },
+    error::Error,
+    generate_random_parameters, ProvingKey,
+};
 use ark_ec::pairing::Pairing;
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, SynthesisError, Variable,
 };
-use ark_std::rand::RngCore;
-use ark_std::string::String;
-use ark_std::vec::Vec;
+use ark_std::{rand::RngCore, string::String, vec::Vec};
 
 use crate::circom::WitnessCalculator;
 
@@ -140,9 +142,10 @@ pub mod tests {
     use ark_bn254::Bn254;
     use ark_ff::One;
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::SeedableRng;
-    use ark_std::UniformRand;
+    use ark_std::{
+        rand::{prelude::StdRng, SeedableRng},
+        UniformRand,
+    };
 
     pub fn generate_params_and_test_circuit<E: Pairing>(
         r1cs_file_path: &str,

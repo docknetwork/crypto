@@ -170,18 +170,17 @@ mod serialization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
-    use ark_bls12_381::{fr::Fr, g1::G1Projective as G1Proj};
+    use ark_bls12_381::{fr::Fr, g1::G1Projective as G1Proj, Bls12_381};
     use ark_ec::{CurveGroup, VariableBaseMSM};
     use ark_std::{
         collections::BTreeMap,
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use test_utils::test_serialization;
     use test_utils::{
         accumulators::{setup_positive_accum, setup_universal_accum},
         bbs_plus::sig_setup,
+        test_serialization,
     };
     use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 

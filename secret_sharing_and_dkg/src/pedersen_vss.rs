@@ -11,23 +11,20 @@
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::univariate::DensePolynomial;
-use ark_std::ops::Add;
-use ark_std::rand::RngCore;
-use ark_std::{cfg_into_iter, vec::Vec, UniformRand};
+use ark_std::{cfg_into_iter, ops::Add, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
 
-use dock_crypto_utils::concat_slices;
-use dock_crypto_utils::ff::powers;
+use dock_crypto_utils::{concat_slices, ff::powers};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::common::{
-    CommitmentToCoefficients, Share, ShareId, Shares, VerifiableShare, VerifiableShares,
+use crate::{
+    common::{CommitmentToCoefficients, Share, ShareId, Shares, VerifiableShare, VerifiableShares},
+    error::SSError,
+    shamir_ss,
 };
-use crate::error::SSError;
-use crate::shamir_ss;
 
 pub struct CommitmentKey<G: AffineRepr> {
     pub g: G,

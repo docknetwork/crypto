@@ -1,7 +1,9 @@
 use ark_bls12_381::Bls12_381;
 use ark_std::rand::RngCore;
-use legogroth16::circom::{CircomCircuit, R1CS};
-use legogroth16::ProvingKey;
+use legogroth16::{
+    circom::{CircomCircuit, R1CS},
+    ProvingKey,
+};
 use std::path::PathBuf;
 
 pub mod bounded_sum;

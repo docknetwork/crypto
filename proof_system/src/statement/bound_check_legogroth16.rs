@@ -6,10 +6,10 @@ use serde_with::serde_as;
 
 pub use legogroth16::{PreparedVerifyingKey, ProvingKey, VerifyingKey};
 
-use crate::error::ProofSystemError;
-use crate::setup_params::SetupParams;
-use crate::statement::Statement;
-use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
+use crate::{
+    error::ProofSystemError, setup_params::SetupParams, statement::Statement,
+    sub_protocols::bound_check_legogroth16::BoundCheckProtocol,
+};
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 
 /// Proving knowledge of message that satisfies given bounds, i.e. `min <= message <= max` using LegoGroth16.

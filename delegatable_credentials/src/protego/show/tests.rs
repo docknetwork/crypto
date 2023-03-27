@@ -1,25 +1,32 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::pairing::Pairing;
-use ark_ec::CurveGroup;
-use ark_std::rand::{rngs::StdRng, SeedableRng};
-use ark_std::UniformRand;
+use ark_ec::{pairing::Pairing, CurveGroup};
+use ark_std::{
+    rand::{rngs::StdRng, SeedableRng},
+    UniformRand,
+};
 use blake2::Blake2b512;
 use std::time::Instant;
 
-use super::known_signer::CredentialShowProtocol;
-use super::signer_hidden_with_decoys::CredentialShowProtocolWithHiddenPublicKey;
-use crate::accumulator::{
-    Accumulator, NonMembershipWitness, PreparedPublicKey as PRpk, PublicKey as RPk,
-    SecretKey as RSk,
+use super::{
+    known_signer::CredentialShowProtocol,
+    signer_hidden_with_decoys::CredentialShowProtocolWithHiddenPublicKey,
 };
-use crate::one_of_n_proof::OneOfNSrs;
-use crate::protego::issuance::tests::{issuance_given_setup, setup};
-use crate::protego::keys::{IssuerPublicKey, IssuerSecretKey, PreparedIssuerPublicKey};
-use crate::protego::show::signer_hidden_with_policy::{
-    CredentialShowProtocolWithDelegationPolicy, DelegationPolicyPublicKey,
-    DelegationPolicySecretKey,
+use crate::{
+    accumulator::{
+        Accumulator, NonMembershipWitness, PreparedPublicKey as PRpk, PublicKey as RPk,
+        SecretKey as RSk,
+    },
+    one_of_n_proof::OneOfNSrs,
+    protego::{
+        issuance::tests::{issuance_given_setup, setup},
+        keys::{IssuerPublicKey, IssuerSecretKey, PreparedIssuerPublicKey},
+        show::signer_hidden_with_policy::{
+            CredentialShowProtocolWithDelegationPolicy, DelegationPolicyPublicKey,
+            DelegationPolicySecretKey,
+        },
+    },
+    set_commitment::{PreparedSetCommitmentSRS, SetCommitmentSRS},
 };
-use crate::set_commitment::{PreparedSetCommitmentSRS, SetCommitmentSRS};
 use schnorr_pok::compute_random_oracle_challenge;
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;

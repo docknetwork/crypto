@@ -5,8 +5,10 @@
 //! implementation is using `(x-a1)*(x-a2)*(x-a3)*..` for set members `a1, a2, ...` to reuse existing code
 
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
-use ark_ff::{Field, One, PrimeField, Zero};
+use ark_ff::{
+    field_hashers::{DefaultFieldHasher, HashToField},
+    Field, One, PrimeField, Zero,
+};
 use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Valid};
 use ark_std::{
@@ -22,13 +24,14 @@ use digest::{Digest, DynDigest};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::error::DelegationError;
-use crate::error::DelegationError::UnequalSizeOfSequence;
-use crate::util::{generator_pair, generator_pair_deterministic};
-use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
-use dock_crypto_utils::msm::WindowTable;
-use dock_crypto_utils::poly::poly_from_roots;
-use dock_crypto_utils::{ff::powers, serde_utils::*};
+use crate::{
+    error::{DelegationError, DelegationError::UnequalSizeOfSequence},
+    util::{generator_pair, generator_pair_deterministic},
+};
+use dock_crypto_utils::{
+    ff::powers, hashing_utils::field_elem_from_try_and_incr, msm::WindowTable,
+    poly::poly_from_roots, serde_utils::*,
+};
 
 // TODO: Makes sense to split this into P1 and P2 as prover does not need P2 vector and verifier does not need P1 vector
 /// KZG polynomial commitment SRS (Structured Reference String) used by the set commitment scheme
@@ -664,7 +667,10 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
-    use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
+    use ark_std::{
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
     use blake2::Blake2b512;
     use std::time::Instant;
 

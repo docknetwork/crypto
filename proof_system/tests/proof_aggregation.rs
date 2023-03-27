@@ -1,25 +1,31 @@
 use ark_bls12_381::{Bls12_381, G1Affine};
-use ark_std::collections::{BTreeMap, BTreeSet};
-use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    rand::{prelude::StdRng, SeedableRng},
+};
 use blake2::Blake2b512;
 use legogroth16::aggregation::srs;
-use proof_system::prelude::{generate_snark_srs_bound_check, SnarkpackSRS, VerifierConfig};
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses,
+use proof_system::{
+    prelude::{
+        generate_snark_srs_bound_check, EqualWitnesses, MetaStatements, ProofSpec, SnarkpackSRS,
+        VerifierConfig, Witness, WitnessRef, Witnesses,
+    },
+    setup_params::SetupParams,
+    statement::{
+        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bound_check_legogroth16::{
+            BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
+            BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt,
+        },
+        saver::{SaverProver as SaverProverStmt, SaverVerifier as SaverVerifierStmt},
+        Statements,
+    },
+    witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
-use proof_system::setup_params::SetupParams;
-use proof_system::statement::{
-    bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
-    bound_check_legogroth16::BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
-    bound_check_legogroth16::BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt,
-    saver::SaverProver as SaverProverStmt, saver::SaverVerifier as SaverVerifierStmt, Statements,
-};
-use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 use saver::setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens};
 use std::time::Instant;
 
-use test_utils::bbs_plus::*;
-use test_utils::{Fr, ProofG1};
+use test_utils::{bbs_plus::*, Fr, ProofG1};
 
 #[test]
 fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {

@@ -8,9 +8,9 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::vec::Vec;
 use bbs_plus::prelude::{PublicKeyG2 as BBSPublicKeyG2, SignatureParamsG1 as BBSSignatureParamsG1};
-use legogroth16::circom::R1CS;
-use legogroth16::data_structures::{
-    ProvingKey as LegoSnarkProvingKey, VerifyingKey as LegoSnarkVerifyingKey,
+use legogroth16::{
+    circom::R1CS,
+    data_structures::{ProvingKey as LegoSnarkProvingKey, VerifyingKey as LegoSnarkVerifyingKey},
 };
 use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey as SaverSnarkProvingKey,

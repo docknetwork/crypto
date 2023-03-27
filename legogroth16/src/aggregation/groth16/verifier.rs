@@ -1,8 +1,16 @@
-use ark_ec::pairing::PairingOutput;
-use ark_ec::{pairing::Pairing, AffineRepr, Group, VariableBaseMSM};
+use ark_ec::{
+    pairing::{Pairing, PairingOutput},
+    AffineRepr, Group, VariableBaseMSM,
+};
 use ark_ff::{Field, PrimeField};
-use ark_std::ops::AddAssign;
-use ark_std::{cfg_iter, format, ops::Mul, rand::Rng, vec, vec::Vec, One, Zero};
+use ark_std::{
+    cfg_iter, format,
+    ops::{AddAssign, Mul},
+    rand::Rng,
+    vec,
+    vec::Vec,
+    One, Zero,
+};
 
 use ark_groth16::PreparedVerifyingKey;
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
@@ -10,12 +18,15 @@ use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::aggregation::srs::{VerifierSRS, VerifierSRSProjective};
-use crate::aggregation::utils::{final_verification_check, verify_kzg};
+use crate::aggregation::{
+    srs::{VerifierSRS, VerifierSRSProjective},
+    utils::{final_verification_check, verify_kzg},
+};
 
-use crate::aggregation::commitment::PairCommitment;
-use crate::aggregation::error::AggregationError;
-use crate::aggregation::kzg::polynomial_evaluation_product_form_from_transcript;
+use crate::aggregation::{
+    commitment::PairCommitment, error::AggregationError,
+    kzg::polynomial_evaluation_product_form_from_transcript,
+};
 use dock_crypto_utils::transcript::Transcript;
 
 use super::proof::AggregateProof;

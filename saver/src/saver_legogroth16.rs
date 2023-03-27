@@ -15,8 +15,7 @@ use legogroth16::{
     PreparedVerifyingKey, Proof, VerifyingKey,
 };
 
-use crate::keygen::EncryptionKey;
-use crate::setup::EncryptionGens;
+use crate::{keygen::EncryptionKey, setup::EncryptionGens};
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProvingKey<E: Pairing> {
@@ -184,19 +183,21 @@ mod protocol_2 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ops::{Add, Mul};
-    use std::time::Instant;
+    use std::{
+        ops::{Add, Mul},
+        time::Instant,
+    };
 
-    use crate::circuit::BitsizeCheckCircuit;
-    use crate::encryption::{tests::gen_messages, Ciphertext, CiphertextAlt, Encryption};
-    use crate::keygen::keygen;
-    use crate::utils::chunks_count;
+    use crate::{
+        circuit::BitsizeCheckCircuit,
+        encryption::{tests::gen_messages, Ciphertext, CiphertextAlt, Encryption},
+        keygen::keygen,
+        utils::chunks_count,
+    };
     use ark_bls12_381::Bls12_381;
     use ark_ff::Zero;
-    use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::SeedableRng;
-    use legogroth16::prepare_verifying_key;
-    use legogroth16::prover::verify_witness_commitment;
+    use ark_std::rand::{prelude::StdRng, SeedableRng};
+    use legogroth16::{prepare_verifying_key, prover::verify_witness_commitment};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
