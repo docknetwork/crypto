@@ -56,9 +56,11 @@ impl<I> From<InvalidPair<I>> for (I, I) {
 
 /// Ensures that the given iterator satisfies provided function for each successful (`Ok(_)`) previous - current pair.
 /// In case of an error, `Err(InvalidPair)` will be emitted.
-pub fn try_validate_pairs<I, OK, E, P>(iter: I, validator: P) -> impl Iterator<Item = Result<OK, E>>
+pub fn try_validate_pairs<I, OK, E, P>(
+    iter: I,
+    mut validator: P,
+) -> impl Iterator<Item = Result<OK, E>>
 where
-    OK: Clone,
     I: IntoIterator<Item = Result<OK, E>>,
     P: PairValidator<OK>,
     E: From<InvalidPair<P::MappedItem>>,

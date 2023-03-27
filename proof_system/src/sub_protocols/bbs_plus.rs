@@ -6,6 +6,7 @@ use bbs_plus::prelude::{
     SignatureParamsG1,
 };
 use bbs_plus::proof::{MessageOrBlinding, PoKOfSignatureG1Protocol};
+use coconut_crypto::helpers::{check_seq_from, take_while_pairs_satisfy, CheckLeft};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use itertools::{EitherOrBoth, Itertools};
 
@@ -85,19 +86,12 @@ impl<'a, E: Pairing> PoKBBSSigG1SubProtocol<'a, E> {
             .map(|(idx, msg)| (*idx, MessageOrBlinding::RevealMessage(msg)));
 
         let mut invalid_message_idx = None;
-        let all_messages = messages_to_commit_with_blindings
-            .merge_by(revealed_messages, |(a, _), (b, _)| a <= b)
-            .scan(None, |last, (idx, msg)| {
-                if last.map_or_else(|| idx != 0, |last| last + 1 != idx) {
-                    invalid_message_idx.replace(idx);
-
-                    None
-                } else {
-                    last.replace(idx);
-
-                    Some(msg)
-                }
-            });
+        let all_messages = take_while_pairs_satisfy(
+            messages_to_commit_with_blindings.merge_by(revealed_messages, |(a, _), (b, _)| a <= b),
+            CheckLeft(check_seq_from(0)),
+            &mut invalid_message_idx,
+        )
+        .map(|(_, message)| message);
 
         let protocol = PoKOfSignatureG1Protocol::init(
             rng,
@@ -107,8 +101,8 @@ impl<'a, E: Pairing> PoKBBSSigG1SubProtocol<'a, E> {
         );
         if let Some(idx) = invalid_blinding_idx {
             Err(ProofSystemError::BBSProtocolInvalidBlindingIndex(idx))?
-        } else if let Some(idx) = invalid_message_idx {
-            Err(ProofSystemError::BBSProtocolInvalidMessageIndex(idx))?
+        } else if let Some((prev, cur)) = invalid_message_idx {
+            Err(ProofSystemError::BBSProtocolInvalidMessageIndex(prev, cur))?
         }
 
         self.protocol = Some(protocol?);

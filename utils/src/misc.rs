@@ -11,6 +11,16 @@ pub fn is_lt<I: Ord>(first: &I, second: &I) -> bool {
     first.cmp(second).is_lt()
 }
 
+/// Produces a function which will check for each pair current to be previous plus 1 starting from the supplied value.
+pub fn check_seq_from(mut from: usize) -> impl FnMut(&usize, &usize) -> bool {
+    move |&prev, &cur| {
+        let valid = from == prev && prev + 1 == cur;
+        from = cur;
+
+        valid
+    }
+}
+
 /// Generates an iterator of randoms producing `count` elements using the supplied `rng`.
 pub fn n_rand<T: UniformRand, R: RngCore>(
     rng: &'_ mut R,
