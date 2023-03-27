@@ -1579,7 +1579,7 @@ mod tests {
         for _ in 0..count {
             let elem = Fr::rand(&mut rng);
             accumulator = accumulator
-                .add(elem.clone(), &keypair.secret_key, &mut state)
+                .add(elem, &keypair.secret_key, &mut state)
                 .unwrap();
             elems.push(elem);
         }
@@ -1653,7 +1653,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    &accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
@@ -1665,7 +1665,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    &accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
@@ -1677,7 +1677,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify_with_randomized_pairing_checker(
-                    &accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
@@ -1690,7 +1690,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify_with_randomized_pairing_checker(
-                    &accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
@@ -1830,7 +1830,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    &accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
@@ -1842,7 +1842,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    &accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
@@ -1854,7 +1854,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify_with_randomized_pairing_checker(
-                    &accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
@@ -1867,7 +1867,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify_with_randomized_pairing_checker(
-                    &accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),

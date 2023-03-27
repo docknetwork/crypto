@@ -695,7 +695,7 @@ pub mod tests {
             setup_universal_accum(&mut rng, max);
 
         let accumulator_1 =
-            UniversalAccumulator::initialize_given_f_V(accumulator.f_V.clone(), &params, max);
+            UniversalAccumulator::initialize_given_f_V(accumulator.f_V, &params, max);
         assert_eq!(accumulator, accumulator_1);
 
         let initial = initial_elements.db.into_iter().collect::<Vec<Fr>>();
@@ -772,8 +772,7 @@ pub mod tests {
                 .get_membership_witness(&elem, &keypair.secret_key, &state)
                 .is_err());
 
-            let verification_accum =
-                UniversalAccumulator::from_accumulated(accumulator.value().clone());
+            let verification_accum = UniversalAccumulator::from_accumulated(*accumulator.value());
             let mut start = Instant::now();
             let nm_wit = accumulator
                 .get_non_membership_witness(&elem, &keypair.secret_key, &state, &params)
@@ -798,12 +797,7 @@ pub mod tests {
             assert!(!state.has(&elem));
             let computed_new = accumulator.compute_new_post_add(&elem, &keypair.secret_key);
             accumulator = accumulator
-                .add(
-                    elem.clone(),
-                    &keypair.secret_key,
-                    &initial_elements,
-                    &mut state,
-                )
+                .add(elem, &keypair.secret_key, &initial_elements, &mut state)
                 .unwrap();
             assert_eq!(computed_new, (accumulator.f_V, accumulator.V));
             assert!(state.has(&elem));
@@ -824,8 +818,7 @@ pub mod tests {
                 m_wit
             );
 
-            let verification_accum =
-                UniversalAccumulator::from_accumulated(accumulator.value().clone());
+            let verification_accum = UniversalAccumulator::from_accumulated(*accumulator.value());
             start = Instant::now();
             assert!(verification_accum.verify_membership(
                 &elem,
@@ -854,8 +847,7 @@ pub mod tests {
             let nm_wit = accumulator
                 .get_non_membership_witness(&elem, &keypair.secret_key, &state, &params)
                 .unwrap();
-            let verification_accum =
-                UniversalAccumulator::from_accumulated(accumulator.value().clone());
+            let verification_accum = UniversalAccumulator::from_accumulated(*accumulator.value());
             assert!(verification_accum.verify_non_membership(
                 &elem,
                 &nm_wit,
@@ -863,7 +855,7 @@ pub mod tests {
                 &params
             ));
 
-            let members = state.db.iter().map(|s| *s).collect::<Vec<_>>();
+            let members = state.db.iter().copied().collect::<Vec<_>>();
             let d = UniversalAccumulator::<Bls12_381>::compute_d_given_members(&elem, &members);
             assert_eq!(
                 accumulator
@@ -899,22 +891,14 @@ pub mod tests {
         let mut accumulator_3: UniversalAccumulator<Bls12_381> = accumulator_1.clone();
         let mut state_3 = InMemoryState::<Fr>::new();
 
-        let additions: Vec<Fr> = (0..10).into_iter().map(|_| Fr::rand(&mut rng)).collect();
-        let removals: Vec<Fr> = vec![0, 1, 6, 9]
-            .into_iter()
-            .map(|i| additions[i].clone())
-            .collect();
+        let additions: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
+        let removals: Vec<Fr> = vec![0, 1, 6, 9].into_iter().map(|i| additions[i]).collect();
 
         // Add one by one
         for i in 0..additions.len() {
-            let elem = additions[i].clone();
+            let elem = additions[i];
             accumulator_1 = accumulator_1
-                .add(
-                    elem.clone(),
-                    &keypair.secret_key,
-                    &initial_elements,
-                    &mut state_1,
-                )
+                .add(elem, &keypair.secret_key, &initial_elements, &mut state_1)
                 .unwrap();
         }
 
@@ -966,15 +950,10 @@ pub mod tests {
 
         // Need to make `accumulator_3` same as `accumulator_1` and `accumulator_2` by doing batch addition and removal simultaneously.
         // To do the removals, first they need to be added to the accumulator and the additions elements need to be adjusted.
-        let mut new_additions = additions.clone();
+        let mut new_additions = additions;
         for e in removals.iter() {
             accumulator_3 = accumulator_3
-                .add(
-                    e.clone(),
-                    &keypair.secret_key,
-                    &initial_elements,
-                    &mut state_3,
-                )
+                .add(*e, &keypair.secret_key, &initial_elements, &mut state_3)
                 .unwrap();
             new_additions.retain(|&x| x != *e);
         }
@@ -1006,8 +985,7 @@ pub mod tests {
         let mem_witnesses = accumulator_3
             .get_membership_witnesses_for_batch(&new_additions, &keypair.secret_key, &state_3)
             .unwrap();
-        let verification_accum =
-            UniversalAccumulator::from_accumulated(accumulator_3.value().clone());
+        let verification_accum = UniversalAccumulator::from_accumulated(*accumulator_3.value());
         for i in 0..new_additions.len() {
             assert!(verification_accum.verify_membership(
                 &new_additions[i],
@@ -1040,7 +1018,7 @@ pub mod tests {
             ));
         }
 
-        let members = state_3.db.iter().map(|s| *s).collect::<Vec<_>>();
+        let members = state_3.db.iter().copied().collect::<Vec<_>>();
         let d = UniversalAccumulator::<Bls12_381>::compute_d_for_batch_given_members(
             &removals, &members,
         );
@@ -1066,7 +1044,7 @@ pub mod tests {
 
         // Check that `d` computed for a single element (non-member) when all members are available is
         // same as when `d` is computed over chunks of members and then multiplied
-        let members: Vec<Fr> = (0..10).into_iter().map(|_| Fr::rand(&mut rng)).collect();
+        let members: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
         let non_member = Fr::rand(&mut rng);
 
         let d = UniversalAccumulator::<Bls12_381>::compute_d_given_members(&non_member, &members);
@@ -1120,10 +1098,7 @@ pub mod tests {
         assert_eq!(d.len(), d3.len());
         assert_eq!(d.len(), d4.len());
         for i in 0..d.len() {
-            assert_eq!(
-                d[i],
-                d1[i].clone() * d2[i].clone() * d3[i].clone() * d4[i].clone()
-            );
+            assert_eq!(d[i], d1[i] * d2[i] * d3[i] * d4[i]);
         }
     }
 }

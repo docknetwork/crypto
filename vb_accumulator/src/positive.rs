@@ -621,13 +621,13 @@ pub mod tests {
             assert!(!state.has(&elem));
             let computed_new = accumulator.compute_new_post_add(&elem, &keypair.secret_key);
             accumulator = accumulator
-                .add(elem.clone(), &keypair.secret_key, &mut state)
+                .add(elem, &keypair.secret_key, &mut state)
                 .unwrap();
             assert_eq!(computed_new, *accumulator.value());
             assert!(state.has(&elem));
 
             assert!(accumulator
-                .add(elem.clone(), &keypair.secret_key, &mut state)
+                .add(elem, &keypair.secret_key, &mut state)
                 .is_err());
 
             let m_wit = accumulator
@@ -646,7 +646,7 @@ pub mod tests {
             test_serialization!(MembershipWitness<<Bls12_381 as Pairing>::G1Affine>, m_wit);
 
             let verification_accumulator =
-                PositiveAccumulator::from_accumulated(accumulator.value().clone());
+                PositiveAccumulator::from_accumulated(*accumulator.value());
             let start = Instant::now();
             assert!(verification_accumulator.verify_membership(
                 &elem,
@@ -692,17 +692,14 @@ pub mod tests {
         let mut accumulator_4 = PositiveAccumulator::initialize(&params);
         let mut state_4 = InMemoryState::<Fr>::new();
 
-        let additions: Vec<Fr> = (0..10).into_iter().map(|_| Fr::rand(&mut rng)).collect();
-        let removals: Vec<Fr> = vec![0, 1, 6, 9]
-            .into_iter()
-            .map(|i| additions[i].clone())
-            .collect();
+        let additions: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
+        let removals: Vec<Fr> = vec![0, 1, 6, 9].into_iter().map(|i| additions[i]).collect();
 
         // Add one by one
         for i in 0..additions.len() {
-            let elem = additions[i].clone();
+            let elem = additions[i];
             accumulator_1 = accumulator_1
-                .add(elem.clone(), &keypair.secret_key, &mut state_1)
+                .add(elem, &keypair.secret_key, &mut state_1)
                 .unwrap();
         }
 
@@ -758,7 +755,7 @@ pub mod tests {
         let mut new_additions = additions.clone();
         for e in removals.iter() {
             accumulator_3 = accumulator_3
-                .add(e.clone(), &keypair.secret_key, &mut state_3)
+                .add(*e, &keypair.secret_key, &mut state_3)
                 .unwrap();
             new_additions.retain(|&x| x != *e);
         }
@@ -787,7 +784,7 @@ pub mod tests {
         assert_eq!(computed_new, *accumulator_3.value());
 
         let verification_accumulator =
-            PositiveAccumulator::from_accumulated(accumulator_3.value().clone());
+            PositiveAccumulator::from_accumulated(*accumulator_3.value());
         let witnesses = accumulator_3
             .get_membership_witnesses_for_batch(&new_additions, &keypair.secret_key, &state_3)
             .unwrap();
@@ -808,7 +805,7 @@ pub mod tests {
         let computed_new =
             accumulator_4.compute_new_post_batch_updates(&additions, &[], &keypair.secret_key);
         accumulator_4 = accumulator_4
-            .batch_updates(additions.clone(), &[], &keypair.secret_key, &mut state_4)
+            .batch_updates(additions, &[], &keypair.secret_key, &mut state_4)
             .unwrap();
         assert_eq!(computed_new, *accumulator_4.value());
 
@@ -824,7 +821,7 @@ pub mod tests {
         assert_eq!(state_1.db, state_4.db);
 
         let verification_accumulator =
-            PositiveAccumulator::from_accumulated(accumulator_4.value().clone());
+            PositiveAccumulator::from_accumulated(*accumulator_4.value());
         let witnesses = accumulator_4
             .get_membership_witnesses_for_batch(&new_additions, &keypair.secret_key, &state_4)
             .unwrap();
@@ -858,17 +855,13 @@ pub mod tests {
         let total_members = 100;
 
         // Prefill the accumulator
-        let members: Vec<Fr> = (0..total_members)
-            .into_iter()
-            .map(|_| Fr::rand(&mut rng))
-            .collect();
+        let members: Vec<Fr> = (0..total_members).map(|_| Fr::rand(&mut rng)).collect();
         accumulator = accumulator
             .add_batch(members.clone(), &keypair.secret_key, &mut state)
             .unwrap();
 
         // Accumulator for verification only
-        let verification_accumulator =
-            PositiveAccumulator::from_accumulated(accumulator.value().clone());
+        let verification_accumulator = PositiveAccumulator::from_accumulated(*accumulator.value());
 
         // Manager decides to give a user his witness
         let member_1 = &members[12];
@@ -929,18 +922,12 @@ pub mod tests {
         ));
 
         // Manager decides to remove a member, the new accumulated value will be published along with witness update info
-        let omega = Omega::new(
-            &[],
-            &[member_2.clone()],
-            accumulator.value(),
-            &keypair.secret_key,
-        );
+        let omega = Omega::new(&[], &[*member_2], accumulator.value(), &keypair.secret_key);
         accumulator = accumulator
             .remove(member_2, &keypair.secret_key, &mut state)
             .unwrap();
 
-        let verification_accumulator =
-            PositiveAccumulator::from_accumulated(accumulator.value().clone());
+        let verification_accumulator = PositiveAccumulator::from_accumulated(*accumulator.value());
 
         // Manager decides to give another user his witness
         let member_4 = &members[70];
@@ -958,7 +945,7 @@ pub mod tests {
 
         // Update using knowledge of new accumulator and removed member only
         let witness_1_updated = witness_1
-            .update_after_removal(member_1, &member_2, accumulator.value())
+            .update_after_removal(member_1, member_2, accumulator.value())
             .unwrap();
         assert!(verification_accumulator.verify_membership(
             member_1,
@@ -967,7 +954,7 @@ pub mod tests {
             &params
         ));
         let witness_3_updated = witness_3
-            .update_after_removal(member_3, &member_2, accumulator.value())
+            .update_after_removal(member_3, member_2, accumulator.value())
             .unwrap();
         assert!(verification_accumulator.verify_membership(
             member_3,
@@ -978,12 +965,7 @@ pub mod tests {
 
         // Update using knowledge of witness info
         let witness_1_updated = witness_1
-            .update_using_public_info_after_batch_updates(
-                &[],
-                &[member_2.clone()],
-                &omega,
-                member_1,
-            )
+            .update_using_public_info_after_batch_updates(&[], &[*member_2], &omega, member_1)
             .unwrap();
         assert!(verification_accumulator.verify_membership(
             member_1,
@@ -992,12 +974,7 @@ pub mod tests {
             &params
         ));
         let witness_3_updated = witness_3
-            .update_using_public_info_after_batch_updates(
-                &[],
-                &[member_2.clone()],
-                &omega,
-                member_3,
-            )
+            .update_using_public_info_after_batch_updates(&[], &[*member_2], &omega, member_3)
             .unwrap();
         assert!(verification_accumulator.verify_membership(
             member_3,
