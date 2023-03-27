@@ -40,7 +40,6 @@ zeroize = { version = "1.5.5", features = ["derive"] }
 blake2 = { version = "0.10", default-features = false }
 ark-bls12-381 = { version = "^0.4.0", default-features = false, features = [ "curve" ] }
 merlin = { version = "^3.0", default-features = false }
-legogroth16 = { version = "0.6.0" , default-features = false, path = "../legogroth16" }
 
 [profile.release]
 lto = true
