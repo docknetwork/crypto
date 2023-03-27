@@ -2,9 +2,9 @@ use alloc::vec::Vec;
 use ark_ec::AffineRepr;
 use ark_serialize::*;
 use core::{cmp::Ordering, ops::Range};
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::serde_as;
+use utils::serde_utils::ArkObjectBytes;
 
 use schnorr_pok::{
     error::SchnorrError, SchnorrChallengeContributor, SchnorrCommitment, SchnorrResponse,
@@ -28,7 +28,7 @@ pub struct WithSchnorrResponse<G: AffineRepr, V: CanonicalSerialize + CanonicalD
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndiceRange(Range<usize>);
-dock_crypto_utils::impl_deref! { IndiceRange(Range<usize>) }
+utils::impl_deref! { IndiceRange(Range<usize>) }
 
 impl CanonicalSerialize for IndiceRange {
     fn serialized_size(&self, compress: Compress) -> usize {

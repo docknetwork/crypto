@@ -7,10 +7,10 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalSerialize, Write};
 use ark_std::{cfg_iter, rand::RngCore};
 
-use dock_crypto_utils::join;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
+use utils::join;
 
 use super::UnpackedBlindedMessages;
 use crate::{

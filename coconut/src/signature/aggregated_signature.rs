@@ -24,7 +24,7 @@ type Result<T, E = AggregatedPSError> = core::result::Result<T, E>;
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct AggregatedSignature<E: Pairing>(Signature<E>);
-dock_crypto_utils::impl_deref! { AggregatedSignature<E: Pairing>(Signature<E>) }
+utils::impl_deref! { AggregatedSignature<E: Pairing>(Signature<E>) }
 
 impl<E: Pairing> AggregatedSignature<E> {
     /// Creates new `AggregatedSignature` using supplied signatures which must be provided

@@ -20,7 +20,7 @@ use crate::{
     setup::{PublicKey, SignatureParams},
     CommitMessage, Signature,
 };
-use dock_crypto_utils::join;
+use utils::join;
 
 pub use error::*;
 use k::*;

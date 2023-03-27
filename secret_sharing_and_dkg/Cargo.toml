@@ -14,7 +14,7 @@ ark-std.workspace = true
 ark-serialize.workspace = true
 ark-poly.workspace = true
 digest.workspace = true
-rayon = {workspace = true, optional = true}
+rayon = { workspace = true, optional = true }
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true

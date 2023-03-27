@@ -17,13 +17,13 @@ ark-std = { version = "0.4.0", default-features = false }
 ark-poly = { version = "0.4.1", default-features = false }
 ark-serialize = { version = "0.4.1", default-features = false, features = [ "derive" ] }
 serde = { version = "1.0.156", default-features = false, features = ["derive"] }
-dock_crypto_utils = { version = "0.9.0", default-features = false, path = "../utils" }
+utils = { package = "dock_crypto_utils", version = "0.9.0", default-features = false, path = "../utils" }
 digest = "0.10.6"
 zeroize = { version = "1.5.7", features = ["derive"] }
 rayon = { version = "1.7.0", optional = true }
 schnorr_pok = { version = "0.9.0", default-features = false, path = "../schnorr_pok" }
 itertools = "0.10.5"
-secret_sharing_and_dkg = { version = "0.2.0", default-features = false }
+secret_sharing_and_dkg = { version = "0.2.0", default-features = false, path = "../secret_sharing_and_dkg" }
 serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
 
 [dev-dependencies]
@@ -32,5 +32,5 @@ ark-bls12-381 = { version = "0.4.0", default-features = false, features = [ "cur
 
 [features]
 default = ["std", "parallel"]
-parallel = ["ark-std/parallel", "ark-ec/parallel", "ark-poly/parallel", "ark-ff/parallel", "ark-std/parallel", "dock_crypto_utils/parallel", "schnorr_pok/parallel", "secret_sharing_and_dkg/parallel", "rayon"]
-std = ["serde/std", "ark-serialize/std", "ark-std/std", "ark-poly/std", "ark-ec/std", "ark-ff/std", "dock_crypto_utils/std", "schnorr_pok/std", "secret_sharing_and_dkg/std"]
+parallel = ["ark-std/parallel", "ark-ec/parallel", "ark-poly/parallel", "ark-ff/parallel", "ark-std/parallel", "utils/parallel", "schnorr_pok/parallel", "secret_sharing_and_dkg/parallel", "rayon"]
+std = ["serde/std", "ark-serialize/std", "ark-std/std", "ark-poly/std", "ark-ec/std", "ark-ff/std", "utils/std", "schnorr_pok/std", "secret_sharing_and_dkg/std"]

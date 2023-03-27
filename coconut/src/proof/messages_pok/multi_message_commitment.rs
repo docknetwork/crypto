@@ -6,10 +6,10 @@ use core::{borrow::Borrow, iter::once};
 use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_serialize::*;
 use ark_std::rand::RngCore;
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use utils::serde_utils::ArkObjectBytes;
 
 use crate::{
     helpers::{rand, OwnedPairs, Pairs, WithSchnorrAndBlindings, WithSchnorrResponse},
@@ -22,7 +22,7 @@ use crate::{
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct MultiMessageCommitment<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G1Affine);
-dock_crypto_utils::impl_deref! { MultiMessageCommitment<E: Pairing>(E::G1Affine) }
+utils::impl_deref! { MultiMessageCommitment<E: Pairing>(E::G1Affine) }
 
 impl<E: Pairing> MultiMessageCommitment<E> {
     /// `g * o + \sum_{i}(h_{i} * m_{i})`

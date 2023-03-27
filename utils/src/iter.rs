@@ -46,7 +46,11 @@ pub trait PairValidator<I> {
     fn validate(&self, previous: &Self::MappedItem, current: &Self::MappedItem) -> bool;
 }
 
-impl<I, M, MapF: Fn(&I) -> M, CmpF: Fn(&M, &M) -> bool> PairValidator<I> for (MapF, CmpF) {
+impl<I, M, MapF, ValidateF> PairValidator<I> for (MapF, ValidateF)
+where
+    MapF: Fn(&I) -> M,
+    ValidateF: Fn(&M, &M) -> bool,
+{
     type MappedItem = M;
 
     fn map(&self, item: &I) -> M {
