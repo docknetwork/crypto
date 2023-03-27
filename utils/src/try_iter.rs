@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use itertools::Itertools;
 
+use crate::iter::PairValidator;
+
 /// Provided index is out of bounds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexIsOutOfBounds {
@@ -54,22 +56,25 @@ impl<I> From<InvalidPair<I>> for (I, I) {
 
 /// Ensures that the given iterator satisfies provided function for each successful (`Ok(_)`) previous - current pair.
 /// In case of an error, `Err(InvalidPair)` will be emitted.
-pub fn try_validate_pairs<I, OK, E, F>(iter: I, mut f: F) -> impl Iterator<Item = Result<OK, E>>
+pub fn try_validate_pairs<I, OK, E, P>(iter: I, cmp: P) -> impl Iterator<Item = Result<OK, E>>
 where
     OK: Clone,
     I: IntoIterator<Item = Result<OK, E>>,
-    F: FnMut(&OK, &OK) -> bool,
-    E: From<InvalidPair<OK>>,
+    P: PairValidator<OK>,
+    E: From<InvalidPair<P::MappedItem>>,
 {
-    iter.into_iter().scan(None, move |prev, cur| match cur {
+    iter.into_iter().scan(None, move |last, cur| match cur {
         err @ Err(_) => Some(err),
         Ok(cur) => {
-            let item = if let Some(failure) = prev.take().filter(|prev| !f(prev, &cur)) {
-                Err(InvalidPair(failure, cur.clone()).into())
+            let item = if let Some((prev, cur)) = last
+                .replace(cmp.map(&cur))
+                .map(|prev| (prev, cmp.map(&cur)))
+                .filter(|(prev, cur)| !cmp.validate(prev, cur))
+            {
+                Err(InvalidPair(prev, cur).into())
             } else {
-                Ok(cur.clone())
+                Ok(cur)
             };
-            prev.replace(cur);
 
             Some(item)
         }

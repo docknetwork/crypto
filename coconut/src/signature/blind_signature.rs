@@ -10,7 +10,7 @@ use itertools::{process_results, Itertools};
 
 use super::{error::BlindPSError, ps_signature::Signature};
 use crate::{
-    helpers::{pair_valid_pairs_with_slice, pair_with_slice, ExtendSome, OwnedPairs},
+    helpers::{pair_valid_pairs_with_slice, pair_with_slice, ExtendSome, IdxAsc, OwnedPairs},
     setup::{PublicKey, SecretKey},
     MessageCommitment,
 };
@@ -103,13 +103,10 @@ impl<E: Pairing> BlindSignature<E> {
     where
         IB: IntoIterator<Item = (usize, &'a E::ScalarField)>,
     {
-        let blindings_with_beta: OwnedPairs<_, _> = pair_valid_pairs_with_slice(
-            indexed_blindings_sorted_by_index,
-            |(a, _), (b, _)| a < b,
-            beta,
-        )
-        .map_ok(|(beta_j, o)| (*beta_j, (-*o)))
-        .collect::<Result<_>>()?;
+        let blindings_with_beta: OwnedPairs<_, _> =
+            pair_valid_pairs_with_slice(indexed_blindings_sorted_by_index, IdxAsc, beta)
+                .map_ok(|(beta_j, o)| (*beta_j, (-*o)))
+                .collect::<Result<_>>()?;
 
         // \sum_{j}(beta_{j} * (-o_{j}))
         let beta_mul_neg_o = blindings_with_beta.msm();

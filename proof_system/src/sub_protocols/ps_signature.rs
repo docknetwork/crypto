@@ -78,6 +78,14 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         if self.protocol.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
         }
+        let total_message_count = self.revealed_messages.len() + witness.unrevealed_messages.len();
+        if total_message_count != self.signature_params.supported_message_count() {
+            Err(ProofSystemError::PSProtocolInvalidMessageCount(
+                total_message_count,
+                self.signature_params.supported_message_count(),
+            ))?
+        }
+
         let messages_to_commit = LeakedVec::new(witness.unrevealed_messages.into_iter().collect());
 
         let mut invalid_blinding_idx = None;

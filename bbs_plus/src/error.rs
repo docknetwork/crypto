@@ -37,9 +37,9 @@ impl From<SchnorrError> for BBSPlusError {
     }
 }
 
-impl<T> From<InvalidPair<(usize, T)>> for BBSPlusError {
-    fn from(err: InvalidPair<(usize, T)>) -> Self {
-        Self::MessageIndicesMustBeUniqueAndSorted(err.map(|(idx, _)| idx))
+impl From<InvalidPair<usize>> for BBSPlusError {
+    fn from(err: InvalidPair<usize>) -> Self {
+        Self::MessageIndicesMustBeUniqueAndSorted(err)
     }
 }
 

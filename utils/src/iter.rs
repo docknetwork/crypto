@@ -1,13 +1,16 @@
+
+
+use crate::misc::is_lt;
 use itertools::{EitherOrBoth, Itertools};
 
 use super::try_iter::{try_pair_with_slice, try_validate_pairs, IndexIsOutOfBounds, InvalidPair};
 
 /// Plucks items from the supplied iterator corresponding to missed indices.
 /// This function implies that both iterators are sorted.
-pub fn pluck_missed<Indices, I>(indices: Indices, iter: I) -> impl Iterator<Item = I::Item>
+pub fn pluck_missed<Indices, Iter>(indices: Indices, iter: Iter) -> impl Iterator<Item = Iter::Item>
 where
     Indices: IntoIterator<Item = usize>,
-    I: IntoIterator,
+    Iter: IntoIterator,
 {
     iter.into_iter()
         .enumerate()
@@ -32,38 +35,79 @@ where
     try_pair_with_slice(iter.into_iter().map(Ok), pairs)
 }
 
+/// Trait allowing to validate supplied pair.
+/// Prior to validation, each item must be mapped using `PairValidator::map`.
+pub trait PairValidator<I> {
+    /// Item to be used in validation.
+    type MappedItem;
+
+    /// Maps an item to prepare it for validation.
+    fn map(&self, item: &I) -> Self::MappedItem;
+
+    /// Validates given pair.
+    fn validate(&self, previous: &Self::MappedItem, current: &Self::MappedItem) -> bool;
+}
+
+impl<I, M, MapF: Fn(&I) -> M, CmpF: Fn(&M, &M) -> bool> PairValidator<I> for (MapF, CmpF) {
+    type MappedItem = M;
+
+    fn map(&self, item: &I) -> M {
+        self.0(item)
+    }
+
+    fn validate(&self, previous: &M, current: &M) -> bool {
+        self.1(previous, current)
+    }
+}
+
+/// Implements `PairValidator` which ensures that for each previous - current pair indices are always increasing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IdxAsc;
+
+impl<Idx: Copy + Ord, Item> PairValidator<(Idx, Item)> for IdxAsc {
+    type MappedItem = Idx;
+
+    fn map(&self, item: &(Idx, Item)) -> Idx {
+        item.0
+    }
+
+    fn validate(&self, previous: &Idx, current: &Idx) -> bool {
+        is_lt(previous, current)
+    }
+}
+
 /// Maps supplied iterator and attempts to pair each successfully validated item with a corresponding item from the slice.
 /// Validation errors will be propagated without looking at them.
 /// In case of error, `Err(IndexIsOutOfBounds)` will be emitted.
-pub fn pair_valid_pairs_with_slice<'iter, 'pairs, I, Item, Pair, E, F>(
+pub fn pair_valid_pairs_with_slice<'iter, 'pairs, I, Item, Pair, E, P>(
     iter: I,
-    f: F,
+    cmp: P,
     pairs: &'pairs [Pair],
 ) -> impl Iterator<Item = Result<(&'pairs Pair, Item), E>> + 'iter
 where
     'pairs: 'iter,
     I: IntoIterator<Item = (usize, Item)> + 'iter,
     Item: Clone + 'iter,
-    E: From<IndexIsOutOfBounds> + From<InvalidPair<I::Item>> + 'iter,
-    F: FnMut(&I::Item, &I::Item) -> bool + 'iter,
+    P: PairValidator<(usize, Item)> + 'iter,
+    E: From<IndexIsOutOfBounds> + From<InvalidPair<P::MappedItem>> + 'iter,
 {
-    try_pair_with_slice(try_validate_pairs(iter.into_iter().map(Ok), f), pairs)
+    try_pair_with_slice(try_validate_pairs(iter.into_iter().map(Ok), cmp), pairs)
 }
 
 /// Ensures that the given iterator satisfies provided function for each previous - current pair.
 /// The supplied option will be modified to invalid pair in case of failure, and iteration will be aborted.
-pub fn take_while_pairs_satisfy<'iter, 'invalid, I, F>(
+pub fn take_while_pairs_satisfy<'iter, 'invalid, I, P>(
     iter: I,
-    f: F,
-    invalid_pair: &'invalid mut Option<(I::Item, I::Item)>,
+    cmp: P,
+    invalid_pair: &'invalid mut Option<(P::MappedItem, P::MappedItem)>,
 ) -> impl Iterator<Item = I::Item> + 'iter
 where
     'invalid: 'iter,
     I: IntoIterator + 'iter,
+    P: PairValidator<I::Item> + 'iter,
     I::Item: Clone,
-    F: FnMut(&I::Item, &I::Item) -> bool + 'iter,
 {
-    try_validate_pairs(iter.into_iter().map(Ok), f).scan((), |(), res| {
+    try_validate_pairs(iter.into_iter().map(Ok), cmp).scan((), |(), res| {
         res.map_err(InvalidPair::into)
             .map_err(|invalid| invalid_pair.replace(invalid))
             .ok()
@@ -81,7 +125,7 @@ where
     I: IntoIterator + 'iter,
     I::Item: Ord + Clone,
 {
-    take_while_pairs_satisfy(iter, |prev, cur| prev < cur, invalid_pair)
+    take_while_pairs_satisfy(iter, (Clone::clone, is_lt), invalid_pair)
 }
 
 /// Skips up to `n` elements from the iterator using supplied random generator.
