@@ -31,8 +31,10 @@
 
 use crate::error::BBSPlusError;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
-use ark_ff::PrimeField;
+use ark_ff::{
+    field_hashers::{DefaultFieldHasher, HashToField},
+    PrimeField,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     cfg_into_iter, cfg_iter, fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand,
@@ -42,9 +44,10 @@ use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 use zeroize::Zeroize;
 
 use core::iter::once;
-use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
-use dock_crypto_utils::serde_utils::*;
-use dock_crypto_utils::{concat_slices, iter::*, misc::is_lt};
+use dock_crypto_utils::{
+    concat_slices, hashing_utils::projective_group_elem_from_try_and_incr, iter::*, misc::is_lt,
+    serde_utils::*, try_iter::CheckLeft,
+};
 use itertools::process_results;
 
 #[cfg(feature = "parallel")]

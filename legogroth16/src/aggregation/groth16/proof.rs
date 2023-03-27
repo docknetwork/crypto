@@ -1,7 +1,6 @@
-use crate::aggregation::commitment::PairCommitment;
-use crate::aggregation::error::AggregationError;
-use crate::aggregation::kzg::KZGOpening;
-use crate::aggregation::srs;
+use crate::aggregation::{
+    commitment::PairCommitment, error::AggregationError, kzg::KZGOpening, srs,
+};
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{string::ToString, vec::Vec};

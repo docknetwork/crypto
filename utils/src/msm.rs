@@ -1,5 +1,4 @@
-use ark_ec::scalar_mul::fixed_base::FixedBase;
-use ark_ec::CurveGroup;
+use ark_ec::{scalar_mul::fixed_base::FixedBase, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, vec::Vec};
@@ -67,11 +66,15 @@ pub mod tests {
     use std::time::{Duration, Instant};
 
     use ark_bls12_381::Bls12_381;
-    use ark_ec::scalar_mul::wnaf::WnafContext;
-    use ark_ec::VariableBaseMSM;
-    use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+    use ark_ec::{
+        pairing::Pairing, scalar_mul::wnaf::WnafContext, AffineRepr, CurveGroup, VariableBaseMSM,
+    };
     use ark_ff::PrimeField;
-    use ark_std::{cfg_iter, rand::rngs::StdRng, rand::SeedableRng, UniformRand};
+    use ark_std::{
+        cfg_iter,
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
 
     #[cfg(feature = "parallel")]
     use rayon::prelude::*;

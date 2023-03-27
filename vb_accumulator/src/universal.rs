@@ -61,14 +61,15 @@
 //!
 //! ```
 
-use crate::error::VBAccumulatorError;
-use crate::persistence::{InitialElementsStore, State, UniversalAccumulatorState};
-use crate::positive::Accumulator;
-use crate::setup::{PublicKey, SecretKey, SetupParams};
-use crate::witness::NonMembershipWitness;
+use crate::{
+    error::VBAccumulatorError,
+    persistence::{InitialElementsStore, State, UniversalAccumulatorState},
+    positive::Accumulator,
+    setup::{PublicKey, SecretKey, SetupParams},
+    witness::NonMembershipWitness,
+};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_ff::fields::Field;
-use ark_ff::{batch_inversion, PrimeField};
+use ark_ff::{batch_inversion, fields::Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     cfg_into_iter, cfg_iter, cfg_iter_mut, fmt::Debug, iter::Iterator, rand::RngCore, vec,
@@ -650,9 +651,7 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::persistence::test::*;
-    use crate::setup::Keypair;
-    use crate::test_serialization;
+    use crate::{persistence::test::*, setup::Keypair, test_serialization};
 
     use ark_bls12_381::Bls12_381;
     use ark_ff::MontFp;

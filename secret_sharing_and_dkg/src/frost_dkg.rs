@@ -2,22 +2,20 @@
 //! This is a slight addition to the DKG based on. Feldman VSS as it contains a Schnorr proof of knowledge
 //! for the secret key.
 
-use crate::common::{CommitmentToCoefficients, ParticipantId, Share, ShareId, Shares};
-use crate::error::SSError;
-use crate::feldman_dvss_dkg;
-use crate::feldman_vss;
+use crate::{
+    common::{CommitmentToCoefficients, ParticipantId, Share, ShareId, Shares},
+    error::SSError,
+    feldman_dvss_dkg, feldman_vss,
+};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::BTreeMap;
-use ark_std::io::Write;
-use ark_std::rand::RngCore;
-use ark_std::UniformRand;
-use ark_std::{vec, vec::Vec};
+use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::error::SchnorrError;
-use schnorr_pok::{compute_random_oracle_challenge, impl_proof_of_knowledge_of_discrete_log};
+use schnorr_pok::{
+    compute_random_oracle_challenge, error::SchnorrError, impl_proof_of_knowledge_of_discrete_log,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::Zeroize;
@@ -230,8 +228,10 @@ pub mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
-    use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use ark_std::UniformRand;
+    use ark_std::{
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
     use blake2::Blake2b512;
 
     #[test]

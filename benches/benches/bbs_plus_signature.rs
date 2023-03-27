@@ -4,8 +4,10 @@ use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
-use bbs_plus::setup::{KeypairG1, KeypairG2, SignatureParamsG1, SignatureParamsG2};
-use bbs_plus::signature::{SignatureG1, SignatureG2};
+use bbs_plus::{
+    setup::{KeypairG1, KeypairG2, SignatureParamsG1, SignatureParamsG2},
+    signature::{SignatureG1, SignatureG2},
+};
 use benches::setup_bbs_plus;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 

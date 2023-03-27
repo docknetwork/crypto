@@ -4,10 +4,10 @@ use ark_std::vec::Vec;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::error::ProofSystemError;
-use crate::setup_params::SetupParams;
-use crate::statement::Statement;
-use crate::sub_protocols::saver::SaverProtocol;
+use crate::{
+    error::ProofSystemError, setup_params::SetupParams, statement::Statement,
+    sub_protocols::saver::SaverProtocol,
+};
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, VerifyingKey,

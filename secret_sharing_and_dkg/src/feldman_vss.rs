@@ -3,17 +3,18 @@
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::univariate::DensePolynomial;
-use ark_std::rand::RngCore;
-use ark_std::{cfg_iter, vec::Vec, UniformRand};
+use ark_std::{cfg_iter, rand::RngCore, vec::Vec, UniformRand};
 
 use dock_crypto_utils::ff::powers;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::common::{CommitmentToCoefficients, Share, ShareId, Shares};
-use crate::error::SSError;
-use crate::shamir_ss;
+use crate::{
+    common::{CommitmentToCoefficients, Share, ShareId, Shares},
+    error::SSError,
+    shamir_ss,
+};
 
 /// Generate a random secret with its shares according to Feldman's verifiable secret sharing.
 /// Returns the secret, shares, and commitments to coefficients of the polynomials for
@@ -96,8 +97,7 @@ impl<F: PrimeField> Share<F> {
 pub mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::pairing::Pairing;
-    use ark_ec::CurveGroup;
+    use ark_ec::{pairing::Pairing, CurveGroup};
     use ark_ff::One;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
 

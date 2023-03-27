@@ -6,12 +6,9 @@ use super::{PreparedVerifyingKey, ProofWithLink, VerifyingKeyWithLink};
 
 use ark_relations::r1cs::SynthesisError;
 
-use crate::error::Error;
-use crate::{Proof, VerifyingKey};
+use crate::{error::Error, Proof, VerifyingKey};
 use ark_ec::VariableBaseMSM;
-use ark_std::cfg_iter;
-use ark_std::vec;
-use ark_std::vec::Vec;
+use ark_std::{cfg_iter, vec, vec::Vec};
 use core::ops::{AddAssign, Neg};
 
 #[cfg(feature = "parallel")]

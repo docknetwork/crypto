@@ -2,8 +2,7 @@ use alloc::vec::Vec;
 use ark_ec::pairing::Pairing;
 use ark_serialize::*;
 use serde::{Deserialize, Serialize};
-use utils::randomized_pairing_check::RandomizedPairingChecker;
-use utils::{join, misc::is_lt};
+use utils::{join, misc::is_lt, randomized_pairing_check::RandomizedPairingChecker};
 
 use crate::{
     helpers::{pluck_missed, take_while_pairs_satisfy, SendIfParallel, WithSchnorrResponse},

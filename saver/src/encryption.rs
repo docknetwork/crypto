@@ -1,14 +1,17 @@
 //! Encryption, decryption, verifying commitment and verifying decryption
 
-use crate::circuit::BitsizeCheckCircuit;
-use crate::error::SaverError;
-use crate::keygen::{EncryptionKey, PreparedDecryptionKey, PreparedEncryptionKey, SecretKey};
-use crate::saver_groth16;
-use crate::saver_legogroth16;
-use crate::setup::PreparedEncryptionGens;
-use crate::utils;
-use ark_ec::pairing::PairingOutput;
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
+use crate::{
+    circuit::BitsizeCheckCircuit,
+    error::SaverError,
+    keygen::{EncryptionKey, PreparedDecryptionKey, PreparedEncryptionKey, SecretKey},
+    saver_groth16, saver_legogroth16,
+    setup::PreparedEncryptionGens,
+    utils,
+};
+use ark_ec::{
+    pairing::{Pairing, PairingOutput},
+    AffineRepr, CurveGroup, VariableBaseMSM,
+};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -24,8 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::utils::CHUNK_TYPE;
-use dock_crypto_utils::ff::non_zero_random;
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{ff::non_zero_random, serde_utils::*};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -772,13 +774,14 @@ pub(crate) mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
-    use crate::keygen::{keygen, DecryptionKey};
-    use crate::setup::EncryptionGens;
-    use crate::utils::{chunks_count, decompose};
+    use crate::{
+        keygen::{keygen, DecryptionKey},
+        setup::EncryptionGens,
+        utils::{chunks_count, decompose},
+    };
     use ark_bls12_381::Bls12_381;
     use ark_ff::One;
-    use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::SeedableRng;
+    use ark_std::rand::{prelude::StdRng, SeedableRng};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 

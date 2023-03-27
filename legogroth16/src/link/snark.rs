@@ -3,8 +3,7 @@
 //! and equality of committed values in multiple commitments. Note that this SNARK requires a trusted
 //! setup as the key generation creates a trapdoor.
 
-use crate::link::error::LinkError;
-use crate::link::utils::*;
+use crate::link::{error::LinkError, utils::*};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{UniformRand, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};

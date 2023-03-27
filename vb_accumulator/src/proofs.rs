@@ -91,25 +91,27 @@
 //! // Non-membership proof has a similar API, see tests for example.
 //! ```
 
-use crate::error::VBAccumulatorError;
-use crate::setup::{PreparedPublicKey, PreparedSetupParams, PublicKey, SetupParams};
-use crate::witness::{MembershipWitness, NonMembershipWitness};
-use ark_ec::pairing::PairingOutput;
-use ark_ec::scalar_mul::wnaf::WnafContext;
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
+use crate::{
+    error::VBAccumulatorError,
+    setup::{PreparedPublicKey, PreparedSetupParams, PublicKey, SetupParams},
+    witness::{MembershipWitness, NonMembershipWitness},
+};
+use ark_ec::{
+    pairing::{Pairing, PairingOutput},
+    scalar_mul::wnaf::WnafContext,
+    AffineRepr, CurveGroup, Group,
+};
 use ark_ff::{Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
-use dock_crypto_utils::serde_utils::*;
-use schnorr_pok::error::SchnorrError;
-use schnorr_pok::SchnorrChallengeContributor;
+use dock_crypto_utils::{hashing_utils::projective_group_elem_from_try_and_incr, serde_utils::*};
+use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
 use zeroize::Zeroize;
 
-use dock_crypto_utils::concat_slices;
-use dock_crypto_utils::msm::WindowTable;
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    concat_slices, msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -1541,12 +1543,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::positive::{tests::setup_positive_accum, Accumulator};
-    use crate::test_serialization;
-    use crate::universal::tests::setup_universal_accum;
+    use crate::{
+        positive::{tests::setup_positive_accum, Accumulator},
+        test_serialization,
+        universal::tests::setup_universal_accum,
+    };
 
     use ark_bls12_381::Bls12_381;
-    use ark_std::{rand::rngs::StdRng, rand::SeedableRng, UniformRand};
+    use ark_std::{
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
     use blake2::Blake2b512;
     use schnorr_pok::compute_random_oracle_challenge;
     use std::time::{Duration, Instant};

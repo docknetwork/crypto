@@ -4,29 +4,34 @@ use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec, UniformRand};
 
-use crate::statement::Statement;
-use crate::sub_protocols::ps_signature::PSSignaturePoK;
-use crate::sub_protocols::SubProtocol;
-use crate::witness::Witness;
-use crate::{error::ProofSystemError, witness::Witnesses};
+use crate::{
+    error::ProofSystemError,
+    statement::Statement,
+    sub_protocols::{ps_signature::PSSignaturePoK, SubProtocol},
+    witness::{Witness, Witnesses},
+};
 use digest::Digest;
 use legogroth16::aggregation::srs::PreparedProverSRS;
 
-use crate::meta_statement::WitnessRef;
-use crate::prelude::SnarkpackSRS;
-use crate::proof::{AggregatedGroth16, Proof};
-use crate::proof_spec::ProofSpec;
-use crate::statement_proof::StatementProof;
-use crate::sub_protocols::accumulator::{
-    AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol,
+use crate::{
+    meta_statement::WitnessRef,
+    prelude::SnarkpackSRS,
+    proof::{AggregatedGroth16, Proof},
+    proof_spec::ProofSpec,
+    statement_proof::StatementProof,
+    sub_protocols::{
+        accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol},
+        bbs_plus::PoKBBSSigG1SubProtocol,
+        bound_check_legogroth16::BoundCheckProtocol,
+        r1cs_legogorth16::R1CSLegogroth16Protocol,
+        saver::SaverProtocol,
+        schnorr::SchnorrProtocol,
+    },
 };
-use crate::sub_protocols::bbs_plus::PoKBBSSigG1SubProtocol;
-use crate::sub_protocols::bound_check_legogroth16::BoundCheckProtocol;
-use crate::sub_protocols::r1cs_legogorth16::R1CSLegogroth16Protocol;
-use crate::sub_protocols::saver::SaverProtocol;
-use crate::sub_protocols::schnorr::SchnorrProtocol;
-use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
-use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
+use dock_crypto_utils::{
+    hashing_utils::field_elem_from_try_and_incr,
+    transcript::{new_merlin_transcript, Transcript},
+};
 use saver::encryption::Ciphertext;
 
 /// The SAVER randomness, ciphertext and proof to reuse when creating the composite proof. This is more

@@ -4,16 +4,14 @@
 
 use ark_ec::pairing::Pairing;
 use ark_serialize::CanonicalDeserialize;
-use ark_std::collections::BTreeMap;
-use ark_std::format;
-use ark_std::io::Read;
-use ark_std::marker::PhantomData;
-use ark_std::{vec, vec::Vec};
+use ark_std::{collections::BTreeMap, format, io::Read, marker::PhantomData, vec, vec::Vec};
 use std::io::{Seek, SeekFrom};
 
-use crate::circom::error::CircomError;
-use crate::circom::r1cs::{Constraint, Header, R1CSFile, LC};
-use crate::circom::witness::check_subgroup_order;
+use crate::circom::{
+    error::CircomError,
+    r1cs::{Constraint, Header, R1CSFile, LC},
+    witness::check_subgroup_order,
+};
 
 impl<E: Pairing> R1CSFile<E> {
     pub fn new_from_file(path: impl AsRef<std::path::Path>) -> Result<Self, CircomError> {
@@ -243,8 +241,7 @@ fn read_map<R: Read, E: Pairing>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circom::r1cs::Curve;
-    use crate::circom::tests::abs_path;
+    use crate::circom::{r1cs::Curve, tests::abs_path};
     use ark_bls12_381::Bls12_381;
     use ark_bn254::{Bn254, Fr as BnFr};
     use ark_std::io::{BufReader, Cursor};

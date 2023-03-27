@@ -1,27 +1,33 @@
 use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::{BTreeMap, BTreeSet};
-use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    rand::{prelude::StdRng, SeedableRng},
+};
 use blake2::Blake2b512;
 use std::time::Instant;
 
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatements, ProofSpec, ProverConfig, VerifierConfig, Witness, WitnessRef,
-    Witnesses,
+use proof_system::{
+    prelude::{
+        EqualWitnesses, MetaStatements, ProofSpec, ProverConfig, VerifierConfig, Witness,
+        WitnessRef, Witnesses,
+    },
+    prover::OldLegoGroth16Proof,
+    setup_params::SetupParams,
+    statement::{
+        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bound_check_legogroth16::{
+            BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
+            BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt,
+        },
+        Statements,
+    },
+    sub_protocols::bound_check_legogroth16::generate_snark_srs_bound_check,
+    witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
-use proof_system::prover::OldLegoGroth16Proof;
-use proof_system::setup_params::SetupParams;
-use proof_system::statement::{
-    bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
-    bound_check_legogroth16::BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
-    bound_check_legogroth16::BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt, Statements,
-};
-use proof_system::sub_protocols::bound_check_legogroth16::generate_snark_srs_bound_check;
-use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 
-use test_utils::bbs_plus::*;
-use test_utils::{test_serialization, Fr, ProofG1};
+use test_utils::{bbs_plus::*, test_serialization, Fr, ProofG1};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_bounded_message() {

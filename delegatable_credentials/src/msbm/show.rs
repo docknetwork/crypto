@@ -3,26 +3,25 @@
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::BTreeSet;
-use ark_std::io::Write;
-use ark_std::rand::RngCore;
-use ark_std::vec::Vec;
-use ark_std::UniformRand;
+use ark_std::{collections::BTreeSet, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::error::SchnorrError;
-use schnorr_pok::impl_proof_of_knowledge_of_discrete_log;
+use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 
-use crate::error::DelegationError;
-use crate::msbm::issuance::Credential;
-use crate::msbm::keys::{PreparedRootIssuerPublicKey, UserPublicKey, UserSecretKey};
-use crate::msbm::sps_eq_uc_sig::Signature;
-use crate::set_commitment::{
-    AggregateSubsetWitness, PreparedSetCommitmentSRS, SetCommitment, SetCommitmentSRS,
+use crate::{
+    error::DelegationError,
+    msbm::{
+        issuance::Credential,
+        keys::{PreparedRootIssuerPublicKey, UserPublicKey, UserSecretKey},
+        sps_eq_uc_sig::Signature,
+    },
+    set_commitment::{
+        AggregateSubsetWitness, PreparedSetCommitmentSRS, SetCommitment, SetCommitmentSRS,
+    },
 };
 
 impl_proof_of_knowledge_of_discrete_log!(NymOwnershipProtocol, NymOwnership);
@@ -167,8 +166,10 @@ impl<E: Pairing> CredentialShow<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::msbm::issuance::tests::setup;
-    use crate::msbm::keys::{RootIssuerPublicKey, RootIssuerSecretKey, UserSecretKey};
+    use crate::msbm::{
+        issuance::tests::setup,
+        keys::{RootIssuerPublicKey, RootIssuerSecretKey, UserSecretKey},
+    };
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;

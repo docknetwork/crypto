@@ -368,15 +368,13 @@ mod serialization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
-    use ark_bls12_381::{fr::Fr, g1::G1Projective as G1Proj};
+    use ark_bls12_381::{fr::Fr, g1::G1Projective as G1Proj, Bls12_381};
     use ark_ec::CurveGroup;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use test_utils::bbs_plus::sig_setup;
-    use test_utils::test_serialization;
+    use test_utils::{bbs_plus::sig_setup, test_serialization};
 
     #[test]
     fn witness_serialization_deserialization() {

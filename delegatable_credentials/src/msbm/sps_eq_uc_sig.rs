@@ -5,27 +5,32 @@ use crate::error::DelegationError;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::io::Write;
-use ark_std::ops::{Add, Mul, Neg};
-use ark_std::rand::RngCore;
-use ark_std::{cfg_into_iter, cfg_iter, UniformRand};
-use ark_std::{collections::BTreeSet, vec::Vec};
+use ark_std::{
+    cfg_into_iter, cfg_iter,
+    collections::BTreeSet,
+    io::Write,
+    ops::{Add, Mul, Neg},
+    rand::RngCore,
+    vec::Vec,
+    UniformRand,
+};
 use digest::Digest;
 
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::error::SchnorrError;
-use schnorr_pok::impl_proof_of_knowledge_of_discrete_log;
+use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
-use crate::mercurial_sig::Signature as MercurialSig;
-use crate::msbm::keys::{
-    PreparedRootIssuerPublicKey, RootIssuerSecretKey, UpdateKey, UserPublicKey, UserSecretKey,
-};
-use crate::set_commitment::{
-    AggregateSubsetWitness, PreparedSetCommitmentSRS, SetCommitment, SetCommitmentOpening,
-    SetCommitmentSRS, SubsetWitness,
+use crate::{
+    mercurial_sig::Signature as MercurialSig,
+    msbm::keys::{
+        PreparedRootIssuerPublicKey, RootIssuerSecretKey, UpdateKey, UserPublicKey, UserSecretKey,
+    },
+    set_commitment::{
+        AggregateSubsetWitness, PreparedSetCommitmentSRS, SetCommitment, SetCommitmentOpening,
+        SetCommitmentSRS, SubsetWitness,
+    },
 };
 
 #[cfg(feature = "parallel")]

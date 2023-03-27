@@ -1,8 +1,10 @@
 use crate::error::DelegationError;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{Field, One, PrimeField, Zero};
-use ark_poly::univariate::{DenseOrSparsePolynomial, DensePolynomial};
-use ark_poly::{DenseUVPolynomial, Polynomial};
+use ark_poly::{
+    univariate::{DenseOrSparsePolynomial, DensePolynomial},
+    DenseUVPolynomial, Polynomial,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     ops::{Mul, Neg},

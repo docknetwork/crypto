@@ -12,13 +12,14 @@
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::BTreeMap;
-use ark_std::{vec, vec::Vec};
+use ark_std::{collections::BTreeMap, vec, vec::Vec};
 use zeroize::Zeroize;
 
-use crate::common::{CommitmentToCoefficients, ParticipantId, ShareId, VerifiableShare};
-use crate::error::SSError;
-use crate::pedersen_vss::CommitmentKey;
+use crate::{
+    common::{CommitmentToCoefficients, ParticipantId, ShareId, VerifiableShare},
+    error::SSError,
+    pedersen_vss::CommitmentKey,
+};
 
 /// Used by a participant to store received shares and commitment coefficients.
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
@@ -142,11 +143,12 @@ impl<G: AffineRepr> SharesAccumulator<G> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::common::VerifiableShares;
-    use crate::pedersen_vss::{deal_random_secret, CommitmentKey};
+    use crate::{
+        common::VerifiableShares,
+        pedersen_vss::{deal_random_secret, CommitmentKey},
+    };
     use ark_bls12_381::Bls12_381;
-    use ark_ec::pairing::Pairing;
-    use ark_ec::Group;
+    use ark_ec::{pairing::Pairing, Group};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
 

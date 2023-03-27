@@ -13,12 +13,10 @@ use ark_std::{
 
 use core::ops::MulAssign;
 
-use crate::error::Error;
-use crate::prover::verify_commitments;
-use ark_relations::r1cs::Variable;
+use crate::{error::Error, prover::verify_commitments};
 use ark_relations::{
     lc,
-    r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
+    r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError, Variable},
 };
 
 /// Circuit for computation a * b

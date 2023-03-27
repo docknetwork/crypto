@@ -2,31 +2,35 @@ use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
 use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::{BTreeMap, BTreeSet};
-use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    rand::{prelude::StdRng, SeedableRng},
+    UniformRand,
+};
 use bbs_plus::prelude::SignatureG1;
 use blake2::Blake2b512;
 use std::time::Instant;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatements, VerifierConfig, Witness, WitnessRef, Witnesses,
+use proof_system::{
+    prelude::{EqualWitnesses, MetaStatements, VerifierConfig, Witness, WitnessRef, Witnesses},
+    proof_spec::ProofSpec,
+    setup_params::SetupParams,
+    statement::{
+        accumulator::{
+            AccumulatorMembership as AccumulatorMembershipStmt,
+            AccumulatorNonMembership as AccumulatorNonMembershipStmt,
+        },
+        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        ped_comm::PedersenCommitment as PedersenCommitmentStmt,
+        Statements,
+    },
+    witness::{
+        Membership as MembershipWit, NonMembership as NonMembershipWit,
+        PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
+    },
 };
-use proof_system::proof_spec::ProofSpec;
-use proof_system::setup_params::SetupParams;
-use proof_system::statement::Statements;
-use proof_system::statement::{
-    accumulator::AccumulatorMembership as AccumulatorMembershipStmt,
-    accumulator::AccumulatorNonMembership as AccumulatorNonMembershipStmt,
-    bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
-    ped_comm::PedersenCommitment as PedersenCommitmentStmt,
-};
-use proof_system::witness::{
-    Membership as MembershipWit, NonMembership as NonMembershipWit,
-    PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
-};
-use test_utils::{accumulators::*, bbs_plus::*};
-use test_utils::{test_serialization, Fr, ProofG1};
+use test_utils::{accumulators::*, bbs_plus::*, test_serialization, Fr, ProofG1};
 
 #[test]
 fn pok_of_3_bbs_plus_sig_and_message_equality() {

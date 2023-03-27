@@ -6,11 +6,7 @@
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::io::Write;
-use ark_std::ops::Neg;
-use ark_std::rand::RngCore;
-use ark_std::UniformRand;
-use ark_std::{vec, vec::Vec};
+use ark_std::{io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use dock_crypto_utils::msm::WindowTable;
 use zeroize::Zeroize;
 
@@ -18,17 +14,16 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::error::SchnorrError;
-use schnorr_pok::impl_proof_of_knowledge_of_discrete_log;
+use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 
-use crate::auditor::AuditorPublicKey;
-use crate::error::DelegationError;
-use crate::mercurial_sig::Signature;
-use crate::protego::keys::{
-    IssuerSecretKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey,
-};
-use crate::set_commitment::{
-    PreparedSetCommitmentSRS, SetCommitment, SetCommitmentOpening, SetCommitmentSRS,
+use crate::{
+    auditor::AuditorPublicKey,
+    error::DelegationError,
+    mercurial_sig::Signature,
+    protego::keys::{IssuerSecretKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey},
+    set_commitment::{
+        PreparedSetCommitmentSRS, SetCommitment, SetCommitmentOpening, SetCommitmentSRS,
+    },
 };
 
 impl_proof_of_knowledge_of_discrete_log!(UserSecretKeyProtocol, UserSecretKeyProof);
@@ -458,8 +453,7 @@ pub mod tests {
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
 
-    use crate::auditor::AuditorSecretKey;
-    use crate::protego::keys::IssuerPublicKey;
+    use crate::{auditor::AuditorSecretKey, protego::keys::IssuerPublicKey};
     use schnorr_pok::compute_random_oracle_challenge;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;

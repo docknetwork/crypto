@@ -1,7 +1,7 @@
 use ark_bls12_381::Bls12_381;
 use ark_ec::pairing::Pairing;
-use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{
+    collections::{BTreeMap, BTreeSet},
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
@@ -9,8 +9,7 @@ use benches::setup_ps;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use itertools::{EitherOrBoth, Itertools};
 
-use coconut_crypto::signature::Signature;
-use coconut_crypto::{setup::*, SignaturePoKGenerator};
+use coconut_crypto::{setup::*, signature::Signature, SignaturePoKGenerator};
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 

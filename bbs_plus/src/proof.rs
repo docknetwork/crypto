@@ -55,10 +55,12 @@
 //!
 //! // See tests for more examples
 //! ```
-use crate::error::BBSPlusError;
-use crate::prelude::PreparedPublicKeyG2;
-use crate::setup::{PreparedSignatureParamsG1, SignatureParamsG1};
-use crate::signature::SignatureG1;
+use crate::{
+    error::BBSPlusError,
+    prelude::PreparedPublicKeyG2,
+    setup::{PreparedSignatureParamsG1, SignatureParamsG1},
+    signature::SignatureG1,
+};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -71,9 +73,10 @@ use ark_std::{
     vec::Vec,
     One, UniformRand,
 };
-use dock_crypto_utils::extend_some::ExtendSome;
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
-use dock_crypto_utils::{misc::rand, serde_utils::*};
+use dock_crypto_utils::{
+    extend_some::ExtendSome, misc::rand, randomized_pairing_check::RandomizedPairingChecker,
+    serde_utils::*,
+};
 use itertools::multiunzip;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 use serde::{Deserialize, Serialize};
@@ -527,8 +530,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setup::KeypairG2;
-    use crate::test_serialization;
+    use crate::{setup::KeypairG2, test_serialization};
     use ark_bls12_381::Bls12_381;
     use ark_serialize::CanonicalDeserialize;
     use ark_std::{

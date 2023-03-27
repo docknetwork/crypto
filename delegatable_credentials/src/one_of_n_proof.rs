@@ -2,11 +2,15 @@ use crate::error::DelegationError;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::BTreeMap;
-use ark_std::ops::{Add, Neg, Sub};
-use ark_std::rand::RngCore;
-use ark_std::{cfg_iter, UniformRand};
-use ark_std::{vec, vec::Vec};
+use ark_std::{
+    cfg_iter,
+    collections::BTreeMap,
+    ops::{Add, Neg, Sub},
+    rand::RngCore,
+    vec,
+    vec::Vec,
+    UniformRand,
+};
 use dock_crypto_utils::msm::WindowTable;
 
 #[cfg(feature = "parallel")]
@@ -205,8 +209,7 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use std::ops::Mul;
-    use std::time::Instant;
+    use std::{ops::Mul, time::Instant};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
     type G2 = <Bls12_381 as Pairing>::G2;

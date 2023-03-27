@@ -1,6 +1,4 @@
-use crate::error::ProofSystemError;
-use crate::setup_params::SetupParams;
-use crate::statement::Statement;
+use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;

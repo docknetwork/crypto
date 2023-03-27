@@ -1,8 +1,9 @@
-use ark_ec::pairing::{MillerLoopOutput, PairingOutput};
-use ark_ec::{pairing::Pairing, AffineRepr, Group};
+use ark_ec::{
+    pairing::{MillerLoopOutput, Pairing, PairingOutput},
+    AffineRepr, Group,
+};
 use ark_ff::{One, PrimeField, Zero};
-use ark_std::rand::Rng;
-use ark_std::{cfg_iter, ops::MulAssign, vec, vec::Vec, UniformRand};
+use ark_std::{cfg_iter, ops::MulAssign, rand::Rng, vec, vec::Vec, UniformRand};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -198,11 +199,11 @@ where
 mod test {
     use super::*;
     use ark_bls12_381::{Bls12_381, G1Projective, G2Projective};
-    use ark_ec::bls12::G2Prepared;
-    use ark_ec::CurveGroup;
-    use ark_std::rand::prelude::StdRng;
-    use ark_std::rand::SeedableRng;
-    use ark_std::UniformRand;
+    use ark_ec::{bls12::G2Prepared, CurveGroup};
+    use ark_std::{
+        rand::{prelude::StdRng, SeedableRng},
+        UniformRand,
+    };
     use std::time::Instant;
 
     fn rev_vec<T: Clone>(v: &[T]) -> Vec<T> {

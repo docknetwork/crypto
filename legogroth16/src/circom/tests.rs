@@ -1,9 +1,10 @@
-use crate::circom::circuit::tests::set_circuit_wires;
-use crate::circom::circuit::CircomCircuit;
-use crate::circom::witness::WitnessCalculator;
-use crate::tests::get_link_public_gens;
 use crate::{
+    circom::{
+        circuit::{tests::set_circuit_wires, CircomCircuit},
+        witness::WitnessCalculator,
+    },
     create_random_proof, generate_random_parameters_incl_cp_link, prepare_verifying_key,
+    tests::get_link_public_gens,
     verify_proof, verify_witness_commitment, ProvingKey, ProvingKeyWithLink,
 };
 use ark_bls12_381::Bls12_381;
@@ -11,12 +12,15 @@ use ark_bn254::Bn254;
 use ark_ec::pairing::Pairing;
 use ark_ff::{Field, One, PrimeField, Zero};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-use ark_std::rand::prelude::StdRng;
-use ark_std::rand::SeedableRng;
-use ark_std::UniformRand;
-use std::collections::{BTreeSet, HashMap};
-use std::ops::AddAssign;
-use std::path::PathBuf;
+use ark_std::{
+    rand::{prelude::StdRng, SeedableRng},
+    UniformRand,
+};
+use std::{
+    collections::{BTreeSet, HashMap},
+    ops::AddAssign,
+    path::PathBuf,
+};
 
 /// Given path relative to this crate, return absolute disk path
 pub fn abs_path(relative_path: &str) -> String {

@@ -5,16 +5,14 @@
 use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{marker::PhantomData, rand::RngCore};
-use ark_std::{vec, vec::Vec, UniformRand};
+use ark_std::{marker::PhantomData, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
 
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
-use crate::compressed_homomorphism;
-use crate::error::CompSigmaError;
-use crate::transforms::Homomorphism;
-use crate::utils::get_n_powers;
+use crate::{
+    compressed_homomorphism, error::CompSigmaError, transforms::Homomorphism, utils::get_n_powers,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineRepr> {

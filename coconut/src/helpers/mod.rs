@@ -18,11 +18,13 @@ pub use iter::*;
 pub use owned_pairs::*;
 pub use pairs::*;
 pub use try_iter::*;
-pub use utils::aliases::*;
-pub use utils::extend_some::*;
-pub use utils::iter::{self, *};
-pub use utils::misc::*;
-pub use utils::try_iter::{self, *};
+pub use utils::{
+    aliases::*,
+    extend_some::*,
+    iter::{self, *},
+    misc::*,
+    try_iter::{self, *},
+};
 pub use with_schnorr_and_blindings::*;
 pub use with_schnorr_response::*;
 

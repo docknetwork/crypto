@@ -1,17 +1,15 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
-use ark_std::rand::RngCore;
-use ark_std::{collections::BTreeMap, io::Write, vec::Vec};
-use dock_crypto_utils::iter::{take_while_pairs_satisfy, CheckLeft};
-use dock_crypto_utils::misc::check_seq_from;
+use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec};
+use dock_crypto_utils::{
+    iter::take_while_pairs_satisfy, misc::check_seq_from, try_iter::CheckLeft,
+};
 
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
-use coconut_crypto::proof::*;
-use coconut_crypto::setup::*;
+use coconut_crypto::{proof::*, setup::*};
 use itertools::{EitherOrBoth, Itertools};
 
-use crate::error::ProofSystemError;
-use crate::statement_proof::StatementProof;
+use crate::{error::ProofSystemError, statement_proof::StatementProof};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PSSignaturePoK<'a, E: Pairing> {

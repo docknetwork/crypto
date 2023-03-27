@@ -16,12 +16,14 @@ use coconut_crypto::setup::{
 use legogroth16::{
     PreparedVerifyingKey as LegoPreparedVerifyingKey, VerifyingKey as LegoVerifyingKey,
 };
-use saver::prelude::{
-    ChunkedCommitmentGens, EncryptionGens, EncryptionKey, PreparedEncryptionGens,
-    PreparedEncryptionKey,
-};
-use saver::saver_groth16::{
-    PreparedVerifyingKey as SaverPreparedVerifyingKey, VerifyingKey as SaverVerifyingKey,
+use saver::{
+    prelude::{
+        ChunkedCommitmentGens, EncryptionGens, EncryptionKey, PreparedEncryptionGens,
+        PreparedEncryptionKey,
+    },
+    saver_groth16::{
+        PreparedVerifyingKey as SaverPreparedVerifyingKey, VerifyingKey as SaverVerifyingKey,
+    },
 };
 use vb_accumulator::setup::{
     PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,

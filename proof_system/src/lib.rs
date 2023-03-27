@@ -174,15 +174,10 @@ pub mod verifier;
 pub mod witness;
 
 pub mod prelude {
-    pub use crate::error::ProofSystemError;
-    pub use crate::meta_statement::*;
-    pub use crate::proof::*;
-    pub use crate::proof_spec::*;
-    pub use crate::prover::*;
-    pub use crate::setup_params::*;
-    pub use crate::statement::*;
-    pub use crate::statement_proof::*;
-    pub use crate::sub_protocols::bound_check_legogroth16::generate_snark_srs_bound_check;
-    pub use crate::verifier::*;
-    pub use crate::witness::*;
+    pub use crate::{
+        error::ProofSystemError, meta_statement::*, proof::*, proof_spec::*, prover::*,
+        setup_params::*, statement::*, statement_proof::*,
+        sub_protocols::bound_check_legogroth16::generate_snark_srs_bound_check, verifier::*,
+        witness::*,
+    };
 }

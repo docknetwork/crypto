@@ -3,4 +3,6 @@ pub mod prover;
 pub mod using_groth16;
 pub mod verifier;
 
-pub use {proof::AggregateLegoProof, prover::aggregate_proofs, verifier::verify_aggregate_proof};
+pub use proof::AggregateLegoProof;
+pub use prover::aggregate_proofs;
+pub use verifier::verify_aggregate_proof;

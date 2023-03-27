@@ -308,15 +308,16 @@ impl_signature_alg!(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setup::{KeypairG1, KeypairG2};
-    use crate::test_serialization;
+    use crate::{
+        setup::{KeypairG1, KeypairG2},
+        test_serialization,
+    };
     use ark_bls12_381::{Bls12_381, G1Affine, G2Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use std::collections::HashSet;
-    use std::time::Instant;
+    use std::{collections::HashSet, time::Instant};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 

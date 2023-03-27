@@ -1,6 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::pairing::Pairing;
-use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{

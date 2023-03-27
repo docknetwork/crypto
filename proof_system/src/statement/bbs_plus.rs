@@ -1,13 +1,10 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::BTreeMap;
-use ark_std::vec::Vec;
+use ark_std::{collections::BTreeMap, vec::Vec};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 
-use crate::error::ProofSystemError;
-use crate::setup_params::SetupParams;
-use crate::statement::Statement;
+use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
 use bbs_plus::prelude::{PublicKeyG2, SignatureParamsG1};
 use dock_crypto_utils::serde_utils::*;
 

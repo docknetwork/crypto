@@ -1,13 +1,15 @@
 use ark_bls12_381::Bls12_381;
 use ark_ec::pairing::Pairing;
-use ark_std::collections::{BTreeMap, BTreeSet};
 use ark_std::{
+    collections::{BTreeMap, BTreeSet},
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
-use bbs_plus::proof::{MessageOrBlinding, PoKOfSignatureG1Protocol};
-use bbs_plus::setup::{KeypairG2, SignatureParamsG1};
-use bbs_plus::signature::SignatureG1;
+use bbs_plus::{
+    proof::{MessageOrBlinding, PoKOfSignatureG1Protocol},
+    setup::{KeypairG2, SignatureParamsG1},
+    signature::SignatureG1,
+};
 use benches::setup_bbs_plus;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 

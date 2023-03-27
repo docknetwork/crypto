@@ -1,17 +1,23 @@
-use ark_ec::pairing::{Pairing, PairingOutput};
-use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
+use ark_ec::{
+    pairing::{Pairing, PairingOutput},
+    AffineRepr, CurveGroup, Group, VariableBaseMSM,
+};
 use ark_ff::{Field, One, PrimeField, Zero};
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::ops::{MulAssign, Neg};
-use ark_std::{cfg_iter, format, string::ToString, vec, vec::Vec};
+use ark_std::{
+    cfg_iter, format,
+    ops::{MulAssign, Neg},
+    string::ToString,
+    vec,
+    vec::Vec,
+};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::aggregation::error::AggregationError;
-use crate::aggregation::srs::VerifierSRSProjective;
+use crate::aggregation::{error::AggregationError, srs::VerifierSRSProjective};
 
 /// KZGOpening represents the KZG opening of a commitment key (which is a tuple
 /// given commitment keys are a tuple).

@@ -2,36 +2,43 @@ use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
 use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::collections::{BTreeMap, BTreeSet};
-use ark_std::{rand::prelude::StdRng, rand::SeedableRng, UniformRand};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    rand::{prelude::StdRng, SeedableRng},
+    UniformRand,
+};
 use blake2::Blake2b512;
 use coconut_crypto::setup::*;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use coconut_crypto::MultiMessageCommitment;
-use coconut_crypto::{helpers::*, BlindSignature, CommitmentOrMessage};
-use coconut_crypto::{MessageCommitment, Signature};
+use coconut_crypto::{
+    helpers::*, BlindSignature, CommitmentOrMessage, MessageCommitment, MultiMessageCommitment,
+    Signature,
+};
 use std::time::Instant;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, VerifierConfig, Witness, WitnessRef, Witnesses,
+use proof_system::{
+    prelude::{
+        EqualWitnesses, MetaStatement, MetaStatements, VerifierConfig, Witness, WitnessRef,
+        Witnesses,
+    },
+    proof_spec::ProofSpec,
+    setup_params::SetupParams,
+    statement::{
+        accumulator::{
+            AccumulatorMembership as AccumulatorMembershipStmt,
+            AccumulatorNonMembership as AccumulatorNonMembershipStmt,
+        },
+        ped_comm::PedersenCommitment as PedersenCommitmentStmt,
+        ps_signature::PoKPSSignatureStatement,
+        Statements,
+    },
+    witness::{Membership as MembershipWit, NonMembership as NonMembershipWit, PoKPSSignature},
 };
-use proof_system::proof_spec::ProofSpec;
-use proof_system::setup_params::SetupParams;
-use proof_system::statement::Statements;
-use proof_system::statement::{
-    accumulator::AccumulatorMembership as AccumulatorMembershipStmt,
-    accumulator::AccumulatorNonMembership as AccumulatorNonMembershipStmt,
-    ped_comm::PedersenCommitment as PedersenCommitmentStmt, ps_signature::PoKPSSignatureStatement,
-};
-use proof_system::witness::{
-    Membership as MembershipWit, NonMembership as NonMembershipWit, PoKPSSignature,
-};
-use test_utils::{accumulators::*, G1};
-use test_utils::{test_serialization, Fr, ProofG1};
+use test_utils::{accumulators::*, test_serialization, Fr, ProofG1, G1};
 
 #[test]
 fn pok_of_3_ps_sig_and_message_equality() {

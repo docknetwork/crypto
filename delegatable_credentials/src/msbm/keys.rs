@@ -1,15 +1,16 @@
-use crate::error::DelegationError;
-use crate::mercurial_sig::{PreparedPublicKey, PublicKey, SecretKey};
-use crate::msbm::sps_eq_uc_sig::Signature;
-use crate::set_commitment::SetCommitmentSRS;
+use crate::{
+    error::DelegationError,
+    mercurial_sig::{PreparedPublicKey, PublicKey, SecretKey},
+    msbm::sps_eq_uc_sig::Signature,
+    set_commitment::SetCommitmentSRS,
+};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
-use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
-use ark_ff::{PrimeField, Zero};
+use ark_ff::{
+    field_hashers::{DefaultFieldHasher, HashToField},
+    PrimeField, Zero,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::ops::Neg;
-use ark_std::rand::RngCore;
-use ark_std::UniformRand;
-use ark_std::{cfg_iter, vec, vec::Vec};
+use ark_std::{cfg_iter, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::DynDigest;
 use zeroize::Zeroize;
 

@@ -53,16 +53,17 @@ pub mod setup;
 pub type Result<T> = core::result::Result<T, error::SaverError>;
 
 pub mod prelude {
-    pub use crate::commitment::ChunkedCommitment;
-    pub use crate::error::SaverError;
-    pub use crate::keygen::{
-        keygen, DecryptionKey, EncryptionKey, PreparedDecryptionKey, PreparedEncryptionKey,
-        SecretKey,
-    };
-    pub use crate::saver_groth16::{
-        create_proof, generate_srs, verify_proof, PreparedVerifyingKey, ProvingKey, VerifyingKey,
-    };
-    pub use crate::setup::{
-        setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens,
+    pub use crate::{
+        commitment::ChunkedCommitment,
+        error::SaverError,
+        keygen::{
+            keygen, DecryptionKey, EncryptionKey, PreparedDecryptionKey, PreparedEncryptionKey,
+            SecretKey,
+        },
+        saver_groth16::{
+            create_proof, generate_srs, verify_proof, PreparedVerifyingKey, ProvingKey,
+            VerifyingKey,
+        },
+        setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens},
     };
 }

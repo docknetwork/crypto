@@ -5,8 +5,7 @@ use ark_std::{
     UniformRand,
 };
 use benches::setup_ps;
-use coconut_crypto::setup::*;
-use coconut_crypto::Signature;
+use coconut_crypto::{setup::*, Signature};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;

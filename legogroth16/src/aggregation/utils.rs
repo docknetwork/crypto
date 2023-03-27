@@ -1,5 +1,7 @@
-use ark_ec::pairing::PairingOutput;
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ec::{
+    pairing::{Pairing, PairingOutput},
+    AffineRepr, CurveGroup, VariableBaseMSM,
+};
 use ark_ff::PrimeField;
 use ark_std::{
     cfg_into_iter, cfg_iter, cfg_iter_mut,
@@ -12,14 +14,16 @@ use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker,
 };
 
-use crate::aggregation::commitment::PairCommitment;
-use crate::aggregation::key::{Key, PreparedVKey};
-
-use crate::aggregation::error::AggregationError;
-use crate::aggregation::kzg::{
-    prove_commitment_v, prove_commitment_w, verify_kzg_v, verify_kzg_w, KZGOpening,
+use crate::aggregation::{
+    commitment::PairCommitment,
+    key::{Key, PreparedVKey},
 };
-use crate::aggregation::srs::VerifierSRSProjective;
+
+use crate::aggregation::{
+    error::AggregationError,
+    kzg::{prove_commitment_v, prove_commitment_w, verify_kzg_v, verify_kzg_w, KZGOpening},
+    srs::VerifierSRSProjective,
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

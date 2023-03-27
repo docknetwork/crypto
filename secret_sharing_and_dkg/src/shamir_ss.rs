@@ -2,12 +2,13 @@
 
 use ark_ff::PrimeField;
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
-use ark_std::rand::RngCore;
-use ark_std::{cfg_into_iter, cfg_iter, vec::Vec};
+use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec::Vec};
 
-use crate::common;
-use crate::common::{ShareId, Shares};
-use crate::error::SSError;
+use crate::{
+    common,
+    common::{ShareId, Shares},
+    error::SSError,
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

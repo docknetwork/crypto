@@ -3,10 +3,12 @@
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::ops::{Mul, Neg};
-use ark_std::rand::RngCore;
-use ark_std::vec::Vec;
-use ark_std::UniformRand;
+use ark_std::{
+    ops::{Mul, Neg},
+    rand::RngCore,
+    vec::Vec,
+    UniformRand,
+};
 use zeroize::Zeroize;
 
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]

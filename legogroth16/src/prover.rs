@@ -13,16 +13,15 @@ use ark_poly::GeneralEvaluationDomain;
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal, SynthesisError,
 };
-use ark_std::rand::Rng;
 use ark_std::{
     cfg_into_iter, cfg_iter, end_timer,
     ops::{AddAssign, Mul},
+    rand::Rng,
     start_timer, vec,
     vec::Vec,
 };
 
-use crate::error::Error;
-use crate::r1cs_to_qap::R1CStoQAP;
+use crate::{error::Error, r1cs_to_qap::R1CStoQAP};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

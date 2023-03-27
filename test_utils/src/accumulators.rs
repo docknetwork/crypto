@@ -1,11 +1,9 @@
 use crate::Fr;
 use ark_bls12_381::Bls12_381;
 use ark_std::rand::rngs::StdRng;
-use std::collections::HashSet;
-use std::hash::Hash;
-use vb_accumulator::persistence::UniversalAccumulatorState;
+use std::{collections::HashSet, hash::Hash};
 use vb_accumulator::{
-    persistence::{InitialElementsStore, State},
+    persistence::{InitialElementsStore, State, UniversalAccumulatorState},
     positive::PositiveAccumulator,
     setup::{Keypair, SetupParams},
     universal::UniversalAccumulator,

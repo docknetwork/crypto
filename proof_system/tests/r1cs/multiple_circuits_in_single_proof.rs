@@ -1,26 +1,28 @@
 use ark_bls12_381::Bls12_381;
 use ark_ff::One;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::rand::rngs::StdRng;
-use ark_std::rand::SeedableRng;
-use ark_std::UniformRand;
+use ark_std::{
+    rand::{rngs::StdRng, SeedableRng},
+    UniformRand,
+};
 use blake2::Blake2b512;
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, Statements, Witness,
-    WitnessRef, Witnesses,
-};
-use proof_system::statement::{
-    bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
-    r1cs_legogroth16::{
-        R1CSCircomProver as R1CSProverStmt, R1CSCircomVerifier as R1CSVerifierStmt,
+use proof_system::{
+    prelude::{
+        EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, Statements,
+        Witness, WitnessRef, Witnesses,
     },
+    statement::{
+        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        r1cs_legogroth16::{
+            R1CSCircomProver as R1CSProverStmt, R1CSCircomVerifier as R1CSVerifierStmt,
+        },
+    },
+    witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
-use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::r1cs::get_r1cs_and_wasm_bytes;
-use test_utils::bbs_plus::*;
-use test_utils::{test_serialization, Fr, ProofG1, G1};
+use test_utils::{bbs_plus::*, test_serialization, Fr, ProofG1, G1};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_values() {

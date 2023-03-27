@@ -1,8 +1,10 @@
-use crate::error::ProofSystemError;
-use crate::statement_proof::{
-    BoundCheckLegoGroth16Proof, BoundCheckLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
+use crate::{
+    error::ProofSystemError,
+    statement_proof::{
+        BoundCheckLegoGroth16Proof, BoundCheckLegoGroth16ProofWhenAggregatingSnarks, StatementProof,
+    },
+    sub_protocols::schnorr::SchnorrProtocol,
 };
-use crate::sub_protocols::schnorr::SchnorrProtocol;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
@@ -11,9 +13,14 @@ use ark_r1cs_std::{
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_serialize::CanonicalSerialize;
-use ark_std::rand::Rng;
 use ark_std::{
-    cmp::Ordering, collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand,
+    cmp::Ordering,
+    collections::BTreeMap,
+    io::Write,
+    rand::{Rng, RngCore},
+    vec,
+    vec::Vec,
+    UniformRand,
 };
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use legogroth16::{
@@ -344,7 +351,7 @@ where
 mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_std::{rand::prelude::StdRng, rand::SeedableRng};
+    use ark_std::rand::{prelude::StdRng, SeedableRng};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 

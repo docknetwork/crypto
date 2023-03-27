@@ -3,8 +3,10 @@
 //! and the other where signature is in group G2 and public key in group G1
 
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
-use ark_ff::{Field, PrimeField, Zero};
+use ark_ff::{
+    field_hashers::{DefaultFieldHasher, HashToField},
+    Field, PrimeField, Zero,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, fmt::Debug, rand::RngCore, vec::Vec, UniformRand};
 use digest::DynDigest;

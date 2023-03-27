@@ -1,8 +1,7 @@
 use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeSet, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::error::BBSPlusError;
-use legogroth16::circom::CircomError;
-use legogroth16::error::Error as LegoGroth16Error;
+use legogroth16::{circom::CircomError, error::Error as LegoGroth16Error};
 use saver::error::SaverError;
 use schnorr_pok::error::SchnorrError;
 use vb_accumulator::error::VBAccumulatorError;

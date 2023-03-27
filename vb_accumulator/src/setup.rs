@@ -29,8 +29,10 @@
 //! ```
 
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
-use ark_ff::PrimeField;
+use ark_ff::{
+    field_hashers::{DefaultFieldHasher, HashToField},
+    PrimeField,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use zeroize::Zeroize;
@@ -38,9 +40,9 @@ use zeroize::Zeroize;
 use digest::{Digest, DynDigest};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 
-use dock_crypto_utils::concat_slices;
-use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{
+    concat_slices, hashing_utils::projective_group_elem_from_try_and_incr, serde_utils::*,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
