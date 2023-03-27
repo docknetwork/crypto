@@ -10,7 +10,9 @@ use utils::join;
 
 use super::{error::BlindPSError, ps_signature::Signature};
 use crate::{
-    helpers::{pair_valid_pairs_with_slice, pair_with_slice, ExtendSome, IdxAsc, OwnedPairs},
+    helpers::{
+        is_lt, pair_valid_pairs_with_slice, pair_with_slice, CheckLeft, ExtendSome, OwnedPairs,
+    },
     setup::{PublicKey, SecretKey},
     MessageCommitment,
 };
@@ -104,7 +106,7 @@ impl<E: Pairing> BlindSignature<E> {
         IB: IntoIterator<Item = (usize, &'a E::ScalarField)>,
     {
         let blindings_with_beta: OwnedPairs<_, _> =
-            pair_valid_pairs_with_slice(indexed_blindings_sorted_by_index, IdxAsc, beta)
+            pair_valid_pairs_with_slice(indexed_blindings_sorted_by_index, CheckLeft(is_lt), beta)
                 .map_ok(|(beta_j, o)| (*beta_j, (-*o)))
                 .collect::<Result<_>>()?;
 

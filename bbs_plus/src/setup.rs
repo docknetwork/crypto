@@ -44,7 +44,7 @@ use zeroize::Zeroize;
 use core::iter::once;
 use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
 use dock_crypto_utils::serde_utils::*;
-use dock_crypto_utils::{concat_slices, iter::*};
+use dock_crypto_utils::{concat_slices, iter::*, misc::is_lt};
 use itertools::process_results;
 
 #[cfg(feature = "parallel")]
@@ -204,7 +204,7 @@ macro_rules! impl_sig_params {
                 let (bases, scalars): (Vec<_>, Vec<_>) = process_results(
                     pair_valid_pairs_with_slice::<_, _, _, BBSPlusError, _>(
                         indexed_messages_sorted_by_index,
-                        IdxAsc,
+                        CheckLeft(is_lt),
                         &self.h,
                     ),
                     |iter| iter.chain(once((&self.h_0, blinding))).unzip(),

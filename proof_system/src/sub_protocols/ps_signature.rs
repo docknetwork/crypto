@@ -1,6 +1,8 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::rand::RngCore;
 use ark_std::{collections::BTreeMap, io::Write, vec::Vec};
+use dock_crypto_utils::iter::{take_while_pairs_satisfy, CheckLeft};
+use dock_crypto_utils::misc::check_seq_from;
 
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
@@ -118,19 +120,12 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
             .map(|(idx, _)| (*idx, CommitMessage::RevealMessage));
 
         let mut invalid_message_idx = None;
-        let all_messages = messages_to_commit_with_blindings
-            .merge_by(revealed_messages, |(a, _), (b, _)| a <= b)
-            .scan(None, |last, (idx, msg)| {
-                if last.map_or_else(|| idx != 0, |last| last + 1 != idx) {
-                    invalid_message_idx.replace(idx);
-
-                    None
-                } else {
-                    last.replace(idx);
-
-                    Some(msg)
-                }
-            });
+        let all_messages = take_while_pairs_satisfy(
+            messages_to_commit_with_blindings.merge_by(revealed_messages, |(a, _), (b, _)| a <= b),
+            CheckLeft(check_seq_from(0)),
+            &mut invalid_message_idx,
+        )
+        .map(|(_, message)| message);
 
         let protocol = SignaturePoKGenerator::init(
             rng,
@@ -141,8 +136,8 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         );
         if let Some(idx) = invalid_blinding_idx {
             Err(ProofSystemError::PSProtocolInvalidBlindingIndex(idx))?
-        } else if let Some(idx) = invalid_message_idx {
-            Err(ProofSystemError::PSProtocolInvalidMessageIndex(idx))?
+        } else if let Some((prev, cur)) = invalid_message_idx {
+            Err(ProofSystemError::PSProtocolInvalidMessageIndex(prev, cur))?
         }
 
         self.protocol = Some(Protocol {

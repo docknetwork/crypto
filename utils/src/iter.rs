@@ -1,4 +1,3 @@
-use crate::misc::is_lt;
 use itertools::{EitherOrBoth, Itertools};
 
 use super::try_iter::{try_pair_with_slice, try_validate_pairs, IndexIsOutOfBounds, InvalidPair};
@@ -43,13 +42,13 @@ pub trait PairValidator<I> {
     fn map(&self, item: &I) -> Self::MappedItem;
 
     /// Validates given pair.
-    fn validate(&self, previous: &Self::MappedItem, current: &Self::MappedItem) -> bool;
+    fn validate(&mut self, previous: &Self::MappedItem, current: &Self::MappedItem) -> bool;
 }
 
 impl<I, M, MapF, ValidateF> PairValidator<I> for (MapF, ValidateF)
 where
     MapF: Fn(&I) -> M,
-    ValidateF: Fn(&M, &M) -> bool,
+    ValidateF: FnMut(&M, &M) -> bool,
 {
     type MappedItem = M;
 
@@ -57,14 +56,14 @@ where
         self.0(item)
     }
 
-    fn validate(&self, previous: &M, current: &M) -> bool {
+    fn validate(&mut self, previous: &M, current: &M) -> bool {
         self.1(previous, current)
     }
 }
 
 impl<I: Clone, ValidateF> PairValidator<I> for ValidateF
 where
-    ValidateF: Fn(&I, &I) -> bool,
+    ValidateF: FnMut(&I, &I) -> bool,
 {
     type MappedItem = I;
 
@@ -72,24 +71,46 @@ where
         item.clone()
     }
 
-    fn validate(&self, previous: &I, current: &I) -> bool {
+    fn validate(&mut self, previous: &I, current: &I) -> bool {
         (self)(previous, current)
     }
 }
 
-/// Implements `PairValidator` which ensures that for each previous - current pair indices are always increasing.
+/// Implements `PairValidator` which ensures that for each previous - current left items pairs satisfy provided function.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct IdxAsc;
+pub struct CheckLeft<F>(pub F);
 
-impl<Idx: Copy + Ord, Item> PairValidator<(Idx, Item)> for IdxAsc {
-    type MappedItem = Idx;
+impl<First: Clone, Second, ValidateF> PairValidator<(First, Second)> for CheckLeft<ValidateF>
+where
+    ValidateF: FnMut(&First, &First) -> bool,
+{
+    type MappedItem = First;
 
-    fn map(&self, item: &(Idx, Item)) -> Idx {
-        item.0
+    fn map(&self, item: &(First, Second)) -> First {
+        item.0.clone()
     }
 
-    fn validate(&self, previous: &Idx, current: &Idx) -> bool {
-        is_lt(previous, current)
+    fn validate(&mut self, previous: &First, current: &First) -> bool {
+        self.0(previous, current)
+    }
+}
+
+/// Implements `PairValidator` which ensures that for each previous - current right items pairs satisfy provided function.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CheckRight<F>(pub F);
+
+impl<First, Second: Clone, ValidateF> PairValidator<(First, Second)> for CheckRight<ValidateF>
+where
+    ValidateF: FnMut(&Second, &Second) -> bool,
+{
+    type MappedItem = Second;
+
+    fn map(&self, item: &(First, Second)) -> Second {
+        item.1.clone()
+    }
+
+    fn validate(&mut self, previous: &Second, current: &Second) -> bool {
+        self.0(previous, current)
     }
 }
 
@@ -125,13 +146,15 @@ where
     'invalid: 'iter,
     I: IntoIterator + 'iter,
     P: PairValidator<I::Item> + 'iter,
-    I::Item: Clone,
 {
-    try_validate_pairs(iter.into_iter().map(Ok), validator).scan((), |(), res| {
-        res.map_err(InvalidPair::into)
-            .map_err(|invalid| invalid_pair.replace(invalid))
-            .ok()
-    })
+    try_validate_pairs(iter.into_iter().map(Ok), validator)
+        .map(|res| {
+            res.map_err(InvalidPair::into)
+                .map_err(|invalid| invalid_pair.replace(invalid))
+                .ok()
+        })
+        .take_while(Option::is_some)
+        .flatten()
 }
 
 /// Skips up to `n` elements from the iterator using supplied random generator.
