@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     helpers::{
-        pluck_missed, take_while_pairs_unique_sorted, DoubleEndedExactSizeIterator, SendIfParallel,
-        WithSchnorrResponse,
+        is_lt, pluck_missed, take_while_pairs_satisfy, DoubleEndedExactSizeIterator,
+        SendIfParallel, WithSchnorrResponse,
     },
     setup::SignatureParams,
 };
@@ -119,7 +119,7 @@ impl<E: Pairing> MessagesPoK<E> {
         let mut invalid_idx_pair = None;
         // Pick only committed `h` using supplied indices of the revealed messages
         let committed_h = pluck_missed(
-            take_while_pairs_unique_sorted(unique_sorted_revealed_indices, &mut invalid_idx_pair),
+            take_while_pairs_satisfy(unique_sorted_revealed_indices, is_lt, &mut invalid_idx_pair),
             h,
         );
         let verification_res = self

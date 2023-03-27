@@ -62,6 +62,21 @@ where
     }
 }
 
+impl<I: Clone, ValidateF> PairValidator<I> for ValidateF
+where
+    ValidateF: Fn(&I, &I) -> bool,
+{
+    type MappedItem = I;
+
+    fn map(&self, item: &I) -> I {
+        item.clone()
+    }
+
+    fn validate(&self, previous: &I, current: &I) -> bool {
+        (self)(previous, current)
+    }
+}
+
 /// Implements `PairValidator` which ensures that for each previous - current pair indices are always increasing.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct IdxAsc;
@@ -83,7 +98,7 @@ impl<Idx: Copy + Ord, Item> PairValidator<(Idx, Item)> for IdxAsc {
 /// In case of error, `Err(IndexIsOutOfBounds)` will be emitted.
 pub fn pair_valid_pairs_with_slice<'iter, 'pairs, I, Item, Pair, E, P>(
     iter: I,
-    cmp: P,
+    validator: P,
     pairs: &'pairs [Pair],
 ) -> impl Iterator<Item = Result<(&'pairs Pair, Item), E>> + 'iter
 where
@@ -93,14 +108,17 @@ where
     P: PairValidator<(usize, Item)> + 'iter,
     E: From<IndexIsOutOfBounds> + From<InvalidPair<P::MappedItem>> + 'iter,
 {
-    try_pair_with_slice(try_validate_pairs(iter.into_iter().map(Ok), cmp), pairs)
+    try_pair_with_slice(
+        try_validate_pairs(iter.into_iter().map(Ok), validator),
+        pairs,
+    )
 }
 
 /// Ensures that the given iterator satisfies provided function for each previous - current pair.
 /// The supplied option will be modified to invalid pair in case of failure, and iteration will be aborted.
 pub fn take_while_pairs_satisfy<'iter, 'invalid, I, P>(
     iter: I,
-    cmp: P,
+    validator: P,
     invalid_pair: &'invalid mut Option<(P::MappedItem, P::MappedItem)>,
 ) -> impl Iterator<Item = I::Item> + 'iter
 where
@@ -109,25 +127,11 @@ where
     P: PairValidator<I::Item> + 'iter,
     I::Item: Clone,
 {
-    try_validate_pairs(iter.into_iter().map(Ok), cmp).scan((), |(), res| {
+    try_validate_pairs(iter.into_iter().map(Ok), validator).scan((), |(), res| {
         res.map_err(InvalidPair::into)
             .map_err(|invalid| invalid_pair.replace(invalid))
             .ok()
     })
-}
-
-/// Ensures that given iterator emits only unique sorted items i.e. for each item `previous < current`.
-/// The supplied option will be modified to invalid pair in case of failure, and iteration will be aborted.
-pub fn take_while_pairs_unique_sorted<'iter, 'invalid, I>(
-    iter: I,
-    invalid_pair: &'invalid mut Option<(I::Item, I::Item)>,
-) -> impl Iterator<Item = I::Item> + 'iter
-where
-    'invalid: 'iter,
-    I: IntoIterator + 'iter,
-    I::Item: Ord + Clone,
-{
-    take_while_pairs_satisfy(iter, (Clone::clone, is_lt), invalid_pair)
 }
 
 /// Skips up to `n` elements from the iterator using supplied random generator.
