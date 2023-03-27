@@ -11,20 +11,20 @@ description = "Threshold anonymous credentials based on the paper [Security Anal
 path = "src/lib.rs"
 
 [dependencies]
-ark-ff = { version = "0.4.1", default-features = false }
-ark-ec = { version = "0.4.1", default-features = false }
-ark-std = { version = "0.4.0", default-features = false }
-ark-poly = { version = "0.4.1", default-features = false }
-ark-serialize = { version = "0.4.1", default-features = false, features = [ "derive" ] }
-serde = { version = "1.0.156", default-features = false, features = ["derive"] }
-utils = { package = "dock_crypto_utils", version = "0.9.0", default-features = false, path = "../utils" }
-digest = "0.10.6"
-zeroize = { version = "1.5.7", features = ["derive"] }
-rayon = { version = "1.7.0", optional = true }
-schnorr_pok = { version = "0.9.0", default-features = false, path = "../schnorr_pok" }
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-std.workspace = true
+ark-poly.workspace = true
+ark-serialize.workspace = true
+serde.workspace = true
+digest.workspace = true
 itertools = "0.10.5"
+zeroize.workspace = true
+serde_with.workspace = true
+rayon = { workspace = true, optional = true }
+utils = { package = "dock_crypto_utils", version = "0.9.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.9.0", default-features = false, path = "../schnorr_pok" }
 secret_sharing_and_dkg = { version = "0.2.0", default-features = false, path = "../secret_sharing_and_dkg" }
-serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
 
 [dev-dependencies]
 blake2 = { version = "0.10.6", default-features = false }
