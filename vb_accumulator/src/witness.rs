@@ -837,13 +837,13 @@ mod tests {
         for i in 0..count {
             let elem = Fr::rand(&mut rng);
             let new_accumulator = accumulator
-                .add(elem.clone(), &keypair.secret_key, &mut state)
+                .add(elem, &keypair.secret_key, &mut state)
                 .unwrap();
             let wit = new_accumulator
                 .get_membership_witness(&elem, &keypair.secret_key, &state)
                 .unwrap();
             let verification_accumulator =
-                PositiveAccumulator::from_accumulated(new_accumulator.value().clone());
+                PositiveAccumulator::from_accumulated(*new_accumulator.value());
             assert!(verification_accumulator.verify_membership(
                 &elem,
                 &wit,
@@ -858,7 +858,7 @@ mod tests {
                 let mut j = i;
                 while j > 0 {
                     let verification_accumulator =
-                        PositiveAccumulator::from_accumulated(new_accumulator.value().clone());
+                        PositiveAccumulator::from_accumulated(*new_accumulator.value());
                     // Verification fails with old witness
                     assert!(!verification_accumulator.verify_membership(
                         &elems[j - 1],
@@ -898,7 +898,7 @@ mod tests {
                 .remove(&elems[i], &keypair.secret_key, &mut state)
                 .unwrap();
             let verification_accumulator =
-                PositiveAccumulator::from_accumulated(new_accumulator.value().clone());
+                PositiveAccumulator::from_accumulated(*new_accumulator.value());
             let mut j = i;
             while j > 0 {
                 // Update witness of each element before i, going backwards
@@ -954,8 +954,7 @@ mod tests {
         let mut non_members = vec![];
         let mut non_membership_witnesses = vec![];
 
-        let verification_accumulator =
-            UniversalAccumulator::from_accumulated(accumulator.value().clone());
+        let verification_accumulator = UniversalAccumulator::from_accumulated(*accumulator.value());
         let n = 100;
         for _ in 0..n {
             let elem = Fr::rand(&mut rng);
@@ -983,17 +982,12 @@ mod tests {
         for i in 0..100 {
             let elem = Fr::rand(&mut rng);
             let new_accumulator = accumulator
-                .add(
-                    elem.clone(),
-                    &keypair.secret_key,
-                    &initial_elements,
-                    &mut state,
-                )
+                .add(elem, &keypair.secret_key, &initial_elements, &mut state)
                 .unwrap();
             added_elems.push(elem);
 
             let verification_accumulator =
-                UniversalAccumulator::from_accumulated(new_accumulator.value().clone());
+                UniversalAccumulator::from_accumulated(*new_accumulator.value());
             for j in 0..n {
                 assert!(!verification_accumulator.verify_non_membership(
                     &non_members[j],
@@ -1033,7 +1027,7 @@ mod tests {
                 )
                 .unwrap();
             let verification_accumulator =
-                UniversalAccumulator::from_accumulated(accumulator.value().clone());
+                UniversalAccumulator::from_accumulated(*accumulator.value());
             for j in 0..n {
                 assert!(!verification_accumulator.verify_non_membership(
                     &non_members[j],
@@ -1077,12 +1071,12 @@ mod tests {
 
         let (params, keypair, mut accumulator, mut state) = setup_positive_accum(&mut rng);
 
-        let additions_1: Vec<Fr> = (0..10).into_iter().map(|_| Fr::rand(&mut rng)).collect();
-        let additions_2: Vec<Fr> = (0..5).into_iter().map(|_| Fr::rand(&mut rng)).collect();
-        let additions_3: Vec<Fr> = (0..5).into_iter().map(|_| Fr::rand(&mut rng)).collect();
+        let additions_1: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
+        let additions_2: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
+        let additions_3: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
         let removals: Vec<Fr> = vec![0, 1, 6, 9]
             .into_iter()
-            .map(|i| additions_1[i].clone())
+            .map(|i| additions_1[i])
             .collect();
 
         // Add elements in `additions_1`, compute witnesses for them, then add `additions_2` and update witnesses for elements in additions_1
@@ -1092,8 +1086,7 @@ mod tests {
         let witnesses_1 = accumulator
             .get_membership_witnesses_for_batch(&additions_1, &keypair.secret_key, &state)
             .unwrap();
-        let verification_accumulator =
-            PositiveAccumulator::from_accumulated(accumulator.value().clone());
+        let verification_accumulator = PositiveAccumulator::from_accumulated(*accumulator.value());
         for i in 0..witnesses_1.len() {
             assert!(verification_accumulator.verify_membership(
                 &additions_1[i],
@@ -1107,7 +1100,7 @@ mod tests {
             .add_batch(additions_2.clone(), &keypair.secret_key, &mut state)
             .unwrap();
         let verification_accumulator =
-            PositiveAccumulator::from_accumulated(accumulator_2.value().clone());
+            PositiveAccumulator::from_accumulated(*accumulator_2.value());
         for i in 0..witnesses_1.len() {
             assert!(!verification_accumulator.verify_membership(
                 &additions_1[i],
@@ -1152,7 +1145,7 @@ mod tests {
             .remove_batch(&removals, &keypair.secret_key, &mut state)
             .unwrap();
         let verification_accumulator =
-            PositiveAccumulator::from_accumulated(accumulator_3.value().clone());
+            PositiveAccumulator::from_accumulated(*accumulator_3.value());
         for i in 0..witnesses_3.len() {
             assert!(!verification_accumulator.verify_membership(
                 &additions_2[i],
@@ -1182,7 +1175,7 @@ mod tests {
 
         // Compute membership witness for elements remaining from `additions_1`, remove elements in `additions_2`, add elements in `addition_3`
         // and update witnesses for the remaining elements
-        let mut remaining = additions_1.clone();
+        let mut remaining = additions_1;
         for e in removals {
             remaining.retain(|&x| x != e);
         }
@@ -1217,13 +1210,13 @@ mod tests {
                 .batch_updates(additions.clone(), removals, &keypair.secret_key, state)
                 .unwrap();
             let verification_accumulator =
-                PositiveAccumulator::from_accumulated(accumulator_new.value().clone());
+                PositiveAccumulator::from_accumulated(*accumulator_new.value());
             for i in 0..old_witnesses.len() {
                 assert!(!verification_accumulator.verify_membership(
                     &elements[i],
                     &old_witnesses[i],
                     &keypair.public_key,
-                    &params
+                    params
                 ));
             }
 
@@ -1242,7 +1235,7 @@ mod tests {
                     &elements[i],
                     &new_witnesses[i],
                     &keypair.public_key,
-                    &params
+                    params
                 ));
             }
             (accumulator_new, new_witnesses)
@@ -1259,7 +1252,7 @@ mod tests {
             &mut state,
         );
         let verification_accumulator_4 =
-            PositiveAccumulator::from_accumulated(accumulator_4.value().clone());
+            PositiveAccumulator::from_accumulated(*accumulator_4.value());
 
         let (accumulator_4_new, witnesses_6) = check_batch_witness_update_using_secret_key(
             &accumulator_3_cloned,
@@ -1272,7 +1265,7 @@ mod tests {
             &mut state_cloned,
         );
         let verification_accumulator_4_new =
-            PositiveAccumulator::from_accumulated(accumulator_4_new.value().clone());
+            PositiveAccumulator::from_accumulated(*accumulator_4_new.value());
 
         let (accumulator_5_new, _) = check_batch_witness_update_using_secret_key(
             &accumulator_4_new,
@@ -1285,7 +1278,7 @@ mod tests {
             &mut state_cloned,
         );
         let verification_accumulator_5_new =
-            PositiveAccumulator::from_accumulated(accumulator_5_new.value().clone());
+            PositiveAccumulator::from_accumulated(*accumulator_5_new.value());
 
         // Public updates to witnesses - each one in `remaining` updates his witness using publicly published info from manager
         let omega_both = Omega::new(
@@ -1391,7 +1384,7 @@ mod tests {
         for _ in 0..10 {
             let elem = Fr::rand(&mut rng);
             accumulator = accumulator
-                .add(elem.clone(), &keypair.secret_key, &mut state)
+                .add(elem, &keypair.secret_key, &mut state)
                 .unwrap();
             elems.push(elem)
         }
@@ -1408,20 +1401,20 @@ mod tests {
             ));
         }
 
-        let additions_1: Vec<Fr> = (0..10).into_iter().map(|_| Fr::rand(&mut rng)).collect();
-        let additions_2: Vec<Fr> = (0..10).into_iter().map(|_| Fr::rand(&mut rng)).collect();
-        let additions_3: Vec<Fr> = (0..10).into_iter().map(|_| Fr::rand(&mut rng)).collect();
+        let additions_1: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
+        let additions_2: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
+        let additions_3: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
         let removals_1: Vec<Fr> = vec![0, 1, 6, 9]
             .into_iter()
-            .map(|i| additions_1[i].clone())
+            .map(|i| additions_1[i])
             .collect();
         let removals_2: Vec<Fr> = vec![0, 1, 6, 9]
             .into_iter()
-            .map(|i| additions_2[i].clone())
+            .map(|i| additions_2[i])
             .collect();
         let removals_3: Vec<Fr> = vec![0, 1, 6, 9]
             .into_iter()
-            .map(|i| additions_3[i].clone())
+            .map(|i| additions_3[i])
             .collect();
 
         let mut accumulator_1 = accumulator
@@ -1559,11 +1552,11 @@ mod tests {
 
         // Witness that will be updated with multiple batches
         let wit = accumulator
-            .get_membership_witness(&member, &keypair.secret_key, &mut state)
+            .get_membership_witness(member, &keypair.secret_key, &mut state)
             .unwrap();
 
         // This witness is updated with only 1 batch in each iteration of the loop below
-        let mut wit_temp = wit.clone();
+        let mut wit_temp = wit;
 
         for i in 0..additions.len() {
             let omega = Omega::new(
@@ -1586,15 +1579,10 @@ mod tests {
                     &additions[i],
                     &removals[i],
                     &omega,
-                    &member,
+                    member,
                 )
                 .unwrap();
-            assert!(accumulator.verify_membership(
-                &member,
-                &wit_temp,
-                &keypair.public_key,
-                &params
-            ));
+            assert!(accumulator.verify_membership(member, &wit_temp, &keypair.public_key, &params));
             omegas.push(omega);
         }
 
@@ -1604,10 +1592,10 @@ mod tests {
         }
 
         let new_wit = wit
-            .update_using_public_info_after_multiple_batch_updates(updates_and_omegas, &member)
+            .update_using_public_info_after_multiple_batch_updates(updates_and_omegas, member)
             .unwrap();
 
-        assert!(accumulator.verify_membership(&member, &new_wit, &keypair.public_key, &params));
+        assert!(accumulator.verify_membership(member, &new_wit, &keypair.public_key, &params));
     }
 
     #[test]
@@ -1659,7 +1647,7 @@ mod tests {
 
         let additions = vec![vec![e3, e4, e5, e6, e7, e8, e9], vec![], vec![], vec![]];
         let removals = vec![vec![e0], vec![], vec![e1, e3, e4, e5], vec![e6, e7, e8, e9]];
-        multiple_batches_check(&e2, initial_additions.clone(), additions, removals);
+        multiple_batches_check(&e2, initial_additions, additions, removals);
     }
 
     #[test]
@@ -1668,11 +1656,11 @@ mod tests {
         let (params, keypair, mut accumulator, mut state) = setup_positive_accum(&mut rng);
         let e0 = Fr::rand(&mut rng);
 
-        let elements: Vec<Fr> = (0..12).into_iter().map(|_| Fr::rand(&mut rng)).collect();
+        let elements: Vec<Fr> = (0..12).map(|_| Fr::rand(&mut rng)).collect();
 
         accumulator = accumulator
             .add_batch(
-                vec![e0.clone(), elements[0].clone(), elements[1].clone()],
+                vec![e0, elements[0], elements[1]],
                 &keypair.secret_key,
                 &mut state,
             )
@@ -1682,14 +1670,14 @@ mod tests {
             .get_membership_witness(&e0, &keypair.secret_key, &mut state)
             .unwrap();
 
-        let mut wit_temp = wit.clone();
+        let mut wit_temp = wit;
 
         let mut omegas = vec![];
         let mut additions = vec![];
         let mut removals = vec![];
         for i in (2..10).step_by(2) {
-            additions.push(vec![elements[i].clone(), elements[i + 1].clone()]);
-            removals.push(vec![elements[i - 2].clone(), elements[i - 1].clone()]);
+            additions.push(vec![elements[i], elements[i + 1]]);
+            removals.push(vec![elements[i - 2], elements[i - 1]]);
             let omega = Omega::new(
                 additions.last().unwrap(),
                 removals.last().unwrap(),
@@ -1741,11 +1729,11 @@ mod tests {
         let (params, keypair, accumulator, initial_elems, mut state) =
             setup_universal_accum(&mut rng, max);
 
-        let additions_1: Vec<Fr> = (0..10).into_iter().map(|_| Fr::rand(&mut rng)).collect();
-        let additions_2: Vec<Fr> = (0..5).into_iter().map(|_| Fr::rand(&mut rng)).collect();
+        let additions_1: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
+        let additions_2: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
         let removals: Vec<Fr> = vec![0, 1, 6, 9]
             .into_iter()
-            .map(|i| additions_1[i].clone())
+            .map(|i| additions_1[i])
             .collect();
 
         let mut non_members = vec![];
@@ -1838,7 +1826,7 @@ mod tests {
 
         // Remove elements remaining from `additions_1`, add elements in `additions_2`
         // and update witnesses for the absent elements
-        let mut remaining = additions_1.clone();
+        let mut remaining = additions_1;
         for e in removals {
             remaining.retain(|&x| x != e);
         }
@@ -1929,12 +1917,7 @@ mod tests {
         let non_member = Fr::rand(&mut rng);
 
         accumulator = accumulator
-            .add(
-                member.clone(),
-                &keypair.secret_key,
-                &initial_elems,
-                &mut state,
-            )
+            .add(member, &keypair.secret_key, &initial_elems, &mut state)
             .unwrap();
 
         let m_wit_initial = accumulator
@@ -1944,8 +1927,8 @@ mod tests {
             .get_non_membership_witness(&non_member, &keypair.secret_key, &state, &params)
             .unwrap();
 
-        let mut m_wit = m_wit_initial.clone();
-        let mut nm_wit = nm_wit_initial.clone();
+        let mut m_wit = m_wit_initial;
+        let mut nm_wit = nm_wit_initial;
 
         let mut batched_public_info = vec![];
 

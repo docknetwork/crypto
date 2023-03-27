@@ -521,10 +521,7 @@ mod tests {
     fn polys() {
         // Test evaluation of polynomials defined above
         let mut rng = StdRng::seed_from_u64(0u64);
-        let updates = (0..100)
-            .into_iter()
-            .map(|_| Fr::rand(&mut rng))
-            .collect::<Vec<Fr>>();
+        let updates = (0..100).map(|_| Fr::rand(&mut rng)).collect::<Vec<Fr>>();
 
         let x = Fr::rand(&mut rng);
 
@@ -540,8 +537,8 @@ mod tests {
         );
         assert_eq!(poly_d_single.eval(&x), single_update[0] - x);
 
-        assert_eq!(Poly_d::eval_direct(&vec![], &x), Fr::one());
-        assert_eq!(Poly_d::generate(&vec![]).eval(&x), Fr::one());
+        assert_eq!(Poly_d::eval_direct(&[], &x), Fr::one());
+        assert_eq!(Poly_d::generate(&[]).eval(&x), Fr::one());
 
         let alpha = Fr::rand(&mut rng);
 
@@ -559,15 +556,15 @@ mod tests {
             Poly_v_A::eval_direct(&updates, &alpha, &x)
         );
         assert_eq!(
-            Poly_v_A::eval_direct_without_memoize(&vec![], &alpha, &x),
+            Poly_v_A::eval_direct_without_memoize(&[], &alpha, &x),
             Fr::zero()
         );
-        assert_eq!(Poly_v_A::eval_direct(&vec![], &alpha, &x), Fr::zero());
+        assert_eq!(Poly_v_A::eval_direct(&[], &alpha, &x), Fr::zero());
         assert_eq!(
-            Poly_v_A::generate_without_memoize(&vec![], &alpha).eval(&x),
+            Poly_v_A::generate_without_memoize(&[], &alpha).eval(&x),
             Fr::zero()
         );
-        assert_eq!(Poly_v_A::generate(&vec![], &alpha).eval(&x), Fr::zero());
+        assert_eq!(Poly_v_A::generate(&[], &alpha).eval(&x), Fr::zero());
 
         let poly_v_D = Poly_v_D::generate(&updates, &alpha);
         assert_eq!(
@@ -583,21 +580,18 @@ mod tests {
             Poly_v_D::eval_direct(&updates, &alpha, &x)
         );
         assert_eq!(
-            Poly_v_D::eval_direct_without_memoize(&vec![], &alpha, &x),
+            Poly_v_D::eval_direct_without_memoize(&[], &alpha, &x),
             Fr::zero()
         );
-        assert_eq!(Poly_v_D::eval_direct(&vec![], &alpha, &x), Fr::zero());
+        assert_eq!(Poly_v_D::eval_direct(&[], &alpha, &x), Fr::zero());
         assert_eq!(
-            Poly_v_D::generate_without_memoize(&vec![], &alpha).eval(&x),
+            Poly_v_D::generate_without_memoize(&[], &alpha).eval(&x),
             Fr::zero()
         );
-        assert_eq!(Poly_v_D::generate(&vec![], &alpha).eval(&x), Fr::zero());
+        assert_eq!(Poly_v_D::generate(&[], &alpha).eval(&x), Fr::zero());
 
-        for i in vec![100, 70, 50, 40, 35, 20, 10, 7, 1, 0] {
-            let updates_1 = (0..i)
-                .into_iter()
-                .map(|_| Fr::rand(&mut rng))
-                .collect::<Vec<Fr>>();
+        for i in &[100, 70, 50, 40, 35, 20, 10, 7, 1, 0] {
+            let updates_1 = (0..i).map(|_| Fr::rand(&mut rng)).collect::<Vec<Fr>>();
             let poly_v_AD = Poly_v_AD::generate(&updates, &updates_1, &alpha);
             assert_eq!(
                 Poly_v_AD::eval_direct(&updates, &updates_1, &alpha, &x),
@@ -633,10 +627,7 @@ mod tests {
         }
 
         for count in [100, 200, 400] {
-            let updates = (0..count)
-                .into_iter()
-                .map(|_| Fr::rand(&mut rng))
-                .collect::<Vec<Fr>>();
+            let updates = (0..count).map(|_| Fr::rand(&mut rng)).collect::<Vec<Fr>>();
             let x = Fr::rand(&mut rng);
 
             test_poly_time!(count, updates, alpha, x, Poly_v_A, "Poly_v_A");
