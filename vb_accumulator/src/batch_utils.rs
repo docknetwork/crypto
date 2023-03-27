@@ -590,7 +590,7 @@ mod tests {
         );
         assert_eq!(Poly_v_D::generate(&[], &alpha).eval(&x), Fr::zero());
 
-        for i in &[100, 70, 50, 40, 35, 20, 10, 7, 1, 0] {
+        for &i in &[100, 70, 50, 40, 35, 20, 10, 7, 1, 0] {
             let updates_1 = (0..i).map(|_| Fr::rand(&mut rng)).collect::<Vec<Fr>>();
             let poly_v_AD = Poly_v_AD::generate(&updates, &updates_1, &alpha);
             assert_eq!(

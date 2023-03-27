@@ -8,7 +8,7 @@ use secret_sharing_and_dkg::{error::SSError, shamir_ss};
 
 use crate::setup::SecretKey;
 
-/// Produces threshold secret key and secret keys supporting up to `message_count` messages for all participants.
+/// Produces threshold secret key and individual secret keys supporting `message_count` messages for all participants.
 pub fn deal<R: RngCore, F: PrimeField>(
     rng: &mut R,
     message_count: usize,

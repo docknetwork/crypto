@@ -1556,7 +1556,7 @@ mod tests {
             .unwrap();
 
         // This witness is updated with only 1 batch in each iteration of the loop below
-        let mut wit_temp = wit;
+        let mut wit_temp = wit.clone();
 
         for i in 0..additions.len() {
             let omega = Omega::new(
@@ -1670,7 +1670,7 @@ mod tests {
             .get_membership_witness(&e0, &keypair.secret_key, &mut state)
             .unwrap();
 
-        let mut wit_temp = wit;
+        let mut wit_temp = wit.clone();
 
         let mut omegas = vec![];
         let mut additions = vec![];
@@ -1927,8 +1927,8 @@ mod tests {
             .get_non_membership_witness(&non_member, &keypair.secret_key, &state, &params)
             .unwrap();
 
-        let mut m_wit = m_wit_initial;
-        let mut nm_wit = nm_wit_initial;
+        let mut m_wit = m_wit_initial.clone();
+        let mut nm_wit = nm_wit_initial.clone();
 
         let mut batched_public_info = vec![];
 

@@ -22,7 +22,7 @@ use utils::multi_pairing;
 
 type Result<T, E = PSError> = core::result::Result<T, E>;
 
-/// Pointcheval-Sanders signature.
+/// Modified Pointcheval-Sanders signature used in Coconut.
 /// This signature can be obtained in two ways:
 ///
 /// - Secret key's owner signs messages
