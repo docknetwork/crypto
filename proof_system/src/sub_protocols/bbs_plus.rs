@@ -46,6 +46,14 @@ impl<'a, E: Pairing> PoKBBSSigG1SubProtocol<'a, E> {
         if self.protocol.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
         }
+        let total_message_count = self.revealed_messages.len() + witness.unrevealed_messages.len();
+        if total_message_count != self.signature_params.supported_message_count() {
+            Err(ProofSystemError::PSProtocolInvalidMessageCount(
+                total_message_count,
+                self.signature_params.supported_message_count(),
+            ))?
+        }
+
         // Create messages from revealed messages in statement and unrevealed in witness
         let mut invalid_blinding_idx = None;
         let messages_to_commit_with_blindings = witness

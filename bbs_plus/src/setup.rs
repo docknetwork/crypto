@@ -204,7 +204,7 @@ macro_rules! impl_sig_params {
                 let (bases, scalars): (Vec<_>, Vec<_>) = process_results(
                     pair_valid_pairs_with_slice::<_, _, _, BBSPlusError, _>(
                         indexed_messages_sorted_by_index,
-                        |(a, _), (b, _)| a < b,
+                        IdxAsc,
                         &self.h,
                     ),
                     |iter| iter.chain(once((&self.h_0, blinding))).unzip(),

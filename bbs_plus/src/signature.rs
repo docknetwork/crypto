@@ -272,13 +272,7 @@ macro_rules! impl_signature_alg {
                     return Err(BBSPlusError::ZeroSignature);
                 }
 
-                let b = params.b(
-                    messages
-                        .iter()
-                        .enumerate()
-                        .collect::<BTreeMap<usize, &E::ScalarField>>(),
-                    &self.s,
-                )?;
+                let b = params.b(messages.iter().enumerate(), &self.s)?;
                 let g2_e = params.g2.mul_bigint(self.e.into_bigint());
                 if !$pairing!(
                     self.A,

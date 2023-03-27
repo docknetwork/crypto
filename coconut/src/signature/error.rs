@@ -19,9 +19,9 @@ impl From<IndexIsOutOfBounds> for PSError {
     }
 }
 
-impl<T> From<InvalidPair<(usize, T)>> for PSError {
-    fn from(err: InvalidPair<(usize, T)>) -> Self {
-        Self::MessageIndicesMustBeUniqueAndSorted(err.map(|(idx, _)| idx))
+impl From<InvalidPair<usize>> for PSError {
+    fn from(err: InvalidPair<usize>) -> Self {
+        Self::MessageIndicesMustBeUniqueAndSorted(err)
     }
 }
 
@@ -44,9 +44,9 @@ impl From<IndexIsOutOfBounds> for BlindPSError {
     }
 }
 
-impl<T> From<InvalidPair<(usize, T)>> for BlindPSError {
-    fn from(err: InvalidPair<(usize, T)>) -> Self {
-        Self::BlindingIndicesMustBeUniqueAndSorted(err.map(|(idx, _)| idx))
+impl From<InvalidPair<usize>> for BlindPSError {
+    fn from(err: InvalidPair<usize>) -> Self {
+        Self::BlindingIndicesMustBeUniqueAndSorted(err)
     }
 }
 
@@ -59,9 +59,9 @@ pub enum AggregatedPSError {
     PSError(PSError),
 }
 
-impl<T> From<InvalidPair<(ParticipantId, T)>> for AggregatedPSError {
-    fn from(err: InvalidPair<(ParticipantId, T)>) -> Self {
-        Self::ParticipantIdsMustBeUniqueAndSorted(err.map(|(idx, _)| idx))
+impl From<InvalidPair<ParticipantId>> for AggregatedPSError {
+    fn from(err: InvalidPair<ParticipantId>) -> Self {
+        Self::ParticipantIdsMustBeUniqueAndSorted(err)
     }
 }
 
