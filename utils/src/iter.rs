@@ -47,7 +47,7 @@ where
     I: IntoIterator<Item = (usize, Item)> + 'iter,
     Item: 'iter,
     P: PairValidator<(usize, Item)> + 'iter,
-    E: From<IndexIsOutOfBounds> + From<InvalidPair<P::MappedItem>> + 'iter,
+    E: From<IndexIsOutOfBounds> + From<InvalidPair<P::ValidationItem>> + 'iter,
 {
     try_pair_with_slice(
         try_validate_pairs(iter.into_iter().map(Ok), validator),
@@ -60,7 +60,7 @@ where
 pub fn take_while_pairs_satisfy<'iter, 'invalid, I, P>(
     iter: I,
     validator: P,
-    invalid_pair: &'invalid mut Option<(P::MappedItem, P::MappedItem)>,
+    invalid_pair: &'invalid mut Option<(P::ValidationItem, P::ValidationItem)>,
 ) -> impl Iterator<Item = I::Item> + 'iter
 where
     'invalid: 'iter,

@@ -52,37 +52,6 @@ impl<E: Pairing> SignaturePoK<E> {
         proof_res.and(sig_res)
     }
 
-    fn verify_response<I>(
-        &self,
-        challenge: &E::ScalarField,
-        sorted_unique_revealed_indices: I,
-        pk: &PublicKey<E>,
-        params: &SignatureParams<E>,
-    ) -> Result<()>
-    where
-        I: IntoIterator<Item = usize>,
-    {
-        // This option may contain an invalid pair of previous - current indices at the end of the iteration
-        let mut invalid_idx_pair = None;
-        // Pick only committed `beta_tilde` using supplied indices of the revealed messages
-        let committed_beta_tilde = pluck_missed(
-            take_while_pairs_satisfy(sorted_unique_revealed_indices, is_lt, &mut invalid_idx_pair),
-            &pk.beta_tilde,
-        );
-
-        let verification_res = self
-            .k
-            .verify_challenge(challenge, committed_beta_tilde, &params.g_tilde)
-            .map_err(schnorr_error)
-            .map_err(SignaturePoKError::SchnorrError);
-
-        if let Some((previous, current)) = invalid_idx_pair {
-            Err(SignaturePoKError::RevealedIndicesMustBeUniqueAndSorted { previous, current })
-        } else {
-            verification_res
-        }
-    }
-
     /// The commitment's contribution to the overall challenge of the protocol.
     pub fn challenge_contribution<W: Write>(
         &self,
@@ -159,5 +128,37 @@ impl<E: Pairing> SignaturePoK<E> {
         pairing_checker.add_sources(&sigma_1, p1, &sigma_2, p2);
 
         Ok(())
+    }
+
+    /// Verifies that `k_{l} = \sum_{j}(beta_tilde_{j} * m_{l}{j} + g_tilde * r_{l})`
+    fn verify_response<I>(
+        &self,
+        challenge: &E::ScalarField,
+        sorted_unique_revealed_indices: I,
+        pk: &PublicKey<E>,
+        params: &SignatureParams<E>,
+    ) -> Result<()>
+    where
+        I: IntoIterator<Item = usize>,
+    {
+        // This option may contain an invalid pair of previous - current indices at the end of the iteration
+        let mut invalid_idx_pair = None;
+        // Pick only committed `beta_tilde` using supplied indices of the revealed messages
+        let committed_beta_tilde = pluck_missed(
+            take_while_pairs_satisfy(sorted_unique_revealed_indices, is_lt, &mut invalid_idx_pair),
+            &pk.beta_tilde,
+        );
+
+        let verification_res = self
+            .k
+            .verify_challenge(challenge, committed_beta_tilde, &params.g_tilde)
+            .map_err(schnorr_error)
+            .map_err(SignaturePoKError::SchnorrError);
+
+        if let Some((previous, current)) = invalid_idx_pair {
+            Err(SignaturePoKError::RevealedIndicesMustBeUniqueAndSorted { previous, current })
+        } else {
+            verification_res
+        }
     }
 }

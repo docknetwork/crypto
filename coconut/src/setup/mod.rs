@@ -8,7 +8,7 @@ pub use keypair::*;
 pub use signature_params::*;
 
 #[allow(clippy::type_complexity)]
-pub fn test_setup<E: ark_ec::pairing::Pairing, D: digest::Digest, R: ark_std::rand::RngCore>(
+pub fn test_setup<E, D, R>(
     rng: &mut R,
     message_count: usize,
 ) -> (
@@ -16,7 +16,12 @@ pub fn test_setup<E: ark_ec::pairing::Pairing, D: digest::Digest, R: ark_std::ra
     PublicKey<E>,
     SignatureParams<E>,
     Vec<E::ScalarField>,
-) {
+)
+where
+    E: ark_ec::pairing::Pairing,
+    D: digest::Digest,
+    R: ark_std::rand::RngCore,
+{
     use crate::helpers::n_rand;
 
     let params = SignatureParams::new::<D>(b"test", message_count);

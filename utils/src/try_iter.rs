@@ -1,7 +1,4 @@
-use core::convert::identity;
 use serde::{Deserialize, Serialize};
-
-use itertools::Itertools;
 
 /// Provided index is out of bounds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -14,7 +11,7 @@ pub struct IndexIsOutOfBounds {
 /// Returns `Err` containing an invalid index in case slice length is exceeded.
 pub fn try_pair_with_slice<'iter, 'pairs, I, OK, E, P>(
     iter: I,
-    pairs: &'pairs [P],
+    pair_with: &'pairs [P],
 ) -> impl Iterator<Item = Result<(&'pairs P, OK), E>> + 'iter
 where
     'pairs: 'iter,
@@ -22,17 +19,16 @@ where
     I: IntoIterator<Item = Result<(usize, OK), E>> + 'iter,
     E: From<IndexIsOutOfBounds>,
 {
-    iter.into_iter()
-        .map_ok(|(index, item)| {
-            pairs.get(index).map(|pair| (pair, item)).ok_or_else(|| {
-                IndexIsOutOfBounds {
-                    index,
-                    length: pairs.len(),
-                }
-                .into()
-            })
-        })
-        .map(|res| res.and_then(identity))
+    iter.into_iter().map(|indexed_item| {
+        let (index, item) = indexed_item?;
+
+        let pair = pair_with.get(index).ok_or_else(|| IndexIsOutOfBounds {
+            index,
+            length: pair_with.len(),
+        })?;
+
+        Ok((pair, item))
+    })
 }
 
 /// This pair was invalid according to the supplied predicate.
@@ -56,13 +52,14 @@ impl<I> From<InvalidPair<I>> for (I, I) {
 /// Prior to validation, each item must be mapped using `PairValidator::map`.
 pub trait PairValidator<I> {
     /// Item to be used in validation.
-    type MappedItem;
+    type ValidationItem;
 
     /// Maps an item to prepare it for validation.
-    fn map(&self, item: &I) -> Self::MappedItem;
+    fn map(&self, item: &I) -> Self::ValidationItem;
 
     /// Validates given pair.
-    fn validate(&mut self, previous: &Self::MappedItem, current: &Self::MappedItem) -> bool;
+    fn validate(&mut self, previous: &Self::ValidationItem, current: &Self::ValidationItem)
+        -> bool;
 }
 
 impl<I, M, MapF, ValidateF> PairValidator<I> for (MapF, ValidateF)
@@ -70,7 +67,7 @@ where
     MapF: Fn(&I) -> M,
     ValidateF: FnMut(&M, &M) -> bool,
 {
-    type MappedItem = M;
+    type ValidationItem = M;
 
     fn map(&self, item: &I) -> M {
         self.0(item)
@@ -85,7 +82,7 @@ impl<I: Clone, ValidateF> PairValidator<I> for ValidateF
 where
     ValidateF: FnMut(&I, &I) -> bool,
 {
-    type MappedItem = I;
+    type ValidationItem = I;
 
     fn map(&self, item: &I) -> I {
         item.clone()
@@ -104,7 +101,7 @@ impl<First: Clone, Second, ValidateF> PairValidator<(First, Second)> for CheckLe
 where
     ValidateF: FnMut(&First, &First) -> bool,
 {
-    type MappedItem = First;
+    type ValidationItem = First;
 
     fn map(&self, item: &(First, Second)) -> First {
         item.0.clone()
@@ -123,7 +120,7 @@ impl<First, Second: Clone, ValidateF> PairValidator<(First, Second)> for CheckRi
 where
     ValidateF: FnMut(&Second, &Second) -> bool,
 {
-    type MappedItem = Second;
+    type ValidationItem = Second;
 
     fn map(&self, item: &(First, Second)) -> Second {
         item.1.clone()
@@ -143,22 +140,23 @@ pub fn try_validate_pairs<I, OK, E, P>(
 where
     I: IntoIterator<Item = Result<OK, E>>,
     P: PairValidator<OK>,
-    E: From<InvalidPair<P::MappedItem>>,
+    E: From<InvalidPair<P::ValidationItem>>,
 {
-    iter.into_iter().scan(None, move |last, cur| match cur {
-        err @ Err(_) => Some(err),
-        Ok(cur) => {
-            let item = if let Some((prev, cur)) = last
-                .replace(validator.map(&cur))
-                .map(|prev| (prev, validator.map(&cur)))
-                .filter(|(prev, cur)| !validator.validate(prev, cur))
-            {
-                Err(InvalidPair(prev, cur).into())
-            } else {
-                Ok(cur)
-            };
+    let mut last = None;
 
-            Some(item)
+    iter.into_iter().map(move |item| {
+        let cur = item?;
+
+        let invalid = last
+            .replace(validator.map(&cur))
+            .zip(last.as_ref())
+            .map(|(prev, cur)| (prev, cur))
+            .filter(|(prev, cur)| !validator.validate(prev, cur));
+
+        if let Some((prev, _)) = invalid {
+            Err(InvalidPair(prev, validator.map(&cur)).into())
+        } else {
+            Ok(cur)
         }
     })
 }

@@ -264,13 +264,13 @@ mod tests {
         // Same seed generates same keypair
         let params = SetupParams::<Bls12_381>::new::<Blake2b512>("test".as_bytes());
         assert!(params.is_valid());
-        let mut invalid_params = params;
+        let mut invalid_params = params.clone();
         invalid_params.P = <Bls12_381 as Pairing>::G1Affine::zero();
         assert!(!invalid_params.is_valid());
-        let mut invalid_params = params;
+        let mut invalid_params = params.clone();
         invalid_params.P_tilde = <Bls12_381 as Pairing>::G2Affine::zero();
         assert!(!invalid_params.is_valid());
-        let mut invalid_params = params;
+        let mut invalid_params = params.clone();
         invalid_params.P = <Bls12_381 as Pairing>::G1Affine::zero();
         invalid_params.P_tilde = <Bls12_381 as Pairing>::G2Affine::zero();
         assert!(!invalid_params.is_valid());

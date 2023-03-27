@@ -9,16 +9,16 @@ macro_rules! concat_slices {
 /// Implements `Deref`/`DeferMut` traits for the supplied wrapper and type.
 #[macro_export]
 macro_rules! impl_deref {
-    ($wrapper: ident$(<$($ty: ident: $($by: path),+),*>)?($type: path)) => {
-        impl$(<$($ty: $($by)++),+>)* core::ops::Deref for $wrapper$(<$($ty),+>)* {
-            type Target = $type;
+    ($wrapper: ident$(<$($gen: ident: $($bound: path),+),*>)?($inner: ty)) => {
+        impl$(<$($gen: $($bound)++),+>)* core::ops::Deref for $wrapper$(<$($gen),+>)* {
+            type Target = $inner;
 
             fn deref(&self) -> &Self::Target {
                 &self.0
             }
         }
 
-        impl$(<$($ty: $($by)++),+>)* core::ops::DerefMut for $wrapper$(<$($ty),+>)* {
+        impl$(<$($gen: $($bound)++),+>)* core::ops::DerefMut for $wrapper$(<$($gen),+>)* {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.0
             }
