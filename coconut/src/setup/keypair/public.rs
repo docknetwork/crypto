@@ -3,14 +3,14 @@ use alloc::vec::Vec;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_ff::PrimeField;
 
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use utils::serde_utils::ArkObjectBytes;
 
 use ark_serialize::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::{helpers::points, setup::SignatureParams};
-use dock_crypto_utils::join;
+use utils::join;
 
 use super::SecretKey;
 

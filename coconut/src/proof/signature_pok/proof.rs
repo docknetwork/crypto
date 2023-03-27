@@ -1,9 +1,9 @@
 use alloc::vec::Vec;
 use ark_ec::pairing::Pairing;
 use ark_serialize::*;
-use dock_crypto_utils::join;
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use serde::{Deserialize, Serialize};
+use utils::join;
+use utils::randomized_pairing_check::RandomizedPairingChecker;
 
 use crate::{
     helpers::{pluck_missed, take_while_pairs_unique_sorted, SendIfParallel, WithSchnorrResponse},

@@ -14,19 +14,19 @@ pub mod pairs;
 pub mod with_schnorr_and_blindings;
 pub mod with_schnorr_response;
 
-pub use dock_crypto_utils::aliases::*;
-pub use dock_crypto_utils::extend_some::*;
-pub use dock_crypto_utils::iter::{self, *};
-pub use dock_crypto_utils::misc::*;
-pub use dock_crypto_utils::try_iter::{self, *};
 pub use iter::*;
 pub use owned_pairs::*;
 pub use pairs::*;
 pub use try_iter::*;
+pub use utils::aliases::*;
+pub use utils::extend_some::*;
+pub use utils::iter::{self, *};
+pub use utils::misc::*;
+pub use utils::try_iter::{self, *};
 pub use with_schnorr_and_blindings::*;
 pub use with_schnorr_response::*;
 
-use dock_crypto_utils::{impl_indexed_iter, impl_into_indexed_iter, join};
+use utils::{impl_indexed_iter, impl_into_indexed_iter, join};
 
 /// TODO remove when `SchnorrError` will derive `Eq`, `PartialEq`, `Clone`
 pub fn schnorr_error(err: SchnorrError) -> String {

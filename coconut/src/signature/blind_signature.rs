@@ -5,8 +5,8 @@ use ark_ec::pairing::Pairing;
 use alloc::vec::Vec;
 use ark_serialize::*;
 use ark_std::cfg_into_iter;
-use dock_crypto_utils::join;
 use itertools::{process_results, Itertools};
+use utils::join;
 
 use super::{error::BlindPSError, ps_signature::Signature};
 use crate::{

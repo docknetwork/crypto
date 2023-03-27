@@ -7,13 +7,13 @@ use ark_ec::{pairing::Pairing, CurveGroup};
 
 use ark_serialize::*;
 use ark_std::{cfg_into_iter, rand::RngCore};
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use utils::serde_utils::ArkObjectBytes;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment};
 
-use dock_crypto_utils::{impl_indexed_iter, impl_into_indexed_iter};
+use utils::{impl_indexed_iter, impl_into_indexed_iter};
 
 use crate::{
     helpers::{n_rand, WithSchnorrAndBlindings, WithSchnorrResponse},
@@ -27,7 +27,7 @@ use crate::{
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct MessageCommitment<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G1Affine);
-dock_crypto_utils::impl_deref! { MessageCommitment<E: Pairing>(E::G1Affine) }
+utils::impl_deref! { MessageCommitment<E: Pairing>(E::G1Affine) }
 
 impl<E: Pairing> MessageCommitment<E> {
     /// `g * o + h * m`.

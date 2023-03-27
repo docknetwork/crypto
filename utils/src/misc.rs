@@ -1,19 +1,21 @@
-use crate::msm::multiply_field_elems_with_same_group_elem;
+use crate::{
+    aliases::DoubleEndedExactSizeIterator, msm::multiply_field_elems_with_same_group_elem,
+};
 use alloc::vec::Vec;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_std::{rand::RngCore, UniformRand};
 use core::cmp::Ord;
 
-/// Returns `true` is `first` is less than `second`.
+/// Returns `true` if `first` is less than `second`.
 pub fn is_lt<I: Ord>(first: &I, second: &I) -> bool {
-    Ord::cmp(first, second).is_lt()
+    first.cmp(second).is_lt()
 }
 
 /// Generates an iterator of randoms producing `count` elements using the supplied `rng`.
 pub fn n_rand<T: UniformRand, R: RngCore>(
     rng: &'_ mut R,
     count: usize,
-) -> impl Iterator<Item = T> + '_ {
+) -> impl DoubleEndedExactSizeIterator<Item = T> + '_ {
     (0..count).map(move |_| rand(rng))
 }
 

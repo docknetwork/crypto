@@ -5,20 +5,20 @@ use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::*;
 use ark_std::{cfg_into_iter, rand::RngCore, UniformRand, Zero};
 use digest::Digest;
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use utils::serde_utils::ArkObjectBytes;
 
-use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use utils::hashing_utils::projective_group_elem_from_try_and_incr;
 
 use crate::{
     helpers::Pairs,
     setup::{PublicKey, SecretKey, SignatureParams},
     try_pairs, PSError,
 };
-use dock_crypto_utils::multi_pairing;
+use utils::multi_pairing;
 
 type Result<T, E = PSError> = core::result::Result<T, E>;
 
