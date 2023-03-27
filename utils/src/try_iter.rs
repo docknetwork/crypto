@@ -56,7 +56,7 @@ impl<I> From<InvalidPair<I>> for (I, I) {
 
 /// Ensures that the given iterator satisfies provided function for each successful (`Ok(_)`) previous - current pair.
 /// In case of an error, `Err(InvalidPair)` will be emitted.
-pub fn try_validate_pairs<I, OK, E, P>(iter: I, cmp: P) -> impl Iterator<Item = Result<OK, E>>
+pub fn try_validate_pairs<I, OK, E, P>(iter: I, validator: P) -> impl Iterator<Item = Result<OK, E>>
 where
     OK: Clone,
     I: IntoIterator<Item = Result<OK, E>>,
@@ -67,9 +67,9 @@ where
         err @ Err(_) => Some(err),
         Ok(cur) => {
             let item = if let Some((prev, cur)) = last
-                .replace(cmp.map(&cur))
-                .map(|prev| (prev, cmp.map(&cur)))
-                .filter(|(prev, cur)| !cmp.validate(prev, cur))
+                .replace(validator.map(&cur))
+                .map(|prev| (prev, validator.map(&cur)))
+                .filter(|(prev, cur)| !validator.validate(prev, cur))
             {
                 Err(InvalidPair(prev, cur).into())
             } else {

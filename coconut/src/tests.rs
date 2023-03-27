@@ -110,19 +110,19 @@ fn construction_pac_workflow() {
 
 mod helpers {
     use crate::helpers::{
-        pluck_missed, take_while_pairs_unique_sorted, ExtendSome, OwnedPairs, Pairs,
+        is_lt, pluck_missed, take_while_pairs_satisfy, ExtendSome, OwnedPairs, Pairs,
     };
     use alloc::{vec, vec::Vec};
 
     #[test]
     fn valid_take_while_unique_sorted() {
         let mut opt = None;
-        let values: Vec<_> = take_while_pairs_unique_sorted(1..10, &mut opt).collect();
+        let values: Vec<_> = take_while_pairs_satisfy(1..10, is_lt, &mut opt).collect();
 
         assert_eq!(values, (1..10).collect::<Vec<_>>());
         assert_eq!(opt, None);
 
-        let values: Vec<_> = take_while_pairs_unique_sorted([2, 8, 9], &mut opt).collect();
+        let values: Vec<_> = take_while_pairs_satisfy([2, 8, 9], is_lt, &mut opt).collect();
         assert_eq!(values, [2, 8, 9]);
         assert_eq!(opt, None);
     }
@@ -131,12 +131,12 @@ mod helpers {
     fn invalid_take_while_unique_sorted() {
         let mut opt = None;
         let values: Vec<_> =
-            take_while_pairs_unique_sorted([5, 6, 7, 9, 10, 8], &mut opt).collect();
+            take_while_pairs_satisfy([5, 6, 7, 9, 10, 8], is_lt, &mut opt).collect();
 
         assert_eq!(values, vec![5, 6, 7, 9, 10]);
         assert_eq!(opt, Some((10, 8)));
 
-        let values: Vec<_> = take_while_pairs_unique_sorted([100, 0], &mut opt).collect();
+        let values: Vec<_> = take_while_pairs_satisfy([100, 0], is_lt, &mut opt).collect();
         assert_eq!(values, [100]);
         assert_eq!(opt, Some((100, 0)));
     }

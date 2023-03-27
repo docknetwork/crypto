@@ -2,11 +2,11 @@ use alloc::vec::Vec;
 use ark_ec::pairing::Pairing;
 use ark_serialize::*;
 use serde::{Deserialize, Serialize};
-use utils::join;
 use utils::randomized_pairing_check::RandomizedPairingChecker;
+use utils::{join, misc::is_lt};
 
 use crate::{
-    helpers::{pluck_missed, take_while_pairs_unique_sorted, SendIfParallel, WithSchnorrResponse},
+    helpers::{pluck_missed, take_while_pairs_satisfy, SendIfParallel, WithSchnorrResponse},
     setup::{PreparedPublicKey, PreparedSignatureParams},
 };
 
@@ -67,7 +67,7 @@ impl<E: Pairing> SignaturePoK<E> {
         let mut invalid_idx_pair = None;
         // Pick only committed `beta_tilde` using supplied indices of the revealed messages
         let committed_beta_tilde = pluck_missed(
-            take_while_pairs_unique_sorted(sorted_unique_revealed_indices, &mut invalid_idx_pair),
+            take_while_pairs_satisfy(sorted_unique_revealed_indices, is_lt, &mut invalid_idx_pair),
             &pk.beta_tilde,
         );
 
@@ -112,7 +112,7 @@ impl<E: Pairing> SignaturePoK<E> {
     {
         let mut invalid_idx_pair = None;
         let unique_sorted_msg_ids =
-            take_while_pairs_unique_sorted(unique_sorted_revealed_msg_ids, &mut invalid_idx_pair);
+            take_while_pairs_satisfy(unique_sorted_revealed_msg_ids, is_lt, &mut invalid_idx_pair);
 
         let res = self
             .k
