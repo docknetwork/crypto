@@ -17,7 +17,7 @@ pub enum SaverError {
     InvalidCommitment,
     InvalidDecryption,
     CouldNotFindDiscreteLog,
-    InvalidPairOrItemingPowers,
+    InvalidPairingPowers,
     PairingCheckFailed,
 }
 

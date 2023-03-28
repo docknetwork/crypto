@@ -134,7 +134,7 @@ pub trait PairValidator<I> {
     fn map(&self, item: &I) -> Self::ValidationItem;
 
     /// Validates given pair.
-    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool;
+    fn validate(&mut self, pair_or_single: PairOrSingle<&Self::ValidationItem>) -> bool;
 }
 
 impl<I, M, MapF, ValidateF> PairValidator<I> for (MapF, ValidateF)
@@ -148,8 +148,8 @@ where
         self.0(item)
     }
 
-    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool {
-        self.1(pair)
+    fn validate(&mut self, pair_or_single: PairOrSingle<&Self::ValidationItem>) -> bool {
+        self.1(pair_or_single)
     }
 }
 
@@ -163,8 +163,8 @@ where
         item.clone()
     }
 
-    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool {
-        (self)(pair)
+    fn validate(&mut self, pair_or_single: PairOrSingle<&Self::ValidationItem>) -> bool {
+        (self)(pair_or_single)
     }
 }
 
@@ -182,8 +182,8 @@ where
         item.0.clone()
     }
 
-    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool {
-        self.0(pair)
+    fn validate(&mut self, pair_or_single: PairOrSingle<&Self::ValidationItem>) -> bool {
+        self.0(pair_or_single)
     }
 }
 
@@ -201,8 +201,8 @@ where
         item.1.clone()
     }
 
-    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool {
-        self.0(pair)
+    fn validate(&mut self, pair_or_single: PairOrSingle<&Self::ValidationItem>) -> bool {
+        self.0(pair_or_single)
     }
 }
 
