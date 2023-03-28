@@ -1,15 +1,13 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec};
-use dock_crypto_utils::{
-    iter::take_while_pairs_satisfy, misc::check_seq_from, try_iter::CheckLeft,
-};
 
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
 use coconut_crypto::{proof::*, setup::*};
-use itertools::{EitherOrBoth, Itertools};
 
 use crate::{error::ProofSystemError, statement_proof::StatementProof};
+
+use super::merge_msgs_with_blindings;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PSSignaturePoK<'a, E: Pairing> {
@@ -50,7 +48,7 @@ impl<'a, T> Drop for LeakedVec<'a, T> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Protocol<'a, E: Pairing> {
     generator: SignaturePoKGenerator<'a, E>,
-    committed_messages: LeakedVec<'a, (usize, E::ScalarField)>,
+    blinded_messages: LeakedVec<'a, (usize, E::ScalarField)>,
 }
 
 impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
@@ -86,48 +84,27 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
             ))?
         }
 
-        let messages_to_commit = LeakedVec::new(witness.unrevealed_messages.into_iter().collect());
+        let messages_to_blind = LeakedVec::new(witness.unrevealed_messages.into_iter().collect());
 
         let mut invalid_blinding_idx = None;
-        let messages_to_commit_with_blindings = messages_to_commit
-            .slice
-            .iter()
-            .merge_join_by(blindings, |(m_idx, _), (b_idx, _)| m_idx.cmp(b_idx))
-            .scan((), |(), either| {
-                let item = match either {
-                    EitherOrBoth::Left((idx, msg)) => {
-                        (*idx, CommitMessage::BlindMessageRandomly(msg))
-                    }
-                    EitherOrBoth::Both((idx, message), (_, blinding)) => (
-                        *idx,
-                        CommitMessage::BlindMessageWithConcreteBlinding { message, blinding },
-                    ),
-                    EitherOrBoth::Right((idx, _)) => {
-                        invalid_blinding_idx.replace(idx);
-
-                        return None;
-                    }
-                };
-
-                Some(item)
-            });
-
-        let revealed_messages = self
-            .revealed_messages
-            .iter()
-            .map(|(idx, _)| (*idx, CommitMessage::RevealMessage));
-
         let mut invalid_message_idx = None;
-        let all_messages = take_while_pairs_satisfy(
-            messages_to_commit_with_blindings.merge_by(revealed_messages, |(a, _), (b, _)| a <= b),
-            CheckLeft(check_seq_from(0)),
-            &mut invalid_message_idx,
-        )
-        .map(|(_, message)| message);
+        let messages = merge_msgs_with_blindings(
+            messages_to_blind.slice.iter().map(|(idx, msg)| (*idx, msg)),
+            blindings,
+            self.revealed_messages,
+            CommitMessage::BlindMessageRandomly,
+            |message, blinding| CommitMessage::BlindMessageWithConcreteBlinding {
+                message,
+                blinding,
+            },
+            |_| CommitMessage::RevealMessage,
+            &mut invalid_blinding_idx,
+            &mut invalid_message_idx
+        );
 
         let protocol = SignaturePoKGenerator::init(
             rng,
-            all_messages,
+            messages,
             &witness.signature,
             self.public_key,
             self.signature_params,
@@ -140,7 +117,7 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
 
         self.protocol = Some(Protocol {
             generator: protocol?,
-            committed_messages: messages_to_commit,
+            blinded_messages: messages_to_blind,
         });
         Ok(())
     }
