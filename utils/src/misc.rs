@@ -1,24 +1,20 @@
 use crate::{
     aliases::DoubleEndedExactSizeIterator, msm::multiply_field_elems_with_same_group_elem,
+    try_iter::PairOrSingle,
 };
 use alloc::vec::Vec;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_std::{rand::RngCore, UniformRand};
-use core::cmp::Ord;
+use core::cmp::{Ord, Ordering};
 
 /// Returns `true` if `first` is less than `second`.
-pub fn is_lt<I: Ord>(first: &I, second: &I) -> bool {
-    first.cmp(second).is_lt()
+pub fn pair_is_lt<I: Ord>(pair: PairOrSingle<&I>) -> bool {
+    pair.over_pair(Ord::cmp).map_or(true, Ordering::is_lt)
 }
 
 /// Produces a function which will check for each pair current to be previous plus 1 starting from the supplied value.
-pub fn check_seq_from(mut from: usize) -> impl FnMut(&usize, &usize) -> bool {
-    move |&prev, &cur| {
-        let valid = from == prev && prev + 1 == cur;
-        from = cur;
-
-        valid
-    }
+pub fn check_seq_from(from: usize) -> impl Fn(PairOrSingle<&usize>) -> bool + Clone {
+    move |pair| pair.over(|&first| first == from, |&prev, &cur| prev + 1 == cur)
 }
 
 /// Generates an iterator of randoms producing `count` elements using the supplied `rng`.

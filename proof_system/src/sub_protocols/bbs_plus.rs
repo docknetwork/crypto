@@ -7,11 +7,15 @@ use bbs_plus::{
     },
     proof::{MessageOrBlinding, PoKOfSignatureG1Protocol},
 };
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    iter::take_while_satisfy, misc::check_seq_from,
+    randomized_pairing_check::RandomizedPairingChecker, try_iter::CheckLeft,
+};
+use itertools::Itertools;
 
 use crate::{error::ProofSystemError, statement_proof::StatementProof};
 
-use super::merge_msgs_with_blindings;
+use super::merge_indexed_messages_with_blindings;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PoKBBSSigG1SubProtocol<'a, E: Pairing> {
@@ -49,7 +53,7 @@ impl<'a, E: Pairing> PoKBBSSigG1SubProtocol<'a, E> {
         }
         let total_message_count = self.revealed_messages.len() + witness.unrevealed_messages.len();
         if total_message_count != self.signature_params.supported_message_count() {
-            Err(ProofSystemError::PSProtocolInvalidMessageCount(
+            Err(ProofSystemError::BBSPlusProtocolInvalidMessageCount(
                 total_message_count,
                 self.signature_params.supported_message_count(),
             ))?
@@ -57,31 +61,39 @@ impl<'a, E: Pairing> PoKBBSSigG1SubProtocol<'a, E> {
 
         // Create messages from revealed messages in statement and unrevealed in witness
         let mut invalid_blinding_idx = None;
-        let mut invalid_message_idx = None;
-        let messages = merge_msgs_with_blindings(
+        let messages_to_blind_with_blindings = merge_indexed_messages_with_blindings(
             &witness.unrevealed_messages,
             blindings,
-            self.revealed_messages,
             MessageOrBlinding::BlindMessageRandomly,
-            |message, blinding| MessageOrBlinding::BlindMessageWithConcreteBlinding {
-                message,
-                blinding,
-            },
-            MessageOrBlinding::RevealMessage,
+            MessageOrBlinding::blind_message_with,
             &mut invalid_blinding_idx,
-            &mut invalid_message_idx,
         );
+        let mut non_seq_idx = None;
+        let all_messages = take_while_satisfy(
+            messages_to_blind_with_blindings.merge_by(
+                self.revealed_messages
+                    .iter()
+                    .map(|(idx, msg)| (*idx, MessageOrBlinding::RevealMessage(msg))),
+                |(a, _), (b, _)| a < b,
+            ),
+            CheckLeft(check_seq_from(0)),
+            &mut non_seq_idx,
+        )
+        .map(|(_, msg)| msg);
 
         let protocol = PoKOfSignatureG1Protocol::init(
             rng,
             &witness.signature,
             self.signature_params,
-            messages,
+            all_messages,
         );
         if let Some(idx) = invalid_blinding_idx {
             Err(ProofSystemError::BBSProtocolInvalidBlindingIndex(idx))?
-        } else if let Some((prev, cur)) = invalid_message_idx {
-            Err(ProofSystemError::BBSProtocolInvalidMessageIndex(prev, cur))?
+        } else if let Some(invalid) = non_seq_idx {
+            Err(invalid.over(
+                ProofSystemError::BBSProtocolMessageIndicesMustStartFromZero,
+                ProofSystemError::BBSProtocolNonSequentialMessageIndices,
+            ))?
         }
 
         self.protocol = Some(protocol?);

@@ -34,6 +34,11 @@ impl<'a, P: PrimeField> CommitMessage<'a, P> {
             Self::RevealMessage => None,
         }
     }
+
+    /// Blinds given `message` using supplied `blinding`.
+    pub fn blind_message_with(message: &'a P, blinding: P) -> Self {
+        Self::BlindMessageWithConcreteBlinding { message, blinding }
+    }
 }
 
 impl<'a, P: PrimeField> From<&'a P> for CommitMessage<'a, P> {

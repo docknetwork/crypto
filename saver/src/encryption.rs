@@ -603,12 +603,12 @@ impl<E: Pairing> Encryption<E> {
         pairing_powers: &[Vec<PairingOutput<E>>],
     ) -> crate::Result<CHUNK_TYPE> {
         if pairing_powers.len() < chunk_index {
-            return Err(SaverError::InvalidPairingPowers);
+            return Err(SaverError::InvalidPairOrItemingPowers);
         }
         for j in 1..=chunk_max_val {
             let j = j as usize - 1;
             if pairing_powers[chunk_index].len() < j {
-                return Err(SaverError::InvalidPairingPowers);
+                return Err(SaverError::InvalidPairOrItemingPowers);
             }
             if pairing_powers[chunk_index][j] == p {
                 return Ok(j as CHUNK_TYPE + 1);

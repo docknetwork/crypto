@@ -31,20 +31,96 @@ where
     })
 }
 
-/// This pair was invalid according to the supplied predicate.
+/// This pair or item was invalid according to the supplied predicate.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct InvalidPair<I>(pub I, pub I);
+pub struct InvalidPairOrItem<I>(pub PairOrSingle<I>);
 
-impl<I> InvalidPair<I> {
-    /// Transforms the given pair to another pair.
-    pub fn map<F: FnMut(I) -> R, R>(self, mut f: F) -> InvalidPair<R> {
-        InvalidPair(f(self.0), f(self.1))
+/// Describes either pair (two items) or a single item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PairOrSingle<I> {
+    Single(I),
+    Pair(I, I),
+}
+
+impl<I> PairOrSingle<I> {
+    /// Applies the given function to either the last item of a pair or a single item.
+    pub fn over_cur<F, R>(self, mut f: F) -> R
+    where
+        F: FnMut(I) -> R,
+    {
+        match self {
+            Self::Pair(_, cur) => f(cur),
+            Self::Single(cur) => f(cur),
+        }
+    }
+
+    /// Applies `sf` to a single item and `pf` to a pair.
+    pub fn over<SF, PF, R>(self, mut sf: SF, mut pf: PF) -> R
+    where
+        SF: FnMut(I) -> R,
+        PF: FnMut(I, I) -> R,
+    {
+        match self {
+            Self::Pair(prev, cur) => pf(prev, cur),
+            Self::Single(cur) => sf(cur),
+        }
+    }
+
+    /// Applies the supplied function to a pair, returns `None` in case of a single item.
+    pub fn over_pair<F, R>(self, mut f: F) -> Option<R>
+    where
+        F: FnMut(I, I) -> R,
+    {
+        match self {
+            Self::Pair(prev, cur) => Some(f(prev, cur)),
+            Self::Single(_) => None,
+        }
+    }
+
+    /// Applies the supplied function to a single item, returns `None` in case of a pair.
+    pub fn over_single<F, R>(self, mut f: F) -> Option<R>
+    where
+        F: FnMut(I) -> R,
+    {
+        match self {
+            Self::Pair(_, _) => None,
+            Self::Single(cur) => Some(f(cur)),
+        }
+    }
+
+    /// Unwraps pair, panics in case of single item.
+    pub fn unwrap_pair(self) -> (I, I) {
+        match self {
+            Self::Pair(prev, cur) => (prev, cur),
+            Self::Single(_) => panic!("called `PairOrSingle::unwrap_pair()` on a `None` value"),
+        }
     }
 }
 
-impl<I> From<InvalidPair<I>> for (I, I) {
-    fn from(InvalidPair(first, second): InvalidPair<I>) -> Self {
-        (first, second)
+impl<I> From<(Option<I>, I)> for PairOrSingle<I> {
+    fn from((prev, cur): (Option<I>, I)) -> Self {
+        match prev {
+            Some(prev) => Self::Pair(prev, cur),
+            None => Self::Single(cur),
+        }
+    }
+}
+
+impl<I> From<(I, I)> for PairOrSingle<I> {
+    fn from((prev, cur): (I, I)) -> Self {
+        Self::Pair(prev, cur)
+    }
+}
+
+impl<I> From<I> for PairOrSingle<I> {
+    fn from(single: I) -> Self {
+        Self::Single(single)
+    }
+}
+
+impl<I> From<InvalidPairOrItem<I>> for PairOrSingle<I> {
+    fn from(InvalidPairOrItem(pair_or_single): InvalidPairOrItem<I>) -> Self {
+        pair_or_single
     }
 }
 
@@ -58,14 +134,13 @@ pub trait PairValidator<I> {
     fn map(&self, item: &I) -> Self::ValidationItem;
 
     /// Validates given pair.
-    fn validate(&mut self, previous: &Self::ValidationItem, current: &Self::ValidationItem)
-        -> bool;
+    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool;
 }
 
 impl<I, M, MapF, ValidateF> PairValidator<I> for (MapF, ValidateF)
 where
     MapF: Fn(&I) -> M,
-    ValidateF: FnMut(&M, &M) -> bool,
+    ValidateF: FnMut(PairOrSingle<&M>) -> bool,
 {
     type ValidationItem = M;
 
@@ -73,14 +148,14 @@ where
         self.0(item)
     }
 
-    fn validate(&mut self, previous: &M, current: &M) -> bool {
-        self.1(previous, current)
+    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool {
+        self.1(pair)
     }
 }
 
 impl<I: Clone, ValidateF> PairValidator<I> for ValidateF
 where
-    ValidateF: FnMut(&I, &I) -> bool,
+    ValidateF: FnMut(PairOrSingle<&I>) -> bool,
 {
     type ValidationItem = I;
 
@@ -88,8 +163,8 @@ where
         item.clone()
     }
 
-    fn validate(&mut self, previous: &I, current: &I) -> bool {
-        (self)(previous, current)
+    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool {
+        (self)(pair)
     }
 }
 
@@ -99,7 +174,7 @@ pub struct CheckLeft<F>(pub F);
 
 impl<First: Clone, Second, ValidateF> PairValidator<(First, Second)> for CheckLeft<ValidateF>
 where
-    ValidateF: FnMut(&First, &First) -> bool,
+    ValidateF: FnMut(PairOrSingle<&First>) -> bool,
 {
     type ValidationItem = First;
 
@@ -107,8 +182,8 @@ where
         item.0.clone()
     }
 
-    fn validate(&mut self, previous: &First, current: &First) -> bool {
-        self.0(previous, current)
+    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool {
+        self.0(pair)
     }
 }
 
@@ -118,7 +193,7 @@ pub struct CheckRight<F>(pub F);
 
 impl<First, Second: Clone, ValidateF> PairValidator<(First, Second)> for CheckRight<ValidateF>
 where
-    ValidateF: FnMut(&Second, &Second) -> bool,
+    ValidateF: FnMut(PairOrSingle<&Second>) -> bool,
 {
     type ValidationItem = Second;
 
@@ -126,35 +201,29 @@ where
         item.1.clone()
     }
 
-    fn validate(&mut self, previous: &Second, current: &Second) -> bool {
-        self.0(previous, current)
+    fn validate(&mut self, pair: PairOrSingle<&Self::ValidationItem>) -> bool {
+        self.0(pair)
     }
 }
 
 /// Ensures that the given iterator satisfies provided function for each successful (`Ok(_)`) previous - current pair.
-/// In case of an error, `Err(InvalidPair)` will be emitted.
-pub fn try_validate_pairs<I, OK, E, P>(
-    iter: I,
-    mut validator: P,
-) -> impl Iterator<Item = Result<OK, E>>
+/// In case of an error, `Err(InvalidPairOrItem)` will be emitted.
+pub fn try_validate<I, OK, E, P>(iter: I, mut validator: P) -> impl Iterator<Item = Result<OK, E>>
 where
     I: IntoIterator<Item = Result<OK, E>>,
     P: PairValidator<OK>,
-    E: From<InvalidPair<P::ValidationItem>>,
+    E: From<InvalidPairOrItem<P::ValidationItem>>,
 {
     let mut last = None;
 
     iter.into_iter().map(move |item| {
         let cur = item?;
+        let prev = last.replace(validator.map(&cur));
 
-        let invalid = last
-            .replace(validator.map(&cur))
-            .zip(last.as_ref())
-            .map(|(prev, cur)| (prev, cur))
-            .filter(|(prev, cur)| !validator.validate(prev, cur));
+        let pair = ((prev.as_ref(), last.as_ref().unwrap())).into();
 
-        if let Some((prev, _)) = invalid {
-            Err(InvalidPair(prev, validator.map(&cur)).into())
+        if !validator.validate(pair) {
+            Err(InvalidPairOrItem((prev, validator.map(&cur)).into()).into())
         } else {
             Ok(cur)
         }

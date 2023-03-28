@@ -35,7 +35,6 @@ pub trait SyncIfParallel {}
 #[cfg(not(feature = "parallel"))]
 impl<T> SyncIfParallel for T {}
 
-
 #[cfg(feature = "parallel")]
 pub use rayon::iter;
 

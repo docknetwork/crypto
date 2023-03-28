@@ -2,10 +2,12 @@ use alloc::vec::Vec;
 use ark_ec::pairing::Pairing;
 use ark_serialize::*;
 use serde::{Deserialize, Serialize};
-use utils::{join, misc::is_lt, randomized_pairing_check::RandomizedPairingChecker};
+use utils::{join, misc::pair_is_lt, randomized_pairing_check::RandomizedPairingChecker};
 
 use crate::{
-    helpers::{pluck_missed, take_while_pairs_satisfy, SendIfParallel, WithSchnorrResponse},
+    helpers::{
+        pluck_missed, take_while_satisfy, PairOrSingle, SendIfParallel, WithSchnorrResponse,
+    },
     setup::{PreparedPublicKey, PreparedSignatureParams},
 };
 
@@ -79,8 +81,11 @@ impl<E: Pairing> SignaturePoK<E> {
         I: IntoIterator<Item = usize>,
     {
         let mut invalid_idx_pair = None;
-        let unique_sorted_msg_ids =
-            take_while_pairs_satisfy(unique_sorted_revealed_msg_ids, is_lt, &mut invalid_idx_pair);
+        let unique_sorted_msg_ids = take_while_satisfy(
+            unique_sorted_revealed_msg_ids,
+            pair_is_lt,
+            &mut invalid_idx_pair,
+        );
 
         let res = self
             .k
@@ -88,7 +93,7 @@ impl<E: Pairing> SignaturePoK<E> {
             .map_err(schnorr_error)
             .map_err(SignaturePoKError::SchnorrError);
 
-        if let Some((previous, current)) = invalid_idx_pair {
+        if let Some((previous, current)) = invalid_idx_pair.map(PairOrSingle::unwrap_pair) {
             Err(SignaturePoKError::RevealedIndicesMustBeUniqueAndSorted { previous, current })
         } else {
             res
@@ -145,7 +150,11 @@ impl<E: Pairing> SignaturePoK<E> {
         let mut invalid_idx_pair = None;
         // Pick only committed `beta_tilde` using supplied indices of the revealed messages
         let committed_beta_tilde = pluck_missed(
-            take_while_pairs_satisfy(sorted_unique_revealed_indices, is_lt, &mut invalid_idx_pair),
+            take_while_satisfy(
+                sorted_unique_revealed_indices,
+                pair_is_lt,
+                &mut invalid_idx_pair,
+            ),
             &pk.beta_tilde,
         );
 
@@ -155,7 +164,7 @@ impl<E: Pairing> SignaturePoK<E> {
             .map_err(schnorr_error)
             .map_err(SignaturePoKError::SchnorrError);
 
-        if let Some((previous, current)) = invalid_idx_pair {
+        if let Some((previous, current)) = invalid_idx_pair.map(PairOrSingle::unwrap_pair) {
             Err(SignaturePoKError::RevealedIndicesMustBeUniqueAndSorted { previous, current })
         } else {
             verification_res

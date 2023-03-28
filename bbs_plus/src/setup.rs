@@ -45,8 +45,8 @@ use zeroize::Zeroize;
 
 use core::iter::once;
 use dock_crypto_utils::{
-    concat_slices, hashing_utils::projective_group_elem_from_try_and_incr, iter::*, misc::is_lt,
-    serde_utils::*, try_iter::CheckLeft,
+    concat_slices, hashing_utils::projective_group_elem_from_try_and_incr, iter::*,
+    misc::pair_is_lt, serde_utils::*, try_iter::CheckLeft,
 };
 use itertools::process_results;
 
@@ -205,9 +205,9 @@ macro_rules! impl_sig_params {
                 MI: IntoIterator<Item = (usize, &'a E::ScalarField)>,
             {
                 let (bases, scalars): (Vec<_>, Vec<_>) = process_results(
-                    pair_valid_pairs_with_slice::<_, _, _, BBSPlusError, _>(
+                    pair_valid_items_with_slice::<_, _, _, BBSPlusError, _>(
                         indexed_messages_sorted_by_index,
-                        CheckLeft(is_lt),
+                        CheckLeft(pair_is_lt),
                         &self.h,
                     ),
                     |iter| iter.chain(once((&self.h_0, blinding))).unzip(),
