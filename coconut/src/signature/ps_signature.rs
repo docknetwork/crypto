@@ -158,18 +158,17 @@ impl<E: Pairing> Signature<E> {
     ///
     /// `h * (x + \sum{j}(m_{j} * y_{j}))`
     fn from_sigma_1(
-        mut h: E::G1,
+        h: E::G1,
         m_y_pairs: Pairs<E::ScalarField, E::ScalarField>,
         &x: &E::ScalarField,
     ) -> Self {
-        let m_mul_y: E::ScalarField = cfg_into_iter!(m_y_pairs)
-            .map(|(&message, &sec_key_y)| sec_key_y * message)
-            .sum();
-        let exp = x + m_mul_y;
         let sigma_1 = h;
-        h *= exp;
+        let sigma_2 = h * cfg_into_iter!(m_y_pairs)
+            .map(|(&message, &sec_key_y)| sec_key_y * message)
+            .chain(utils::aliases::iter::once(x))
+            .sum::<E::ScalarField>();
 
-        Self::combine(sigma_1, h)
+        Self::combine(sigma_1, sigma_2)
     }
 }
 

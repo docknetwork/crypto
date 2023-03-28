@@ -22,7 +22,7 @@ where
     iter.into_iter().map(|indexed_item| {
         let (index, item) = indexed_item?;
 
-        let pair = pair_with.get(index).ok_or_else(|| IndexIsOutOfBounds {
+        let pair = pair_with.get(index).ok_or(IndexIsOutOfBounds {
             index,
             length: pair_with.len(),
         })?;
