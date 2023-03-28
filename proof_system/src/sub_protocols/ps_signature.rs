@@ -1,13 +1,17 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec};
 
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    iter::take_while_satisfy, misc::check_seq_from,
+    randomized_pairing_check::RandomizedPairingChecker, try_iter::CheckLeft,
+};
 
 use coconut_crypto::{proof::*, setup::*};
+use itertools::Itertools;
 
 use crate::{error::ProofSystemError, statement_proof::StatementProof};
 
-use super::merge_msgs_with_blindings;
+use super::merge_indexed_messages_with_blindings;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PSSignaturePoK<'a, E: Pairing> {
@@ -87,32 +91,40 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         let messages_to_blind = LeakedVec::new(witness.unrevealed_messages.into_iter().collect());
 
         let mut invalid_blinding_idx = None;
-        let mut invalid_message_idx = None;
-        let messages = merge_msgs_with_blindings(
+        let messages_to_blind_with_blindings = merge_indexed_messages_with_blindings(
             messages_to_blind.slice.iter().map(|(idx, msg)| (*idx, msg)),
             blindings,
-            self.revealed_messages,
             CommitMessage::BlindMessageRandomly,
-            |message, blinding| CommitMessage::BlindMessageWithConcreteBlinding {
-                message,
-                blinding,
-            },
-            |_| CommitMessage::RevealMessage,
+            CommitMessage::blind_message_with,
             &mut invalid_blinding_idx,
-            &mut invalid_message_idx
         );
+        let mut non_seq_idx = None;
+        let all_messages = take_while_satisfy(
+            messages_to_blind_with_blindings.merge_by(
+                self.revealed_messages
+                    .iter()
+                    .map(|(idx, _)| (*idx, CommitMessage::RevealMessage)),
+                |(a, _), (b, _)| a < b,
+            ),
+            CheckLeft(check_seq_from(0)),
+            &mut non_seq_idx,
+        )
+        .map(|(_, msg)| msg);
 
         let protocol = SignaturePoKGenerator::init(
             rng,
-            messages,
+            all_messages,
             &witness.signature,
             self.public_key,
             self.signature_params,
         );
         if let Some(idx) = invalid_blinding_idx {
             Err(ProofSystemError::PSProtocolInvalidBlindingIndex(idx))?
-        } else if let Some((prev, cur)) = invalid_message_idx {
-            Err(ProofSystemError::PSProtocolInvalidMessageIndex(prev, cur))?
+        } else if let Some(invalid) = non_seq_idx {
+            Err(invalid.over(
+                ProofSystemError::PSProtocolMessageIndicesMustStartFromZero,
+                ProofSystemError::PSProtocolNonSequentialMessageIndices,
+            ))?
         }
 
         self.protocol = Some(Protocol {

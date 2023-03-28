@@ -10,7 +10,7 @@ use ark_serialize::*;
 
 use super::{error::AggregatedPSError, ps_signature::Signature};
 use crate::{
-    helpers::{is_lt, lagrange_basis_at_0, try_validate_pairs, CheckLeft},
+    helpers::{lagrange_basis_at_0, pair_is_lt, try_validate, CheckLeft},
     owned_pairs,
 };
 
@@ -44,9 +44,9 @@ impl<E: Pairing> AggregatedSignature<E> {
                 }
             });
         let (participant_ids, s): (Vec<_>, Vec<_>) = process_results(
-            try_validate_pairs(
+            try_validate(
                 ensure_participant_signatures_sigma_1_equals_to_h,
-                CheckLeft(is_lt),
+                CheckLeft(pair_is_lt),
             )
             .map_ok(|(id, sig)| (id, sig.sigma_2)),
             |iter| iter.unzip(),

@@ -109,50 +109,7 @@ fn construction_pac_workflow() {
 }
 
 mod helpers {
-    use crate::helpers::{
-        is_lt, pluck_missed, take_while_pairs_satisfy, ExtendSome, OwnedPairs, Pairs,
-    };
-    use alloc::{vec, vec::Vec};
-
-    #[test]
-    fn valid_take_while_unique_sorted() {
-        let mut opt = None;
-        let values: Vec<_> = take_while_pairs_satisfy(1..10, is_lt, &mut opt).collect();
-
-        assert_eq!(values, (1..10).collect::<Vec<_>>());
-        assert_eq!(opt, None);
-
-        let values: Vec<_> = take_while_pairs_satisfy([2, 8, 9], is_lt, &mut opt).collect();
-        assert_eq!(values, [2, 8, 9]);
-        assert_eq!(opt, None);
-    }
-
-    #[test]
-    fn invalid_take_while_unique_sorted() {
-        let mut opt = None;
-        let values: Vec<_> =
-            take_while_pairs_satisfy([5, 6, 7, 9, 10, 8], is_lt, &mut opt).collect();
-
-        assert_eq!(values, vec![5, 6, 7, 9, 10]);
-        assert_eq!(opt, Some((10, 8)));
-
-        let values: Vec<_> = take_while_pairs_satisfy([100, 0], is_lt, &mut opt).collect();
-        assert_eq!(values, [100]);
-        assert_eq!(opt, Some((100, 0)));
-    }
-
-    #[test]
-    fn check_pluck_missed() {
-        assert_eq!(
-            pluck_missed([1, 3], [0, 1, 2]).collect::<Vec<_>>(),
-            vec![0, 2]
-        );
-        assert_eq!(
-            pluck_missed([3, 5], 0..10).collect::<Vec<_>>(),
-            [0, 1, 2, 4, 6, 7, 8, 9]
-        );
-    }
-
+    use crate::helpers::{OwnedPairs, Pairs};
     #[test]
     fn pairs() {
         assert_eq!(Pairs::new(&[1], &[1, 2]), None);
@@ -175,20 +132,5 @@ mod helpers {
             [((1, 2), (3, 4)), ((5, 6), (7, 8))].into_iter().unzip();
         assert_eq!(left_ext.split(), (vec![1, 5], vec![2, 6]));
         assert_eq!(right_ext.split(), (vec![3, 7], vec![4, 8]));
-    }
-
-    #[test]
-    fn extend_some() {
-        let ExtendSome::<Vec<_>>(arr) = [Some(1), Some(2), None, Some(4)].into_iter().collect();
-
-        assert_eq!(arr, [1, 2, 4]);
-
-        let (ExtendSome::<Vec<_>>(even), ExtendSome::<Vec<_>>(odd)) =
-            [Some(1), Some(2), None, Some(4), Some(5), None]
-                .into_iter()
-                .partition(|v| v.map_or(false, |idx| idx % 2 == 0));
-
-        assert_eq!(even, vec![2, 4]);
-        assert_eq!(odd, vec![1, 5])
     }
 }

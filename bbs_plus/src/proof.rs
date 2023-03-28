@@ -147,6 +147,13 @@ pub enum MessageOrBlinding<'a, P: PrimeField> {
     BlindMessageWithConcreteBlinding { message: &'a P, blinding: P },
 }
 
+impl<'a, P: PrimeField> MessageOrBlinding<'a, P> {
+    /// Blinds given `message` using supplied `blinding`.
+    pub fn blind_message_with(message: &'a P, blinding: P) -> Self {
+        Self::BlindMessageWithConcreteBlinding { message, blinding }
+    }
+}
+
 impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     /// Initiate the protocol, i.e. pre-challenge phase. This will generate the randomized signature and execute
     /// the commit-to-randomness step (Step 1) of both Schnorr protocols.

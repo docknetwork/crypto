@@ -1,13 +1,13 @@
 use secret_sharing_and_dkg::common::ParticipantId;
 
-use crate::helpers::{IndexIsOutOfBounds, InvalidPair};
+use crate::helpers::{IndexIsOutOfBounds, InvalidPairOrItem};
 
 /// An error originated from `Signature`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PSError {
     NoMessages,
     InvalidMessageCount { received: usize, expected: usize },
-    MessageIndicesMustBeUniqueAndSorted(InvalidPair<usize>),
+    MessageIndicesMustBeUniqueAndSorted(InvalidPairOrItem<usize>),
     ZeroSignature,
     MessageIndexIsOutOfBounds(IndexIsOutOfBounds),
     PairingCheckFailed,
@@ -19,8 +19,8 @@ impl From<IndexIsOutOfBounds> for PSError {
     }
 }
 
-impl From<InvalidPair<usize>> for PSError {
-    fn from(err: InvalidPair<usize>) -> Self {
+impl From<InvalidPairOrItem<usize>> for PSError {
+    fn from(err: InvalidPairOrItem<usize>) -> Self {
         Self::MessageIndicesMustBeUniqueAndSorted(err)
     }
 }
@@ -34,7 +34,7 @@ pub enum BlindPSError {
         received: Option<usize>,
         expected: usize,
     },
-    BlindingIndicesMustBeUniqueAndSorted(InvalidPair<usize>),
+    BlindingIndicesMustBeUniqueAndSorted(InvalidPairOrItem<usize>),
     IncompatibleVerificationKey,
 }
 
@@ -44,8 +44,8 @@ impl From<IndexIsOutOfBounds> for BlindPSError {
     }
 }
 
-impl From<InvalidPair<usize>> for BlindPSError {
-    fn from(err: InvalidPair<usize>) -> Self {
+impl From<InvalidPairOrItem<usize>> for BlindPSError {
+    fn from(err: InvalidPairOrItem<usize>) -> Self {
         Self::BlindingIndicesMustBeUniqueAndSorted(err)
     }
 }
@@ -55,12 +55,12 @@ impl From<InvalidPair<usize>> for BlindPSError {
 pub enum AggregatedPSError {
     NoSignatures,
     InvalidSigma1For(ParticipantId),
-    ParticipantIdsMustBeUniqueAndSorted(InvalidPair<ParticipantId>),
+    ParticipantIdsMustBeUniqueAndSorted(InvalidPairOrItem<ParticipantId>),
     PSError(PSError),
 }
 
-impl From<InvalidPair<ParticipantId>> for AggregatedPSError {
-    fn from(err: InvalidPair<ParticipantId>) -> Self {
+impl From<InvalidPairOrItem<ParticipantId>> for AggregatedPSError {
+    fn from(err: InvalidPairOrItem<ParticipantId>) -> Self {
         Self::ParticipantIdsMustBeUniqueAndSorted(err)
     }
 }

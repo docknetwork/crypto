@@ -11,9 +11,6 @@ use core::borrow::Borrow;
 use crate::error::ProofSystemError;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::io::Write;
-use dock_crypto_utils::{
-    iter::take_while_pairs_satisfy, misc::check_seq_from, try_iter::CheckLeft,
-};
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
@@ -78,28 +75,31 @@ impl<'a, E: Pairing, G: AffineRepr<ScalarField = E::ScalarField>> SubProtocol<'a
     }
 }
 
-fn merge_msgs_with_blindings<'a, M, B, R>(
-    msgs: impl IntoIterator<Item = (impl Borrow<usize>, M)> + 'a,
-    blindings: impl IntoIterator<Item = (impl Borrow<usize>, B)> + 'a,
-    revealed_msgs: impl IntoIterator<Item = (impl Borrow<usize>, M)> + 'a,
-    mut map_msg: impl FnMut(M) -> R + 'a,
-    mut map_blinded_msg: impl FnMut(M, B) -> R + 'a,
-    mut map_revealed_msg: impl FnMut(M) -> R + 'a,
+/// Merges indexed messages sorted by index with indexed blindings sorted by index.
+/// Messages which don't have corresponding blindings will be blinded randomly.
+/// In case blinding has an index that isn't present in the messages iterator,
+/// `invalid_blinding_idx` will be set to this index and iteration will be aborted.
+fn merge_indexed_messages_with_blindings<'a, M, B, R: 'a>(
+    indexed_msgs_sorted_by_index: impl IntoIterator<Item = (impl Borrow<usize>, M)> + 'a,
+    indexed_blindings_sorted_by_index: impl IntoIterator<Item = (impl Borrow<usize>, B)> + 'a,
+    mut map_randomly_blinded_msg: impl FnMut(M) -> R + 'a,
+    mut map_msg_with_blinding: impl FnMut(M, B) -> R + 'a,
     invalid_blinding_idx: &'a mut Option<usize>,
-    invalid_message_idx: &'a mut Option<(usize, usize)>,
-) -> impl Iterator<Item = R> + 'a {
-    let blinded_msgs = msgs
+) -> impl Iterator<Item = (usize, R)> + 'a {
+    indexed_msgs_sorted_by_index
         .into_iter()
         .map(|(idx, msg)| (*idx.borrow(), msg))
         .merge_join_by(
-            blindings.into_iter().map(|(idx, msg)| (*idx.borrow(), msg)),
+            indexed_blindings_sorted_by_index
+                .into_iter()
+                .map(|(idx, msg)| (*idx.borrow(), msg)),
             |(m_idx, _), (b_idx, _)| m_idx.cmp(b_idx),
         )
-        .scan((), move |(), either| {
+        .map(move |either| {
             let item = match either {
-                EitherOrBoth::Left((idx, msg)) => (idx, map_msg(msg)),
+                EitherOrBoth::Left((idx, msg)) => (idx, map_randomly_blinded_msg(msg)),
                 EitherOrBoth::Both((idx, message), (_, blinding)) => {
-                    (idx, (map_blinded_msg)(message, blinding))
+                    (idx, (map_msg_with_blinding)(message, blinding))
                 }
                 EitherOrBoth::Right((idx, _)) => {
                     invalid_blinding_idx.replace(idx);
@@ -109,15 +109,7 @@ fn merge_msgs_with_blindings<'a, M, B, R>(
             };
 
             Some(item)
-        });
-    let revealed_msgs = revealed_msgs
-        .into_iter()
-        .map(move |(idx, msg)| (*idx.borrow(), map_revealed_msg(msg)));
-
-    take_while_pairs_satisfy(
-        blinded_msgs.merge_by(revealed_msgs, |(a, _), (b, _)| a <= b),
-        CheckLeft(check_seq_from(0)),
-        invalid_message_idx,
-    )
-    .map(|(_, message)| message)
+        })
+        .take_while(Option::is_some)
+        .flatten()
 }
