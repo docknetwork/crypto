@@ -1,34 +1,41 @@
-use crate::circuit::BitsizeCheckCircuit;
-use crate::commitment::ChunkedCommitment;
-use crate::encryption::Encryption;
-use crate::keygen::{PreparedDecryptionKey, PreparedEncryptionKey};
-use crate::saver_groth16::{create_proof, verify_proof};
-use crate::setup::{
-    setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens,
+use crate::{
+    circuit::BitsizeCheckCircuit,
+    commitment::ChunkedCommitment,
+    encryption::Encryption,
+    keygen::{PreparedDecryptionKey, PreparedEncryptionKey},
+    saver_groth16::{create_proof, verify_proof},
+    setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens},
+    utils::decompose,
 };
-use crate::utils::decompose;
 use ark_bls12_381::{Bls12_381, G1Affine};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_groth16::prepare_verifying_key;
-use ark_std::rand::prelude::StdRng;
-use ark_std::rand::{RngCore, SeedableRng};
-use ark_std::UniformRand;
-use bbs_plus::setup::{KeypairG2, SignatureParamsG1};
-use bbs_plus::signature::SignatureG1;
+use ark_std::{
+    rand::{prelude::StdRng, RngCore, SeedableRng},
+    UniformRand,
+};
+use bbs_plus::{
+    setup::{KeypairG2, SignatureParamsG1},
+    signature::SignatureG1,
+};
 use blake2::Blake2b512;
-use proof_system::prelude::{
-    EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statements, Witness,
-    WitnessRef, Witnesses,
+use proof_system::{
+    prelude::{
+        EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statements, Witness,
+        WitnessRef, Witnesses,
+    },
+    statement::{
+        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        ped_comm::PedersenCommitment as PedersenCommitmentStmt,
+    },
+    witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
-use proof_system::statement::{
-    bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
-    ped_comm::PedersenCommitment as PedersenCommitmentStmt,
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::Add,
+    time::Instant,
 };
-use proof_system::witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit;
-use std::collections::{BTreeMap, BTreeSet};
-use std::ops::Add;
-use std::time::Instant;
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 type ProofG1 = Proof<Bls12_381, G1Affine>;
@@ -49,7 +56,8 @@ fn sig_setup<R: RngCore>(
     let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, message_count);
     let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
     let sig = SignatureG1::<Bls12_381>::new(rng, &messages, &keypair.secret_key, &params).unwrap();
-    sig.verify(&messages, &keypair.public_key, &params).unwrap();
+    sig.verify(&messages, keypair.public_key.clone(), params.clone())
+        .unwrap();
     (messages, params, keypair, sig)
 }
 
@@ -63,7 +71,7 @@ fn bbs_plus_verifiably_encrypt_message() {
         // Prover has the BBS+ signature
         let message_count = 10;
         let (messages, sig_params, keypair, sig) = sig_setup(&mut rng, message_count);
-        sig.verify(&messages, &keypair.public_key, &sig_params)
+        sig.verify(&messages, keypair.public_key.clone(), sig_params.clone())
             .unwrap();
 
         // User id at message index `user_id_idx`
@@ -293,7 +301,7 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         // Prover has the BBS+ signature
         let message_count = 10;
         let (messages, sig_params, keypair, sig) = sig_setup(&mut rng, message_count);
-        sig.verify(&messages, &keypair.public_key, &sig_params)
+        sig.verify(&messages, keypair.public_key.clone(), sig_params.clone())
             .unwrap();
 
         let m_idx_1 = 1;
@@ -641,13 +649,21 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         let message_count_1 = 5;
         let (messages_1, sig_params_1, keypair_1, sig_1) = sig_setup(&mut rng, message_count_1);
         sig_1
-            .verify(&messages_1, &keypair_1.public_key, &sig_params_1)
+            .verify(
+                &messages_1,
+                keypair_1.public_key.clone(),
+                sig_params_1.clone(),
+            )
             .unwrap();
 
         let message_count_2 = 8;
         let (messages_2, sig_params_2, keypair_2, sig_2) = sig_setup(&mut rng, message_count_2);
         sig_2
-            .verify(&messages_2, &keypair_2.public_key, &sig_params_2)
+            .verify(
+                &messages_2,
+                keypair_2.public_key.clone(),
+                sig_params_2.clone(),
+            )
             .unwrap();
 
         // User id at message index `user_id_idx`

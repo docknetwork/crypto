@@ -147,25 +147,31 @@ impl<G: AffineRepr> ChunkedCommitment<G> {
 mod tests {
     use super::*;
 
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, G1Affine};
     use ark_ec::pairing::Pairing;
 
     use ark_std::{
+        collections::BTreeSet,
+        ops::Add,
         rand::{prelude::StdRng, SeedableRng},
         UniformRand,
     };
 
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
-    // TODO Uncomment
-    // use proof_system::prelude::{
-    //     EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statements, Witness,
-    //     WitnessRef, Witnesses,
-    // };
-    // use proof_system::statement::ped_comm::PedersenCommitment as PedersenCommitmentStmt;
+    use crate::encryption::{tests::enc_setup, Encryption};
+    use blake2::Blake2b512;
+
+    use proof_system::{
+        prelude::{
+            EqualWitnesses, MetaStatement, MetaStatements, Proof, ProofSpec, Statements, Witness,
+            WitnessRef, Witnesses,
+        },
+        statement::ped_comm::PedersenCommitment as PedersenCommitmentStmt,
+    };
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
-    // type ProofG1 = Proof<Bls12_381, G1Affine>;
+    type ProofG1 = Proof<Bls12_381, G1Affine>;
 
     #[test]
     fn commitment_key_creation() {
@@ -195,8 +201,7 @@ mod tests {
         check(16);
     }
 
-    // TODO Uncomment
-    /*#[test]
+    #[test]
     fn commitment_transform_works() {
         fn check(chunk_bit_size: u8) {
             let mut rng = StdRng::seed_from_u64(0u64);
@@ -305,5 +310,5 @@ mod tests {
         check(4);
         check(8);
         check(16);
-    }*/
+    }
 }

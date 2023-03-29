@@ -46,9 +46,8 @@ pub mod keygen;
 pub mod saver_groth16;
 pub mod saver_legogroth16;
 pub mod setup;
-// TODO Uncomment
-// #[cfg(test)]
-// pub mod tests;
+#[cfg(test)]
+pub mod tests;
 
 pub type Result<T> = core::result::Result<T, error::SaverError>;
 
