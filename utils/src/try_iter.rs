@@ -51,7 +51,7 @@ where
     }
 }
 
-/// Implements `PairValidator` which ensures that for each previous - current left items pairs satisfy provided function.
+/// Implements `SeqValidator` which ensures that for each item its left member satisfies provided validator.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CheckLeft<F>(pub F);
 
@@ -66,7 +66,7 @@ where
     }
 }
 
-/// Implements `PairValidator` which ensures that for each previous - current right items pairs satisfy provided function.
+/// Implements `SeqValidator` which ensures that for each item its right member satisfies provided validator.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CheckRight<F>(pub F);
 
@@ -149,11 +149,11 @@ impl<I> From<(I, I)> for InvalidPair<I> {
 
 /// Ensures that the given iterator satisfies provided validator for each successful item.
 /// In case of an error, `Err(E)` will be emitted.
-pub fn try_validate<I, OK, E, P>(iter: I, mut validator: P) -> impl Iterator<Item = Result<OK, E>>
+pub fn try_validate<I, OK, E, V>(iter: I, mut validator: V) -> impl Iterator<Item = Result<OK, E>>
 where
     I: IntoIterator<Item = Result<OK, E>>,
-    P: SeqValidator<OK>,
-    E: From<P::Failure>,
+    V: SeqValidator<OK>,
+    E: From<V::Failure>,
 {
     iter.into_iter().map(move |res| {
         let item = res?;

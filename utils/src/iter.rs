@@ -45,17 +45,17 @@ where
 /// Maps supplied iterator and attempts to pair each successfully validated item
 /// with a corresponding item from the slice.
 /// Validation errors will be propagated without looking at them.
-pub fn pair_valid_items_with_slice<'iter, 'pairs, I, Item, Pair, E, P>(
+pub fn pair_valid_items_with_slice<'iter, 'pairs, I, Item, Pair, E, V>(
     iter: I,
-    validator: P,
+    validator: V,
     pair_with: &'pairs [Pair],
 ) -> impl Iterator<Item = Result<(&'pairs Pair, Item), E>> + 'iter
 where
     'pairs: 'iter,
     I: IntoIterator<Item = (usize, Item)> + 'iter,
     Item: 'iter,
-    P: SeqValidator<(usize, Item)> + 'iter,
-    E: From<IndexIsOutOfBounds> + From<P::Failure> + 'iter,
+    V: SeqValidator<(usize, Item)> + 'iter,
+    E: From<IndexIsOutOfBounds> + From<V::Failure> + 'iter,
 {
     try_pair_with_slice(
         validate(iter, validator).map(|res| res.map_err(E::from)),
@@ -64,16 +64,16 @@ where
 }
 
 /// Ensures that the given iterator satisfies provided validator for each item.
-/// The supplied option will be modified to `P::Failure` in case of failure, and iteration will be aborted.
-pub fn take_while_satisfy<'iter, 'invalid, I, P>(
+/// The supplied option will be modified to `V::Failure` in case of failure, and iteration will be aborted.
+pub fn take_while_satisfy<'iter, 'invalid, I, V>(
     iter: I,
-    validator: P,
-    invalid: &'invalid mut Option<P::Failure>,
+    validator: V,
+    invalid: &'invalid mut Option<V::Failure>,
 ) -> impl Iterator<Item = I::Item> + 'iter
 where
     'invalid: 'iter,
     I: IntoIterator + 'iter,
-    P: SeqValidator<I::Item> + 'iter,
+    V: SeqValidator<I::Item> + 'iter,
 {
     validate(iter, validator)
         .map(|res| res.map_err(|err| invalid.replace(err)).ok())
