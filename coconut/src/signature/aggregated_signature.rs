@@ -7,10 +7,11 @@ use serde::{Deserialize, Serialize};
 use ark_ec::pairing::Pairing;
 
 use ark_serialize::*;
+use utils::iter::validate;
 
 use super::{error::AggregatedPSError, ps_signature::Signature};
 use crate::{
-    helpers::{lagrange_basis_at_0, pair_is_lt, try_validate, CheckLeft},
+    helpers::{lagrange_basis_at_0, seq_pairs_satisfy, CheckLeft},
     owned_pairs,
 };
 
@@ -35,20 +36,15 @@ impl<E: Pairing> AggregatedSignature<E> {
     where
         SI: IntoIterator<Item = (ParticipantId, &'a Signature<E>)>,
     {
-        let ensure_participant_signatures_sigma_1_equals_to_h =
-            participant_signatures.into_iter().map(|(id, sig)| {
-                if sig.sigma_1 == h {
-                    Ok((id, sig))
-                } else {
-                    Err(AggregatedPSError::InvalidSigma1For(id))
-                }
-            });
+        let validator = (
+            |(idx, sig): &(u16, &Signature<E>)| {
+                (sig.sigma_1 != h).then_some(AggregatedPSError::InvalidSigma1For(*idx))
+            },
+            CheckLeft(seq_pairs_satisfy(|a, b| a < b)),
+        );
+
         let (participant_ids, s): (Vec<_>, Vec<_>) = process_results(
-            try_validate(
-                ensure_participant_signatures_sigma_1_equals_to_h,
-                CheckLeft(pair_is_lt),
-            )
-            .map_ok(|(id, sig)| (id, sig.sigma_2)),
+            validate(participant_signatures, validator).map_ok(|(id, sig)| (id, sig.sigma_2)),
             |iter| iter.unzip(),
         )?;
         if s.is_empty() {

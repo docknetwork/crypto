@@ -4,7 +4,7 @@ use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
 use dock_crypto_utils::{
     serde_utils::ArkSerializationError,
-    try_iter::{IndexIsOutOfBounds, InvalidPairOrItem},
+    try_iter::{IndexIsOutOfBounds, InvalidPair},
 };
 use schnorr_pok::error::SchnorrError;
 use serde::Serialize;
@@ -27,7 +27,7 @@ pub enum BBSPlusError {
     #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
-    MessageIndicesMustBeUniqueAndSorted(InvalidPairOrItem<usize>),
+    MessageIndicesMustBeUniqueAndSorted(InvalidPair<usize>),
     MessageIndexIsOutOfBounds(IndexIsOutOfBounds),
 }
 
@@ -37,8 +37,8 @@ impl From<SchnorrError> for BBSPlusError {
     }
 }
 
-impl From<InvalidPairOrItem<usize>> for BBSPlusError {
-    fn from(err: InvalidPairOrItem<usize>) -> Self {
+impl From<InvalidPair<usize>> for BBSPlusError {
+    fn from(err: InvalidPair<usize>) -> Self {
         Self::MessageIndicesMustBeUniqueAndSorted(err)
     }
 }

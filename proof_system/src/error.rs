@@ -1,6 +1,7 @@
 use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeSet, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::error::BBSPlusError;
+use coconut_crypto::helpers::InvalidPair;
 use legogroth16::{circom::CircomError, error::Error as LegoGroth16Error};
 use saver::error::SaverError;
 use schnorr_pok::error::SchnorrError;
@@ -19,10 +20,10 @@ pub enum ProofSystemError {
     ProofIncompatibleWithBoundCheckProtocol,
     BBSPlusProtocolInvalidMessageCount(usize, usize),
     BBSProtocolInvalidBlindingIndex(usize),
-    BBSProtocolNonSequentialMessageIndices(usize, usize),
+    BBSProtocolNonSequentialMessageIndices(InvalidPair<usize>),
     BBSProtocolMessageIndicesMustStartFromZero(usize),
     PSProtocolInvalidMessageCount(usize, usize),
-    PSProtocolNonSequentialMessageIndices(usize, usize),
+    PSProtocolNonSequentialMessageIndices(InvalidPair<usize>),
     PSProtocolInvalidBlindingIndex(usize),
     PSProtocolInvalidMessageIndex(usize, usize),
     PSProtocolMessageIndicesMustStartFromZero(usize),

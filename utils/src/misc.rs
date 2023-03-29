@@ -1,20 +1,53 @@
 use crate::{
-    aliases::DoubleEndedExactSizeIterator, msm::multiply_field_elems_with_same_group_elem,
-    try_iter::PairOrSingle,
+    aliases::DoubleEndedExactSizeIterator,
+    msm::multiply_field_elems_with_same_group_elem,
+    try_iter::{InvalidPair, InvalidPairOrSingle},
 };
 use alloc::vec::Vec;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_std::{rand::RngCore, UniformRand};
-use core::cmp::{Ord, Ordering};
 
-/// Returns `true` if `first` is less than `second`.
-pub fn pair_is_lt<I: Ord>(pair: PairOrSingle<&I>) -> bool {
-    pair.over_pair(Ord::cmp).map_or(true, Ordering::is_lt)
+/// Ensures that each sequence pair satisfy provided predicate.
+pub fn seq_pairs_satisfy<I, F>(mut validate: F) -> impl FnMut(&I) -> Option<InvalidPair<I>>
+where
+    I: Clone,
+    F: FnMut(&I, &I) -> bool,
+{
+    let mut last = None;
+
+    move |item: &I| -> Option<InvalidPair<I>> {
+        if let Some((prev, _)) = last
+            .replace(item.clone())
+            .zip(last.as_ref())
+            .filter(|(prev, cur)| !validate(prev, cur))
+        {
+            Some(InvalidPair(prev, item.clone()))
+        } else {
+            None
+        }
+    }
 }
 
-/// Produces a function which will check for each pair current to be previous plus 1 starting from the supplied value.
-pub fn check_seq_from(from: usize) -> impl Fn(PairOrSingle<&usize>) -> bool + Clone {
-    move |pair| pair.over(|&first| first == from, |&prev, &cur| prev + 1 == cur)
+/// Produces a function which will check for each item to be equal previous plus `n` starting from the supplied value.
+pub fn seq_inc_by_n_from(
+    n: usize,
+    mut from: usize,
+) -> impl FnMut(&usize) -> Option<InvalidPairOrSingle<usize>> + Clone {
+    let mut init = false;
+
+    move |&item: &usize| {
+        if init {
+            let res =
+                (from + n != item).then_some(InvalidPairOrSingle::Pair(InvalidPair(from, item)));
+            from = item;
+
+            res
+        } else {
+            init = true;
+
+            (from != item).then_some(InvalidPairOrSingle::Single(item))
+        }
+    }
 }
 
 /// Generates an iterator of randoms producing `count` elements using the supplied `rng`.
