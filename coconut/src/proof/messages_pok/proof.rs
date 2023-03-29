@@ -3,10 +3,11 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::*;
 
 use serde::{Deserialize, Serialize};
+use utils::try_iter::InvalidPair;
 
 use crate::{
     helpers::{
-        pair_is_lt, pluck_missed, take_while_satisfy, DoubleEndedExactSizeIterator, PairOrSingle,
+        pluck_missed, seq_pairs_satisfy, take_while_satisfy, DoubleEndedExactSizeIterator,
         SendIfParallel, WithSchnorrResponse,
     },
     setup::SignatureParams,
@@ -121,7 +122,7 @@ impl<E: Pairing> MessagesPoK<E> {
         let committed_h = pluck_missed(
             take_while_satisfy(
                 unique_sorted_revealed_indices,
-                pair_is_lt,
+                seq_pairs_satisfy(|a, b| a < b),
                 &mut invalid_idx_pair,
             ),
             h,
@@ -132,7 +133,7 @@ impl<E: Pairing> MessagesPoK<E> {
             .map_err(schnorr_error)
             .map_err(MessagesPoKError::InvalidComProof);
 
-        if let Some((previous, current)) = invalid_idx_pair.map(PairOrSingle::unwrap_pair) {
+        if let Some(InvalidPair(previous, current)) = invalid_idx_pair {
             Err(MessagesPoKError::RevealedIndicesMustBeUniqueAndSorted { previous, current })
         } else {
             verification_res

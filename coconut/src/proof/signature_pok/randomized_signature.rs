@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use utils::join;
 
 use crate::{
-    helpers::{pair_is_lt, pair_valid_items_with_slice, CheckLeft, OwnedPairs},
+    helpers::{pair_valid_items_with_slice, seq_pairs_satisfy, CheckLeft, OwnedPairs},
     setup::{PreparedSignatureParams, PublicKey, SignatureParams},
     signature_pok::K,
     PSError, Signature,
@@ -71,7 +71,7 @@ impl<E: Pairing> RandomizedSignature<E> {
     {
         let uncommitted_beta_tilde_m_pairs: OwnedPairs<_, _> = pair_valid_items_with_slice(
             indexed_revealed_messages_sorted_by_index,
-            CheckLeft(pair_is_lt),
+            CheckLeft(seq_pairs_satisfy(|a, b| a < b)),
             beta_tilde,
         )
         .map_ok(|(&beta_tilde, &msg)| (beta_tilde, msg))

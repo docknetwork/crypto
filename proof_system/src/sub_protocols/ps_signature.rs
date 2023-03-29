@@ -2,7 +2,7 @@ use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec};
 
 use dock_crypto_utils::{
-    iter::take_while_satisfy, misc::check_seq_from,
+    iter::take_while_satisfy, misc::seq_inc_by_n_from,
     randomized_pairing_check::RandomizedPairingChecker, try_iter::CheckLeft,
 };
 
@@ -106,7 +106,7 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
                     .map(|(idx, _)| (*idx, CommitMessage::RevealMessage)),
                 |(a, _), (b, _)| a < b,
             ),
-            CheckLeft(check_seq_from(0)),
+            CheckLeft(seq_inc_by_n_from(1, 0)),
             &mut non_seq_idx,
         )
         .map(|(_, msg)| msg);

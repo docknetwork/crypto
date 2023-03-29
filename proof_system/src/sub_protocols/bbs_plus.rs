@@ -8,7 +8,7 @@ use bbs_plus::{
     proof::{MessageOrBlinding, PoKOfSignatureG1Protocol},
 };
 use dock_crypto_utils::{
-    iter::take_while_satisfy, misc::check_seq_from,
+    iter::take_while_satisfy, misc::seq_inc_by_n_from,
     randomized_pairing_check::RandomizedPairingChecker, try_iter::CheckLeft,
 };
 use itertools::Itertools;
@@ -76,7 +76,7 @@ impl<'a, E: Pairing> PoKBBSSigG1SubProtocol<'a, E> {
                     .map(|(idx, msg)| (*idx, MessageOrBlinding::RevealMessage(msg))),
                 |(a, _), (b, _)| a < b,
             ),
-            CheckLeft(check_seq_from(0)),
+            CheckLeft(seq_inc_by_n_from(1, 0)),
             &mut non_seq_idx,
         )
         .map(|(_, msg)| msg);
