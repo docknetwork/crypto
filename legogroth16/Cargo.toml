@@ -1,6 +1,6 @@
 [package]
 name = "legogroth16"
-version = "0.6.0"
+version = "0.7.0"
 authors = [ "arkworks contributors", "Dock.io" ]
 description = "An implementation of the LegoGroth16, the Legosnark variant of Groth16 zkSNARK proof system"
 repository.workspace = true
