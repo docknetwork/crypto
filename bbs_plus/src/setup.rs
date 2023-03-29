@@ -41,7 +41,7 @@ use ark_std::{
 };
 use digest::{Digest, DynDigest};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use core::iter::once;
 use dock_crypto_utils::{
@@ -67,14 +67,9 @@ use serde_with::serde_as;
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
-
-impl<F: PrimeField> Drop for SecretKey<F> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
 
 impl<F: PrimeField> SecretKey<F> {
     pub fn generate_using_seed<D>(seed: &[u8]) -> Self
@@ -85,6 +80,59 @@ impl<F: PrimeField> SecretKey<F> {
         let hasher = <DefaultFieldHasher<D> as HashToField<F>>::new(b"BBS-SIG-KEYGEN-SALT");
         Self(hasher.hash_to_field(seed, 1).pop().unwrap())
     }
+}
+
+macro_rules! impl_sig_params_prepared {
+    ( $group_affine:ident, $group_projective:ident) => {
+        /// Number of messages supported in the multi-message
+        pub fn supported_message_count(&self) -> usize {
+            self.h.len()
+        }
+
+        /// Commit to given messages using the parameters and the given blinding as a Pedersen commitment.
+        /// `indexed_messages_sorted_by_index` must produce items sorted by unique indices, otherwise,
+        /// an error will be returned.
+        /// Eg. if given messages `m_i`, `m_j`, and `m_k` in the iterator, the commitment converts messages to
+        /// scalars and multiplies them by the parameter curve points:
+        /// `params.h_0 * blinding + params.h_i * m_i + params.h_j * m_j + params.h_k * m_k`
+        /// Computes using multi-scalar multiplication
+        pub fn commit_to_messages<'a, MI>(
+            &self,
+            indexed_messages_sorted_by_index: MI,
+            blinding: &'a E::ScalarField,
+        ) -> Result<E::$group_affine, BBSPlusError>
+        where
+            MI: IntoIterator<Item = (usize, &'a E::ScalarField)>,
+        {
+            let (bases, scalars): (Vec<_>, Vec<_>) = process_results(
+                pair_valid_items_with_slice::<_, _, _, BBSPlusError, _>(
+                    indexed_messages_sorted_by_index,
+                    CheckLeft(seq_pairs_satisfy(|a, b| a < b)),
+                    &self.h,
+                ),
+                |iter| iter.chain(once((&self.h_0, blinding))).unzip(),
+            )?;
+
+            Ok(E::$group_projective::msm_unchecked(&bases, &scalars).into_affine())
+        }
+
+        /// Compute `b` from the paper (equivalently 'A*{e+x}').
+        /// `indexed_messages_sorted_by_index` must produce items sorted by unique indices, otherwise,
+        /// an error will be returned.
+        /// Commits to the given messages and adds `self.g1` to it,
+        /// `b = g_1 + h_0 * s + sum(h_i * m_i)` for all indices `i` in the map.
+        pub fn b<'a, MI>(
+            &self,
+            indexed_messages_sorted_by_index: MI,
+            s: &'a E::ScalarField,
+        ) -> Result<E::$group_projective, BBSPlusError>
+        where
+            MI: IntoIterator<Item = (usize, &'a E::ScalarField)>,
+        {
+            let commitment = self.commit_to_messages(indexed_messages_sorted_by_index, s)?;
+            Ok(commitment + self.g1)
+        }
+    };
 }
 
 macro_rules! impl_sig_params {
@@ -184,54 +232,7 @@ macro_rules! impl_sig_params {
                     || cfg_iter!(self.h).any(|v| v.is_zero()))
             }
 
-            /// Number of messages supported in the multi-message
-            pub fn supported_message_count(&self) -> usize {
-                self.h.len()
-            }
-
-            /// Commit to given messages using the parameters and the given blinding as a Pedersen commitment.
-            /// `indexed_messages_sorted_by_index` must produce items sorted by unique indices, otherwise,
-            /// an error will be returned.
-            /// Eg. if given messages `m_i`, `m_j`, and `m_k` in the iterator, the commitment converts messages to
-            /// scalars and multiplies them by the parameter curve points:
-            /// `params.h_0 * blinding + params.h_i * m_i + params.h_j * m_j + params.h_k * m_k`
-            /// Computes using multi-scalar multiplication
-            pub fn commit_to_messages<'a, MI>(
-                &self,
-                indexed_messages_sorted_by_index: MI,
-                blinding: &'a E::ScalarField,
-            ) -> Result<E::$group_affine, BBSPlusError>
-            where
-                MI: IntoIterator<Item = (usize, &'a E::ScalarField)>,
-            {
-                let (bases, scalars): (Vec<_>, Vec<_>) = process_results(
-                    pair_valid_items_with_slice::<_, _, _, BBSPlusError, _>(
-                        indexed_messages_sorted_by_index,
-                        CheckLeft(seq_pairs_satisfy(|a, b| a < b)),
-                        &self.h,
-                    ),
-                    |iter| iter.chain(once((&self.h_0, blinding))).unzip(),
-                )?;
-
-                Ok(E::$group_projective::msm_unchecked(&bases, &scalars).into_affine())
-            }
-
-            /// Compute `b` from the paper (equivalently 'A*{e+x}').
-            /// `indexed_messages_sorted_by_index` must produce items sorted by unique indices, otherwise,
-            /// an error will be returned.
-            /// Commits to the given messages and adds `self.g1` to it,
-            /// `b = g_1 + h_0 * s + sum(h_i * m_i)` for all indices `i` in the map.
-            pub fn b<'a, MI>(
-                &self,
-                indexed_messages_sorted_by_index: MI,
-                s: &'a E::ScalarField,
-            ) -> Result<E::$group_projective, BBSPlusError>
-            where
-                MI: IntoIterator<Item = (usize, &'a E::ScalarField)>,
-            {
-                let commitment = self.commit_to_messages(indexed_messages_sorted_by_index, s)?;
-                Ok(commitment + self.g1)
-            }
+            impl_sig_params_prepared!($group_affine, $group_projective);
         }
     };
 }
@@ -371,6 +372,10 @@ impl<E: Pairing> From<SignatureParamsG1<E>> for PreparedSignatureParamsG1<E> {
             h: params.h,
         }
     }
+}
+
+impl<E: Pairing> PreparedSignatureParamsG1<E> {
+    impl_sig_params_prepared!(G1Affine, G1);
 }
 
 impl<E: Pairing> From<PublicKeyG2<E>> for PreparedPublicKeyG2<E> {

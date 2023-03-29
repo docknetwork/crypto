@@ -3,7 +3,7 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, vec::Vec};
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -13,22 +13,30 @@ pub type ShareId = u16;
 pub type ParticipantId = u16;
 
 /// Share used in Shamir secret sharing and Feldman verifiable secret sharing
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 pub struct Share<F: PrimeField> {
+    #[zeroize(skip)]
     pub id: ShareId,
+    #[zeroize(skip)]
     pub threshold: ShareId,
     pub share: F,
 }
 
 /// Collection of `Share`s. A sufficient number of `Share`s reconstruct the secret.
 /// Expects unique shares, i.e. each share has a different `ShareId` and each has the same threshold.
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Shares<F: PrimeField>(pub Vec<Share<F>>);
 
 /// Share used in Pedersen verifiable secret sharing
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 pub struct VerifiableShare<F: PrimeField> {
+    #[zeroize(skip)]
     pub id: ShareId,
+    #[zeroize(skip)]
     pub threshold: ShareId,
     pub secret_share: F,
     pub blinding_share: F,
@@ -36,21 +44,15 @@ pub struct VerifiableShare<F: PrimeField> {
 
 /// Collection of `VerifiableShares`s. A sufficient number of `VerifiableShares`s reconstruct the secret.
 /// Expects unique shares, i.e. each share has a different `ShareId` and each has the same threshold.
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifiableShares<F: PrimeField>(pub Vec<VerifiableShare<F>>);
 
 /// Commitments to coefficients of the of the polynomial created during secret sharing. Each commitment
 /// in the vector could be a Pedersen commitment or a computationally hiding and computationally binding
 /// commitment (scalar multiplication of the coefficient with a public group element). The former is used
 /// in Pedersen secret sharing and the latter in Feldman
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommitmentToCoefficients<G: AffineRepr>(pub Vec<G>);
-
-impl<F: PrimeField> Drop for Share<F> {
-    fn drop(&mut self) {
-        self.share.zeroize();
-    }
-}
 
 impl<F: PrimeField> From<(ShareId, ShareId, F)> for Share<F> {
     fn from((i, t, s): (ShareId, ShareId, F)) -> Self {
@@ -59,13 +61,6 @@ impl<F: PrimeField> From<(ShareId, ShareId, F)> for Share<F> {
             threshold: t,
             share: s,
         }
-    }
-}
-
-impl<F: PrimeField> Drop for VerifiableShare<F> {
-    fn drop(&mut self) {
-        self.secret_share.zeroize();
-        self.blinding_share.zeroize();
     }
 }
 

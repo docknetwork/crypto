@@ -61,7 +61,7 @@ use crate::{
     setup::{PreparedSignatureParamsG1, SignatureParamsG1},
     signature::SignatureG1,
 };
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -81,7 +81,7 @@ use itertools::multiunzip;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Proof of knowledge of BBS+ signature in group G1
 /// The BBS+ signature proves validity of a set of messages {m_i}, i in I. This stateful protocol proves knowledge of such
@@ -94,7 +94,16 @@ use zeroize::Zeroize;
 /// and then that challenge is used in post-challenge phase of all protocols.
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
@@ -104,10 +113,12 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
     /// For proving relation `A_bar - d = A_prime * -e + h_0 * r2`
+    #[zeroize(skip)]
     pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "(ArkObjectBytes, ArkObjectBytes)")]
     sc_wits_1: (E::ScalarField, E::ScalarField),
     /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + sum_{j notin D}(h_j*m_j)`
+    #[zeroize(skip)]
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
     sc_wits_2: Vec<E::ScalarField>,
@@ -197,11 +208,9 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
 
         // A' = A * r1
         let A_prime = signature.A.mul_bigint(r1.into_bigint());
-        let A_prime_affine = A_prime.into_affine();
         // A_bar = r1 * b - e * A'
-        let mut b_r1 = b;
-        b_r1 *= r1;
-        let A_bar = b_r1 - (A_prime_affine.mul_bigint(signature.e.into_bigint()));
+        let b_r1 = b * r1;
+        let A_bar = b_r1 - (A_prime.mul_bigint(signature.e.into_bigint()));
         // d = r1 * b - r2 * h_0
         let d = b_r1 - params.h_0.mul_bigint(r2.into_bigint());
         let d_affine = d.into_affine();
@@ -216,6 +225,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         // For each of the above relations, a Schnorr protocol is executed; the first to prove knowledge
         // of `(e, r2)`, and the second of `(r3, s', {m_j}_{j \notin D})`. The secret knowledge items are
         // referred to as witnesses, and the public items as instances.
+        let A_prime_affine = A_prime.into_affine();
         let bases_1 = [A_prime_affine, params.h_0];
         let randomness_1 = vec![E::ScalarField::rand(rng), E::ScalarField::rand(rng)];
         let wits_1 = (-signature.e, r2);
@@ -346,22 +356,6 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         }
         E::G1::msm_unchecked(&bases_revealed, &exponents).serialize_compressed(&mut writer)?;
         T2.serialize_compressed(&mut writer).map_err(|e| e.into())
-    }
-}
-
-impl<E: Pairing> Zeroize for PoKOfSignatureG1Protocol<E> {
-    fn zeroize(&mut self) {
-        // Other members of `self` are public anyway
-        self.sc_comm_1.zeroize();
-        self.sc_wits_1.zeroize();
-        self.sc_comm_2.zeroize();
-        self.sc_wits_2.zeroize();
-    }
-}
-
-impl<E: Pairing> Drop for PoKOfSignatureG1Protocol<E> {
-    fn drop(&mut self) {
-        self.zeroize();
     }
 }
 
@@ -573,7 +567,8 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
         let message_count = 20;
         let (messages, params, keypair, sig) = sig_setup(&mut rng, message_count);
-        sig.verify(&messages, &keypair.public_key, &params).unwrap();
+        sig.verify(&messages, keypair.public_key.clone(), params.clone())
+            .unwrap();
 
         let mut revealed_indices = BTreeSet::new();
         revealed_indices.insert(0);
@@ -691,14 +686,14 @@ mod tests {
             SignatureG1::<Bls12_381>::new(&mut rng, &messages_1, &keypair_1.secret_key, &params_1)
                 .unwrap();
         sig_1
-            .verify(&messages_1, &keypair_1.public_key, &params_1)
+            .verify(&messages_1, keypair_1.public_key.clone(), params_1.clone())
             .unwrap();
 
         let sig_2 =
             SignatureG1::<Bls12_381>::new(&mut rng, &messages_2, &keypair_2.secret_key, &params_2)
                 .unwrap();
         sig_2
-            .verify(&messages_2, &keypair_2.public_key, &params_2)
+            .verify(&messages_2, keypair_2.public_key.clone(), params_2.clone())
             .unwrap();
 
         // Add the same blinding for the message which has to be proven equal across messages

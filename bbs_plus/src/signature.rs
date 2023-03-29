@@ -86,14 +86,17 @@ use crate::error::BBSPlusError;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::{fields::Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{fmt::Debug, rand::RngCore, vec::Vec, UniformRand, Zero};
+use ark_std::{fmt::Debug, ops::Mul, rand::RngCore, vec::Vec, UniformRand, Zero};
 
-use crate::setup::{PublicKeyG1, PublicKeyG2, SecretKey, SignatureParamsG1, SignatureParamsG2};
+use crate::{
+    prelude::PreparedSignatureParamsG1,
+    setup::{PreparedPublicKeyG2, PublicKeyG1, SecretKey, SignatureParamsG1, SignatureParamsG2},
+};
 use ark_std::collections::BTreeMap;
 use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 macro_rules! impl_signature_struct {
     ( $name:ident, $group:ident ) => {
@@ -108,6 +111,8 @@ macro_rules! impl_signature_struct {
             CanonicalDeserialize,
             Serialize,
             Deserialize,
+            Zeroize,
+            ZeroizeOnDrop,
         )]
         pub struct $name<E: Pairing> {
             #[serde_as(as = "ArkObjectBytes")]
@@ -117,50 +122,14 @@ macro_rules! impl_signature_struct {
             #[serde_as(as = "ArkObjectBytes")]
             pub s: E::ScalarField,
         }
-
-        impl<E: Pairing> Zeroize for $name<E> {
-            fn zeroize(&mut self) {
-                self.A.zeroize();
-                self.e.zeroize();
-                self.s.zeroize();
-            }
-        }
-
-        impl<E: Pairing> Drop for $name<E> {
-            fn drop(&mut self) {
-                self.zeroize();
-            }
-        }
     };
 }
 
 impl_signature_struct!(SignatureG1, G1Affine);
 impl_signature_struct!(SignatureG2, G2Affine);
 
-// Macro to do the pairing check in signature verification when signature is in group G1
-macro_rules! pairing_check_for_g1_sig {
-    ($A:expr, $w:expr, $g2:expr, $k:expr) => {
-        E::multi_pairing(
-            [E::G1Prepared::from($A), E::G1Prepared::from($k)],
-            [E::G2Prepared::from($w), E::G2Prepared::from($g2)],
-        )
-        .is_zero()
-    };
-}
-
-// Macro to do the pairing check in signature verification when signature is in group G2
-macro_rules! pairing_check_for_g2_sig {
-    ($A:expr, $w:expr, $g2:expr, $k:expr) => {
-        E::multi_pairing(
-            [E::G1Prepared::from($w), E::G1Prepared::from($g2)],
-            [E::G2Prepared::from($A), E::G2Prepared::from($k)],
-        )
-        .is_zero()
-    };
-}
-
 macro_rules! impl_signature_alg {
-    ( $name:ident, $params:ident, $pk:ident, $sig_group_proj:ident, $sig_group_affine:ident, $pairing:tt ) => {
+    ( $name:ident, $params:ident, $pk:ident, $sig_group_proj:ident, $sig_group_affine:ident, $verif_params:ident ) => {
         /// Signature creation and verification
         impl<E: Pairing> $name<E> {
             /// Create a new signature with all messages known to the signer.
@@ -251,14 +220,14 @@ macro_rules! impl_signature_alg {
                 }
             }
 
-            /// Verify the validity of the signature. Assumes that the public key and parameters
-            /// have been validated already.
-            pub fn verify(
+            /// Basic validations before signature verification like there is at-least 1 message, the
+            /// number of messages are supported by params, signature is non-zero. Returns value to be
+            /// used in pairing check
+            pub fn pre_verify(
                 &self,
                 messages: &[E::ScalarField],
-                pk: &$pk<E>,
-                params: &$params<E>,
-            ) -> Result<(), BBSPlusError> {
+                params: &$verif_params<E>,
+            ) -> Result<E::$sig_group_proj, BBSPlusError> {
                 if messages.is_empty() {
                     return Err(BBSPlusError::NoMessageToSign);
                 }
@@ -271,18 +240,7 @@ macro_rules! impl_signature_alg {
                 if !self.is_non_zero() {
                     return Err(BBSPlusError::ZeroSignature);
                 }
-
-                let b = params.b(messages.iter().enumerate(), &self.s)?;
-                let g2_e = params.g2.mul_bigint(self.e.into_bigint());
-                if !$pairing!(
-                    self.A,
-                    (g2_e + pk.0).into_affine(), // g2*e + w
-                    (-(params.g2.into_group())).into_affine(),
-                    b.into_affine()
-                ) {
-                    return Err(BBSPlusError::InvalidSignature);
-                }
-                Ok(())
+                params.b(messages.iter().enumerate(), &self.s)
             }
         }
     };
@@ -292,18 +250,75 @@ impl_signature_alg!(
     SignatureG1,
     SignatureParamsG1,
     PublicKeyG2,
-    G1Projective,
+    G1,
     G1Affine,
-    pairing_check_for_g1_sig
+    PreparedSignatureParamsG1
 );
 impl_signature_alg!(
     SignatureG2,
     SignatureParamsG2,
     PublicKeyG1,
-    G2Projective,
+    G2,
     G2Affine,
-    pairing_check_for_g2_sig
+    SignatureParamsG2
 );
+
+impl<E: Pairing> SignatureG1<E> {
+    /// Verify the validity of the signature. Assumes that the public key and parameters
+    /// have been validated already.
+    pub fn verify(
+        &self,
+        messages: &[E::ScalarField],
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParamsG1<E>>,
+    ) -> Result<(), BBSPlusError> {
+        let params = params.into();
+        // The pairing check is `e(A, pk + g2*e) == e(b, g2)` which can be written as `e(A, pk)*e(A, g2*e) == e(b, g2)`.
+        // Simplifying more `e(A, pk)*e(A*e, g2) == e(b, g2)` ==> `e(A, pk)*e(A*e, g2)*e(-b, g2) == 1` => `e(A, pk)*e(A*e - b, g2) == 1`.
+        let b = self.pre_verify(messages, &params)?;
+        // Aeb = A*e - b
+        let Aeb = self.A.mul(self.e) - b;
+        if !E::multi_pairing(
+            [
+                E::G1Prepared::from(self.A),
+                E::G1Prepared::from(Aeb.into_affine()),
+            ],
+            [pk.into().0, params.g2],
+        )
+        .is_zero()
+        {
+            return Err(BBSPlusError::InvalidSignature);
+        }
+        Ok(())
+    }
+}
+
+impl<E: Pairing> SignatureG2<E> {
+    /// Verify the validity of the signature. Assumes that the public key and parameters
+    /// have been validated already.
+    pub fn verify(
+        &self,
+        messages: &[E::ScalarField],
+        pk: &PublicKeyG1<E>,
+        params: &SignatureParamsG2<E>,
+    ) -> Result<(), BBSPlusError> {
+        // The pairing check is `e(pk + g2*e, A) == e(g2, b)`
+        let b = self.pre_verify(messages, params)?;
+        let g2_e = params.g2.mul_bigint(self.e.into_bigint());
+        if !E::multi_pairing(
+            [
+                E::G1Prepared::from((g2_e + pk.0).into_affine()),
+                E::G1Prepared::from((-(params.g2.into_group())).into_affine()),
+            ],
+            [E::G2Prepared::from(self.A), E::G2Prepared::from(b)],
+        )
+        .is_zero()
+        {
+            return Err(BBSPlusError::InvalidSignature);
+        }
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -321,8 +336,23 @@ mod tests {
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
+    macro_rules! params_and_pk_for_g1_sig {
+        ($params:expr, $pk:expr) => {
+            (
+                PreparedSignatureParamsG1::from($params),
+                PreparedPublicKeyG2::from($pk),
+            )
+        };
+    }
+
+    macro_rules! params_and_pk_for_g2_sig {
+        ($params:expr, $pk:expr) => {
+            (&$params, &$pk)
+        };
+    }
+
     macro_rules! test_sig_verif {
-        ($keypair:ident, $params:ident, $sig:ident, $rng:ident, $message_count: ident, $messages: ident, $group: ident) => {
+        ($keypair:ident, $params:ident, $sig:ident, $rng:ident, $message_count: ident, $messages: ident, $group: ident, $verif_params_and_pk: tt) => {
             let params = $params::<Bls12_381>::generate_using_rng(&mut $rng, $message_count);
             let keypair = $keypair::<Bls12_381>::generate_using_rng(&mut $rng, &params);
             let public_key = &keypair.public_key;
@@ -340,12 +370,18 @@ mod tests {
             assert!(params.is_valid());
             assert!(public_key.is_valid());
 
+            let (verif_params, verif_pk) =
+                $verif_params_and_pk!(params.clone(), public_key.clone());
+
             let mut zero_sig = sig.clone();
             zero_sig.A = $group::zero();
-            assert!(zero_sig.verify(&$messages, public_key, &params).is_err());
+            assert!(zero_sig.verify(&$messages, verif_pk, verif_params).is_err());
+
+            let (verif_params, verif_pk) =
+                $verif_params_and_pk!(params.clone(), public_key.clone());
 
             let start = Instant::now();
-            sig.verify(&$messages, public_key, &params).unwrap();
+            sig.verify(&$messages, verif_pk, verif_params).unwrap();
             println!(
                 "Time to verify signature over multi-message of size {} is {:?}",
                 $message_count,
@@ -387,11 +423,20 @@ mod tests {
                 &params,
             )
             .unwrap();
+
+            let (verif_params, verif_pk) =
+                $verif_params_and_pk!(params.clone(), public_key.clone());
+
             // First test should fail since the signature is blinded
-            assert!(blinded_sig.verify(&$messages, public_key, &params).is_err());
+            assert!(blinded_sig
+                .verify(&$messages, verif_pk, verif_params)
+                .is_err());
+
+            let (verif_params, verif_pk) =
+                $verif_params_and_pk!(params.clone(), public_key.clone());
 
             let sig = blinded_sig.unblind(&blinding);
-            sig.verify(&$messages, public_key, &params).unwrap();
+            sig.verify(&$messages, verif_pk, verif_params).unwrap();
 
             // sig and blinded_sig have same struct so just checking serialization on sig
             test_serialization!($sig<Bls12_381>, sig);
@@ -407,6 +452,7 @@ mod tests {
         let message_count = 20;
         let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
 
+        println!("Signature in Group G1");
         {
             test_sig_verif!(
                 KeypairG2,
@@ -415,10 +461,12 @@ mod tests {
                 rng,
                 message_count,
                 messages,
-                G1Affine
+                G1Affine,
+                params_and_pk_for_g1_sig
             );
         }
 
+        println!("Signature in Group G2");
         {
             test_sig_verif!(
                 KeypairG1,
@@ -427,7 +475,8 @@ mod tests {
                 rng,
                 message_count,
                 messages,
-                G2Affine
+                G2Affine,
+                params_and_pk_for_g2_sig
             );
         }
     }

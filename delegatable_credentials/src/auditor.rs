@@ -9,19 +9,15 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 pub struct AuditorSecretKey<E: Pairing>(pub E::ScalarField);
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct AuditorPublicKey<E: Pairing>(pub E::G1Affine);
-
-impl<E: Pairing> Drop for AuditorSecretKey<E> {
-    fn drop(&mut self) {
-        self.0.zeroize();
-    }
-}
 
 impl<E: Pairing> AuditorSecretKey<E> {
     pub fn new<R: RngCore>(rng: &mut R) -> Self {

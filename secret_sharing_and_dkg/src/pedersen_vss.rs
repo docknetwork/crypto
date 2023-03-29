@@ -105,14 +105,11 @@ pub fn deal_secret<R: RngCore, G: AffineRepr>(
         VerifiableShares(
             cfg_into_iter!(s_shares.0)
                 .zip(cfg_into_iter!(t_shares.0))
-                .map(|(s, t)| {
-                    assert_eq!(s.id, t.id);
-                    VerifiableShare {
-                        id: s.id,
-                        threshold,
-                        secret_share: s.share,
-                        blinding_share: t.share,
-                    }
+                .map(|(s, t)| VerifiableShare {
+                    id: s.id,
+                    threshold,
+                    secret_share: s.share,
+                    blinding_share: t.share,
                 })
                 .collect(),
         ),

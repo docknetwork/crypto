@@ -14,12 +14,18 @@ use zeroize::Zeroize;
 use rayon::prelude::*;
 
 /// Used by a participant to store received shares and commitment coefficients.
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SharesAccumulator<G: AffineRepr> {
     pub participant_id: ParticipantId,
     pub threshold: ShareId,
     pub shares: BTreeMap<ParticipantId, Share<G::ScalarField>>,
     pub coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
+}
+
+impl<G: AffineRepr> Zeroize for SharesAccumulator<G> {
+    fn zeroize(&mut self) {
+        self.shares.values_mut().for_each(|v| v.zeroize())
+    }
 }
 
 impl<G: AffineRepr> SharesAccumulator<G> {

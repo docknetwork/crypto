@@ -46,9 +46,6 @@ tracing-subscriber = { version = "0.2" }
 hex-literal = "0.2.1"
 serde_json = "1.0.64"
 
-[profile.release]
-lto = true
-
 [features]
 default = ["parallel", "circom", "aggregation"]
 std = ["ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-relations/std", "ark-std/std", "wasmer-sys", "ark-groth16/std", "dock_crypto_utils/std" ]

@@ -12,17 +12,19 @@ use ark_ff::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::DynDigest;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Secret key of the form `(x_0, (x_1, x_2, x_3, ..., x_n))`. The key `(x_1, x_2, x_3, ..., x_n)` is the
 /// secret key for the Mercurial signature scheme
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 pub struct RootIssuerSecretKey<E: Pairing>(pub E::ScalarField, pub SecretKey<E>);
 
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RootIssuerPublicKey<E: Pairing> {
     /// `x_0*P1`
     pub X_0: E::G1Affine,
@@ -39,17 +41,23 @@ pub struct PreparedRootIssuerPublicKey<E: Pairing> {
     pub X: PreparedPublicKey<E>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 pub struct UserSecretKey<E: Pairing>(pub E::ScalarField);
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct UserPublicKey<E: Pairing>(pub E::G1Affine);
 
 /// Key to update the credential, i.e. extend it with more commitments
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 pub struct UpdateKey<E: Pairing> {
     /// 0-based commitment index in the credential from which this key can add commitments
+    #[zeroize(skip)]
     pub start_index: usize,
+    #[zeroize(skip)]
     pub max_attributes_per_commitment: usize,
     /// One key for each commitment index in the signature
     pub keys: Vec<Vec<E::G1Affine>>,
@@ -73,13 +81,6 @@ impl<E: Pairing> RootIssuerSecretKey<E> {
     }
 }
 
-impl<E: Pairing> Drop for RootIssuerSecretKey<E> {
-    fn drop(&mut self) {
-        self.0.zeroize();
-        self.1 .0.zeroize();
-    }
-}
-
 impl<E: Pairing> RootIssuerPublicKey<E> {
     pub fn new(secret_key: &RootIssuerSecretKey<E>, P1: &E::G1Affine, P2: &E::G2Affine) -> Self {
         let x_0 = secret_key.0.into_bigint();
@@ -98,12 +99,6 @@ impl<E: Pairing> From<RootIssuerPublicKey<E>> for PreparedRootIssuerPublicKey<E>
             X_0_hat: E::G2Prepared::from(pk.X_0_hat),
             X: PreparedPublicKey::from(pk.X),
         }
-    }
-}
-
-impl<E: Pairing> Drop for UserSecretKey<E> {
-    fn drop(&mut self) {
-        self.0.zeroize();
     }
 }
 
@@ -148,12 +143,6 @@ impl<E: Pairing> UserPublicKey<E> {
                 .mul_bigint(psi.into_bigint())
                 .into_affine(),
         )
-    }
-}
-
-impl<E: Pairing> Drop for UpdateKey<E> {
-    fn drop(&mut self) {
-        self.keys.zeroize();
     }
 }
 

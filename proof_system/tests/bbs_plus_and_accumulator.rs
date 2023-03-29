@@ -62,13 +62,13 @@ fn pok_of_3_bbs_plus_sig_and_message_equality() {
     let sig_2 =
         SignatureG1::<Bls12_381>::new(&mut rng, &msgs_2, &keypair_2.secret_key, &params_2).unwrap();
     sig_2
-        .verify(&msgs_2, &keypair_2.public_key, &params_2)
+        .verify(&msgs_2, keypair_2.public_key.clone(), params_2.clone())
         .unwrap();
 
     let sig_3 =
         SignatureG1::<Bls12_381>::new(&mut rng, &msgs_3, &keypair_3.secret_key, &params_3).unwrap();
     sig_3
-        .verify(&msgs_3, &keypair_3.public_key, &params_3)
+        .verify(&msgs_3, keypair_3.public_key.clone(), params_3.clone())
         .unwrap();
 
     // Prepare revealed messages for the proof of knowledge of 1st signature
@@ -999,7 +999,7 @@ fn requesting_partially_blind_bbs_plus_sig() {
     .unwrap();
 
     let sig = blinded_sig.unblind(&blinding);
-    sig.verify(&msgs, &sig_keypair.public_key, &sig_params)
+    sig.verify(&msgs, sig_keypair.public_key.clone(), sig_params.clone())
         .unwrap();
 }
 
@@ -1022,7 +1022,7 @@ fn proof_spec_modification() {
     let sig_2 =
         SignatureG1::<Bls12_381>::new(&mut rng, &msgs_2, &keypair_2.secret_key, &params_2).unwrap();
     sig_2
-        .verify(&msgs_2, &keypair_2.public_key, &params_2)
+        .verify(&msgs_2, keypair_2.public_key.clone(), params_2.clone())
         .unwrap();
 
     let mut statements = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();

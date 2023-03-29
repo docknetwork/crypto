@@ -11,7 +11,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, fmt::Debug, rand::RngCore, vec::Vec, UniformRand};
 use digest::DynDigest;
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use dock_crypto_utils::serde_utils::*;
 
@@ -37,14 +37,9 @@ use crate::error::DelegationError;
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct SecretKey<E: Pairing>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<E::ScalarField>);
-
-impl<E: Pairing> Drop for SecretKey<E> {
-    fn drop(&mut self) {
-        self.0.zeroize();
-    }
-}
 
 /// Public key used to verify `Signature`
 #[serde_as]
@@ -98,6 +93,7 @@ pub struct Signature<E: Pairing> {
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct SignatureG2<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
@@ -106,14 +102,6 @@ pub struct SignatureG2<E: Pairing> {
     pub Y: E::G2Affine,
     #[serde_as(as = "ArkObjectBytes")]
     pub Y_tilde: E::G1Affine,
-}
-
-impl<E: Pairing> Drop for Signature<E> {
-    fn drop(&mut self) {
-        self.Z.zeroize();
-        self.Y.zeroize();
-        self.Y_tilde.zeroize();
-    }
 }
 
 impl<E: Pairing> SecretKey<E> {
