@@ -27,8 +27,8 @@ schnorr_pok = { version = "0.9.0", default-features = false, path = "../schnorr_
 secret_sharing_and_dkg = { version = "0.2.0", default-features = false, path = "../secret_sharing_and_dkg" }
 
 [dev-dependencies]
-blake2 = { version = "0.10.6", default-features = false }
-ark-bls12-381 = { version = "0.4.0", default-features = false, features = [ "curve" ] }
+blake2.workspace = true
+ark-bls12-381.workspace = true
 
 [features]
 default = ["std", "parallel"]

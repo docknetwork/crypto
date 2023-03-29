@@ -35,7 +35,7 @@ use ark_ff::{
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use digest::{Digest, DynDigest};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
@@ -59,14 +59,9 @@ use serde_with::serde_as;
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
-
-impl<F: PrimeField> Drop for SecretKey<F> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
 
 /// Public key for accumulator manager
 #[serde_as]
@@ -76,10 +71,20 @@ impl<F: PrimeField> Drop for SecretKey<F> {
 pub struct PublicKey<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub E::G2Affine);
 
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct Keypair<E: Pairing> {
     pub secret_key: SecretKey<E::ScalarField>,
+    #[zeroize(skip)]
     pub public_key: PublicKey<E>,
 }
 
@@ -178,18 +183,6 @@ where
                 .mul_bigint(secret_key.0.into_bigint())
                 .into(),
         )
-    }
-}
-
-impl<E: Pairing> Zeroize for Keypair<E> {
-    fn zeroize(&mut self) {
-        self.secret_key.zeroize();
-    }
-}
-
-impl<E: Pairing> Drop for Keypair<E> {
-    fn drop(&mut self) {
-        self.zeroize();
     }
 }
 

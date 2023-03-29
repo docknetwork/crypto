@@ -7,7 +7,7 @@ use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::error::ProofSystemError;
 pub use serialization::*;
@@ -115,7 +115,7 @@ impl<E: Pairing> Zeroize for PoKBBSSignatureG1<E> {
         self.signature.zeroize();
         self.unrevealed_messages
             .values_mut()
-            .for_each(|v| v.zeroize());
+            .for_each(|v| v.zeroize())
     }
 }
 
@@ -128,7 +128,16 @@ impl<E: Pairing> Drop for PoKBBSSignatureG1<E> {
 /// Secret data when proving accumulator membership
 #[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 #[serde(bound = "")]
 pub struct Membership<E: Pairing> {
@@ -137,42 +146,25 @@ pub struct Membership<E: Pairing> {
     pub witness: MembershipWitness<E::G1Affine>,
 }
 
-impl<E: Pairing> Zeroize for Membership<E> {
-    fn zeroize(&mut self) {
-        self.element.zeroize();
-        self.witness.zeroize();
-    }
-}
-
-impl<E: Pairing> Drop for Membership<E> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
-
 /// Secret data when proving accumulator non-membership
 #[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 #[serde(bound = "")]
 pub struct NonMembership<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub element: E::ScalarField,
     pub witness: NonMembershipWitness<E::G1Affine>,
-}
-
-impl<E: Pairing> Zeroize for NonMembership<E> {
-    fn zeroize(&mut self) {
-        self.element.zeroize();
-        self.witness.zeroize();
-    }
-}
-
-impl<E: Pairing> Drop for NonMembership<E> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
 }
 
 /// Witness for the Circom program. Only contains circuit wires that are explicitly set by the prover

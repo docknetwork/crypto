@@ -7,7 +7,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, rand::RngCore, vec::Vec, UniformRand};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -27,14 +27,9 @@ use dock_crypto_utils::{msm::multiply_field_elems_with_same_group_elem, serde_ut
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
-
-impl<F: PrimeField> Drop for SecretKey<F> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
 
 /// Used to encrypt, rerandomize and verify the encryption. Called "PK" in the paper.
 #[serde_as]

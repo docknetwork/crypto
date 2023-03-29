@@ -103,7 +103,7 @@ use ark_ff::{batch_inversion, fields::Field, One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, fmt::Debug, vec::Vec};
 use dock_crypto_utils::serde_utils::*;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -448,6 +448,7 @@ pub trait Witness<G: AffineRepr> {
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct MembershipWitness<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
 
@@ -463,24 +464,13 @@ pub struct MembershipWitness<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] p
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct NonMembershipWitness<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub d: G::ScalarField,
     #[serde_as(as = "ArkObjectBytes")]
     pub C: G,
-}
-
-impl<G: AffineRepr> Drop for MembershipWitness<G> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
-
-impl<G: AffineRepr> Drop for NonMembershipWitness<G> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
 }
 
 impl<G> Witness<G> for MembershipWitness<G> where G: AffineRepr {}

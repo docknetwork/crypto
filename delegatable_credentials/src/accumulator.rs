@@ -13,9 +13,11 @@ use ark_std::{
     UniformRand,
 };
 use dock_crypto_utils::poly::poly_from_roots;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 pub struct SecretKey<E: Pairing>(pub E::ScalarField);
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
@@ -23,12 +25,6 @@ pub struct PublicKey<E: Pairing>(pub E::G2Affine);
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PreparedPublicKey<E: Pairing>(pub E::G2Prepared);
-
-impl<E: Pairing> Drop for SecretKey<E> {
-    fn drop(&mut self) {
-        self.0.zeroize();
-    }
-}
 
 impl<E: Pairing> SecretKey<E> {
     pub fn new<R: RngCore>(rng: &mut R) -> Self {

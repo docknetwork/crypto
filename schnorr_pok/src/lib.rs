@@ -31,7 +31,7 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, fmt::Debug, io::Write, ops::Add, vec::Vec};
 use digest::Digest;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
 
@@ -53,13 +53,23 @@ pub trait SchnorrChallengeContributor {
 /// Commitment to randomness during step 1 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
 #[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct SchnorrCommitment<G: AffineRepr> {
     /// Randomness. 1 per discrete log
     #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub blindings: Vec<G::ScalarField>,
     /// The commitment to all the randomnesses, i.e. `bases[0] * blindings[0] + ... + bases[i] * blindings[i]`
+    #[zeroize(skip)]
     #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
 }
@@ -92,19 +102,6 @@ where
             .map(|(b, w)| *b + (*w * *challenge))
             .collect::<Vec<_>>();
         Ok(SchnorrResponse(responses))
-    }
-}
-
-impl<G: AffineRepr> Zeroize for SchnorrCommitment<G> {
-    fn zeroize(&mut self) {
-        // Not zeroizing `self.t` as its public
-        self.blindings.zeroize();
-    }
-}
-
-impl<G: AffineRepr> Drop for SchnorrCommitment<G> {
-    fn drop(&mut self) {
-        self.zeroize();
     }
 }
 

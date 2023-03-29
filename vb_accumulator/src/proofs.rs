@@ -107,7 +107,7 @@ use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::{hashing_utils::projective_group_elem_from_try_and_incr, serde_utils::*};
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use dock_crypto_utils::{
     concat_slices, msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker,
@@ -232,7 +232,16 @@ where
 /// Common elements of the randomized witness between membership and non-membership witness
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct RandomizedWitness<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
@@ -255,6 +264,7 @@ pub struct RandomizedWitness<G: AffineRepr> {
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct Blindings<F: PrimeField> {
     #[serde_as(as = "ArkObjectBytes")]
@@ -316,7 +326,16 @@ pub struct SchnorrResponse<F: PrimeField> {
 /// Randomized membership witness
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct MembershipRandomizedWitness<G: AffineRepr>(
     #[serde(
@@ -337,6 +356,7 @@ pub struct MembershipRandomizedWitness<G: AffineRepr>(
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct MembershipBlindings<F: PrimeField>(
     #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
@@ -386,7 +406,16 @@ pub struct MembershipProof<E: Pairing> {
 /// Protocol for proving knowledge of the member and the membership witness
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct MembershipProofProtocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
@@ -395,6 +424,7 @@ pub struct MembershipProofProtocol<E: Pairing> {
         bound = "MembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> MembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
     )]
     pub randomized_witness: MembershipRandomizedWitness<E::G1Affine>,
+    #[zeroize(skip)]
     #[serde(
         bound = "MembershipSchnorrCommit<E>: Serialize, for<'a> MembershipSchnorrCommit<E>: Deserialize<'a>"
     )]
@@ -408,7 +438,16 @@ pub struct MembershipProofProtocol<E: Pairing> {
 /// Randomized non-membership witness
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct NonMembershipRandomizedWitness<G: AffineRepr> {
     #[serde(
@@ -433,6 +472,7 @@ pub struct NonMembershipRandomizedWitness<G: AffineRepr> {
     Serialize,
     Deserialize,
     Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct NonMembershipBlindings<F: PrimeField> {
     #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
@@ -502,7 +542,16 @@ pub struct NonMembershipProof<E: Pairing> {
 /// Protocol for proving knowledge of the non-member and the non-membership witness
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct NonMembershipProofProtocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
@@ -513,6 +562,7 @@ pub struct NonMembershipProofProtocol<E: Pairing> {
         bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
     )]
     pub randomized_witness: NonMembershipRandomizedWitness<E::G1Affine>,
+    #[zeroize(skip)]
     #[serde(
         bound = "NonMembershipSchnorrCommit<E>: Serialize, for<'a> NonMembershipSchnorrCommit<E>: Deserialize<'a>"
     )]
@@ -1129,20 +1179,6 @@ where
     }
 }
 
-impl<E: Pairing> Zeroize for MembershipProofProtocol<E> {
-    fn zeroize(&mut self) {
-        // Other members of `self` are public anyway
-        self.element.zeroize();
-        self.schnorr_blindings.zeroize();
-    }
-}
-
-impl<E: Pairing> Drop for MembershipProofProtocol<E> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
-
 impl<E> ProofProtocol<E> for NonMembershipProofProtocol<E> where E: Pairing {}
 
 impl<E> NonMembershipProofProtocol<E>
@@ -1280,21 +1316,6 @@ where
                 s_w,
             },
         }
-    }
-}
-
-impl<E: Pairing> Zeroize for NonMembershipProofProtocol<E> {
-    fn zeroize(&mut self) {
-        // Other members of `self` are public anyway
-        self.element.zeroize();
-        self.d.zeroize();
-        self.schnorr_blindings.zeroize();
-    }
-}
-
-impl<E: Pairing> Drop for NonMembershipProofProtocol<E> {
-    fn drop(&mut self) {
-        self.zeroize();
     }
 }
 

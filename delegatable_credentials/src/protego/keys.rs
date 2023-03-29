@@ -7,11 +7,13 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 use digest::DynDigest;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Secret key of the credential issuer. The size of the key would be at least 3 and at most 7 depending on it
 /// supporting revocation and/or audit as each feature adds 2 elements to the key
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 pub struct IssuerSecretKey<E: Pairing> {
     pub secret_key: SecretKey<E>,
     /// Whether revocation is supported
@@ -36,12 +38,6 @@ pub struct PreparedIssuerPublicKey<E: Pairing> {
     pub public_key: PreparedPublicKey<E>,
     pub supports_revocation: bool,
     pub supports_audit: bool,
-}
-
-impl<E: Pairing> Drop for IssuerSecretKey<E> {
-    fn drop(&mut self) {
-        self.secret_key.0.zeroize();
-    }
 }
 
 impl<E: Pairing> IssuerSecretKey<E> {
@@ -107,7 +103,9 @@ impl<E: Pairing> From<IssuerPublicKey<E>> for PreparedIssuerPublicKey<E> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 pub struct UserSecretKey<E: Pairing>(pub E::ScalarField, pub Option<E::ScalarField>);
 
 /// Each user, i.e. credential receiver has key pair and when the credential supports auditability, the
@@ -115,13 +113,6 @@ pub struct UserSecretKey<E: Pairing>(pub E::ScalarField, pub Option<E::ScalarFie
 /// de-anonymizing the user. The optional element in G1 is only needed if the credential supports revocation.
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct UserPublicKey<E: Pairing>(pub E::G1Affine, pub Option<E::G1Affine>);
-
-impl<E: Pairing> Drop for UserSecretKey<E> {
-    fn drop(&mut self) {
-        self.0.zeroize();
-        self.1.zeroize();
-    }
-}
 
 impl<E: Pairing> UserSecretKey<E> {
     pub fn new<R: RngCore>(rng: &mut R, supports_revocation: bool) -> Self {

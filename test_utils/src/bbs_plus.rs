@@ -29,6 +29,7 @@ pub fn sig_setup_given_messages<R: RngCore>(
     let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, messages.len());
     let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
     let sig = SignatureG1::<Bls12_381>::new(rng, messages, &keypair.secret_key, &params).unwrap();
-    sig.verify(messages, &keypair.public_key, &params).unwrap();
+    sig.verify(messages, keypair.public_key.clone(), params.clone())
+        .unwrap();
     (params, keypair, sig)
 }
