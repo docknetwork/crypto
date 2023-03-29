@@ -20,7 +20,7 @@ serde_with.workspace = true
 dock_crypto_utils = { version = "0.10.0", default-features = false, path = "../utils" }
 zeroize.workspace = true
 num-bigint = { version = "0.4.0", default-features = false }
-schnorr_pok = { version = "0.9.0", default-features = false, path = "../schnorr_pok" }
+schnorr_pok = { version = "0.10.0", default-features = false, path = "../schnorr_pok" }
 [dependencies.num-integer]
 version = "0.1.42"
 features = ["i128"]
