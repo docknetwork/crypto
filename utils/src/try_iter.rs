@@ -53,31 +53,31 @@ where
 
 /// Implements `SeqValidator` which ensures that for each item its left member satisfies provided validator.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct CheckLeft<F>(pub F);
+pub struct CheckLeft<V>(pub V);
 
-impl<First: Clone, Second, F, ValidateF> SeqValidator<(First, Second)> for CheckLeft<ValidateF>
+impl<First: Clone, Second, V> SeqValidator<(First, Second)> for CheckLeft<V>
 where
-    ValidateF: FnMut(&First) -> Option<F>,
+    V: SeqValidator<First>,
 {
-    type Failure = F;
+    type Failure = V::Failure;
 
     fn validate(&mut self, (first, _): &(First, Second)) -> Option<Self::Failure> {
-        self.0(first)
+        self.0.validate(first)
     }
 }
 
 /// Implements `SeqValidator` which ensures that for each item its right member satisfies provided validator.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct CheckRight<F>(pub F);
+pub struct CheckRight<V>(pub V);
 
-impl<First, Second: Clone, F, ValidateF> SeqValidator<(First, Second)> for CheckRight<ValidateF>
+impl<First, Second: Clone, V> SeqValidator<(First, Second)> for CheckRight<V>
 where
-    ValidateF: FnMut(&Second) -> Option<F>,
+    V: SeqValidator<Second>,
 {
-    type Failure = F;
+    type Failure = V::Failure;
 
     fn validate(&mut self, (_, second): &(First, Second)) -> Option<Self::Failure> {
-        self.0(second)
+        self.0.validate(second)
     }
 }
 

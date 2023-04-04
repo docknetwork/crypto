@@ -29,7 +29,7 @@ num-bigint = { version = "0.4", default-features = false, optional = true }
 log = "0.4"
 ark-groth16 = { workspace = true, optional = true }
 ark-snark = { version = "^0.4.0", default-features = false, optional = true }
-dock_crypto_utils = { version = "0.10.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.11.0", default-features = false, path = "../utils" }
 
 [dev-dependencies]
 csv = { version = "1" }

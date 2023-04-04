@@ -1,3 +1,7 @@
+//! Modified Pointcheval-Sanders signature scheme setup.
+//! Defines params, public/private keys, and setup params.
+//! Implements keygen based on Shamir's secret sharing.
+
 use alloc::vec::Vec;
 
 pub mod keygen;
@@ -7,6 +11,8 @@ pub mod signature_params;
 pub use keypair::*;
 pub use signature_params::*;
 
+/// **Not intended to be used anywhere except for tests.**
+/// Initializes secret/public key along with params and messages to be used in tests.
 #[allow(clippy::type_complexity)]
 pub fn test_setup<E, D, R>(
     rng: &mut R,

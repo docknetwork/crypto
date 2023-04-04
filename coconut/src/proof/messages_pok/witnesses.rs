@@ -3,10 +3,8 @@ use alloc::vec::Vec;
 use ark_ec::pairing::Pairing;
 use ark_std::rand::RngCore;
 
-use crate::{
-    helpers::{n_rand, rand, OwnedPairs},
-    owned_pairs,
-};
+use crate::helpers::{n_rand, rand, OwnedPairs};
+use utils::owned_pairs;
 
 /// Witnesses for `MessagesPoK`.
 #[derive(Clone, Debug, PartialEq, Eq)]

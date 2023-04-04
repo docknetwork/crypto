@@ -172,6 +172,42 @@ macro_rules! impl_into_indexed_iter {
     (<Item = $item: ty> $($tt: tt)*) => { impl core::iter::IntoIterator<Item = $item, IntoIter = impl $crate::aliases::DoubleEndedExactSizeIterator<Item = $item> $($tt)*> $($tt)* }
 }
 
+/// Attempts to build `OwnedPairs` from the given vectors, returning `(left length, right length)` in case of error.
+#[macro_export]
+macro_rules! owned_pairs {
+    ($left: expr, $right: expr) => {
+        $crate::try_owned_pairs!($left, $right).unwrap_or_else(|(left, right)| {
+            panic!("Lengths are not equal: left = {}, right = {}", left, right)
+        })
+    };
+}
+
+/// Converts given vectors to `OwnedPairs`, panics in case of error.
+#[macro_export]
+macro_rules! try_owned_pairs {
+    ($left: expr, $right: expr) => {
+        $crate::owned_pairs::OwnedPairs::try_from(($left, $right))
+    };
+}
+
+/// Builds `Pairs` from the given slices, panics in case of error.
+#[macro_export]
+macro_rules! pairs {
+    ($left: expr, $right: expr) => {
+        $crate::try_pairs!($left, $right).unwrap_or_else(|(left, right)| {
+            panic!("Lengths are not equal: left = {}, right = {}", left, right)
+        })
+    };
+}
+
+/// Attempts to convert given slices to `Pairs`, returning `(left length, right length)` in case of error.
+#[macro_export]
+macro_rules! try_pairs {
+    ($left: expr, $right: expr) => {
+        $crate::pairs::Pairs::try_from((&$left[..], &$right[..]))
+    };
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

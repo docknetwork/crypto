@@ -1,3 +1,5 @@
+//! Miscellaneous helpers and re-exports from `dock_crypto_utils`.
+
 use alloc::{format, string::String, vec::Vec};
 
 use ark_ff::PrimeField;
@@ -9,20 +11,18 @@ use ark_std::{cfg_into_iter, cfg_iter};
 
 use schnorr_pok::error::SchnorrError;
 
-pub mod owned_pairs;
-pub mod pairs;
 pub mod with_schnorr_and_blindings;
 pub mod with_schnorr_response;
 
 pub use iter::*;
-pub use owned_pairs::*;
-pub use pairs::*;
 pub use try_iter::*;
 pub use utils::{
     aliases::*,
     extend_some::*,
     iter::{self, *},
     misc::*,
+    owned_pairs::*,
+    pairs::*,
     try_iter::{self, *},
 };
 pub use with_schnorr_and_blindings::*;

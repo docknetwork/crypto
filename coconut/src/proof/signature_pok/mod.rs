@@ -16,11 +16,10 @@ mod witnesses;
 use super::UnpackedBlindedMessages;
 use crate::{
     helpers::{schnorr_error, WithSchnorrAndBlindings},
-    pairs,
     setup::{PublicKey, SignatureParams},
     CommitMessage, Signature,
 };
-use utils::join;
+use utils::{join, pairs};
 
 pub use error::*;
 use k::*;
@@ -37,18 +36,6 @@ pub struct SignaturePoKGenerator<'a, E: Pairing> {
     /// `k_{l} = \sum_{j}(beta_tilde_{j} * m_{l}{j} + g_tilde * r_{l})`
     k: WithSchnorrAndBlindings<E::G2Affine, K<E>>,
     randomized_sig: RandomizedSignature<E>,
-}
-
-impl<'a, E: Pairing> SignaturePoKGenerator<'a, E> {
-    /// Returns underlying `k` along with the Schnorr commitment.
-    pub fn k(&self) -> &WithSchnorrAndBlindings<E::G2Affine, K<E>> {
-        &self.k
-    }
-
-    /// Returns underlying randomized signatures.
-    pub fn randomized_sig(&self) -> &RandomizedSignature<E> {
-        &self.randomized_sig
-    }
 }
 
 impl<'a, E: Pairing> SignaturePoKGenerator<'a, E> {
@@ -127,6 +114,18 @@ impl<'a, E: Pairing> SignaturePoKGenerator<'a, E> {
             })
             .map_err(schnorr_error)
             .map_err(SignaturePoKError::SchnorrError)
+    }
+}
+
+impl<'a, E: Pairing> SignaturePoKGenerator<'a, E> {
+    /// Returns underlying `k` along with the Schnorr commitment.
+    pub fn k(&self) -> &WithSchnorrAndBlindings<E::G2Affine, K<E>> {
+        &self.k
+    }
+
+    /// Returns underlying randomized signatures.
+    pub fn randomized_sig(&self) -> &RandomizedSignature<E> {
+        &self.randomized_sig
     }
 }
 

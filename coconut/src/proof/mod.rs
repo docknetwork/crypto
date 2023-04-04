@@ -1,4 +1,5 @@
 //! Proofs of knowledge for the signature and messages.
+
 use alloc::vec::Vec;
 
 pub mod messages_pok;

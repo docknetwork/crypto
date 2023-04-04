@@ -3,7 +3,7 @@ use itertools::{EitherOrBoth, Itertools};
 use super::try_iter::{try_pair_with_slice, try_validate, IndexIsOutOfBounds, SeqValidator};
 
 /// Plucks items from the supplied iterator corresponding to missed indices.
-/// This function implies that both iterators are sorted.
+/// **This function implies that both iterators are sorted.**
 pub fn pluck_missed<Indices, Iter>(indices: Indices, iter: Iter) -> impl Iterator<Item = Iter::Item>
 where
     Indices: IntoIterator<Item = usize>,
@@ -82,8 +82,8 @@ where
 }
 
 /// Skips up to `n` elements from the iterator using supplied random generator.
-pub fn skip_up_to_n<'rng, I>(
-    rng: &'rng mut impl ark_std::rand::RngCore,
+pub fn skip_up_to_n<'rng, I, R: ark_std::rand::RngCore>(
+    rng: &'rng mut R,
     iter: I,
     mut allowed_to_skip: usize,
 ) -> impl Iterator<Item = I::Item> + 'rng

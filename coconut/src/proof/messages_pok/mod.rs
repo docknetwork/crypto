@@ -15,11 +15,11 @@ use utils::join;
 use super::UnpackedBlindedMessages;
 use crate::{
     helpers::{schnorr_error, DoubleEndedExactSizeIterator, WithSchnorrAndBlindings},
-    pairs,
     setup::SignatureParams,
     signature::message_commitment::MessageCommitmentRandomness,
     CommitMessage,
 };
+use utils::pairs;
 
 pub mod error;
 pub mod multi_message_commitment;

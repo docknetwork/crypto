@@ -17,7 +17,7 @@ ark-relations.workspace = true
 ark-groth16.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
-dock_crypto_utils = { version = "0.10.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.11.0", default-features = false, path = "../utils" }
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
