@@ -21,7 +21,7 @@ rayon = {workspace = true, optional = true}
 bbs_plus = { version = "0.13.0", default-features = false, path = "../bbs_plus" }
 schnorr_pok = { version = "0.10.0", default-features = false, path = "../schnorr_pok" }
 vb_accumulator = { version = "0.13.0", default-features = false, path = "../vb_accumulator" }
-dock_crypto_utils = { version = "0.10.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.11.0", default-features = false, path = "../utils" }
 saver = { version = "0.10.0", default-features = false, path = "../saver" }
 serde.workspace = true
 serde_with.workspace = true
@@ -29,7 +29,7 @@ ark-groth16.workspace = true
 ark-r1cs-std.workspace = true
 ark-relations.workspace = true
 zeroize.workspace = true
-coconut-crypto = { version = "0.1.0", default-features = false, path = "../coconut" }
+coconut-crypto = { version = "0.2.0", default-features = false, path = "../coconut" }
 merlin = { workspace = true, default-features = false }
 legogroth16 = { version = "0.7.0", default-features = false, features = ["circom", "aggregation"], path = "../legogroth16" }
 itertools = "0.10.5"

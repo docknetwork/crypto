@@ -7,7 +7,7 @@ use ark_ec::{pairing::Pairing, CurveGroup};
 
 use ark_serialize::*;
 use ark_std::{cfg_into_iter, rand::RngCore};
-use utils::serde_utils::ArkObjectBytes;
+use utils::{aliases::SyncIfParallel, serde_utils::ArkObjectBytes};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -17,14 +17,22 @@ use utils::{impl_indexed_iter, impl_into_indexed_iter};
 
 use crate::{
     helpers::{n_rand, WithSchnorrAndBlindings, WithSchnorrResponse},
-    pairs,
     setup::SignatureParams,
 };
+use utils::pairs;
 
 /// `g * o + h * m`
 #[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct MessageCommitment<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G1Affine);
 utils::impl_deref! { MessageCommitment<E: Pairing>(E::G1Affine) }
@@ -42,7 +50,7 @@ impl<E: Pairing> MessageCommitment<E> {
 
     /// Produces an iterator of `g * o_{j} + h * m_{j}`.
     pub fn new_iter<'iter>(
-        o_m_pairs: impl_into_indexed_iter!(<Item = (impl Borrow<E::ScalarField> + Sync, impl Borrow<E::ScalarField> + Sync)> + 'iter),
+        o_m_pairs: impl_into_indexed_iter!(<Item = (impl Borrow<E::ScalarField> + SyncIfParallel, impl Borrow<E::ScalarField> + SyncIfParallel)> + 'iter),
         h: &E::G1Affine,
         SignatureParams { g, .. }: &SignatureParams<E>,
     ) -> impl_indexed_iter!(<Item = Self> + 'iter) {
@@ -51,14 +59,14 @@ impl<E: Pairing> MessageCommitment<E> {
 
     /// Produces parallel iterator of scalar groups `o_{j}` and `m_{j}`.
     fn exps<'iter>(
-        o_m_pairs: impl_into_indexed_iter!(<Item = (impl Borrow<E::ScalarField> + Sync, impl Borrow<E::ScalarField> + Sync)> + 'iter),
+        o_m_pairs: impl_into_indexed_iter!(<Item = (impl Borrow<E::ScalarField> + SyncIfParallel, impl Borrow<E::ScalarField> + SyncIfParallel)> + 'iter),
     ) -> impl_indexed_iter!(<Item = [E::ScalarField; 2]> + 'iter) {
         cfg_into_iter!(o_m_pairs).map(|(o, m)| [*o.borrow(), *m.borrow()])
     }
 
     /// Produces parallel iterator of bases and scalars groups `g * o_{j} + h * m_{j}` each used in `multi_scalar_mul`.
     fn bases_exps<'iter>(
-        o_m_pairs: impl_into_indexed_iter!(<Item = (impl Borrow<E::ScalarField> + Sync, impl Borrow<E::ScalarField> + Sync)> + 'iter),
+        o_m_pairs: impl_into_indexed_iter!(<Item = (impl Borrow<E::ScalarField> + SyncIfParallel, impl Borrow<E::ScalarField> + SyncIfParallel)> + 'iter),
         &h: &E::G1Affine,
         &g: &E::G1Affine,
     ) -> impl_indexed_iter!(<Item = ([E::G1Affine; 2], [E::ScalarField; 2])> + 'iter) {

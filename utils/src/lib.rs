@@ -13,6 +13,8 @@ pub mod iter;
 pub mod macros;
 pub mod misc;
 pub mod msm;
+pub mod owned_pairs;
+pub mod pairs;
 pub mod poly;
 pub mod randomized_pairing_check;
 pub mod transcript;

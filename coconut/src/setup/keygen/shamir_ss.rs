@@ -1,3 +1,5 @@
+//! Shamir secret sharing.
+
 use alloc::vec::Vec;
 
 use ark_ff::PrimeField;
@@ -72,7 +74,7 @@ mod shamir_ss_tests {
                     let blind_indices = 0..blind_msgs.len();
 
                     let blindings: Vec<_> = n_rand(&mut rng, blind_msgs.len()).collect();
-                    let o_m_pairs = crate::pairs!(blindings, blind_msgs);
+                    let o_m_pairs = utils::pairs!(blindings, blind_msgs);
 
                     let m_comms: Vec<_> =
                         MessageCommitment::new_iter(o_m_pairs, &h, &params).collect();

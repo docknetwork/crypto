@@ -19,7 +19,15 @@ use crate::{
 /// `g * o + \sum_{i}(h_{i} * m_{i})`
 #[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct MultiMessageCommitment<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G1Affine);
 utils::impl_deref! { MultiMessageCommitment<E: Pairing>(E::G1Affine) }

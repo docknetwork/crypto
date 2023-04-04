@@ -16,9 +16,9 @@ use utils::hashing_utils::projective_group_elem_from_try_and_incr;
 use crate::{
     helpers::Pairs,
     setup::{PublicKey, SecretKey, SignatureParams},
-    try_pairs, PSError,
+    PSError,
 };
-use utils::multi_pairing;
+use utils::{multi_pairing, try_pairs};
 
 type Result<T, E = PSError> = core::result::Result<T, E>;
 

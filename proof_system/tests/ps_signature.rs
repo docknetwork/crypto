@@ -14,9 +14,9 @@ use coconut_crypto::setup::*;
 use rayon::prelude::*;
 
 use coconut_crypto::{
-    helpers::*, BlindSignature, CommitmentOrMessage, MessageCommitment, MultiMessageCommitment,
-    Signature,
+    BlindSignature, CommitmentOrMessage, MessageCommitment, MultiMessageCommitment, Signature,
 };
+use dock_crypto_utils::{misc::*, owned_pairs::*, pairs::*};
 use std::time::Instant;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 

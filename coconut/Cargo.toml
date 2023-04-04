@@ -1,11 +1,11 @@
 [package]
 name = "coconut-crypto"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Threshold anonymous credentials based on the paper [Security Analysis of Coconut, an Attribute-Based Credential Scheme with Threshold Issuance](https://eprint.iacr.org/2022/011)"
+description = "Threshold anonymous credentials based on the paper https://eprint.iacr.org/2022/011"
 
 [lib]
 path = "src/lib.rs"
@@ -22,7 +22,7 @@ itertools = "0.10.5"
 zeroize.workspace = true
 serde_with.workspace = true
 rayon = { workspace = true, optional = true }
-utils = { package = "dock_crypto_utils", version = "0.10.0", default-features = false, path = "../utils" }
+utils = { package = "dock_crypto_utils", version = "0.11.0", default-features = false, path = "../utils" }
 schnorr_pok = { version = "0.10.0", default-features = false, path = "../schnorr_pok" }
 secret_sharing_and_dkg = { version = "0.3.0", default-features = false, path = "../secret_sharing_and_dkg" }
 

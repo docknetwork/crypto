@@ -1,7 +1,7 @@
 use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeSet, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::error::BBSPlusError;
-use coconut_crypto::helpers::InvalidPair;
+use dock_crypto_utils::try_iter::InvalidPair;
 use legogroth16::{circom::CircomError, error::Error as LegoGroth16Error};
 use saver::error::SaverError;
 use schnorr_pok::error::SchnorrError;

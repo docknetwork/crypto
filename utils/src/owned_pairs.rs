@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::pairs;
 
-use super::Pairs;
+use crate::pairs::Pairs;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::PrimeField;
 

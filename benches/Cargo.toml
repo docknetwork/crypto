@@ -18,7 +18,7 @@ serde.workspace = true
 serde_with.workspace = true
 blake2 = { version = "0.10", default-features = false }
 itertools = "0.10.5"
-coconut-crypto = { version = "0.1.0", default-features = false, path = "../coconut" }
+coconut-crypto = { version = "0.2.0", default-features = false, path = "../coconut" }
 dock_crypto_utils = { default-features = false, path = "../utils" }
 zeroize.workspace = true
 

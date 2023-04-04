@@ -1,4 +1,4 @@
-//! Pointcheval-Sanders signature scheme.
+//! Modified Pointcheval-Sanders signature scheme used in Coconut.
 
 mod aggregated_signature;
 mod blind_signature;

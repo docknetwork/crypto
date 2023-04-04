@@ -9,7 +9,7 @@ use ark_std::rand::RngCore;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::helpers::{n_rand, rand, FullDigest};
-use utils::join;
+use utils::{aliases::SyncIfParallel, join};
 
 /// `SecretKey` used in Pointcheval-Sanders signature scheme.
 #[derive(
@@ -32,7 +32,7 @@ impl<P: PrimeField> SecretKey<P> {
     /// Generates secret key compatible with `message_count` messages from supplied seed.
     pub fn from_seed<D>(seed: &[u8], message_count: usize) -> Self
     where
-        D: FullDigest + Sync,
+        D: FullDigest + SyncIfParallel,
     {
         const X_SALT: &[u8] = b"PS-SIG-X-KEYGEN-SALT";
         const Y_SALT: &[u8] = b"PS-SIG-Y-KEYGEN-SALT";
