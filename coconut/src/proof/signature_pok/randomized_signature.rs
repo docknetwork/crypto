@@ -1,3 +1,6 @@
+//! Randomized Pointcheval-Sanders signature used in `SignaturePoK` verification.
+//! This signature can be verified without revealing the actual signed data.
+
 use alloc::vec::Vec;
 use ark_ec::{pairing::Pairing, AffineRepr, Group};
 use ark_ff::PrimeField;

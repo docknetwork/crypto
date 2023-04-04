@@ -37,8 +37,9 @@ pub fn seq_inc_by_n_from(
 
     move |&item: &usize| {
         if init {
+            let next = from.checked_add(n);
             let res =
-                (from + n != item).then_some(InvalidPairOrSingle::Pair(InvalidPair(from, item)));
+                (next != Some(item)).then_some(InvalidPairOrSingle::Pair(InvalidPair(from, item)));
             from = item;
 
             res
