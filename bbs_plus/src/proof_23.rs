@@ -1,97 +1,33 @@
-//! Proof of knowledge of BBS+ signature and corresponding messages as per section 4.5 of the BBS+ paper
-//! # Examples
-//!
-//! Creating proof of knowledge of signature and verifying it:
-//!
-//! ```
-//! use ark_bls12_381::Bls12_381;
-//! use bbs_plus::setup::{SignatureParamsG1, KeypairG2};
-//! use bbs_plus::signature::SignatureG1;
-//! use bbs_plus::proof::PoKOfSignatureG1Protocol;
-//! use ark_std::collections::{BTreeSet, BTreeMap};
-//!
-//! let params_g1 = SignatureParamsG1::<Bls12_381>::generate_using_rng(&mut rng, 5);
-//! let keypair_g2 = KeypairG2::<Bls12_381>::generate(&mut rng, &params_g1);
-//!
-//! let pk_g2 = &keypair_g2.public_key;
-//!
-//! // Verifiers should check that the signature parameters and public key are valid before verifying
-//! // any signatures. This just needs to be done once when the verifier fetches/receives them.
-//!
-//! assert!(params_g1.is_valid());
-//! assert!(pk_g2.is_valid());
-//!
-//! // `messages` contains elements of the scalar field
-//! let sig_g1 = SignatureG1::<Bls12_381>::new(&mut rng, &messages, &keypair_g2.secret_key, &params_g1).unwrap();
-//!
-//! let mut blindings = BTreeMap::new();
-//! let mut revealed_indices = BTreeSet::new();
-//!
-//! // Populate `blindings` with message index and corresponding blinding
-//! // Populate `revealed_indices` with 0-based indices of revealed messages
-//!
-//! let pok = PoKOfSignatureG1Protocol::init(
-//!             &mut rng,
-//!             &sig_g1,
-//!             &params_g1,
-//!             &messages,
-//!             blindings,
-//!             &revealed_indices,
-//!         )
-//!         .unwrap();
-//!
-//! // challenge is generated (see tests)
-//! let proof = pok.gen_proof(&challenge).unwrap();
-//!
-//! let mut revealed_msgs = BTreeMap::new();
-//! proof
-//!             .verify(
-//!                 &revealed_msgs,
-//!                 &challenge,
-//!                 pk_g2,
-//!                 &params_g1,
-//!             )
-//!             .unwrap();
-//!
-//! // See tests for more examples
-//! ```
+//! Proof of knowledge of BBS signature and corresponding messages as per section 5.2 of the BBS paper with
+//! slight modification. See docs of the proof creation protocol.
+
 use crate::{
     error::BBSPlusError,
-    prelude::PreparedPublicKeyG2,
-    setup::{MultiMessageSignatureParams, PreparedSignatureParamsG1, SignatureParamsG1},
-    signature::SignatureG1,
+    proof::MessageOrBlinding,
+    setup::{MultiMessageSignatureParams, PreparedPublicKeyG2, SignatureParams23G1},
+    signature_23::Signature23G1,
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::{Field, PrimeField, Zero};
+use ark_ff::{One, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
     io::Write,
     rand::RngCore,
-    vec,
-    vec::Vec,
-    One, UniformRand,
 };
+use itertools::{multiunzip, MultiUnzip};
+
+use crate::setup::PreparedSignatureParams23G1;
 use dock_crypto_utils::{
     extend_some::ExtendSome, misc::rand, randomized_pairing_check::RandomizedPairingChecker,
-    serde_utils::*,
+    serde_utils::ArkObjectBytes,
 };
-use itertools::multiunzip;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// Protocol to prove knowledge of BBS+ signature in group G1.
-/// The BBS+ signature proves validity of a set of messages {m_i}, i in I. This stateful protocol proves knowledge of such
-/// a signature whilst selectively disclosing only a subset of the messages, {m_i} for i in a disclosed set D. The
-/// protocol randomizes the initial BBS+ signature, then conducts 2 Schnorr PoK protocols to prove exponent knowledge
-/// for the relations in section 4.5 of the paper (refer to top). It contains commitments (Schnorr step 1; refer to schnorr_pok)
-/// and witnesses to both Schnorr protocols in `sc_comm_` and `sc_wits_` respectively. The protocol executes in 2 phases,
-/// pre-challenge (`init`) which is used to create the challenge and post-challenge (`gen_proof`). Thus, several instances of
-/// the protocol can be used together where the pre-challenge phase of all protocols is used to create a combined challenge
-/// and then that challenge is used in post-challenge phase of all protocols.
+/// Protocol to prove knowledge of BBS signature in group G1.
 #[serde_as]
 #[derive(
     Clone,
@@ -105,93 +41,85 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
     Serialize,
     Deserialize,
 )]
-pub struct PoKOfSignatureG1Protocol<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
-    pub A_prime: E::G1Affine,
+pub struct PoKOfSignature23G1Protocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
     #[serde_as(as = "ArkObjectBytes")]
-    pub d: E::G1Affine,
-    /// For proving relation `A_bar - d = A_prime * -e + h_0 * r2`
+    pub B_bar: E::G1Affine,
+    /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `sum_{j notin D}(h_j*m_j)`
     #[zeroize(skip)]
-    pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
-    #[serde_as(as = "(ArkObjectBytes, ArkObjectBytes)")]
-    sc_wits_1: (E::ScalarField, E::ScalarField),
-    /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + sum_{j notin D}(h_j*m_j)`
-    #[zeroize(skip)]
-    pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
+    pub sc_comm: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
-    sc_wits_2: Vec<E::ScalarField>,
+    sc_wits: Vec<E::ScalarField>,
 }
 
-/// Proof of knowledge of BBS+ signature in G1. It contains the randomized signature, commitment (Schnorr step 1)
-/// and response (Schnorr step 3) to both Schnorr protocols in `T_` and `sc_resp_`
+/// Proof of knowledge of BBS signature in G1. It contains the randomized signature, commitment (Schnorr step 1)
+/// and response (Schnorr step 3) to the Schnorr protocol in `T` and `sc_resp`
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct PoKOfSignatureG1Proof<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
-    pub A_prime: E::G1Affine,
+pub struct PoKOfSignature23G1Proof<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
     #[serde_as(as = "ArkObjectBytes")]
-    pub d: E::G1Affine,
-    /// Proof of relation `A_bar - d = A_prime * -e + h_0 * r2`
+    pub B_bar: E::G1Affine,
+    /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
     #[serde_as(as = "ArkObjectBytes")]
-    pub T1: E::G1Affine,
-    pub sc_resp_1: SchnorrResponse<E::G1Affine>,
-    /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
-    #[serde_as(as = "ArkObjectBytes")]
-    pub T2: E::G1Affine,
-    pub sc_resp_2: SchnorrResponse<E::G1Affine>,
+    pub T: E::G1Affine,
+    pub sc_resp: SchnorrResponse<E::G1Affine>,
 }
 
-/// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
-/// By default, a message is blinded with random blinding.
-pub enum MessageOrBlinding<'a, P: PrimeField> {
-    /// Message will be blinded using random blinding.
-    BlindMessageRandomly(&'a P),
-    /// Message will be revealed, and thus won't be included in PoK.
-    RevealMessage(&'a P),
-    /// Message will be blinded using the supplied blinding.
-    BlindMessageWithConcreteBlinding { message: &'a P, blinding: P },
-}
-
-impl<'a, P: PrimeField> MessageOrBlinding<'a, P> {
-    /// Blinds given `message` using supplied `blinding`.
-    pub fn blind_message_with(message: &'a P, blinding: P) -> Self {
-        Self::BlindMessageWithConcreteBlinding { message, blinding }
-    }
-}
-
-impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
+impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
     /// Initiate the protocol, i.e. pre-challenge phase. This will generate the randomized signature and execute
-    /// the commit-to-randomness step (Step 1) of both Schnorr protocols.
+    /// the commit-to-randomness step (Step 1) of the Schnorr protocol.
     /// Accepts an iterator of messages. Each message can be either randomly blinded, revealed, or blinded using supplied blinding.
+    /// Note: Following change of passing the signature randomizer and blinding for known message commitment is a deviation from the paper.
+    /// Also accepts the signature randomizer (`r` in the paper). This is useful when some messages under multiple
+    /// signatures need to be proven equal in zero knowledge. When doing so also prove the equality of `r` in
+    /// term `C_j(m) * r` and thus use the blinding `blinding_for_known_message_commitment`. eg. when proving equality of
+    /// certain messages under 2 signatures `sigma_1 = (A_1, e_1)` and `sigma_2 = A_2 * e_2`, it should be proven
+    /// that `r` and Schnorr responses for the equal messages `m_k` are equal. i.e. for known messages
+    /// `J_1`, `J_2`, hidden messages `I_1`, `I_2` for signatures `sigma_1`, `sigma_2` with equal messages `m_k`
+    /// being a subset of `I_1`, `I_2`, `r` and `m_k` are same in following 2 relations:
+    /// `{B_1}_bar = C_{J_1}(m) * r + \sum_{i in I_1}(h_i * (m_i*r)) + {A_1}_bar * -e_1`
+    /// `{B_2}_bar = C_{J_2}(m) * r + \sum_{i in I_2}(h_i * (m_i*r)) + {A_2}_bar * -e_2`
+    /// Its important to prove that `r` is same in `C_{J_1}(m)` and `C_{J_2}(m)` otherwise two unequal
+    /// messages `m_a` and `m_b` can be proven equal by using signature randomizers `r_1` and `r2` such that `m_a * r_1 = m_b * r_2`
     pub fn init<'a, MBI, R: RngCore>(
         rng: &mut R,
-        signature: &SignatureG1<E>,
-        params: &SignatureParamsG1<E>,
+        signature_randomizer: Option<E::ScalarField>,
+        blinding_for_known_message_commitment: Option<E::ScalarField>,
+        signature: &Signature23G1<E>,
+        params: &SignatureParams23G1<E>,
         messages_and_blindings: MBI,
     ) -> Result<Self, BBSPlusError>
     where
         MBI: IntoIterator<Item = MessageOrBlinding<'a, E::ScalarField>>,
     {
-        let (messages, ExtendSome::<Vec<_>>(indexed_blindings)): (Vec<_>, _) =
-            messages_and_blindings
-                .into_iter()
-                .enumerate()
-                .map(|(idx, msg_or_blinding)| match msg_or_blinding {
-                    MessageOrBlinding::BlindMessageRandomly(message) => {
-                        (message, (idx, rand(rng)).into())
-                    }
-                    MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding } => {
-                        (message, (idx, blinding).into())
-                    }
-                    MessageOrBlinding::RevealMessage(message) => (message, None),
-                })
-                .unzip();
+        let (
+            messages,
+            ExtendSome::<Vec<_>>(indexed_blindings),
+            ExtendSome::<Vec<_>>(revealed_indices_h),
+            ExtendSome::<Vec<_>>(revealed_messages),
+        ): (Vec<_>, _, _, _) = messages_and_blindings
+            .into_iter()
+            .enumerate()
+            .map(|(idx, msg_or_blinding)| match msg_or_blinding {
+                MessageOrBlinding::BlindMessageRandomly(message) => {
+                    (message, (idx, rand(rng)).into(), None, None)
+                }
+                MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding } => {
+                    (message, (idx, blinding).into(), None, None)
+                }
+                MessageOrBlinding::RevealMessage(message) => (
+                    message,
+                    None,
+                    (params.h.len() > idx).then_some(params.h[idx]),
+                    Some(message),
+                ),
+            })
+            .multiunzip();
         if messages.len() != params.supported_message_count() {
             Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
                 messages.len(),
@@ -199,74 +127,60 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
             ))?
         }
 
-        let r1 = E::ScalarField::rand(rng);
-        let r2 = E::ScalarField::rand(rng);
-        let r3 = r1.inverse().ok_or(BBSPlusError::CannotInvert0)?;
+        let signature_randomizer = signature_randomizer.unwrap_or_else(|| rand(rng));
+        let blinding_for_known_message_commitment =
+            blinding_for_known_message_commitment.unwrap_or_else(|| rand(rng));
 
-        // b = (e+x) * A = g1 + h_0*s + sum(h_i*m_i) for all i in I
-        let b = params.b(messages.iter().enumerate(), &signature.s)?;
+        // Commitment to all messages
+        // `C(m) = (e+x) * A = g1 + \sum_{i}(h_i*m_i)` for all messages `m_i`
+        let c_m = params.b(messages.iter().enumerate())?;
 
-        // A' = A * r1
-        let A_prime = signature.A.mul_bigint(r1.into_bigint());
-        // A_bar = r1 * b - e * A'
-        let b_r1 = b * r1;
-        let A_bar = b_r1 - (A_prime.mul_bigint(signature.e.into_bigint()));
-        // d = r1 * b - r2 * h_0
-        let d = b_r1 - params.h_0.mul_bigint(r2.into_bigint());
-        let d_affine = d.into_affine();
-        // s' = s - r2*r3
-        let s_prime = signature.s - (r2 * r3);
+        let r_repr = signature_randomizer.into_bigint();
+        // A_bar = A * r
+        let A_bar = signature.A.mul_bigint(r_repr);
+        // B_bar = r * C(m) - e * A_bar
+        let c_m_r = c_m.mul_bigint(r_repr);
+        let B_bar = c_m_r - (A_bar.mul_bigint(signature.e.into_bigint()));
 
-        // Following is the 1st step of the Schnorr protocol for the relation pi in the paper. pi is a
-        // conjunction of 2 relations:
-        // 1. `A_bar - d == A'*{-e} + h_0*r2`
-        // 2. `g1 + \sum_{i \in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + \sum_{j \notin D}(h_j*{-m_j})`
-        // for all disclosed messages `m_i` and for all undisclosed messages `m_j`.
-        // For each of the above relations, a Schnorr protocol is executed; the first to prove knowledge
-        // of `(e, r2)`, and the second of `(r3, s', {m_j}_{j \notin D})`. The secret knowledge items are
-        // referred to as witnesses, and the public items as instances.
-        let A_prime_affine = A_prime.into_affine();
-        let bases_1 = [A_prime_affine, params.h_0];
-        let randomness_1 = vec![E::ScalarField::rand(rng), E::ScalarField::rand(rng)];
-        let wits_1 = (-signature.e, r2);
+        // Commitment to revealed messages
+        // `C_j(m) = g1 + \sum_{j}(h_j*m_j)` for all revealed messages `m_j`
+        let c_m_j = E::G1::msm_unchecked(&revealed_indices_h, &revealed_messages) + params.g1;
 
-        // Commit to randomness with `h_0` and `A'`, i.e. `bases_1[0]*randomness_1[0] + bases_1[1]*randomness_1[1]`
-        let sc_comm_1 = SchnorrCommitment::new(&bases_1, randomness_1);
+        let A_bar_affine = A_bar.into_affine();
 
-        // Pull the bases out of the array as array is no longer needed
-        let [A_prime_affine, h_0] = bases_1;
+        // Need to prove the knowledge of witnesses `r` (randomness), `e` from signature and hidden messages `m_i`
+        // in the following relation where instance is `B_bar, A_bar, c_m_j and h_i`
+        // `B_bar = c_m_j * r + \sum_{i}(h_i * (m_i*r)) + A_bar * -e`
 
-        // For proving relation `g1 + \sum_{i \in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s_prime} + \sum_{j \notin D}(h_j*{-m_j})`
-        // for all disclosed messages `m_i` and for all undisclosed messages `m_j`, usually the number of disclosed
-        // messages is much less than the number of undisclosed messages; so it is better to avoid negations in
-        // undisclosed messages and do them in disclosed messaged. So negate both sides of the relation to get:
-        // `d*{-r3} + h_0*s_prime + \sum_{j \notin D}(h_j*m_j)` = `-g1 + \sum_{i \in D}(h_i*{-m_i})`
-        // Moreover `-g1 + \sum_{i \in D}(h_i*{-m_i})` is public and can be efficiently computed as -(g1 + \sum_{i \in D}(h_i*{m_i}))
-        // Knowledge of all unrevealed messages `m_j` need to be proven in addition to knowledge of `-r3` and `s'`. Thus
-        // all `m_j`, `-r3` and `s'` are the witnesses, while all `h_j`, `d`, `h_0` and `-g1 + \sum_{i \in D}(h_i*{-m_i})` is the instance.
+        // Iterator of tuples of form `(h_i, blinding_i, message_i*r)`
+        let h_blinding_message = indexed_blindings.into_iter().map(|(idx, blinding)| {
+            (
+                params.h[idx],
+                blinding,
+                messages[idx] * signature_randomizer,
+            )
+        });
 
-        // Iterator of tuples of form `(h_i, blinding_i, message_i)`
-        let h_blinding_message = indexed_blindings
+        let (bases, randomness, sc_wits): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(
+            [
+                (
+                    c_m_j.into_affine(),
+                    blinding_for_known_message_commitment,
+                    signature_randomizer,
+                ),
+                (A_bar_affine, rand(rng), -signature.e),
+            ]
             .into_iter()
-            .map(|(idx, blinding)| (params.h[idx], blinding, messages[idx]));
-
-        let (bases_2, randomness_2, wits_2): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(
-            [(d_affine, rand(rng), -r3), (h_0, rand(rng), s_prime)]
-                .into_iter()
-                .chain(h_blinding_message),
+            .chain(h_blinding_message),
         );
 
-        // Commit to randomness, i.e. `bases_2[0]*randomness_2[0] + bases_2[1]*randomness_2[1] + .... bases_2[j]*randomness_2[j]`
-        let sc_comm_2 = SchnorrCommitment::new(&bases_2, randomness_2);
+        let sc_comm = SchnorrCommitment::new(&bases, randomness);
 
         Ok(Self {
-            A_prime: A_prime_affine,
-            A_bar: A_bar.into_affine(),
-            d: bases_2[0],
-            sc_comm_1,
-            sc_wits_1: wits_1,
-            sc_comm_2,
-            sc_wits_2: wits_2,
+            A_bar: A_bar_affine,
+            B_bar: B_bar.into_affine(),
+            sc_comm,
+            sc_wits,
         })
     }
 
@@ -274,15 +188,13 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     pub fn challenge_contribution<W: Write>(
         &self,
         revealed_msgs: &BTreeMap<usize, E::ScalarField>,
-        params: &SignatureParamsG1<E>,
+        params: &SignatureParams23G1<E>,
         writer: W,
     ) -> Result<(), BBSPlusError> {
         Self::compute_challenge_contribution(
-            &self.A_prime,
             &self.A_bar,
-            &self.d,
-            &self.sc_comm_1.t,
-            &self.sc_comm_2.t,
+            &self.B_bar,
+            &self.sc_comm.t,
             revealed_msgs,
             params,
             writer,
@@ -293,74 +205,59 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     pub fn gen_proof(
         self,
         challenge: &E::ScalarField,
-    ) -> Result<PoKOfSignatureG1Proof<E>, BBSPlusError> {
-        // Schnorr response for relation `A_bar - d == A'*{-e} + h_0*r2`
-        let resp_1 = self
-            .sc_comm_1
-            .response(&[self.sc_wits_1.0, self.sc_wits_1.1], challenge)?;
-        // Schnorr response for relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + \sum_{j not in D}(h_j*{-m_j})`
-        let resp_2 = self.sc_comm_2.response(&self.sc_wits_2, challenge)?;
+    ) -> Result<PoKOfSignature23G1Proof<E>, BBSPlusError> {
+        // Schnorr response for relation `g1 + \sum_{i in D}(h_i*m_i)` = `\sum_{j not in D}(h_j*{-m_j})`
+        let resp = self.sc_comm.response(&self.sc_wits, challenge)?;
 
-        Ok(PoKOfSignatureG1Proof {
-            A_prime: self.A_prime,
+        Ok(PoKOfSignature23G1Proof {
             A_bar: self.A_bar,
-            d: self.d,
-            T1: self.sc_comm_1.t,
-            sc_resp_1: resp_1,
-            T2: self.sc_comm_2.t,
-            sc_resp_2: resp_2,
+            B_bar: self.B_bar,
+            T: self.sc_comm.t,
+            sc_resp: resp,
         })
     }
 
     /// Helper that serializes state to get challenge contribution. Serialized the randomized signature,
     /// and commitments and instances for both Schnorr protocols
     pub fn compute_challenge_contribution<W: Write>(
-        A_prime: &E::G1Affine,
         A_bar: &E::G1Affine,
-        d: &E::G1Affine,
-        T1: &E::G1Affine,
-        T2: &E::G1Affine,
+        B_bar: &E::G1Affine,
+        T: &E::G1Affine,
         revealed_msgs: &BTreeMap<usize, E::ScalarField>,
-        params: &SignatureParamsG1<E>,
+        params: &SignatureParams23G1<E>,
         mut writer: W,
     ) -> Result<(), BBSPlusError> {
-        // NOTE: Using `_unchecked` variants for serialization for speed
+        B_bar.serialize_compressed(&mut writer)?;
         A_bar.serialize_compressed(&mut writer)?;
 
-        // For 1st Schnorr
-        A_prime.serialize_compressed(&mut writer)?;
-        params.h_0.serialize_compressed(&mut writer)?;
-        // A_bar - d
-        let mut A_bar_minus_d = A_bar.into_group();
-        A_bar_minus_d -= d.into_group();
-        let A_bar_minus_d = A_bar_minus_d.into_affine();
-        A_bar_minus_d.serialize_compressed(&mut writer)?;
-        T1.serialize_compressed(&mut writer)?;
-
-        // For 2nd Schnorr
-        // `bases_revealed` and `exponents` below are used to create g1 + \sum_{i in D}(h_i*m_i)
-        // Note: exponents are really scalars here
+        // `bases_revealed` and `exponents` below are used to create g1 + \sum_{i in J}(h_i*m_i)
         let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
         let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
-
-        params.g1.serialize_compressed(&mut writer)?;
         bases_revealed.push(params.g1);
-        let r = E::ScalarField::one();
-        r.serialize_compressed(&mut writer)?;
-        exponents.push(r);
+        exponents.push(E::ScalarField::one());
+
+        for (i, h_i) in params.h.iter().enumerate() {
+            if let Some(msg) = revealed_msgs.get(&i) {
+                bases_revealed.push(*h_i);
+                exponents.push(*msg);
+            } else {
+                // Each h_i will be used in proving knowledge of an unrevealed message
+                h_i.serialize_compressed(&mut writer)?;
+            }
+        }
+
         for (i, msg) in revealed_msgs {
             assert!(*i < params.h.len());
-            params.h[*i].serialize_compressed(&mut writer)?;
             bases_revealed.push(params.h[*i]);
-            msg.serialize_compressed(&mut writer)?;
             exponents.push(*msg);
         }
         E::G1::msm_unchecked(&bases_revealed, &exponents).serialize_compressed(&mut writer)?;
-        T2.serialize_compressed(&mut writer).map_err(|e| e.into())
+
+        T.serialize_compressed(&mut writer).map_err(|e| e.into())
     }
 }
 
-impl<E> PoKOfSignatureG1Proof<E>
+impl<E> PoKOfSignature23G1Proof<E>
 where
     E: Pairing,
 {
@@ -371,20 +268,19 @@ where
         revealed_msgs: &BTreeMap<usize, E::ScalarField>,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKeyG2<E>>,
-        params: impl Into<PreparedSignatureParamsG1<E>>,
+        params: impl Into<PreparedSignatureParams23G1<E>>,
     ) -> Result<(), BBSPlusError> {
         let params = params.into();
         let g1 = params.g1;
         let g2 = params.g2;
-        let h0 = params.h_0;
         let h = params.h;
-        self.verify_except_pairings(revealed_msgs, challenge, g1, h0, h)?;
+        self.verify_except_pairings(revealed_msgs, challenge, g1, h)?;
 
         // Verify the randomized signature
         if !E::multi_pairing(
             [
-                E::G1Prepared::from(self.A_prime),
-                E::G1Prepared::from(-(self.A_bar.into_group())),
+                E::G1Prepared::from(self.A_bar),
+                E::G1Prepared::from(-(self.B_bar.into_group())),
             ],
             [pk.into().0, g2],
         )
@@ -400,16 +296,15 @@ where
         revealed_msgs: &BTreeMap<usize, E::ScalarField>,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKeyG2<E>>,
-        params: impl Into<PreparedSignatureParamsG1<E>>,
+        params: impl Into<PreparedSignatureParams23G1<E>>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), BBSPlusError> {
         let params = params.into();
         let g1 = params.g1;
         let g2 = params.g2;
-        let h0 = params.h_0;
         let h = params.h;
-        self.verify_except_pairings(revealed_msgs, challenge, g1, h0, h)?;
-        pairing_checker.add_sources(&self.A_prime, pk.into().0, &self.A_bar, g2);
+        self.verify_except_pairings(revealed_msgs, challenge, g1, h)?;
+        pairing_checker.add_sources(&self.A_bar, pk.into().0, &self.B_bar, g2);
         Ok(())
     }
 
@@ -417,19 +312,21 @@ where
     pub fn challenge_contribution<W: Write>(
         &self,
         revealed_msgs: &BTreeMap<usize, E::ScalarField>,
-        params: &SignatureParamsG1<E>,
+        params: &SignatureParams23G1<E>,
         writer: W,
     ) -> Result<(), BBSPlusError> {
-        PoKOfSignatureG1Protocol::compute_challenge_contribution(
-            &self.A_prime,
+        PoKOfSignature23G1Protocol::compute_challenge_contribution(
             &self.A_bar,
-            &self.d,
-            &self.T1,
-            &self.T2,
+            &self.B_bar,
+            &self.T,
             revealed_msgs,
             params,
             writer,
         )
+    }
+
+    pub fn get_resp_for_known_messages_commitment(&self) -> &E::ScalarField {
+        self.sc_resp.get_response(0).unwrap()
     }
 
     /// Get the response from post-challenge phase of the Schnorr protocol for the given message index
@@ -450,8 +347,8 @@ where
                 adjusted_idx -= 1;
             }
         }
-        // 2 added to the index, since 0th and 1st index are reserved for `s'` and `r2`
-        let r = self.sc_resp_2.get_response(2 + adjusted_idx)?;
+        // 2 added to the index, since 0th and 1st index are reserved for `r` and `-e`
+        let r = self.sc_resp.get_response(2 + adjusted_idx)?;
         Ok(r)
     }
 
@@ -460,18 +357,28 @@ where
         revealed_msgs: &BTreeMap<usize, E::ScalarField>,
         challenge: &E::ScalarField,
         g1: E::G1Affine,
-        h_0: E::G1Affine,
         h: Vec<E::G1Affine>,
     ) -> Result<(), BBSPlusError> {
-        // Verify the 1st Schnorr proof
-        let bases_1 = [self.A_prime, h_0];
-        // A_bar - d
-        let mut A_bar_minus_d = self.A_bar.into_group();
-        A_bar_minus_d -= self.d.into_group();
-        let A_bar_minus_d = A_bar_minus_d.into_affine();
+        let mut bases = Vec::with_capacity(2 + h.len() - revealed_msgs.len());
+        bases.push(self.A_bar);
+
+        let mut bases_revealed = Vec::with_capacity(revealed_msgs.len());
+        let mut exponents = Vec::with_capacity(revealed_msgs.len());
+        for i in 0..h.len() {
+            if revealed_msgs.contains_key(&i) {
+                let message = revealed_msgs.get(&i).unwrap();
+                bases_revealed.push(h[i]);
+                exponents.push(*message);
+            } else {
+                bases.push(h[i]);
+            }
+        }
+        let c_m_j = E::G1::msm_unchecked(&bases_revealed, &exponents) + g1;
+        bases.insert(0, c_m_j.into_affine());
+
         match self
-            .sc_resp_1
-            .is_valid(&bases_1, &A_bar_minus_d, &self.T1, challenge)
+            .sc_resp
+            .is_valid(&bases, &self.B_bar, &self.T, challenge)
         {
             Ok(()) => (),
             Err(SchnorrError::InvalidResponse) => {
@@ -479,36 +386,6 @@ where
             }
             Err(other) => return Err(BBSPlusError::SchnorrError(other)),
         }
-
-        // Verify the 2nd Schnorr proof
-        let mut bases_2 = Vec::with_capacity(2 + h.len() - revealed_msgs.len());
-        bases_2.push(self.d);
-        bases_2.push(h_0);
-
-        let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
-        let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
-        bases_revealed.push(g1);
-        exponents.push(E::ScalarField::one());
-        for i in 0..h.len() {
-            if revealed_msgs.contains_key(&i) {
-                let message = revealed_msgs.get(&i).unwrap();
-                bases_revealed.push(h[i]);
-                exponents.push(*message);
-            } else {
-                bases_2.push(h[i]);
-            }
-        }
-        // pr = -g1 + \sum_{i in D}(h_i*{-m_i}) = -(g1 + \sum_{i in D}(h_i*{m_i}))
-        let pr = -E::G1::msm_unchecked(&bases_revealed, &exponents);
-        let pr = pr.into_affine();
-        match self.sc_resp_2.is_valid(&bases_2, &pr, &self.T2, challenge) {
-            Ok(()) => (),
-            Err(SchnorrError::InvalidResponse) => {
-                return Err(BBSPlusError::SecondSchnorrVerificationFailed)
-            }
-            Err(other) => return Err(BBSPlusError::SchnorrError(other)),
-        }
-
         Ok(())
     }
 
@@ -519,13 +396,12 @@ where
         revealed_msgs: &BTreeMap<usize, E::ScalarField>,
         challenge: &E::ScalarField,
         g1: E::G1Affine,
-        h_0: E::G1Affine,
         h: Vec<E::G1Affine>,
     ) -> Result<(), BBSPlusError> {
-        if self.A_prime.is_zero() {
+        if self.A_bar.is_zero() {
             return Err(BBSPlusError::ZeroSignature);
         }
-        self.verify_schnorr_proofs(revealed_msgs, challenge, g1, h_0, h)
+        self.verify_schnorr_proofs(revealed_msgs, challenge, g1, h)
     }
 }
 
@@ -550,15 +426,15 @@ mod tests {
         message_count: usize,
     ) -> (
         Vec<Fr>,
-        SignatureParamsG1<Bls12_381>,
+        SignatureParams23G1<Bls12_381>,
         KeypairG2<Bls12_381>,
-        SignatureG1<Bls12_381>,
+        Signature23G1<Bls12_381>,
     ) {
         let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(rng)).collect();
-        let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, message_count);
-        let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
+        let params = SignatureParams23G1::<Bls12_381>::generate_using_rng(rng, message_count);
+        let keypair = KeypairG2::<Bls12_381>::generate_using_rng_and_bbs23_params(rng, &params);
         let sig =
-            SignatureG1::<Bls12_381>::new(rng, &messages, &keypair.secret_key, &params).unwrap();
+            Signature23G1::<Bls12_381>::new(rng, &messages, &keypair.secret_key, &params).unwrap();
         (messages, params, keypair, sig)
     }
 
@@ -582,8 +458,10 @@ mod tests {
 
         let mut proof_create_duration = Duration::default();
         let start = Instant::now();
-        let pok = PoKOfSignatureG1Protocol::init(
+        let pok = PoKOfSignature23G1Protocol::init(
             &mut rng,
+            None,
+            None,
             &sig,
             &params,
             messages.iter().enumerate().map(|(idx, msg)| {
@@ -598,7 +476,7 @@ mod tests {
         proof_create_duration += start.elapsed();
 
         // Protocol can be serialized
-        test_serialization!(PoKOfSignatureG1Protocol<Bls12_381>, pok);
+        test_serialization!(PoKOfSignature23G1Protocol<Bls12_381>, pok);
 
         let mut chal_bytes_prover = vec![];
         pok.challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_prover)
@@ -636,7 +514,7 @@ mod tests {
         proof_verif_duration += start.elapsed();
 
         // Proof can be serialized
-        test_serialization!(PoKOfSignatureG1Proof<Bls12_381>, proof);
+        test_serialization!(PoKOfSignature23G1Proof<Bls12_381>, proof);
 
         println!(
             "Time to create proof with message size {} and revealing {} messages is {:?}",
@@ -661,11 +539,15 @@ mod tests {
         let message_1_count = 10;
         let message_2_count = 7;
         let params_1 =
-            SignatureParamsG1::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_1_count);
-        let params_2 =
-            SignatureParamsG1::<Bls12_381>::new::<Blake2b512>("test-1".as_bytes(), message_2_count);
-        let keypair_1 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_1);
-        let keypair_2 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_2);
+            SignatureParams23G1::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_1_count);
+        let params_2 = SignatureParams23G1::<Bls12_381>::new::<Blake2b512>(
+            "test-1".as_bytes(),
+            message_2_count,
+        );
+        let keypair_1 =
+            KeypairG2::<Bls12_381>::generate_using_rng_and_bbs23_params(&mut rng, &params_1);
+        let keypair_2 =
+            KeypairG2::<Bls12_381>::generate_using_rng_and_bbs23_params(&mut rng, &params_2);
 
         let mut messages_1: Vec<Fr> = (0..message_1_count - 1)
             .map(|_| Fr::rand(&mut rng))
@@ -683,16 +565,24 @@ mod tests {
         assert_eq!(messages_1[same_msg_idx], messages_2[same_msg_idx]);
         assert_ne!(messages_1, messages_2);
 
-        let sig_1 =
-            SignatureG1::<Bls12_381>::new(&mut rng, &messages_1, &keypair_1.secret_key, &params_1)
-                .unwrap();
+        let sig_1 = Signature23G1::<Bls12_381>::new(
+            &mut rng,
+            &messages_1,
+            &keypair_1.secret_key,
+            &params_1,
+        )
+        .unwrap();
         sig_1
             .verify(&messages_1, keypair_1.public_key.clone(), params_1.clone())
             .unwrap();
 
-        let sig_2 =
-            SignatureG1::<Bls12_381>::new(&mut rng, &messages_2, &keypair_2.secret_key, &params_2)
-                .unwrap();
+        let sig_2 = Signature23G1::<Bls12_381>::new(
+            &mut rng,
+            &messages_2,
+            &keypair_2.secret_key,
+            &params_2,
+        )
+        .unwrap();
         sig_2
             .verify(&messages_2, keypair_2.public_key.clone(), params_2.clone())
             .unwrap();
@@ -718,8 +608,16 @@ mod tests {
         );
         assert_ne!(blindings_1, blindings_2);
 
-        let pok_1 = PoKOfSignatureG1Protocol::init(
+        // the witnesses of Schnorr protocol are not the messages alone but multiplied by randomness `r`
+        // and thus using same randomness for both the protocols so that Schnorr responses can be compared
+        // for equality.
+        let same_randomness_for_sig = Fr::rand(&mut rng);
+        let same_randomness_for_known_messages_commitment = Fr::rand(&mut rng);
+
+        let pok_1 = PoKOfSignature23G1Protocol::init(
             &mut rng,
+            Some(same_randomness_for_sig),
+            Some(same_randomness_for_known_messages_commitment),
             &sig_1,
             &params_1,
             messages_1.iter().enumerate().map(|(idx, message)| {
@@ -731,8 +629,10 @@ mod tests {
             }),
         )
         .unwrap();
-        let pok_2 = PoKOfSignatureG1Protocol::init(
+        let pok_2 = PoKOfSignature23G1Protocol::init(
             &mut rng,
+            Some(same_randomness_for_sig),
+            Some(same_randomness_for_known_messages_commitment),
             &sig_2,
             &params_2,
             messages_2.iter().enumerate().map(|(idx, message)| {
@@ -768,6 +668,11 @@ mod tests {
             .unwrap();
         let challenge_verifier =
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
+
+        assert_eq!(
+            proof_1.get_resp_for_known_messages_commitment(),
+            proof_2.get_resp_for_known_messages_commitment()
+        );
 
         // Response for the same message should be same (this check is made by the verifier)
         assert_eq!(
@@ -808,8 +713,10 @@ mod tests {
 
         // Test response when no hidden message
         let revealed_indices_1 = BTreeSet::new();
-        let pok_1 = PoKOfSignatureG1Protocol::init(
+        let pok_1 = PoKOfSignature23G1Protocol::init(
             &mut rng,
+            None,
+            None,
             &sig,
             &params,
             messages.iter().enumerate().map(|(idx, msg)| {
@@ -827,7 +734,7 @@ mod tests {
                 *proof_1
                     .get_resp_for_message(i, &revealed_indices_1)
                     .unwrap(),
-                proof_1.sc_resp_2.0[i + 2]
+                proof_1.sc_resp.0[i + 2]
             );
         }
 
@@ -836,8 +743,10 @@ mod tests {
         revealed_indices_2.insert(0);
         revealed_indices_2.insert(2);
         revealed_indices_2.insert(5);
-        let pok_2 = PoKOfSignatureG1Protocol::init(
+        let pok_2 = PoKOfSignature23G1Protocol::init(
             &mut rng,
+            None,
+            None,
             &sig,
             &params,
             messages.iter().enumerate().map(|(idx, msg)| {
@@ -867,26 +776,28 @@ mod tests {
             *proof_2
                 .get_resp_for_message(1, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_2.0[2]
+            proof_2.sc_resp.0[2]
         );
         assert_eq!(
             *proof_2
                 .get_resp_for_message(3, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_2.0[2 + 1]
+            proof_2.sc_resp.0[2 + 1]
         );
         assert_eq!(
             *proof_2
                 .get_resp_for_message(4, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_2.0[2 + 2]
+            proof_2.sc_resp.0[2 + 2]
         );
 
         let mut revealed_indices_3 = BTreeSet::new();
         revealed_indices_3.insert(0);
         revealed_indices_3.insert(3);
-        let pok_3 = PoKOfSignatureG1Protocol::init(
+        let pok_3 = PoKOfSignature23G1Protocol::init(
             &mut rng,
+            None,
+            None,
             &sig,
             &params,
             messages.iter().enumerate().map(|(idx, msg)| {
@@ -913,33 +824,35 @@ mod tests {
             *proof_3
                 .get_resp_for_message(1, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_2.0[2]
+            proof_3.sc_resp.0[2]
         );
         assert_eq!(
             *proof_3
                 .get_resp_for_message(2, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_2.0[2 + 1]
+            proof_3.sc_resp.0[2 + 1]
         );
         assert_eq!(
             *proof_3
                 .get_resp_for_message(4, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_2.0[2 + 2]
+            proof_3.sc_resp.0[2 + 2]
         );
         assert_eq!(
             *proof_3
                 .get_resp_for_message(5, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_2.0[2 + 3]
+            proof_3.sc_resp.0[2 + 3]
         );
 
         // Reveal one message only
         for i in 0..message_count {
             let mut revealed_indices = BTreeSet::new();
             revealed_indices.insert(i);
-            let pok = PoKOfSignatureG1Protocol::init(
+            let pok = PoKOfSignature23G1Protocol::init(
                 &mut rng,
+                None,
+                None,
                 &sig,
                 &params,
                 messages.iter().enumerate().map(|(idx, msg)| {
@@ -958,12 +871,12 @@ mod tests {
                 } else if i < j {
                     assert_eq!(
                         *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                        proof.sc_resp_2.0[j + 2 - 1]
+                        proof.sc_resp.0[j + 2 - 1]
                     );
                 } else {
                     assert_eq!(
                         *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                        proof.sc_resp_2.0[j + 2]
+                        proof.sc_resp.0[j + 2]
                     );
                 }
             }
@@ -975,14 +888,15 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
         let message_count = 5;
         let params =
-            SignatureParamsG1::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_count);
-        let keypair = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params);
+            SignatureParams23G1::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_count);
+        let keypair =
+            KeypairG2::<Bls12_381>::generate_using_rng_and_bbs23_params(&mut rng, &params);
 
         let prepared_pk = PreparedPublicKeyG2::from(keypair.public_key.clone());
-        let prepared_params = PreparedSignatureParamsG1::from(params.clone());
+        let prepared_params = PreparedSignatureParams23G1::from(params.clone());
 
         test_serialization!(PreparedPublicKeyG2<Bls12_381>, prepared_pk);
-        test_serialization!(PreparedSignatureParamsG1<Bls12_381>, prepared_params);
+        test_serialization!(PreparedSignatureParams23G1<Bls12_381>, prepared_params);
 
         let sig_count = 10;
         let mut msgs = vec![];
@@ -997,11 +911,13 @@ mod tests {
                     .collect::<Vec<Fr>>(),
             );
             sigs.push(
-                SignatureG1::<Bls12_381>::new(&mut rng, &msgs[i], &keypair.secret_key, &params)
+                Signature23G1::<Bls12_381>::new(&mut rng, &msgs[i], &keypair.secret_key, &params)
                     .unwrap(),
             );
-            let pok = PoKOfSignatureG1Protocol::init(
+            let pok = PoKOfSignature23G1Protocol::init(
                 &mut rng,
+                None,
+                None,
                 &sigs[i],
                 &params,
                 msgs[i].iter().map(MessageOrBlinding::BlindMessageRandomly),

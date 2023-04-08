@@ -65,3 +65,13 @@ harness = false
 name = "accum_witness_updates"
 path = "benches/accum_witness_updates.rs"
 harness = false
+
+[[bench]]
+name = "bbs_signature"
+path = "benches/bbs_signature.rs"
+harness = false
+
+[[bench]]
+name = "bbs_proof"
+path = "benches/bbs_proof.rs"
+harness = false

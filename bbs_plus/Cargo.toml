@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "BBS+ signature and protocol for proof of knowledge of signature"
+description = "BBS and BBS+ signatures and protocols for proof of knowledge of signature"
 
 [lib]
 doctest = false

@@ -9,7 +9,7 @@ Library providing privacy enhancing cryptographic primitives.
 ## Primitives
 
 1. [Schnorr proof of knowledge protocol](./schnorr_pok) to prove knowledge of discrete log. [This](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) is a good reference. 
-2. [BBS+ signature](./bbs_plus) for anonymous credentials. Based on the paper [Anonymous Attestation Using the Strong Diffie Hellman Assumption Revisited](https://eprint.iacr.org/2016/663)
+2. [BBS and BBS+ signatures](./bbs_plus) for anonymous credentials. BBS+ is based on the paper [Anonymous Attestation Using the Strong Diffie Hellman Assumption Revisited](https://eprint.iacr.org/2016/663) and BBS is based on the paper [Revisiting BBS Signatures](https://eprint.iacr.org/2023/275).
 3. [Dynamic accumulators, both positive and universal](./vb_accumulator). Based on the paper [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
 4. [Composite proof system](./proof_system) that combines above primitives for use cases like 
    - prove knowledge of a BBS+ signature and the corresponding messages
@@ -53,7 +53,7 @@ For running tests faster, run `cargo test --release`
 
 [Criterion](https://github.com/bheisler/criterion.rs) benchmarks [here](./benches)
 
-Some tests also print time consumed by the operations, run `cargo test --release -- --nocapure [test name]`
+Some tests also print time consumed by the operations, run `cargo test --release -- --nocapture [test name]`
 
 ## WASM wrapper
 

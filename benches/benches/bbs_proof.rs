@@ -5,11 +5,10 @@ use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
-use bbs_plus::{
-    proof::{MessageOrBlinding, PoKOfSignatureG1Protocol},
-    setup::{KeypairG2, SignatureParamsG1},
-    signature::SignatureG1,
+use bbs_plus::prelude::{
+    KeypairG2, MessageOrBlinding, PoKOfSignature23G1Protocol, Signature23G1, SignatureParams23G1,
 };
+
 use benches::setup_bbs_plus;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
@@ -18,19 +17,19 @@ type Fr = <Bls12_381 as Pairing>::ScalarField;
 fn pok_sig_benchmark(c: &mut Criterion) {
     let mut rng = StdRng::seed_from_u64(0u64);
     setup_bbs_plus!(
-        SignatureParamsG1,
+        SignatureParams23G1,
         KeypairG2,
         rng,
         message_count_range,
         messages_range,
         params_range,
         keypair_range,
-        generate_using_rng
+        generate_using_rng_and_bbs23_params
     );
 
     let sigs_range = (0..message_count_range.len())
         .map(|i| {
-            SignatureG1::<Bls12_381>::new(
+            Signature23G1::<Bls12_381>::new(
                 &mut rng,
                 &messages_range[i],
                 &keypair_range[i].secret_key,
@@ -78,15 +77,17 @@ fn pok_sig_benchmark(c: &mut Criterion) {
         let params = &params_range[i];
         let sig = &sigs_range[i];
 
-        let mut prove_group = c.benchmark_group(format!("Creating proof for Proof-of-knowledge of BBS+ signature and corresponding multi-message of size {}", count));
+        let mut prove_group = c.benchmark_group(format!("Creating proof for Proof-of-knowledge of BBS signature and corresponding multi-message of size {}", count));
         for (j, r_count) in k.iter().enumerate() {
             prove_group.bench_with_input(
                 BenchmarkId::from_parameter(format!("Revealing {} messages", r_count)),
                 &r_count,
                 |b, &_i| {
                     b.iter(|| {
-                        let pok = PoKOfSignatureG1Protocol::init(
+                        let pok = PoKOfSignature23G1Protocol::init(
                             &mut rng,
+                            None,
+                            None,
                             black_box(sig),
                             black_box(params),
                             black_box(messages.iter().enumerate().map(|(idx, msg)| {
@@ -122,8 +123,10 @@ fn pok_sig_benchmark(c: &mut Criterion) {
         let mut proofs = vec![];
 
         for j in 0..revealed_indices_range[i].len() {
-            let pok = PoKOfSignatureG1Protocol::init(
+            let pok = PoKOfSignature23G1Protocol::init(
                 &mut rng,
+                None,
+                None,
                 sig,
                 params,
                 messages.iter().enumerate().map(|(idx, msg)| {
@@ -152,7 +155,7 @@ fn pok_sig_benchmark(c: &mut Criterion) {
         let params = &params_range[i];
         let keypair = &keypair_range[i];
 
-        let mut verify_group = c.benchmark_group(format!("Verifying proof for Proof-of-knowledge of BBS+ signature and corresponding multi-message of size {}", count));
+        let mut verify_group = c.benchmark_group(format!("Verifying proof for Proof-of-knowledge of BBS signature and corresponding multi-message of size {}", count));
         for j in 0..revealed_indices_range[i].len() {
             verify_group.bench_with_input(
                 BenchmarkId::from_parameter(format!(

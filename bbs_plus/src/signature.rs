@@ -86,13 +86,17 @@ use crate::error::BBSPlusError;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::{fields::Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{fmt::Debug, ops::Mul, rand::RngCore, vec::Vec, UniformRand, Zero};
+use ark_std::{
+    collections::BTreeMap, fmt::Debug, ops::Mul, rand::RngCore, vec::Vec, UniformRand, Zero,
+};
 
 use crate::{
     prelude::PreparedSignatureParamsG1,
-    setup::{PreparedPublicKeyG2, PublicKeyG1, SecretKey, SignatureParamsG1, SignatureParamsG2},
+    setup::{
+        MultiMessageSignatureParams, PreparedPublicKeyG2, PublicKeyG1, SecretKey,
+        SignatureParamsG1, SignatureParamsG2,
+    },
 };
-use ark_std::collections::BTreeMap;
 use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -100,7 +104,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 macro_rules! impl_signature_struct {
     ( $name:ident, $group:ident ) => {
-        /// Signature created by the signer after signing a multi-message
+        /// BBS+ signature created by the signer after signing a multi-message
         #[serde_as]
         #[derive(
             Clone,

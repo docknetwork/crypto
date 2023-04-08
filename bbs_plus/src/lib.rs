@@ -1,34 +1,50 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(non_snake_case)]
 
+//! Implements BBS and BBS+.
+//!
 //! BBS+ signature according to the paper: [Anonymous Attestation Using the Strong Diffie Hellman Assumption Revisited](https://eprint.iacr.org/2016/663).
 //! Provides
-//! - signature creation and verification in both groups G1 and G2.
+//! - signature creation and verification with signature in group G1 and public key in group G2 and vice-versa.
 //! - proof of knowledge of signature and corresponding messages in group G1 as that is more efficient.
+//!
+//! BBS signature according to the paper: [Revisiting BBS Signatures](https://eprint.iacr.org/2023/275).
+//! Provides
+//! - signature creation and verification with signature in group G1 and public key in group G2.
+//! - proof of knowledge of signature and corresponding messages.
 //!
 //! ## Modules
 //!
-//! 1. Signature parameters and key generation module - [`setup`]
-//! 2. Signature module - [`signature`]
-//! 3. Proof of knowledge of signature module - [`proof`]
+//! 1. BBS and BBS+ signature parameters and key generation module - [`setup`]. The signature params for BBS are slightly
+//! different from BBS+ but public key is same.
+//! 2. BBS+ signature module - [`signature`]
+//! 3. BBS+ proof of knowledge of signature module - [`proof`]
+//! 4. BBS signature module - [`signature_23`]
+//! 5. BBS proof of knowledge of signature module - [`proof_23`]
 //!
 //! The implementation tries to use the same variable names as the paper and thus violate Rust's naming conventions at places.
 //!
 //! [`setup`]: crate::setup
 //! [`signature`]: crate::signature
 //! [`proof`]: crate::proof
+//! [`signature_23`]: crate::signature_23
+//! [`proof_23`]: crate::proof_23
 
 pub mod error;
 pub mod proof;
+pub mod proof_23;
 pub mod setup;
 pub mod signature;
+pub mod signature_23;
 
 pub mod prelude {
     pub use crate::{
         error::BBSPlusError,
-        proof::{PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol},
+        proof::{MessageOrBlinding, PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol},
+        proof_23::{PoKOfSignature23G1Proof, PoKOfSignature23G1Protocol},
         setup::*,
         signature::{SignatureG1, SignatureG2},
+        signature_23::Signature23G1,
     };
 }
 

@@ -2,8 +2,8 @@ use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
 use bbs_plus::{
     prelude::{
-        PoKOfSignatureG1Proof, PreparedPublicKeyG2, PreparedSignatureParamsG1, PublicKeyG2,
-        SignatureParamsG1,
+        MultiMessageSignatureParams, PoKOfSignatureG1Proof, PreparedPublicKeyG2,
+        PreparedSignatureParamsG1, PublicKeyG2, SignatureParamsG1,
     },
     proof::{MessageOrBlinding, PoKOfSignatureG1Protocol},
 };

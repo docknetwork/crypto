@@ -17,6 +17,7 @@ use crate::{
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec};
+use bbs_plus::prelude::MultiMessageSignatureParams;
 use digest::Digest;
 use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker,
