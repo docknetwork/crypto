@@ -14,6 +14,7 @@ use ark_std::{
     collections::{BTreeMap, BTreeSet},
     io::Write,
     rand::RngCore,
+    vec::Vec,
 };
 use itertools::{multiunzip, MultiUnzip};
 
