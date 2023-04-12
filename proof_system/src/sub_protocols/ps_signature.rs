@@ -19,40 +19,7 @@ pub struct PSSignaturePoK<'a, E: Pairing> {
     pub revealed_messages: &'a BTreeMap<usize, E::ScalarField>,
     pub signature_params: &'a SignatureParams<E>,
     pub public_key: &'a PublicKey<E>,
-    pub protocol: Option<Protocol<'a, E>>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct LeakedVec<'a, T> {
-    slice: &'a [T],
-    cap: usize,
-}
-
-impl<'a, T> LeakedVec<'a, T> {
-    fn new(mut vector: Vec<T>) -> Self {
-        vector.shrink_to_fit();
-        let cap = vector.capacity();
-
-        Self {
-            slice: Vec::leak(vector),
-            cap,
-        }
-    }
-}
-
-impl<'a, T> Drop for LeakedVec<'a, T> {
-    fn drop(&mut self) {
-        let cap = self.cap;
-        let len = self.slice.len();
-
-        unsafe { Vec::from_raw_parts(self.slice as *const _ as *mut T, len, cap) };
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Protocol<'a, E: Pairing> {
-    generator: SignaturePoKGenerator<'a, E>,
-    blinded_messages: LeakedVec<'a, (usize, E::ScalarField)>,
+    pub protocol: Option<SignaturePoKGenerator<E, E::ScalarField>>,
 }
 
 impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
@@ -88,11 +55,9 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
             ))?
         }
 
-        let messages_to_blind = LeakedVec::new(witness.unrevealed_messages.into_iter().collect());
-
         let mut invalid_blinding_idx = None;
         let messages_to_blind_with_blindings = merge_indexed_messages_with_blindings(
-            messages_to_blind.slice.iter().map(|(idx, msg)| (*idx, msg)),
+            witness.unrevealed_messages,
             blindings,
             CommitMessage::BlindMessageRandomly,
             CommitMessage::blind_message_with,
@@ -127,10 +92,7 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
             ))?
         }
 
-        self.protocol = Some(Protocol {
-            generator: protocol?,
-            blinded_messages: messages_to_blind,
-        });
+        self.protocol = Some(protocol?);
         Ok(())
     }
 
@@ -140,7 +102,6 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
             .ok_or(ProofSystemError::SubProtocolNotReadyToGenerateChallenge(
                 self.id,
             ))?
-            .generator
             .challenge_contribution(writer, self.public_key, self.signature_params)?;
         Ok(())
     }
@@ -149,13 +110,14 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         &mut self,
         challenge: &E::ScalarField,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
-        let protocol =
-            self.protocol
-                .take()
-                .ok_or(ProofSystemError::SubProtocolNotReadyToGenerateProof(
-                    self.id,
-                ))?;
-        let proof = protocol.generator.gen_proof(challenge)?;
+        let proof = self
+            .protocol
+            .take()
+            .ok_or(ProofSystemError::SubProtocolNotReadyToGenerateProof(
+                self.id,
+            ))?
+            .gen_proof(challenge)?;
+
         Ok(StatementProof::PoKPSSignature(proof))
     }
 

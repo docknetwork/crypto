@@ -1,4 +1,9 @@
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use digest::*;
+
+/// `CanonicalDeserialize + CanonicalSerialize`
+pub trait CanonicalSerDe: CanonicalDeserialize + CanonicalSerialize {}
+impl<T: CanonicalDeserialize + CanonicalSerialize> CanonicalSerDe for T {}
 
 /// `ExactSizeIterator + DoubleEndedIterator`
 pub trait DoubleEndedExactSizeIterator: ExactSizeIterator + DoubleEndedIterator {}
