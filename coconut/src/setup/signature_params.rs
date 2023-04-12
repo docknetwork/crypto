@@ -5,7 +5,6 @@ use core::iter::once;
 use alloc::vec::Vec;
 
 use ark_ec::{pairing::Pairing, AffineRepr};
-use ark_ff::Zero;
 use ark_serialize::*;
 use ark_std::cfg_into_iter;
 use serde_with::serde_as;
@@ -51,7 +50,8 @@ impl<E: Pairing> SignatureParams<E> {
         self.h.len()
     }
 
-    pub fn is_valid(&self) -> bool {
+    /// Returns `true` if underlying params are valid i.e don't have zero elements.
+    pub fn valid(&self) -> bool {
         !once(&self.g).chain(&self.h).any(AffineRepr::is_zero) && !self.g_tilde.is_zero()
     }
 }

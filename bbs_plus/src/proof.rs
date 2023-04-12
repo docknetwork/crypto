@@ -152,18 +152,18 @@ pub struct PoKOfSignatureG1Proof<E: Pairing> {
 
 /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
 /// By default, a message is blinded with random blinding.
-pub enum MessageOrBlinding<'a, P: PrimeField> {
+pub enum MessageOrBlinding<'a, F: PrimeField> {
     /// Message will be blinded using random blinding.
-    BlindMessageRandomly(&'a P),
+    BlindMessageRandomly(&'a F),
     /// Message will be revealed, and thus won't be included in PoK.
-    RevealMessage(&'a P),
+    RevealMessage(&'a F),
     /// Message will be blinded using the supplied blinding.
-    BlindMessageWithConcreteBlinding { message: &'a P, blinding: P },
+    BlindMessageWithConcreteBlinding { message: &'a F, blinding: F },
 }
 
-impl<'a, P: PrimeField> MessageOrBlinding<'a, P> {
+impl<'a, F: PrimeField> MessageOrBlinding<'a, F> {
     /// Blinds given `message` using supplied `blinding`.
-    pub fn blind_message_with(message: &'a P, blinding: P) -> Self {
+    pub fn blind_message_with(message: &'a F, blinding: F) -> Self {
         Self::BlindMessageWithConcreteBlinding { message, blinding }
     }
 }

@@ -6,9 +6,9 @@ pub mod messages_pok;
 pub mod signature_pok;
 
 use ark_ff::PrimeField;
-use ark_serialize::*;
+
 use ark_std::rand::RngCore;
-use core::borrow::Borrow;
+
 use itertools::process_results;
 pub use messages_pok::*;
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ use crate::helpers::{pair_with_slice, rand, IndexIsOutOfBounds};
 /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
 /// By default, a message is blinded with random blinding.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub enum CommitMessage<M, B: PrimeField> {
+pub enum CommitMessage<M, B> {
     /// Message will be randomly blinded into the commitment.
     BlindMessageRandomly(M),
     /// Message will be revealed, and thus won't be included in PoK.
@@ -46,19 +46,25 @@ impl<M, B: PrimeField> CommitMessage<M, B> {
     }
 }
 
-impl<M, B: PrimeField> From<M> for CommitMessage<M, B> {
-    fn from(message: M) -> Self {
+impl<F> From<F> for CommitMessage<F, F> {
+    fn from(message: F) -> Self {
         Self::BlindMessageRandomly(message)
     }
 }
 
-impl<M, B: PrimeField> From<(M, B)> for CommitMessage<M, B> {
+impl<F: PrimeField> From<&'_ F> for CommitMessage<F, F> {
+    fn from(&message: &'_ F) -> Self {
+        Self::BlindMessageRandomly(message)
+    }
+}
+
+impl<M, B> From<(M, B)> for CommitMessage<M, B> {
     fn from((message, blinding): (M, B)) -> Self {
         Self::BlindMessageWithConcreteBlinding { message, blinding }
     }
 }
 
-impl<M, B: PrimeField> From<(M, Option<B>)> for CommitMessage<M, B> {
+impl<M, B> From<(M, Option<B>)> for CommitMessage<M, B> {
     fn from((message, blinding): (M, Option<B>)) -> Self {
         if let Some(blinding) = blinding {
             Self::BlindMessageWithConcreteBlinding { message, blinding }
@@ -68,10 +74,50 @@ impl<M, B: PrimeField> From<(M, Option<B>)> for CommitMessage<M, B> {
     }
 }
 
-impl<M, B: PrimeField> From<Option<M>> for CommitMessage<M, B> {
-    fn from(opt: Option<M>) -> Self {
+impl<F> From<Option<F>> for CommitMessage<F, F> {
+    fn from(opt: Option<F>) -> Self {
         match opt {
             Some(msg) => Self::BlindMessageRandomly(msg),
+            None => Self::RevealMessage,
+        }
+    }
+}
+
+impl<F: PrimeField> From<CommitMessage<&'_ F, F>> for CommitMessage<F, F> {
+    fn from(com_msg: CommitMessage<&'_ F, F>) -> Self {
+        match com_msg {
+            CommitMessage::BlindMessageRandomly(&msg) => Self::BlindMessageRandomly(msg),
+            CommitMessage::RevealMessage => Self::RevealMessage,
+            CommitMessage::BlindMessageWithConcreteBlinding { message, blinding } => {
+                Self::BlindMessageWithConcreteBlinding {
+                    message: *message,
+                    blinding,
+                }
+            }
+        }
+    }
+}
+
+impl<F: PrimeField> From<(&'_ F, F)> for CommitMessage<F, F> {
+    fn from((&message, blinding): (&'_ F, F)) -> Self {
+        Self::BlindMessageWithConcreteBlinding { message, blinding }
+    }
+}
+
+impl<F: PrimeField> From<(&'_ F, Option<F>)> for CommitMessage<F, F> {
+    fn from((&message, blinding): (&'_ F, Option<F>)) -> Self {
+        if let Some(blinding) = blinding {
+            Self::BlindMessageWithConcreteBlinding { message, blinding }
+        } else {
+            Self::BlindMessageRandomly(message)
+        }
+    }
+}
+
+impl<F: PrimeField> From<Option<&'_ F>> for CommitMessage<F, F> {
+    fn from(opt: Option<&'_ F>) -> Self {
+        match opt {
+            Some(&msg) => Self::BlindMessageRandomly(msg),
             None => Self::RevealMessage,
         }
     }
@@ -80,7 +126,7 @@ impl<M, B: PrimeField> From<Option<M>> for CommitMessage<M, B> {
 /// Contains vectors of items paired with messages along with messages and blindings.
 /// All vectors have one item per message.
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct UnpackedBlindedMessages<'pair, Pair, M, B>(pub Vec<&'pair Pair>, pub Vec<M>, pub Vec<B>);
+struct UnpackedBlindedMessages<'pair, Pair, F>(pub Vec<&'pair Pair>, pub Vec<F>, pub Vec<F>);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MessageUnpackingError {
@@ -95,14 +141,14 @@ impl From<IndexIsOutOfBounds> for MessageUnpackingError {
     }
 }
 
-impl<'pair, Pair, M, B: PrimeField> UnpackedBlindedMessages<'pair, Pair, M, B> {
+impl<'pair, Pair, F: PrimeField> UnpackedBlindedMessages<'pair, Pair, F> {
     /// Accepts a random generator, an iterator of blinded and revealed messages, and a slice
     /// to pair blinded messages with.
     /// Returns a result containing a vectors of corresponding `pair_with` elements along with
     /// messages and blindings. Each collection has one item per message.
     pub fn new(
         rng: &mut impl RngCore,
-        messages: impl IntoIterator<Item = impl Into<CommitMessage<M, B>>>,
+        messages: impl IntoIterator<Item = impl Into<CommitMessage<F, F>>>,
         pair_with: &'pair [Pair],
     ) -> Result<Self, MessageUnpackingError> {
         let mut total_count = 0;

@@ -6,6 +6,7 @@ use ark_ff::PrimeField;
 use utils::serde_utils::ArkObjectBytes;
 
 use ark_serialize::*;
+use core::iter::once;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -45,6 +46,14 @@ impl<E: Pairing> PublicKey<E> {
             beta,
             beta_tilde,
         }
+    }
+
+    /// Returns `true` if the public key is valid, i.e don't have zero elements.
+    pub fn valid(&self) -> bool {
+        !once(&self.alpha_tilde)
+            .chain(&self.beta_tilde)
+            .any(AffineRepr::is_zero)
+            && !self.beta.iter().any(AffineRepr::is_zero)
     }
 }
 

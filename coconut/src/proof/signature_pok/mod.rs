@@ -4,7 +4,7 @@ use ark_ec::pairing::Pairing;
 
 use ark_serialize::*;
 use ark_std::rand::RngCore;
-use core::borrow::Borrow;
+
 use serde::{Deserialize, Serialize};
 
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
@@ -17,11 +17,11 @@ mod witnesses;
 
 use super::UnpackedBlindedMessages;
 use crate::{
-    helpers::{schnorr_error, SyncIfParallel, WithSchnorrAndBlindings},
+    helpers::{schnorr_error, WithSchnorrAndBlindings},
     setup::{PublicKey, SignatureParams},
     CommitMessage, Signature,
 };
-use utils::{aliases::CanonicalSerDe, join, pairs};
+use utils::{join, pairs};
 
 pub use error::*;
 use k::*;
@@ -33,19 +33,17 @@ pub type Result<T, E = SignaturePoKError> = core::result::Result<T, E>;
 
 /// Generates proof of knowledge for the given signature using supplied messages.
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, CanonicalSerialize, CanonicalDeserialize,
 )]
 #[serde(bound = "")]
-pub struct SignaturePoKGenerator<E: Pairing, M: CanonicalSerDe> {
-    witness: SignaturePoKWitnesses<M, E::ScalarField>,
+pub struct SignaturePoKGenerator<E: Pairing> {
+    witness: SignaturePoKWitnesses<E::ScalarField>,
     /// `k_{l} = \sum_{j}(beta_tilde_{j} * m_{l}{j} + g_tilde * r_{l})`
     k: WithSchnorrAndBlindings<E::G2Affine, K<E>>,
     randomized_sig: RandomizedSignature<E>,
 }
 
-impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe + SyncIfParallel>
-    SignaturePoKGenerator<E, M>
-{
+impl<E: Pairing> SignaturePoKGenerator<E> {
     /// Initializes `SignaturePoK` generator using supplied params.
     /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
     /// By default, a message is blinded with random blinding.
@@ -56,10 +54,10 @@ impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe + SyncIfParallel>
         signature: &Signature<E>,
         pk: &PublicKey<E>,
         params: &SignatureParams<E>,
-    ) -> Result<SignaturePoKGenerator<E, M>>
+    ) -> Result<SignaturePoKGenerator<E>>
     where
         MI: IntoIterator,
-        MI::Item: Into<CommitMessage<M, E::ScalarField>>,
+        MI::Item: Into<CommitMessage<E::ScalarField, E::ScalarField>>,
     {
         let UnpackedBlindedMessages(beta_tilde, messages, blindings) =
             UnpackedBlindedMessages::new(rng, messages, &pk.beta_tilde)?;
@@ -114,21 +112,17 @@ impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe + SyncIfParallel>
         } = self;
 
         // Schnorr response for relation `k_{l} = \sum_{j}(beta_tilde_{j} * m_{l}{j} + g_tilde * r_{l})`
-        k.response(
-            witness.msgs.iter().map(Borrow::borrow),
-            &witness.r,
-            challenge,
-        )
-        .map(|k| SignaturePoK {
-            k,
-            randomized_sig: randomized_sig.clone(),
-        })
-        .map_err(schnorr_error)
-        .map_err(SignaturePoKError::SchnorrError)
+        k.response(witness.msgs.iter().copied(), &witness.r, challenge)
+            .map(|k| SignaturePoK {
+                k,
+                randomized_sig: randomized_sig.clone(),
+            })
+            .map_err(schnorr_error)
+            .map_err(SignaturePoKError::SchnorrError)
     }
 }
 
-impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe> SignaturePoKGenerator<E, M> {
+impl<E: Pairing> SignaturePoKGenerator<E> {
     /// Returns underlying `k` along with the Schnorr commitment.
     pub fn k(&self) -> &WithSchnorrAndBlindings<E::G2Affine, K<E>> {
         &self.k

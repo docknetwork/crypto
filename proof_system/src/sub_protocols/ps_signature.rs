@@ -1,5 +1,5 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec};
+use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
 
 use dock_crypto_utils::{
     iter::take_while_satisfy, misc::seq_inc_by_n_from,
@@ -19,7 +19,7 @@ pub struct PSSignaturePoK<'a, E: Pairing> {
     pub revealed_messages: &'a BTreeMap<usize, E::ScalarField>,
     pub signature_params: &'a SignatureParams<E>,
     pub public_key: &'a PublicKey<E>,
-    pub protocol: Option<SignaturePoKGenerator<E, E::ScalarField>>,
+    pub protocol: Option<SignaturePoKGenerator<E>>,
 }
 
 impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
