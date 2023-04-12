@@ -3,9 +3,11 @@
 use alloc::vec::Vec;
 
 use ark_ec::pairing::Pairing;
+use core::borrow::Borrow;
 
-use ark_serialize::{CanonicalSerialize, Write};
+use ark_serialize::*;
 use ark_std::{cfg_iter, rand::RngCore};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -14,12 +16,14 @@ use utils::join;
 
 use super::UnpackedBlindedMessages;
 use crate::{
-    helpers::{schnorr_error, DoubleEndedExactSizeIterator, WithSchnorrAndBlindings},
+    helpers::{
+        schnorr_error, DoubleEndedExactSizeIterator, SyncIfParallel, WithSchnorrAndBlindings,
+    },
     setup::SignatureParams,
     signature::message_commitment::MessageCommitmentRandomness,
     CommitMessage,
 };
-use utils::pairs;
+use utils::{aliases::CanonicalSerDe, pairs};
 
 pub mod error;
 pub mod multi_message_commitment;
@@ -34,18 +38,22 @@ pub use proof::*;
 use witnesses::*;
 
 /// Generates proof of knowledge for the supplied messages.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MessagesPoKGenerator<'a, E: Pairing> {
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct MessagesPoKGenerator<E: Pairing, M: CanonicalSerDe> {
     /// `com = g * o + \sum_{i}(h_{i} * m_{i})`
     com: WithSchnorrAndBlindings<E::G1Affine, MultiMessageCommitment<E>>,
     /// `com_{j} = g * o_{j} + h * m_{j}`
     com_j: Vec<WithSchnorrAndBlindings<E::G1Affine, MessageCommitment<E>>>,
-    witnesses: MessagesPoKWitnesses<'a, E>,
+    witnesses: MessagesPoKWitnesses<M, E::ScalarField>,
 }
 
 type Result<T, E = MessagesPoKError> = core::result::Result<T, E>;
 
-impl<'a, E: Pairing> MessagesPoKGenerator<'a, E> {
+impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe + SyncIfParallel>
+    MessagesPoKGenerator<E, M>
+{
     /// Initializes Commitments Proof of Knowledge generator with supplied params.
     /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
     /// By default, a message is blinded with random blinding.
@@ -57,7 +65,7 @@ impl<'a, E: Pairing> MessagesPoKGenerator<'a, E> {
     ) -> Result<Self>
     where
         CMI: IntoIterator,
-        CMI::Item: Into<CommitMessage<'a, E::ScalarField>>,
+        CMI::Item: Into<CommitMessage<M, E::ScalarField>>,
     {
         let UnpackedBlindedMessages(h_arr, messages, blindings) =
             UnpackedBlindedMessages::new(rng, messages_to_commit, &params.h)?;
@@ -76,7 +84,7 @@ impl<'a, E: Pairing> MessagesPoKGenerator<'a, E> {
         let (o_arr, m) = o_m_pairs.as_ref().split();
 
         let h_m_pairs = pairs!(h_arr, m);
-        let o_m_iter = cfg_iter!(o_arr).zip(cfg_iter!(m).copied());
+        let o_m_iter = cfg_iter!(o_arr).zip(cfg_iter!(m).map(Borrow::borrow));
 
         let (com, com_schnorr, com_j) = join!(
             MultiMessageCommitment::new(h_m_pairs, params, o),
@@ -130,7 +138,7 @@ impl<'a, E: Pairing> MessagesPoKGenerator<'a, E> {
                 let m = o_m_pairs.as_ref().right();
 
                 self.com
-                    .response(o, m.iter().copied(), challenge)
+                    .response(o, m.iter().map(Borrow::borrow), challenge)
                     .map_err(schnorr_error)
                     .map_err(MessagesPoKError::ComProofGenerationFailed)
             },
@@ -148,7 +156,7 @@ impl<'a, E: Pairing> MessagesPoKGenerator<'a, E> {
                     .enumerate()
                     .map(|(index, (com_j, (o, m)))| {
                         com_j
-                            .response(o, m, challenge)
+                            .response(o, m.borrow(), challenge)
                             .map_err(schnorr_error)
                             .map_err(|error| MessagesPoKError::ComJProofGenerationFailed {
                                 index,

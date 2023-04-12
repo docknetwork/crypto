@@ -4,7 +4,7 @@ use ark_serialize::*;
 use core::{cmp::Ordering, ops::Range};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::serde_as;
-use utils::serde_utils::ArkObjectBytes;
+use utils::{aliases::CanonicalSerDe, serde_utils::ArkObjectBytes};
 
 use schnorr_pok::{
     error::SchnorrError, SchnorrChallengeContributor, SchnorrCommitment, SchnorrResponse,
@@ -18,7 +18,7 @@ use super::WithSchnorrAndBlindings;
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "V: Serialize + DeserializeOwned")]
-pub struct WithSchnorrResponse<G: AffineRepr, V: CanonicalSerialize + CanonicalDeserialize> {
+pub struct WithSchnorrResponse<G: AffineRepr, V: CanonicalSerDe> {
     #[serde_as(as = "ArkObjectBytes")]
     pub commitment: G,
     pub response: SchnorrResponse<G>,
@@ -73,7 +73,7 @@ impl CanonicalDeserialize for IndiceRange {
 impl<G, V> WithSchnorrResponse<G, V>
 where
     G: AffineRepr,
-    V: CanonicalSerialize + CanonicalDeserialize + Clone,
+    V: CanonicalSerDe + Clone,
 {
     /// Combines value with the `SchnorrResponse` and omits blindings.
     pub fn new(
@@ -96,7 +96,7 @@ where
 impl<G, V> SchnorrChallengeContributor for WithSchnorrResponse<G, V>
 where
     G: AffineRepr,
-    V: CanonicalSerialize + CanonicalDeserialize,
+    V: CanonicalSerDe,
 {
     /// The commitment's contribution to the overall challenge of the protocol.
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {

@@ -2,9 +2,13 @@ use alloc::vec::Vec;
 
 use crate::pairs;
 
-use crate::pairs::Pairs;
+use crate::{aliases::CanonicalSerDe, pairs::Pairs};
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::PrimeField;
+use ark_serialize::*;
+use itertools::{process_results, Itertools};
+use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::{DeserializeAs, SerializeAs};
 
 use core::iter::Zip;
 
@@ -28,7 +32,6 @@ impl<Left, Right> Default for OwnedPairs<Left, Right> {
     }
 }
 
-#[allow(dead_code)]
 impl<Left, Right> OwnedPairs<Left, Right> {
     /// Instantiates new `OwnedPairs` built from supplied `left` and `right` `Vec`s.
     pub fn new(left: Vec<Left>, right: Vec<Right>) -> Option<Self> {
@@ -174,5 +177,103 @@ where
         use rayon::prelude::*;
 
         ark_std::cfg_into_iter!(self.left).zip(self.right)
+    }
+}
+
+impl<Left, Right> CanonicalDeserialize for OwnedPairs<Left, Right>
+where
+    Left: CanonicalDeserialize,
+    Right: CanonicalDeserialize,
+{
+    #[inline]
+    fn deserialize_with_mode<R: Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+    ) -> Result<Self, SerializationError> {
+        OwnedPairs::new(
+            CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
+            CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?,
+        )
+        .ok_or(SerializationError::InvalidData)
+    }
+}
+
+impl<Left: Valid, Right: Valid> Valid for OwnedPairs<Left, Right> {
+    #[inline]
+    fn check(&self) -> Result<(), SerializationError> {
+        Left::batch_check(self.left.iter())?;
+        Right::batch_check(self.right.iter())?;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn batch_check<'a>(
+        batch: impl Iterator<Item = &'a Self> + Send,
+    ) -> Result<(), SerializationError>
+    where
+        Self: 'a,
+    {
+        batch.map(Self::check).collect()
+    }
+}
+
+impl<Left: CanonicalSerialize, Right: CanonicalSerialize> CanonicalSerialize
+    for OwnedPairs<Left, Right>
+{
+    #[inline]
+    fn serialize_with_mode<W: Write>(
+        &self,
+        mut writer: W,
+        compress: Compress,
+    ) -> Result<(), SerializationError> {
+        self.left
+            .as_slice()
+            .serialize_with_mode(&mut writer, compress)?;
+        self.right
+            .as_slice()
+            .serialize_with_mode(&mut writer, compress)?;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn serialized_size(&self, compress: Compress) -> usize {
+        self.left.as_slice().serialized_size(compress)
+            + self.right.as_slice().serialized_size(compress)
+    }
+}
+
+impl<LeftAs, RightAs, Left, Right> SerializeAs<OwnedPairs<LeftAs, RightAs>>
+    for OwnedPairs<Left, Right>
+where
+    Left: SerializeAs<LeftAs>,
+    Right: SerializeAs<RightAs>,
+{
+    fn serialize_as<S>(
+        pairs: &OwnedPairs<LeftAs, RightAs>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        <(&[Left], &[Right])>::serialize_as(&(&pairs.left, &pairs.right), serializer)
+    }
+}
+
+impl<'de, LeftAs, RightAs, Left, Right> DeserializeAs<'de, OwnedPairs<LeftAs, RightAs>>
+    for OwnedPairs<Left, Right>
+where
+    Left: DeserializeAs<'de, LeftAs>,
+    Right: DeserializeAs<'de, RightAs>,
+{
+    fn deserialize_as<D>(deserializer: D) -> Result<OwnedPairs<LeftAs, RightAs>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (left, right) = <(Vec<Left>, Vec<Right>)>::deserialize_as(deserializer)?;
+
+        OwnedPairs::new(left, right).ok_or(Error::custom("Pair lengths are not equal"))
     }
 }
