@@ -3,7 +3,6 @@
 use alloc::vec::Vec;
 
 use ark_ec::pairing::Pairing;
-use core::borrow::Borrow;
 
 use ark_serialize::*;
 use ark_std::{cfg_iter, rand::RngCore};
@@ -17,13 +16,13 @@ use utils::join;
 use super::UnpackedBlindedMessages;
 use crate::{
     helpers::{
-        schnorr_error, DoubleEndedExactSizeIterator, SyncIfParallel, WithSchnorrAndBlindings,
+        schnorr_error, DoubleEndedExactSizeIterator, WithSchnorrAndBlindings, WithSchnorrResponse,
     },
     setup::SignatureParams,
     signature::message_commitment::MessageCommitmentRandomness,
     CommitMessage,
 };
-use utils::{aliases::CanonicalSerDe, pairs};
+use utils::pairs;
 
 pub mod error;
 pub mod multi_message_commitment;
@@ -41,19 +40,17 @@ use witnesses::*;
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MessagesPoKGenerator<E: Pairing, M: CanonicalSerDe> {
+pub struct MessagesPoKGenerator<E: Pairing> {
     /// `com = g * o + \sum_{i}(h_{i} * m_{i})`
     com: WithSchnorrAndBlindings<E::G1Affine, MultiMessageCommitment<E>>,
     /// `com_{j} = g * o_{j} + h * m_{j}`
     com_j: Vec<WithSchnorrAndBlindings<E::G1Affine, MessageCommitment<E>>>,
-    witnesses: MessagesPoKWitnesses<M, E::ScalarField>,
+    witnesses: MessagesPoKWitnesses<E::ScalarField>,
 }
 
 type Result<T, E = MessagesPoKError> = core::result::Result<T, E>;
 
-impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe + SyncIfParallel>
-    MessagesPoKGenerator<E, M>
-{
+impl<E: Pairing> MessagesPoKGenerator<E> {
     /// Initializes Commitments Proof of Knowledge generator with supplied params.
     /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
     /// By default, a message is blinded with random blinding.
@@ -65,7 +62,7 @@ impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe + SyncIfParallel>
     ) -> Result<Self>
     where
         CMI: IntoIterator,
-        CMI::Item: Into<CommitMessage<M, E::ScalarField>>,
+        CMI::Item: Into<CommitMessage<E::ScalarField, E::ScalarField>>,
     {
         let UnpackedBlindedMessages(h_arr, messages, blindings) =
             UnpackedBlindedMessages::new(rng, messages_to_commit, &params.h)?;
@@ -84,12 +81,12 @@ impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe + SyncIfParallel>
         let (o_arr, m) = o_m_pairs.as_ref().split();
 
         let h_m_pairs = pairs!(h_arr, m);
-        let o_m_iter = cfg_iter!(o_arr).zip(cfg_iter!(m).map(Borrow::borrow));
+        let o_m_pairs = pairs!(o_arr, m);
 
         let (com, com_schnorr, com_j) = join!(
             MultiMessageCommitment::new(h_m_pairs, params, o),
             com_randomness.commit(),
-            MessageCommitment::new_iter(o_m_iter, h, params)
+            MessageCommitment::new_iter(o_m_pairs, h, params)
                 .zip(com_j_randomness.commit())
                 .map(Into::into)
                 .collect()
@@ -127,44 +124,11 @@ impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe + SyncIfParallel>
 
     /// Generate proof. Post-challenge phase of the protocol.
     pub fn gen_proof(&self, challenge: &E::ScalarField) -> Result<MessagesPoK<E>> {
-        let Self {
-            witnesses: MessagesPoKWitnesses { o, o_m_pairs },
-            ..
-        } = self;
-
         let (com_resp, com_j_resp) = join!(
-            {
-                // Schnorr response for relation `com = g * o + \sum_{i}(h_{i} * m_{i})`
-                let m = o_m_pairs.as_ref().right();
-
-                self.com
-                    .response(o, m.iter().map(Borrow::borrow), challenge)
-                    .map_err(schnorr_error)
-                    .map_err(MessagesPoKError::ComProofGenerationFailed)
-            },
-            {
-                // Schnorr responses for relation `com_{j} = g * o_{j} + h * m_{j}`
-                if self.com_j.len() != o_m_pairs.len() {
-                    Err(MessagesPoKError::IncompatibleComJAndMessages {
-                        com_j_len: self.com_j.len(),
-                        messages_len: o_m_pairs.len(),
-                    })?
-                }
-
-                cfg_iter!(self.com_j)
-                    .zip(o_m_pairs.as_ref())
-                    .enumerate()
-                    .map(|(index, (com_j, (o, m)))| {
-                        com_j
-                            .response(o, m.borrow(), challenge)
-                            .map_err(schnorr_error)
-                            .map_err(|error| MessagesPoKError::ComJProofGenerationFailed {
-                                index,
-                                error,
-                            })
-                    })
-                    .collect::<Result<_>>()
-            }
+            // Schnorr response for relation `com = g * o + \sum_{i}(h_{i} * m_{i})`
+            self.gen_com_proof(challenge),
+            // Schnorr responses for relation `com_{j} = g * o_{j} + h * m_{j}`
+            self.gen_com_j_proof(challenge)
         );
 
         Ok(MessagesPoK {
@@ -178,6 +142,53 @@ impl<E: Pairing, M: Borrow<E::ScalarField> + CanonicalSerDe + SyncIfParallel>
         &self,
     ) -> impl DoubleEndedExactSizeIterator<Item = &E::ScalarField> + Clone + '_ {
         self.witnesses.o_m_pairs.as_ref().left().iter()
+    }
+
+    /// Generates Schnorr response for relation `com = g * o + \sum_{i}(h_{i} * m_{i})`
+    fn gen_com_proof(
+        &self,
+        challenge: &E::ScalarField,
+    ) -> Result<WithSchnorrResponse<E::G1Affine, MultiMessageCommitment<E>>> {
+        let Self {
+            witnesses: MessagesPoKWitnesses { o, o_m_pairs },
+            com,
+            ..
+        } = self;
+        let m = o_m_pairs.as_ref().right();
+
+        com.response(o, m, challenge)
+            .map_err(schnorr_error)
+            .map_err(MessagesPoKError::ComProofGenerationFailed)
+    }
+
+    /// Generates Schnorr responses for relation `com_{j} = g * o_{j} + h * m_{j}`
+    fn gen_com_j_proof(
+        &self,
+        challenge: &E::ScalarField,
+    ) -> Result<Vec<WithSchnorrResponse<E::G1Affine, MessageCommitment<E>>>> {
+        let Self {
+            witnesses: MessagesPoKWitnesses { o_m_pairs, .. },
+            com_j,
+            ..
+        } = self;
+
+        if com_j.len() != o_m_pairs.len() {
+            Err(MessagesPoKError::IncompatibleComJAndMessages {
+                com_j_len: com_j.len(),
+                messages_len: o_m_pairs.len(),
+            })?
+        }
+
+        cfg_iter!(com_j)
+            .zip(o_m_pairs.as_ref())
+            .enumerate()
+            .map(|(index, (com_j, (o, m)))| {
+                com_j
+                    .response(o, m, challenge)
+                    .map_err(schnorr_error)
+                    .map_err(|error| MessagesPoKError::ComJProofGenerationFailed { index, error })
+            })
+            .collect()
     }
 }
 

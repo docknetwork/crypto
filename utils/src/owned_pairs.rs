@@ -9,6 +9,7 @@ use ark_serialize::*;
 use itertools::{process_results, Itertools};
 use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
+use zeroize::Zeroize;
 
 use core::iter::Zip;
 
@@ -275,5 +276,12 @@ where
         let (left, right) = <(Vec<Left>, Vec<Right>)>::deserialize_as(deserializer)?;
 
         OwnedPairs::new(left, right).ok_or(Error::custom("Pair lengths are not equal"))
+    }
+}
+
+impl<Left: Zeroize, Right: Zeroize> Zeroize for OwnedPairs<Left, Right> {
+    fn zeroize(&mut self) {
+        self.left.zeroize();
+        self.right.zeroize();
     }
 }

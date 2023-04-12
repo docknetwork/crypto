@@ -15,12 +15,12 @@ use utils::{aliases::SyncIfParallel, join};
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-pub struct SecretKey<P: PrimeField> {
-    pub(crate) x: P,
-    pub(crate) y: Vec<P>,
+pub struct SecretKey<F: PrimeField> {
+    pub(crate) x: F,
+    pub(crate) y: Vec<F>,
 }
 
-impl<P: PrimeField> SecretKey<P> {
+impl<F: PrimeField> SecretKey<F> {
     /// Generates random secret key compatible with `message_count` messages.
     pub fn rand<R: RngCore>(rng: &mut R, message_count: usize) -> Self {
         let x = rand(rng);
@@ -37,7 +37,7 @@ impl<P: PrimeField> SecretKey<P> {
         const X_SALT: &[u8] = b"PS-SIG-X-KEYGEN-SALT";
         const Y_SALT: &[u8] = b"PS-SIG-Y-KEYGEN-SALT";
 
-        let hasher = <DefaultFieldHasher<D> as HashToField<P>>::new;
+        let hasher = <DefaultFieldHasher<D> as HashToField<F>>::new;
 
         let (x, y) = join!(
             hasher(X_SALT).hash_to_field(seed, 1).pop().unwrap(),

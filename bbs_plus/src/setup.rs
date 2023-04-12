@@ -540,7 +540,6 @@ impl<E: Pairing> SignatureParams23G1<E> {
     {
         assert_ne!(message_count, 0);
         let h = (0..message_count)
-            .into_iter()
             .map(|_| E::G1::rand(rng))
             .collect::<Vec<E::G1>>();
         Self {
