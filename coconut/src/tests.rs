@@ -36,7 +36,6 @@ fn construction_pac_workflow() {
             let (blind_msgs, reveal_msgs) = msgs.split_at(blind_message_count);
             let comms = blind_msgs
                 .iter()
-                .copied()
                 .map(CommitMessage::BlindMessageRandomly)
                 .chain(reveal_msgs.iter().map(|_| CommitMessage::RevealMessage));
             let blind_indices = 0..blind_msgs.len();
