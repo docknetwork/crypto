@@ -82,6 +82,7 @@ pub struct PublicKey<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub E::G2Aff
     Serialize,
     Deserialize,
 )]
+#[serde(bound = "")]
 pub struct Keypair<E: Pairing> {
     pub secret_key: SecretKey<E::ScalarField>,
     #[zeroize(skip)]

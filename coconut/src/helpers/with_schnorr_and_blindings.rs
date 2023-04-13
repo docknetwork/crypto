@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use ark_ec::AffineRepr;
 
 use ark_serialize::*;

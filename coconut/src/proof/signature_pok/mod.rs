@@ -1,5 +1,6 @@
 //! Proof of knowledge for the signature.
 
+use alloc::vec::Vec;
 use ark_ec::pairing::Pairing;
 
 use ark_serialize::*;
@@ -112,7 +113,7 @@ impl<E: Pairing> SignaturePoKGenerator<E> {
         } = self;
 
         // Schnorr response for relation `k_{l} = \sum_{j}(beta_tilde_{j} * m_{l}{j} + g_tilde * r_{l})`
-        k.response(witness.msgs.iter().copied(), &witness.r, challenge)
+        k.response(&witness.msgs, &witness.r, challenge)
             .map(|k| SignaturePoK {
                 k,
                 randomized_sig: randomized_sig.clone(),

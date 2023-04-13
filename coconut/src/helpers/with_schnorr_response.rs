@@ -112,7 +112,7 @@ where
 impl<G, V> WithSchnorrResponse<G, V>
 where
     G: AffineRepr,
-    V: CanonicalSerialize + CanonicalDeserialize,
+    V: CanonicalSerDe,
 {
     /// Get the response from post-challenge phase of the Schnorr protocol for the given
     /// message index `msg_idx`. Used when comparing message equality.

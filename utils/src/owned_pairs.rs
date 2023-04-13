@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::pairs;
 
-use crate::{aliases::CanonicalSerDe, pairs::Pairs};
+use crate::pairs::Pairs;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::*;
@@ -211,17 +211,19 @@ impl<Left: Valid, Right: Valid> Valid for OwnedPairs<Left, Right> {
 
     #[inline]
     fn batch_check<'a>(
-        batch: impl Iterator<Item = &'a Self> + Send,
+        mut batch: impl Iterator<Item = &'a Self> + Send,
     ) -> Result<(), SerializationError>
     where
         Self: 'a,
     {
-        batch.map(Self::check).collect()
+        batch.try_for_each(Self::check)
     }
 }
 
-impl<Left: CanonicalSerialize, Right: CanonicalSerialize> CanonicalSerialize
-    for OwnedPairs<Left, Right>
+impl<Left, Right> CanonicalSerialize for OwnedPairs<Left, Right>
+where
+    Left: CanonicalSerialize,
+    Right: CanonicalSerialize,
 {
     #[inline]
     fn serialize_with_mode<W: Write>(
