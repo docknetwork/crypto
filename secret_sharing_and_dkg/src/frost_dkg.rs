@@ -18,7 +18,7 @@ use schnorr_pok::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 impl_proof_of_knowledge_of_discrete_log!(SecretKeyKnowledgeProtocol, SecretKeyKnowledge);
 

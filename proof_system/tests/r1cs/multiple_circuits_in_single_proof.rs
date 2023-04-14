@@ -22,7 +22,7 @@ use proof_system::{
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::r1cs::get_r1cs_and_wasm_bytes;
-use test_utils::{bbs_plus::*, test_serialization, Fr, ProofG1, G1};
+use test_utils::{bbs::*, test_serialization, Fr, ProofG1, G1};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_values() {
@@ -37,14 +37,14 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     let mut msgs_1: Vec<Fr> = (0..msg_count_1).map(|_| Fr::rand(&mut rng)).collect();
     msgs_1[1] = Fr::from(100u64);
     msgs_1[3] = Fr::from(300u64);
-    let (sig_params_1, sig_keypair_1, sig_1) = sig_setup_given_messages(&mut rng, &msgs_1);
+    let (sig_params_1, sig_keypair_1, sig_1) = bbs_plus_sig_setup_given_messages(&mut rng, &msgs_1);
 
     // 2nd BBS+ sig
     let msg_count_2 = 10;
     let msgs_2: Vec<Fr> = (0..msg_count_2)
         .map(|_| Fr::from(u64::MAX - u64::rand(&mut rng)))
         .collect();
-    let (sig_params_2, sig_keypair_2, sig_2) = sig_setup_given_messages(&mut rng, &msgs_2);
+    let (sig_params_2, sig_keypair_2, sig_2) = bbs_plus_sig_setup_given_messages(&mut rng, &msgs_2);
 
     let commit_witness_count_1 = 2;
     // Circom code for following in tests/r1cs/circom/circuits/less_than_32.circom

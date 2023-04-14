@@ -106,10 +106,13 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
     Deserialize,
 )]
 pub struct PoKOfSignatureG1Protocol<E: Pairing> {
+    #[zeroize(skip)]
     #[serde_as(as = "ArkObjectBytes")]
     pub A_prime: E::G1Affine,
+    #[zeroize(skip)]
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
+    #[zeroize(skip)]
     #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
     /// For proving relation `A_bar - d = A_prime * -e + h_0 * r2`
@@ -324,7 +327,6 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         params: &SignatureParamsG1<E>,
         mut writer: W,
     ) -> Result<(), BBSPlusError> {
-        // NOTE: Using `_unchecked` variants for serialization for speed
         A_bar.serialize_compressed(&mut writer)?;
 
         // For 1st Schnorr
@@ -562,239 +564,391 @@ mod tests {
         (messages, params, keypair, sig)
     }
 
-    #[test]
-    fn pok_signature_revealed_message() {
-        // Create and verify proof of knowledge of a signature when some messages are revealed
-        let mut rng = StdRng::seed_from_u64(0u64);
-        let message_count = 20;
-        let (messages, params, keypair, sig) = sig_setup(&mut rng, message_count);
-        sig.verify(&messages, keypair.public_key.clone(), params.clone())
-            .unwrap();
+    #[macro_export]
+    macro_rules! gen_test_pok_signature_revealed_message {
+        ($protocol: ident, $proof: ident) => {{
+            // Create and verify proof of knowledge of a signature when some messages are revealed
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let message_count = 20;
+            let (messages, params, keypair, sig) = sig_setup(&mut rng, message_count);
+            sig.verify(&messages, keypair.public_key.clone(), params.clone())
+                .unwrap();
 
-        let mut revealed_indices = BTreeSet::new();
-        revealed_indices.insert(0);
-        revealed_indices.insert(2);
+            let mut revealed_indices = BTreeSet::new();
+            revealed_indices.insert(0);
+            revealed_indices.insert(2);
 
-        let mut revealed_msgs = BTreeMap::new();
-        for i in revealed_indices.iter() {
-            revealed_msgs.insert(*i, messages[*i]);
-        }
+            let mut revealed_msgs = BTreeMap::new();
+            for i in revealed_indices.iter() {
+                revealed_msgs.insert(*i, messages[*i]);
+            }
 
-        let mut proof_create_duration = Duration::default();
-        let start = Instant::now();
-        let pok = PoKOfSignatureG1Protocol::init(
-            &mut rng,
-            &sig,
-            &params,
-            messages.iter().enumerate().map(|(idx, msg)| {
-                if revealed_indices.contains(&idx) {
-                    MessageOrBlinding::RevealMessage(msg)
-                } else {
-                    MessageOrBlinding::BlindMessageRandomly(msg)
-                }
-            }),
-        )
-        .unwrap();
-        proof_create_duration += start.elapsed();
-
-        // Protocol can be serialized
-        test_serialization!(PoKOfSignatureG1Protocol<Bls12_381>, pok);
-
-        let mut chal_bytes_prover = vec![];
-        pok.challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_prover)
-            .unwrap();
-        let challenge_prover =
-            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
-
-        let start = Instant::now();
-        let proof = pok.gen_proof(&challenge_prover).unwrap();
-        proof_create_duration += start.elapsed();
-
-        let public_key = &keypair.public_key;
-        assert!(params.is_valid());
-        assert!(public_key.is_valid());
-
-        let mut chal_bytes_verifier = vec![];
-        proof
-            .challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_verifier)
-            .unwrap();
-        let challenge_verifier =
-            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
-
-        assert_eq!(chal_bytes_prover, chal_bytes_verifier);
-
-        let mut proof_verif_duration = Duration::default();
-        let start = Instant::now();
-        proof
-            .verify(
-                &revealed_msgs,
-                &challenge_verifier,
-                public_key.clone(),
-                params.clone(),
+            let mut proof_create_duration = Duration::default();
+            let start = Instant::now();
+            let pok = $protocol::init(
+                &mut rng,
+                &sig,
+                &params,
+                messages.iter().enumerate().map(|(idx, msg)| {
+                    if revealed_indices.contains(&idx) {
+                        MessageOrBlinding::RevealMessage(msg)
+                    } else {
+                        MessageOrBlinding::BlindMessageRandomly(msg)
+                    }
+                }),
             )
             .unwrap();
-        proof_verif_duration += start.elapsed();
+            proof_create_duration += start.elapsed();
 
-        // Proof can be serialized
-        test_serialization!(PoKOfSignatureG1Proof<Bls12_381>, proof);
+            // Protocol can be serialized
+            test_serialization!($protocol<Bls12_381>, pok);
 
-        println!(
-            "Time to create proof with message size {} and revealing {} messages is {:?}",
-            message_count,
-            revealed_indices.len(),
-            proof_create_duration
-        );
-        println!(
-            "Time to verify proof with message size {} and revealing {} messages is {:?}",
-            message_count,
-            revealed_indices.len(),
-            proof_verif_duration
-        );
+            let mut chal_bytes_prover = vec![];
+            pok.challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_prover)
+                .unwrap();
+            let challenge_prover =
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+
+            let start = Instant::now();
+            let proof = pok.gen_proof(&challenge_prover).unwrap();
+            proof_create_duration += start.elapsed();
+
+            let public_key = &keypair.public_key;
+            assert!(params.is_valid());
+            assert!(public_key.is_valid());
+
+            let mut chal_bytes_verifier = vec![];
+            proof
+                .challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_verifier)
+                .unwrap();
+            let challenge_verifier =
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
+
+            assert_eq!(chal_bytes_prover, chal_bytes_verifier);
+
+            let mut proof_verif_duration = Duration::default();
+            let start = Instant::now();
+            proof
+                .verify(
+                    &revealed_msgs,
+                    &challenge_verifier,
+                    public_key.clone(),
+                    params.clone(),
+                )
+                .unwrap();
+            proof_verif_duration += start.elapsed();
+
+            // Proof can be serialized
+            test_serialization!($proof<Bls12_381>, proof);
+
+            println!(
+                "Time to create proof with message size {} and revealing {} messages is {:?}",
+                message_count,
+                revealed_indices.len(),
+                proof_create_duration
+            );
+            println!(
+                "Time to verify proof with message size {} and revealing {} messages is {:?}",
+                message_count,
+                revealed_indices.len(),
+                proof_verif_duration
+            );
+        }};
+    }
+
+    #[macro_export]
+    macro_rules! gen_test_PoK_multiple_sigs_with_same_msg {
+        ($params: ident, $sig: ident, $fn_name: ident, $protocol: ident) => {{
+            // Prove knowledge of multiple signatures and the equality of a specific message under both signatures.
+            // Knowledge of 2 signatures and their corresponding messages is being proven.
+
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let message_1_count = 10;
+            let message_2_count = 7;
+            let params_1 =
+                $params::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_1_count);
+            let params_2 =
+                $params::<Bls12_381>::new::<Blake2b512>("test-1".as_bytes(), message_2_count);
+            let keypair_1 = KeypairG2::<Bls12_381>::$fn_name(&mut rng, &params_1);
+            let keypair_2 = KeypairG2::<Bls12_381>::$fn_name(&mut rng, &params_2);
+
+            let mut messages_1: Vec<Fr> = (0..message_1_count - 1)
+                .map(|_| Fr::rand(&mut rng))
+                .collect();
+            let mut messages_2: Vec<Fr> = (0..message_2_count - 1)
+                .map(|_| Fr::rand(&mut rng))
+                .collect();
+
+            let same_msg_idx = 4;
+            let same_msg = Fr::rand(&mut rng);
+            messages_1.insert(same_msg_idx, same_msg);
+            messages_2.insert(same_msg_idx, same_msg);
+
+            // A particular message is same
+            assert_eq!(messages_1[same_msg_idx], messages_2[same_msg_idx]);
+            assert_ne!(messages_1, messages_2);
+
+            let sig_1 =
+                $sig::<Bls12_381>::new(&mut rng, &messages_1, &keypair_1.secret_key, &params_1)
+                    .unwrap();
+            sig_1
+                .verify(&messages_1, keypair_1.public_key.clone(), params_1.clone())
+                .unwrap();
+
+            let sig_2 =
+                $sig::<Bls12_381>::new(&mut rng, &messages_2, &keypair_2.secret_key, &params_2)
+                    .unwrap();
+            sig_2
+                .verify(&messages_2, keypair_2.public_key.clone(), params_2.clone())
+                .unwrap();
+
+            // Add the same blinding for the message which has to be proven equal across messages
+            let same_blinding = Fr::rand(&mut rng);
+
+            let mut blindings_1 = BTreeMap::new();
+            blindings_1.insert(same_msg_idx, same_blinding);
+
+            let mut blindings_2 = BTreeMap::new();
+            blindings_2.insert(same_msg_idx, same_blinding);
+
+            // Add some more blindings randomly,
+            blindings_1.insert(0, Fr::rand(&mut rng));
+            blindings_1.insert(1, Fr::rand(&mut rng));
+            blindings_2.insert(2, Fr::rand(&mut rng));
+
+            // Blinding for the same message is kept same
+            assert_eq!(
+                blindings_1.get(&same_msg_idx),
+                blindings_2.get(&same_msg_idx)
+            );
+            assert_ne!(blindings_1, blindings_2);
+
+            let pok_1 = $protocol::init(
+                &mut rng,
+                &sig_1,
+                &params_1,
+                messages_1.iter().enumerate().map(|(idx, message)| {
+                    if let Some(blinding) = blindings_1.remove(&idx) {
+                        MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
+                    } else {
+                        MessageOrBlinding::BlindMessageRandomly(message)
+                    }
+                }),
+            )
+            .unwrap();
+            let pok_2 = $protocol::init(
+                &mut rng,
+                &sig_2,
+                &params_2,
+                messages_2.iter().enumerate().map(|(idx, message)| {
+                    if let Some(blinding) = blindings_2.remove(&idx) {
+                        MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
+                    } else {
+                        MessageOrBlinding::BlindMessageRandomly(message)
+                    }
+                }),
+            )
+            .unwrap();
+
+            let mut chal_bytes_prover = vec![];
+            pok_1
+                .challenge_contribution(&BTreeMap::new(), &params_1, &mut chal_bytes_prover)
+                .unwrap();
+            pok_2
+                .challenge_contribution(&BTreeMap::new(), &params_2, &mut chal_bytes_prover)
+                .unwrap();
+            let challenge_prover =
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+
+            let proof_1 = pok_1.gen_proof(&challenge_prover).unwrap();
+            let proof_2 = pok_2.gen_proof(&challenge_prover).unwrap();
+
+            // The verifier generates the challenge on its own.
+            let mut chal_bytes_verifier = vec![];
+            proof_1
+                .challenge_contribution(&BTreeMap::new(), &params_1, &mut chal_bytes_verifier)
+                .unwrap();
+            proof_2
+                .challenge_contribution(&BTreeMap::new(), &params_2, &mut chal_bytes_verifier)
+                .unwrap();
+            let challenge_verifier =
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
+
+            // Response for the same message should be same (this check is made by the verifier)
+            assert_eq!(
+                proof_1
+                    .get_resp_for_message(same_msg_idx, &BTreeSet::new())
+                    .unwrap(),
+                proof_2
+                    .get_resp_for_message(same_msg_idx, &BTreeSet::new())
+                    .unwrap()
+            );
+
+            proof_1
+                .verify(
+                    &BTreeMap::new(),
+                    &challenge_verifier,
+                    keypair_1.public_key.clone(),
+                    params_1,
+                )
+                .unwrap();
+            proof_2
+                .verify(
+                    &BTreeMap::new(),
+                    &challenge_verifier,
+                    keypair_2.public_key.clone(),
+                    params_2,
+                )
+                .unwrap();
+        }}
+    }
+
+    #[macro_export]
+    macro_rules! gen_test_PoK_multiple_sigs_with_randomized_pairing_check {
+        ($params: ident, $prepared_params: ident, $sig: ident, $fn_name: ident, $protocol: ident) => {{
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let message_count = 5;
+            let params =
+                $params::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_count);
+            let keypair = KeypairG2::<Bls12_381>::$fn_name(&mut rng, &params);
+
+            let prepared_pk = PreparedPublicKeyG2::from(keypair.public_key.clone());
+            let prepared_params = $prepared_params::from(params.clone());
+
+            test_serialization!(PreparedPublicKeyG2<Bls12_381>, prepared_pk);
+            test_serialization!($prepared_params<Bls12_381>, prepared_params);
+
+            let sig_count = 10;
+            let mut msgs = vec![];
+            let mut sigs = vec![];
+            let mut chal_bytes_prover = vec![];
+            let mut poks = vec![];
+            let mut proofs = vec![];
+            for i in 0..sig_count {
+                msgs.push(
+                    (0..message_count)
+                        .map(|_| Fr::rand(&mut rng))
+                        .collect::<Vec<Fr>>(),
+                );
+                sigs.push(
+                    $sig::<Bls12_381>::new(&mut rng, &msgs[i], &keypair.secret_key, &params)
+                        .unwrap(),
+                );
+                let pok = $protocol::init(
+                    &mut rng,
+                    &sigs[i],
+                    &params,
+                    msgs[i].iter().map(MessageOrBlinding::BlindMessageRandomly),
+                )
+                .unwrap();
+                pok.challenge_contribution(&BTreeMap::new(), &params, &mut chal_bytes_prover)
+                    .unwrap();
+                poks.push(pok);
+            }
+
+            let challenge_prover =
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+
+            for pok in poks {
+                proofs.push(pok.gen_proof(&challenge_prover).unwrap());
+            }
+
+            let mut chal_bytes_verifier = vec![];
+
+            for proof in &proofs {
+                proof
+                    .challenge_contribution(&BTreeMap::new(), &params, &mut chal_bytes_verifier)
+                    .unwrap();
+            }
+
+            let challenge_verifier =
+                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
+
+            let start = Instant::now();
+            for proof in proofs.clone() {
+                proof
+                    .verify(
+                        &BTreeMap::new(),
+                        &challenge_verifier,
+                        keypair.public_key.clone(),
+                        params.clone(),
+                    )
+                    .unwrap();
+            }
+            println!("Time to verify {} sigs: {:?}", sig_count, start.elapsed());
+
+            let start = Instant::now();
+            for proof in proofs.clone() {
+                proof
+                    .verify(
+                        &BTreeMap::new(),
+                        &challenge_verifier,
+                        prepared_pk.clone(),
+                        prepared_params.clone(),
+                    )
+                    .unwrap();
+            }
+            println!(
+                "Time to verify {} sigs using prepared public key and params: {:?}",
+                sig_count,
+                start.elapsed()
+            );
+
+            let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
+            let start = Instant::now();
+            for proof in proofs.clone() {
+                proof
+                    .verify_with_randomized_pairing_checker(
+                        &BTreeMap::new(),
+                        &challenge_verifier,
+                        keypair.public_key.clone(),
+                        params.clone(),
+                        &mut pairing_checker,
+                    )
+                    .unwrap();
+            }
+            assert!(pairing_checker.verify());
+            println!(
+                "Time to verify {} sigs using randomized pairing checker: {:?}",
+                sig_count,
+                start.elapsed()
+            );
+
+            let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
+            let start = Instant::now();
+            for proof in proofs.clone() {
+                proof
+                    .verify_with_randomized_pairing_checker(
+                        &BTreeMap::new(),
+                        &challenge_verifier,
+                        prepared_pk.clone(),
+                        prepared_params.clone(),
+                        &mut pairing_checker,
+                    )
+                    .unwrap();
+            }
+            assert!(pairing_checker.verify());
+            println!(
+                "Time to verify {} sigs using prepared public key and params and randomized pairing checker: {:?}",
+                sig_count,
+                start.elapsed()
+            );
+        }}
+    }
+
+    #[test]
+    fn pok_signature_revealed_message() {
+        gen_test_pok_signature_revealed_message!(PoKOfSignatureG1Protocol, PoKOfSignatureG1Proof)
     }
 
     #[test]
     fn test_PoK_multiple_sigs_with_same_msg() {
-        // Prove knowledge of multiple signatures and the equality of a specific message under both signatures.
-        // Knowledge of 2 signatures and their corresponding messages is being proven.
-
-        let mut rng = StdRng::seed_from_u64(0u64);
-        let message_1_count = 10;
-        let message_2_count = 7;
-        let params_1 =
-            SignatureParamsG1::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_1_count);
-        let params_2 =
-            SignatureParamsG1::<Bls12_381>::new::<Blake2b512>("test-1".as_bytes(), message_2_count);
-        let keypair_1 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_1);
-        let keypair_2 = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params_2);
-
-        let mut messages_1: Vec<Fr> = (0..message_1_count - 1)
-            .map(|_| Fr::rand(&mut rng))
-            .collect();
-        let mut messages_2: Vec<Fr> = (0..message_2_count - 1)
-            .map(|_| Fr::rand(&mut rng))
-            .collect();
-
-        let same_msg_idx = 4;
-        let same_msg = Fr::rand(&mut rng);
-        messages_1.insert(same_msg_idx, same_msg);
-        messages_2.insert(same_msg_idx, same_msg);
-
-        // A particular message is same
-        assert_eq!(messages_1[same_msg_idx], messages_2[same_msg_idx]);
-        assert_ne!(messages_1, messages_2);
-
-        let sig_1 =
-            SignatureG1::<Bls12_381>::new(&mut rng, &messages_1, &keypair_1.secret_key, &params_1)
-                .unwrap();
-        sig_1
-            .verify(&messages_1, keypair_1.public_key.clone(), params_1.clone())
-            .unwrap();
-
-        let sig_2 =
-            SignatureG1::<Bls12_381>::new(&mut rng, &messages_2, &keypair_2.secret_key, &params_2)
-                .unwrap();
-        sig_2
-            .verify(&messages_2, keypair_2.public_key.clone(), params_2.clone())
-            .unwrap();
-
-        // Add the same blinding for the message which has to be proven equal across messages
-        let same_blinding = Fr::rand(&mut rng);
-
-        let mut blindings_1 = BTreeMap::new();
-        blindings_1.insert(same_msg_idx, same_blinding);
-
-        let mut blindings_2 = BTreeMap::new();
-        blindings_2.insert(same_msg_idx, same_blinding);
-
-        // Add some more blindings randomly,
-        blindings_1.insert(0, Fr::rand(&mut rng));
-        blindings_1.insert(1, Fr::rand(&mut rng));
-        blindings_2.insert(2, Fr::rand(&mut rng));
-
-        // Blinding for the same message is kept same
-        assert_eq!(
-            blindings_1.get(&same_msg_idx),
-            blindings_2.get(&same_msg_idx)
-        );
-        assert_ne!(blindings_1, blindings_2);
-
-        let pok_1 = PoKOfSignatureG1Protocol::init(
-            &mut rng,
-            &sig_1,
-            &params_1,
-            messages_1.iter().enumerate().map(|(idx, message)| {
-                if let Some(blinding) = blindings_1.remove(&idx) {
-                    MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
-                } else {
-                    MessageOrBlinding::BlindMessageRandomly(message)
-                }
-            }),
+        gen_test_PoK_multiple_sigs_with_same_msg!(
+            SignatureParamsG1,
+            SignatureG1,
+            generate_using_rng,
+            PoKOfSignatureG1Protocol
         )
-        .unwrap();
-        let pok_2 = PoKOfSignatureG1Protocol::init(
-            &mut rng,
-            &sig_2,
-            &params_2,
-            messages_2.iter().enumerate().map(|(idx, message)| {
-                if let Some(blinding) = blindings_2.remove(&idx) {
-                    MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
-                } else {
-                    MessageOrBlinding::BlindMessageRandomly(message)
-                }
-            }),
-        )
-        .unwrap();
-
-        let mut chal_bytes_prover = vec![];
-        pok_1
-            .challenge_contribution(&BTreeMap::new(), &params_1, &mut chal_bytes_prover)
-            .unwrap();
-        pok_2
-            .challenge_contribution(&BTreeMap::new(), &params_2, &mut chal_bytes_prover)
-            .unwrap();
-        let challenge_prover =
-            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
-
-        let proof_1 = pok_1.gen_proof(&challenge_prover).unwrap();
-        let proof_2 = pok_2.gen_proof(&challenge_prover).unwrap();
-
-        // The verifier generates the challenge on its own.
-        let mut chal_bytes_verifier = vec![];
-        proof_1
-            .challenge_contribution(&BTreeMap::new(), &params_1, &mut chal_bytes_verifier)
-            .unwrap();
-        proof_2
-            .challenge_contribution(&BTreeMap::new(), &params_2, &mut chal_bytes_verifier)
-            .unwrap();
-        let challenge_verifier =
-            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
-
-        // Response for the same message should be same (this check is made by the verifier)
-        assert_eq!(
-            proof_1
-                .get_resp_for_message(same_msg_idx, &BTreeSet::new())
-                .unwrap(),
-            proof_2
-                .get_resp_for_message(same_msg_idx, &BTreeSet::new())
-                .unwrap()
-        );
-
-        proof_1
-            .verify(
-                &BTreeMap::new(),
-                &challenge_verifier,
-                keypair_1.public_key.clone(),
-                params_1,
-            )
-            .unwrap();
-        proof_2
-            .verify(
-                &BTreeMap::new(),
-                &challenge_verifier,
-                keypair_2.public_key.clone(),
-                params_2,
-            )
-            .unwrap();
     }
 
     #[test]
@@ -972,132 +1126,12 @@ mod tests {
 
     #[test]
     fn test_PoK_multiple_sigs_with_randomized_pairing_check() {
-        let mut rng = StdRng::seed_from_u64(0u64);
-        let message_count = 5;
-        let params =
-            SignatureParamsG1::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_count);
-        let keypair = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &params);
-
-        let prepared_pk = PreparedPublicKeyG2::from(keypair.public_key.clone());
-        let prepared_params = PreparedSignatureParamsG1::from(params.clone());
-
-        test_serialization!(PreparedPublicKeyG2<Bls12_381>, prepared_pk);
-        test_serialization!(PreparedSignatureParamsG1<Bls12_381>, prepared_params);
-
-        let sig_count = 10;
-        let mut msgs = vec![];
-        let mut sigs = vec![];
-        let mut chal_bytes_prover = vec![];
-        let mut poks = vec![];
-        let mut proofs = vec![];
-        for i in 0..sig_count {
-            msgs.push(
-                (0..message_count)
-                    .map(|_| Fr::rand(&mut rng))
-                    .collect::<Vec<Fr>>(),
-            );
-            sigs.push(
-                SignatureG1::<Bls12_381>::new(&mut rng, &msgs[i], &keypair.secret_key, &params)
-                    .unwrap(),
-            );
-            let pok = PoKOfSignatureG1Protocol::init(
-                &mut rng,
-                &sigs[i],
-                &params,
-                msgs[i].iter().map(MessageOrBlinding::BlindMessageRandomly),
-            )
-            .unwrap();
-            pok.challenge_contribution(&BTreeMap::new(), &params, &mut chal_bytes_prover)
-                .unwrap();
-            poks.push(pok);
-        }
-
-        let challenge_prover =
-            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
-
-        for pok in poks {
-            proofs.push(pok.gen_proof(&challenge_prover).unwrap());
-        }
-
-        let mut chal_bytes_verifier = vec![];
-
-        for proof in &proofs {
-            proof
-                .challenge_contribution(&BTreeMap::new(), &params, &mut chal_bytes_verifier)
-                .unwrap();
-        }
-
-        let challenge_verifier =
-            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
-
-        let start = Instant::now();
-        for proof in proofs.clone() {
-            proof
-                .verify(
-                    &BTreeMap::new(),
-                    &challenge_verifier,
-                    keypair.public_key.clone(),
-                    params.clone(),
-                )
-                .unwrap();
-        }
-        println!("Time to verify {} sigs: {:?}", sig_count, start.elapsed());
-
-        let start = Instant::now();
-        for proof in proofs.clone() {
-            proof
-                .verify(
-                    &BTreeMap::new(),
-                    &challenge_verifier,
-                    prepared_pk.clone(),
-                    prepared_params.clone(),
-                )
-                .unwrap();
-        }
-        println!(
-            "Time to verify {} sigs using prepared public key and params: {:?}",
-            sig_count,
-            start.elapsed()
-        );
-
-        let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
-        let start = Instant::now();
-        for proof in proofs.clone() {
-            proof
-                .verify_with_randomized_pairing_checker(
-                    &BTreeMap::new(),
-                    &challenge_verifier,
-                    keypair.public_key.clone(),
-                    params.clone(),
-                    &mut pairing_checker,
-                )
-                .unwrap();
-        }
-        assert!(pairing_checker.verify());
-        println!(
-            "Time to verify {} sigs using randomized pairing checker: {:?}",
-            sig_count,
-            start.elapsed()
-        );
-
-        let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
-        let start = Instant::now();
-        for proof in proofs.clone() {
-            proof
-                .verify_with_randomized_pairing_checker(
-                    &BTreeMap::new(),
-                    &challenge_verifier,
-                    prepared_pk.clone(),
-                    prepared_params.clone(),
-                    &mut pairing_checker,
-                )
-                .unwrap();
-        }
-        assert!(pairing_checker.verify());
-        println!(
-            "Time to verify {} sigs using prepared public key and params and randomized pairing checker: {:?}",
-            sig_count,
-            start.elapsed()
-        );
+        gen_test_PoK_multiple_sigs_with_randomized_pairing_check!(
+            SignatureParamsG1,
+            PreparedSignatureParamsG1,
+            SignatureG1,
+            generate_using_rng,
+            PoKOfSignatureG1Protocol
+        )
     }
 }

@@ -6,8 +6,9 @@ use ark_ec::pairing::Pairing;
 use ark_std::{collections::BTreeMap, marker::PhantomData, vec, vec::Vec};
 use bbs_plus::setup::{
     PreparedPublicKeyG2 as PreparedBBSPlusPk,
+    PreparedSignatureParams23G1 as PreparedBBSSigParams23,
     PreparedSignatureParamsG1 as PreparedBBSPlusSigParams, PublicKeyG2 as BBSPlusPk,
-    SignatureParamsG1 as BBSPlusSigParams,
+    SignatureParams23G1 as BBSSigParams23, SignatureParamsG1 as BBSPlusSigParams,
 };
 use coconut_crypto::setup::{
     PreparedPublicKey as PreparedPSPk, PreparedSignatureParams as PreparedPSSigParams,
@@ -188,6 +189,12 @@ impl_derived_for_prepared_ref!(
     /// To derive prepared signature params from BBS+ signature params
     BBSPlusSigParams,
     PreparedBBSPlusSigParams
+);
+
+impl_derived_for_prepared_ref!(
+    /// To derive prepared signature params from BBS signature params
+    BBSSigParams23,
+    PreparedBBSSigParams23
 );
 
 impl_derived_for_prepared_ref!(

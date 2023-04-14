@@ -25,7 +25,7 @@ use proof_system::{
 use saver::setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens};
 use std::time::Instant;
 
-use test_utils::{bbs_plus::*, Fr, ProofG1};
+use test_utils::{bbs::*, Fr, ProofG1};
 
 #[test]
 fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
@@ -33,11 +33,11 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
 
     // 1st BBS+ sig
     let msg_count_1 = 4;
-    let (msgs_1, params_1, keypair_1, sig_1) = sig_setup(&mut rng, msg_count_1);
+    let (msgs_1, params_1, keypair_1, sig_1) = bbs_plus_sig_setup(&mut rng, msg_count_1);
 
     // 2nd BBS+ sig
     let msg_count_2 = 10;
-    let (msgs_2, params_2, keypair_2, sig_2) = sig_setup(&mut rng, msg_count_2);
+    let (msgs_2, params_2, keypair_2, sig_2) = bbs_plus_sig_setup(&mut rng, msg_count_2);
 
     // Decryptor creates public parameters
     let enc_gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
@@ -238,14 +238,14 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
     let msgs_1 = (1..=msg_count_1)
         .map(|i| Fr::from(100u64 + i * 10_u64))
         .collect::<Vec<_>>();
-    let (params_1, keypair_1, sig_1) = sig_setup_given_messages(&mut rng, &msgs_1);
+    let (params_1, keypair_1, sig_1) = bbs_plus_sig_setup_given_messages(&mut rng, &msgs_1);
 
     // 2nd BBS+ sig
     let msg_count_2 = 10;
     let msgs_2 = (1..=msg_count_2)
         .map(|i| Fr::from(1000u64 + i * 10_u64))
         .collect::<Vec<_>>();
-    let (params_2, keypair_2, sig_2) = sig_setup_given_messages(&mut rng, &msgs_2);
+    let (params_2, keypair_2, sig_2) = bbs_plus_sig_setup_given_messages(&mut rng, &msgs_2);
 
     let snark_pk = generate_snark_srs_bound_check::<Bls12_381, _>(&mut rng).unwrap();
 

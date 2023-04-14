@@ -1,5 +1,22 @@
 //! Proof of knowledge of BBS signature and corresponding messages as per section 5.2 of the BBS paper with
-//! slight modification. See docs of the proof creation protocol.
+//! slight modification described below.
+//! The paper requires the prover to prove `e(A_bar, X_2) = e (B_bar, g2)` where `B_bar = C(m)*r + A_bar*-e`.
+//! The prover sends `A_bar`, `B_bar` to the verifier and also proves the knowledge of `r`, `e` and any
+//! messages in `C(m)` in `B_bar`. Here `r` is a random element chosen by the prover on each proof of knowledge.
+//! Above approach has a problem when some messages under 2 signatures need to be proven equal in zero
+//! knowledge. Because `r` will be different for each signature, the witnesses for the Schnorr proof will be
+//! different, i.e. `m*r` and `m*r'` for the same message `m` and thus the folklore method of proving equal
+//! witnesses in multiple statements cant be used. Thus the protocol below accepts `r` (called signature randomizer)
+//! from the prover who can use the same `r` when proving message equality in multiple signatures. When doing
+//! so also prove the equality of `r` in term `C_j(m) * r` and thus use the same blinding eg. when proving equality of
+//! certain messages under 2 signatures `sigma_1 = (A_1, e_1)` and `sigma_2 = A_2 * e_2`, it should be proven
+//! that `r` and Schnorr responses for the equal messages `m_k` are equal. i.e. for known messages `J_1`,
+//! `J_2`, hidden messages `I_1`, `I_2` for signatures `sigma_1`, `sigma_2` with equal messages `m_k` being
+//! a subset of `I_1`, `I_2`, `r` and `m_k` are same in following 2 relations:
+//! `{B_1}_bar = C_{J_1}(m) * r + \sum_{i in I_1}(h_i * (m_i*r)) + {A_1}_bar * -e_1`
+//! `{B_2}_bar = C_{J_2}(m) * r + \sum_{i in I_2}(h_i * (m_i*r)) + {A_2}_bar * -e_2`
+//! Its important to prove that `r` is same in `C_{J_1}(m)` and `C_{J_2}(m)` otherwise two unequal
+//! messages `m_a` and `m_b` can be proven equal by using signature randomizers `r_1` and `r2` such that `m_a * r_1 = m_b * r_2`
 
 use crate::{
     error::BBSPlusError,
@@ -43,8 +60,10 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
     Deserialize,
 )]
 pub struct PoKOfSignature23G1Protocol<E: Pairing> {
+    #[zeroize(skip)]
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
+    #[zeroize(skip)]
     #[serde_as(as = "ArkObjectBytes")]
     pub B_bar: E::G1Affine,
     /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `sum_{j notin D}(h_j*m_j)`
@@ -75,18 +94,8 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
     /// Initiate the protocol, i.e. pre-challenge phase. This will generate the randomized signature and execute
     /// the commit-to-randomness step (Step 1) of the Schnorr protocol.
     /// Accepts an iterator of messages. Each message can be either randomly blinded, revealed, or blinded using supplied blinding.
-    /// Note: Following change of passing the signature randomizer and blinding for known message commitment is a deviation from the paper.
-    /// Also accepts the signature randomizer (`r` in the paper). This is useful when some messages under multiple
-    /// signatures need to be proven equal in zero knowledge. When doing so also prove the equality of `r` in
-    /// term `C_j(m) * r` and thus use the blinding `blinding_for_known_message_commitment`. eg. when proving equality of
-    /// certain messages under 2 signatures `sigma_1 = (A_1, e_1)` and `sigma_2 = A_2 * e_2`, it should be proven
-    /// that `r` and Schnorr responses for the equal messages `m_k` are equal. i.e. for known messages
-    /// `J_1`, `J_2`, hidden messages `I_1`, `I_2` for signatures `sigma_1`, `sigma_2` with equal messages `m_k`
-    /// being a subset of `I_1`, `I_2`, `r` and `m_k` are same in following 2 relations:
-    /// `{B_1}_bar = C_{J_1}(m) * r + \sum_{i in I_1}(h_i * (m_i*r)) + {A_1}_bar * -e_1`
-    /// `{B_2}_bar = C_{J_2}(m) * r + \sum_{i in I_2}(h_i * (m_i*r)) + {A_2}_bar * -e_2`
-    /// Its important to prove that `r` is same in `C_{J_1}(m)` and `C_{J_2}(m)` otherwise two unequal
-    /// messages `m_a` and `m_b` can be proven equal by using signature randomizers `r_1` and `r2` such that `m_a * r_1 = m_b * r_2`
+    /// `signature_randomizer` is `r` from the paper and `blinding_for_known_message_commitment` is the blinding used to prove
+    /// knowledge of `r` in `C_j(m) * r`
     pub fn init<'a, MBI, R: RngCore>(
         rng: &mut R,
         signature_randomizer: Option<E::ScalarField>,

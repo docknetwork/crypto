@@ -4,7 +4,7 @@ use ark_std::{
     io::{Read, Write},
     vec::Vec,
 };
-use bbs_plus::prelude::PoKOfSignatureG1Proof;
+use bbs_plus::prelude::{PoKOfSignature23G1Proof, PoKOfSignatureG1Proof};
 use coconut_crypto::SignaturePoK as PSSignaturePoK;
 use dock_crypto_utils::serde_utils::*;
 use saver::encryption::Ciphertext;
@@ -31,6 +31,7 @@ pub enum StatementProof<E: Pairing, G: AffineRepr> {
     BoundCheckLegoGroth16WithAggregation(BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>),
     R1CSLegoGroth16WithAggregation(R1CSLegoGroth16ProofWhenAggregatingSnarks<E>),
     PoKPSSignature(PSSignaturePoK<E>),
+    PoKBBSSignature23G1(PoKOfSignature23G1Proof<E>),
 }
 
 macro_rules! delegate {
@@ -47,7 +48,8 @@ macro_rules! delegate {
                 SaverWithAggregation,
                 BoundCheckLegoGroth16WithAggregation,
                 R1CSLegoGroth16WithAggregation,
-                PoKPSSignature
+                PoKPSSignature,
+                PoKBBSSignature23G1
             : $($tt)+
         }
     }};
@@ -67,7 +69,8 @@ macro_rules! delegate_reverse {
                 SaverWithAggregation,
                 BoundCheckLegoGroth16WithAggregation,
                 R1CSLegoGroth16WithAggregation,
-                PoKPSSignature
+                PoKPSSignature,
+                PoKBBSSignature23G1
             : $($tt)+
         }
 

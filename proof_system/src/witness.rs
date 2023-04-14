@@ -1,7 +1,9 @@
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cmp, collections::BTreeMap, fmt::Debug, string::String, vec::Vec};
-use bbs_plus::signature::SignatureG1 as BBSSignatureG1;
+use bbs_plus::{
+    signature::SignatureG1 as BBSSignatureG1, signature_23::Signature23G1 as BBSSignature23G1,
+};
 use coconut_crypto::Signature;
 use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
@@ -27,6 +29,7 @@ pub enum Witness<E: Pairing> {
     BoundCheckLegoGroth16(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     R1CSLegoGroth16(R1CSCircomWitness<E>),
     PoKPSSignature(PoKPSSignature<E>),
+    PoKBBSSignature23G1(PoKBBSSignature23G1<E>),
 }
 
 macro_rules! delegate {
@@ -40,7 +43,8 @@ macro_rules! delegate {
                 Saver,
                 BoundCheckLegoGroth16,
                 R1CSLegoGroth16,
-                PoKPSSignature
+                PoKPSSignature,
+                PoKBBSSignature23G1
             : $($tt)+
         }
     }}
@@ -57,7 +61,8 @@ macro_rules! delegate_reverse {
                 Saver,
                 BoundCheckLegoGroth16,
                 R1CSLegoGroth16,
-                PoKPSSignature
+                PoKPSSignature,
+                PoKBBSSignature23G1
             : $($tt)+
         }
 
@@ -120,6 +125,33 @@ impl<E: Pairing> Zeroize for PoKBBSSignatureG1<E> {
 }
 
 impl<E: Pairing> Drop for PoKBBSSignatureG1<E> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+/// Secret data when proving knowledge of BBS sig
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct PoKBBSSignature23G1<E: Pairing> {
+    pub signature: BBSSignature23G1<E>,
+    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    pub unrevealed_messages: BTreeMap<usize, E::ScalarField>,
+}
+
+impl<E: Pairing> Zeroize for PoKBBSSignature23G1<E> {
+    fn zeroize(&mut self) {
+        self.signature.zeroize();
+        self.unrevealed_messages
+            .values_mut()
+            .for_each(|v| v.zeroize())
+    }
+}
+
+impl<E: Pairing> Drop for PoKBBSSignature23G1<E> {
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -229,6 +261,19 @@ impl<E: Pairing> PoKBBSSignatureG1<E> {
         unrevealed_messages: BTreeMap<usize, E::ScalarField>,
     ) -> Witness<E> {
         Witness::PoKBBSSignatureG1(PoKBBSSignatureG1 {
+            signature,
+            unrevealed_messages,
+        })
+    }
+}
+
+impl<E: Pairing> PoKBBSSignature23G1<E> {
+    /// Create a `Witness` variant for proving knowledge of BBS signature
+    pub fn new_as_witness(
+        signature: BBSSignature23G1<E>,
+        unrevealed_messages: BTreeMap<usize, E::ScalarField>,
+    ) -> Witness<E> {
+        Witness::PoKBBSSignature23G1(PoKBBSSignature23G1 {
             signature,
             unrevealed_messages,
         })
@@ -366,12 +411,16 @@ mod tests {
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use test_utils::{bbs_plus::sig_setup, test_serialization};
+    use test_utils::{
+        bbs::{bbs_plus_sig_setup, bbs_sig_setup},
+        test_serialization,
+    };
 
     #[test]
     fn witness_serialization_deserialization() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let (msgs, _, _, sig) = sig_setup(&mut rng, 5);
+        let (msgs, _, _, sig) = bbs_plus_sig_setup(&mut rng, 5);
+        let (msgs_23, _, _, sig_23) = bbs_sig_setup(&mut rng, 5);
 
         let mut witnesses: Witnesses<Bls12_381> = Witnesses::new();
 
@@ -416,6 +465,19 @@ mod tests {
         test_serialization!(Witness<Bls12_381>, wit_4);
 
         witnesses.add(wit_4);
+        test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+        let wit_5 = PoKBBSSignature23G1::new_as_witness(
+            sig_23,
+            msgs_23
+                .into_iter()
+                .enumerate()
+                .map(|(i, m)| (i, m))
+                .collect::<BTreeMap<usize, Fr>>(),
+        );
+        test_serialization!(Witness<Bls12_381>, wit_5);
+
+        witnesses.add(wit_5);
         test_serialization!(Witnesses<Bls12_381>, witnesses);
     }
 }

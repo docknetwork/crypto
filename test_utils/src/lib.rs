@@ -7,6 +7,6 @@ pub type G1 = <Bls12_381 as Pairing>::G1Affine;
 pub type ProofG1 = Proof<Bls12_381, G1Affine>;
 
 pub mod accumulators;
-pub mod bbs_plus;
+pub mod bbs;
 #[macro_use]
 pub mod serialization;

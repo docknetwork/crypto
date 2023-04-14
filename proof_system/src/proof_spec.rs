@@ -14,8 +14,9 @@ use ark_std::{
 };
 use bbs_plus::setup::{
     PreparedPublicKeyG2 as PreparedBBSPlusPk,
+    PreparedSignatureParams23G1 as PreparedBBSSigParams23,
     PreparedSignatureParamsG1 as PreparedBBSPlusSigParams, PublicKeyG2 as BBSPlusPk,
-    SignatureParamsG1 as BBSPlusSigParams,
+    SignatureParams23G1 as BBSSigParams23, SignatureParamsG1 as BBSPlusSigParams,
 };
 use coconut_crypto::setup::{
     PreparedPublicKey as PreparedPSPk, PreparedSignatureParams as PreparedPSSigParams,
@@ -332,6 +333,7 @@ where
             StatementDerivedParams<PreparedAccumPk<E>>,
             StatementDerivedParams<PreparedPSSigParams<E>>,
             StatementDerivedParams<PreparedPSPk<E>>,
+            StatementDerivedParams<PreparedBBSSigParams23<E>>,
         ),
         ProofSystemError,
     > {
@@ -345,6 +347,8 @@ where
             DerivedParamsTracker::<SaverVerifyingKey<E>, SaverPreparedVerifyingKey<E>, E>::new();
         let mut derived_bbs_p =
             DerivedParamsTracker::<BBSPlusSigParams<E>, PreparedBBSPlusSigParams<E>, E>::new();
+        let mut derived_bbs =
+            DerivedParamsTracker::<BBSSigParams23<E>, PreparedBBSSigParams23<E>, E>::new();
         let mut derived_bbs_pk =
             DerivedParamsTracker::<BBSPlusPk<E>, PreparedBBSPlusPk<E>, E>::new();
         let mut derived_accum_p =
@@ -359,6 +363,13 @@ where
                 Statement::PoKBBSSignatureG1(s) => {
                     let params = s.get_sig_params(&self.setup_params, s_idx)?;
                     derived_bbs_p.on_new_statement_idx(params, s_idx);
+
+                    let pk = s.get_public_key(&self.setup_params, s_idx)?;
+                    derived_bbs_pk.on_new_statement_idx(pk, s_idx);
+                }
+                Statement::PoKBBSSignature23G1(s) => {
+                    let params = s.get_sig_params(&self.setup_params, s_idx)?;
+                    derived_bbs.on_new_statement_idx(params, s_idx);
 
                     let pk = s.get_public_key(&self.setup_params, s_idx)?;
                     derived_bbs_pk.on_new_statement_idx(pk, s_idx);
@@ -416,6 +427,7 @@ where
             derived_accum_pk.finish(),
             derived_ps_p.finish(),
             derived_ps_pk.finish(),
+            derived_bbs.finish(),
         ))
     }
 }

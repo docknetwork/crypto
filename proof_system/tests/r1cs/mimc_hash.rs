@@ -25,7 +25,7 @@ use std::{
 };
 
 use crate::r1cs::abs_path;
-use test_utils::{bbs_plus::*, Fr, ProofG1};
+use test_utils::{bbs::*, Fr, ProofG1};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
@@ -39,7 +39,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     // Message index that will be hashed
     let msg_idx_to_hash = msg_count - 2;
 
-    let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
+    let (sig_params, sig_keypair, sig) = bbs_plus_sig_setup_given_messages(&mut rng, &msgs);
 
     let commit_witness_count = 1;
     // Circom code for following in tests/r1cs/circom/circuits/mimc_hash.circom

@@ -25,13 +25,13 @@ use proof_system::{
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::r1cs::abs_path;
-use test_utils::{bbs_plus::*, Fr, ProofG1};
+use test_utils::{bbs::*, Fr, ProofG1};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
     let mut rng = StdRng::seed_from_u64(0u64);
     let msg_count = 20;
-    let (msgs, sig_params, sig_keypair, sig) = sig_setup(&mut rng, msg_count);
+    let (msgs, sig_params, sig_keypair, sig) = bbs_plus_sig_setup(&mut rng, msg_count);
 
     // A public set which will not contain any of the signed messages
     let mut public_set = (0..5).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
