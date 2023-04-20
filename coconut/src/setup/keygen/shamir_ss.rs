@@ -80,8 +80,14 @@ mod shamir_ss_tests {
                         MessageCommitment::new_iter(o_m_pairs, &h, &params).collect();
                     let comm_and_blindings = m_comms
                         .iter()
+                        .copied()
                         .map(CommitmentOrMessage::BlindedMessage)
-                        .chain(reveal_msgs.iter().map(CommitmentOrMessage::RevealedMessage));
+                        .chain(
+                            reveal_msgs
+                                .iter()
+                                .copied()
+                                .map(CommitmentOrMessage::RevealedMessage),
+                        );
                     let threshold =
                         Threshold::new(1.max(authority_count / 2), authority_count).unwrap();
 

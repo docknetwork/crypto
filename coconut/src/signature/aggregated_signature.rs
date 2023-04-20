@@ -104,8 +104,14 @@ mod aggregated_signature_tests {
                         MessageCommitment::new_iter(o_m_pairs, &h, &params).collect();
                     let comms = m_comms
                         .iter()
+                        .copied()
                         .map(CommitmentOrMessage::BlindedMessage)
-                        .chain(reveal_msgs.iter().map(CommitmentOrMessage::RevealedMessage));
+                        .chain(
+                            reveal_msgs
+                                .iter()
+                                .copied()
+                                .map(CommitmentOrMessage::RevealedMessage),
+                        );
 
                     let sigs = (1..=authority_count)
                         .map(|_| {

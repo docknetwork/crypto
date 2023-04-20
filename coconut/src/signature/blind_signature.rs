@@ -6,7 +6,9 @@ use alloc::vec::Vec;
 use ark_serialize::*;
 use ark_std::cfg_into_iter;
 use itertools::{process_results, Itertools};
-use utils::join;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use utils::{join, serde_utils::ArkObjectBytes};
 
 use super::{error::BlindPSError, ps_signature::Signature};
 use crate::{
@@ -24,16 +26,24 @@ use rayon::prelude::*;
 type Result<T, E = BlindPSError> = core::result::Result<T, E>;
 
 /// Each message can be either revealed or blinded into the commitment.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommitmentOrMessage<'a, E: Pairing> {
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub enum CommitmentOrMessage<E: Pairing> {
     /// Message blinded into the commitment.
-    BlindedMessage(&'a MessageCommitment<E>),
+    BlindedMessage(MessageCommitment<E>),
     /// Revealed message.
-    RevealedMessage(&'a E::ScalarField),
+    RevealedMessage(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
 }
 
-impl<'a, E: Pairing> From<&'a MessageCommitment<E>> for CommitmentOrMessage<'a, E> {
-    fn from(commitment: &'a MessageCommitment<E>) -> Self {
+impl<E: Pairing> From<MessageCommitment<E>> for CommitmentOrMessage<E> {
+    fn from(commitment: MessageCommitment<E>) -> Self {
+        Self::BlindedMessage(commitment)
+    }
+}
+
+impl<E: Pairing> From<&'_ MessageCommitment<E>> for CommitmentOrMessage<E> {
+    fn from(&commitment: &'_ MessageCommitment<E>) -> Self {
         Self::BlindedMessage(commitment)
     }
 }
@@ -47,14 +57,14 @@ type DoubleOwnedPairs<A, B, C, D> = (ExtendSome<OwnedPairs<A, B>>, ExtendSome<Ow
 
 impl<E: Pairing> BlindSignature<E> {
     /// Creates new `BlindSignature` using supplied commitments (blinded messages) and revealed messages.
-    pub fn new<'a, CMI>(
+    pub fn new<CMI>(
         commitments_and_messages: CMI,
         SecretKey { x, y }: &SecretKey<E::ScalarField>,
         &h: &E::G1Affine,
     ) -> Result<Self>
     where
         CMI: IntoIterator,
-        CMI::Item: Into<CommitmentOrMessage<'a, E>>,
+        CMI::Item: Into<CommitmentOrMessage<E>>,
     {
         let indexed_coms_and_msgs = commitments_and_messages
             .into_iter()
@@ -62,7 +72,7 @@ impl<E: Pairing> BlindSignature<E> {
             .enumerate();
         let com_and_msg_paired_with_y = pair_with_slice(indexed_coms_and_msgs, y).map_ok(
             |(&y_i, com_or_msg)| match com_or_msg {
-                CommitmentOrMessage::BlindedMessage(com) => (None, Some((**com, y_i))),
+                CommitmentOrMessage::BlindedMessage(com) => (None, Some((*com, y_i))),
                 CommitmentOrMessage::RevealedMessage(message) => (Some((message, y_i)), None),
             },
         );
@@ -83,7 +93,7 @@ impl<E: Pairing> BlindSignature<E> {
             let (com_mul_y, m_mul_y) = join!(
                 com_y_pairs.msm(),
                 cfg_into_iter!(m_y_pairs)
-                    .map(|(&message, sec_key_y)| sec_key_y * message)
+                    .map(|(message, sec_key_y)| sec_key_y * message)
                     .sum::<E::ScalarField>()
             );
 
@@ -168,7 +178,10 @@ mod tests {
                 MessageCommitment::new_iter(blinding_msg_pairs, &h, &params).collect();
 
             let sig_blinded = BlindSignature::new(
-                comms.iter().map(CommitmentOrMessage::BlindedMessage),
+                comms
+                    .iter()
+                    .copied()
+                    .map(CommitmentOrMessage::BlindedMessage),
                 &sk,
                 &h,
             )
@@ -198,7 +211,10 @@ mod tests {
                 MessageCommitment::new_iter(blinding_msg_pairs, &h, &params).collect();
 
             let sig_blinded = BlindSignature::new(
-                comms.iter().map(CommitmentOrMessage::BlindedMessage),
+                comms
+                    .iter()
+                    .copied()
+                    .map(CommitmentOrMessage::BlindedMessage),
                 &sk,
                 &h,
             )
@@ -232,7 +248,9 @@ mod tests {
             let h = G1::rand(&mut rng).into_affine();
 
             let sig_blinded = BlindSignature::new(
-                msgs.iter().map(CommitmentOrMessage::RevealedMessage),
+                msgs.iter()
+                    .copied()
+                    .map(CommitmentOrMessage::RevealedMessage),
                 &sk,
                 &h,
             )
@@ -269,11 +287,12 @@ mod tests {
 
             let com_and_msgs = com_msgs
                 .iter()
+                .copied()
                 .map(CommitmentOrMessage::BlindedMessage)
                 .interleave(
                     reveal_msgs
                         .into_iter()
-                        .map(|(_, msg)| msg)
+                        .map(|(_, msg)| *msg)
                         .map(CommitmentOrMessage::RevealedMessage),
                 );
 
@@ -309,7 +328,10 @@ mod tests {
                 MessageCommitment::new_iter(blinding_msg_pairs, &h, &params).collect();
 
             let sig_blinded = BlindSignature::new(
-                comms.iter().map(CommitmentOrMessage::BlindedMessage),
+                comms
+                    .iter()
+                    .copied()
+                    .map(CommitmentOrMessage::BlindedMessage),
                 &sk,
                 &h,
             )
@@ -336,6 +358,7 @@ mod tests {
             assert!(BlindSignature::<Bls12_381>::new(
                 invalid_msgs
                     .iter()
+                    .copied()
                     .map(CommitmentOrMessage::RevealedMessage),
                 &sk,
                 &h,

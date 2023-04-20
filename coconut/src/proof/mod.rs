@@ -1,7 +1,6 @@
 //! Proofs of knowledge for the signature and messages.
 
 use alloc::vec::Vec;
-use core::borrow::Borrow;
 
 pub mod messages_pok;
 pub mod signature_pok;
@@ -10,7 +9,6 @@ use ark_ff::PrimeField;
 
 use ark_std::rand::RngCore;
 
-use ark_serialize::*;
 use itertools::process_results;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -24,26 +22,25 @@ use crate::helpers::{pair_with_slice, rand, IndexIsOutOfBounds};
 /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
 /// By default, a message is blinded with random blinding.
 #[serde_as]
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "M: CanonicalSerialize"))]
-#[serde(bound(deserialize = "M: CanonicalDeserialize"))]
-pub enum CommitMessage<M: Borrow<F>, F: PrimeField> {
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub enum CommitMessage<F: PrimeField> {
     /// Message will be randomly blinded into the commitment.
-    BlindMessageRandomly(#[serde_as(as = "ArkObjectBytes")] M),
+    BlindMessageRandomly(#[serde_as(as = "ArkObjectBytes")] F),
     /// Message will be revealed, and thus won't be included in PoK.
     RevealMessage,
     /// Message will be blinded into the commitment with the supplied blinding.
     BlindMessageWithConcreteBlinding {
         #[serde_as(as = "ArkObjectBytes")]
-        message: M,
+        message: F,
         #[serde_as(as = "ArkObjectBytes")]
         blinding: F,
     },
 }
 
-impl<M: Borrow<F>, F: PrimeField> CommitMessage<M, F> {
+impl<F: PrimeField> CommitMessage<F> {
     /// Splits blinded message into the message and blinding, returns `None` for the revealed message.
-    pub fn split<R: RngCore>(self, rng: &mut R) -> Option<(M, F)> {
+    pub fn split<R: RngCore>(self, rng: &mut R) -> Option<(F, F)> {
         match self {
             Self::BlindMessageRandomly(message) => Some((message, rand(rng))),
             Self::BlindMessageWithConcreteBlinding { message, blinding } => {
@@ -54,31 +51,31 @@ impl<M: Borrow<F>, F: PrimeField> CommitMessage<M, F> {
     }
 
     /// Blinds given `message` using supplied `blinding`.
-    pub fn blind_message_with(message: M, blinding: F) -> Self {
+    pub fn blind_message_with(message: F, blinding: F) -> Self {
         Self::BlindMessageWithConcreteBlinding { message, blinding }
     }
 }
 
-impl<F: PrimeField> From<F> for CommitMessage<F, F> {
+impl<F: PrimeField> From<F> for CommitMessage<F> {
     fn from(message: F) -> Self {
         Self::BlindMessageRandomly(message)
     }
 }
 
-impl<F: PrimeField> From<&'_ F> for CommitMessage<F, F> {
+impl<F: PrimeField> From<&'_ F> for CommitMessage<F> {
     fn from(&message: &'_ F) -> Self {
         Self::BlindMessageRandomly(message)
     }
 }
 
-impl<M: Borrow<F>, F: PrimeField> From<(M, F)> for CommitMessage<M, F> {
-    fn from((message, blinding): (M, F)) -> Self {
+impl<F: PrimeField> From<(F, F)> for CommitMessage<F> {
+    fn from((message, blinding): (F, F)) -> Self {
         Self::BlindMessageWithConcreteBlinding { message, blinding }
     }
 }
 
-impl<M: Borrow<F>, F: PrimeField> From<(M, Option<F>)> for CommitMessage<M, F> {
-    fn from((message, blinding): (M, Option<F>)) -> Self {
+impl<F: PrimeField> From<(F, Option<F>)> for CommitMessage<F> {
+    fn from((message, blinding): (F, Option<F>)) -> Self {
         if let Some(blinding) = blinding {
             Self::BlindMessageWithConcreteBlinding { message, blinding }
         } else {
@@ -87,7 +84,7 @@ impl<M: Borrow<F>, F: PrimeField> From<(M, Option<F>)> for CommitMessage<M, F> {
     }
 }
 
-impl<F: PrimeField> From<Option<F>> for CommitMessage<F, F> {
+impl<F: PrimeField> From<Option<F>> for CommitMessage<F> {
     fn from(opt: Option<F>) -> Self {
         match opt {
             Some(msg) => Self::BlindMessageRandomly(msg),
@@ -96,28 +93,28 @@ impl<F: PrimeField> From<Option<F>> for CommitMessage<F, F> {
     }
 }
 
-impl<F: PrimeField> From<CommitMessage<&'_ F, F>> for CommitMessage<F, F> {
-    fn from(com_msg: CommitMessage<&'_ F, F>) -> Self {
-        match com_msg {
-            CommitMessage::BlindMessageRandomly(&msg) => Self::BlindMessageRandomly(msg),
-            CommitMessage::RevealMessage => Self::RevealMessage,
-            CommitMessage::BlindMessageWithConcreteBlinding { message, blinding } => {
-                Self::BlindMessageWithConcreteBlinding {
-                    message: *message,
-                    blinding,
-                }
-            }
+impl<F: PrimeField> From<Option<&'_ F>> for CommitMessage<F> {
+    fn from(opt: Option<&'_ F>) -> Self {
+        match opt {
+            Some(&msg) => Self::BlindMessageRandomly(msg),
+            None => Self::RevealMessage,
         }
     }
 }
 
-impl<F: PrimeField> From<(&'_ F, F)> for CommitMessage<F, F> {
+impl<F: PrimeField> From<(&'_ F, F)> for CommitMessage<F> {
     fn from((&message, blinding): (&'_ F, F)) -> Self {
         Self::BlindMessageWithConcreteBlinding { message, blinding }
     }
 }
 
-impl<F: PrimeField> From<(&'_ F, Option<F>)> for CommitMessage<F, F> {
+impl<F: PrimeField> From<(&'_ F, &'_ F)> for CommitMessage<F> {
+    fn from((&message, &blinding): (&'_ F, &'_ F)) -> Self {
+        Self::BlindMessageWithConcreteBlinding { message, blinding }
+    }
+}
+
+impl<F: PrimeField> From<(&'_ F, Option<F>)> for CommitMessage<F> {
     fn from((&message, blinding): (&'_ F, Option<F>)) -> Self {
         if let Some(blinding) = blinding {
             Self::BlindMessageWithConcreteBlinding { message, blinding }
@@ -127,11 +124,12 @@ impl<F: PrimeField> From<(&'_ F, Option<F>)> for CommitMessage<F, F> {
     }
 }
 
-impl<F: PrimeField> From<Option<&'_ F>> for CommitMessage<F, F> {
-    fn from(opt: Option<&'_ F>) -> Self {
-        match opt {
-            Some(&msg) => Self::BlindMessageRandomly(msg),
-            None => Self::RevealMessage,
+impl<F: PrimeField> From<(&'_ F, Option<&'_ F>)> for CommitMessage<F> {
+    fn from((&message, blinding): (&'_ F, Option<&'_ F>)) -> Self {
+        if let Some(blinding) = blinding.copied() {
+            Self::BlindMessageWithConcreteBlinding { message, blinding }
+        } else {
+            Self::BlindMessageRandomly(message)
         }
     }
 }
@@ -161,7 +159,7 @@ impl<'pair, Pair, F: PrimeField> UnpackedBlindedMessages<'pair, Pair, F> {
     /// messages and blindings. Each collection has one item per message.
     pub fn new(
         rng: &mut impl RngCore,
-        messages: impl IntoIterator<Item = impl Into<CommitMessage<F, F>>>,
+        messages: impl IntoIterator<Item = impl Into<CommitMessage<F>>>,
         pair_with: &'pair [Pair],
     ) -> Result<Self, MessageUnpackingError> {
         let mut total_count = 0;

@@ -1015,9 +1015,9 @@ fn requesting_partially_blind_ps_sig() {
     let mut coms_iter = commitments.iter();
     let messages = (0..total_msg_count).map(|i| {
         if committed_indices.contains(&i) {
-            CommitmentOrMessage::BlindedMessage(coms_iter.next().unwrap())
+            CommitmentOrMessage::BlindedMessage(*coms_iter.next().unwrap())
         } else {
-            CommitmentOrMessage::RevealedMessage(&msgs[i])
+            CommitmentOrMessage::RevealedMessage(msgs[i])
         }
     });
 

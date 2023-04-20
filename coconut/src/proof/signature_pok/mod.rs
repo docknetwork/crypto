@@ -58,7 +58,7 @@ impl<E: Pairing> SignaturePoKGenerator<E> {
     ) -> Result<SignaturePoKGenerator<E>>
     where
         MI: IntoIterator,
-        MI::Item: Into<CommitMessage<E::ScalarField, E::ScalarField>>,
+        MI::Item: Into<CommitMessage<E::ScalarField>>,
     {
         let UnpackedBlindedMessages(beta_tilde, messages, blindings) =
             UnpackedBlindedMessages::new(rng, messages, &pk.beta_tilde)?;
@@ -203,7 +203,7 @@ mod tests {
                 &mut rng,
                 blind_msgs
                     .iter()
-                    .map(|(_, msg)| *msg)
+                    .map(|(_, msg)| **msg)
                     .map(CommitMessage::BlindMessageRandomly)
                     .interleave(reveal_msgs.iter().map(|_| CommitMessage::RevealMessage)),
                 &sig,
@@ -240,6 +240,7 @@ mod tests {
                 &mut rng,
                 msgs.iter()
                     .cycle()
+                    .copied()
                     .enumerate()
                     .map(|(idx, msg)| if idx % 2 == 0 {
                         CommitMessage::BlindMessageRandomly(msg)
@@ -275,6 +276,7 @@ mod tests {
                 &mut rng,
                 msgs.iter()
                     .cycle()
+                    .copied()
                     .enumerate()
                     .map(|(idx, msg)| if idx % 2 == 0 {
                         CommitMessage::BlindMessageRandomly(msg)
@@ -310,7 +312,7 @@ mod tests {
                 &mut rng,
                 blind_msgs
                     .iter()
-                    .map(|(_, msg)| *msg)
+                    .map(|(_, msg)| **msg)
                     .map(CommitMessage::BlindMessageRandomly)
                     .interleave(reveal_msgs.iter().map(|_| CommitMessage::RevealMessage)),
                 &sig,
@@ -398,7 +400,12 @@ mod tests {
             let comms = reveal_msgs
                 .iter()
                 .map(|_| CommitMessage::RevealMessage)
-                .chain(blind_msgs.iter().map(CommitMessage::BlindMessageRandomly));
+                .chain(
+                    blind_msgs
+                        .iter()
+                        .copied()
+                        .map(CommitMessage::BlindMessageRandomly),
+                );
             let reveal_indices = 0..reveal_msgs.len();
             let committed_msg_indices = message_count / 2..msgs.len();
 
