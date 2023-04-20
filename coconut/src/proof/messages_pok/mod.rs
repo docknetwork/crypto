@@ -40,6 +40,7 @@ use witnesses::*;
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct MessagesPoKGenerator<E: Pairing> {
     /// `com = g * o + \sum_{i}(h_{i} * m_{i})`
     com: WithSchnorrAndBlindings<E::G1Affine, MultiMessageCommitment<E>>,
@@ -62,7 +63,7 @@ impl<E: Pairing> MessagesPoKGenerator<E> {
     ) -> Result<Self>
     where
         CMI: IntoIterator,
-        CMI::Item: Into<CommitMessage<E::ScalarField, E::ScalarField>>,
+        CMI::Item: Into<CommitMessage<E::ScalarField>>,
     {
         let UnpackedBlindedMessages(h_arr, messages, blindings) =
             UnpackedBlindedMessages::new(rng, messages_to_commit, &params.h)?;
@@ -254,7 +255,7 @@ mod tests {
 
             let pok = MessagesPoKGenerator::init(
                 &mut rng,
-                messages.iter().enumerate().map(|(idx, msg)| {
+                messages.iter().copied().enumerate().map(|(idx, msg)| {
                     if idx % 2 == 0 {
                         CommitMessage::RevealMessage
                     } else {
@@ -302,6 +303,7 @@ mod tests {
                 messages
                     .iter()
                     .cycle()
+                    .copied()
                     .enumerate()
                     .map(|(idx, msg)| if idx % 2 == 0 {
                         CommitMessage::BlindMessageRandomly(msg)
@@ -337,6 +339,7 @@ mod tests {
                 messages
                     .iter()
                     .cycle()
+                    .copied()
                     .enumerate()
                     .map(|(idx, msg)| if idx % 2 == 0 {
                         CommitMessage::BlindMessageRandomly(msg)
@@ -366,13 +369,15 @@ mod tests {
 
             let pok = MessagesPoKGenerator::init(
                 &mut rng,
-                messages.iter().enumerate().map(|(idx, msg)| {
-                    if idx % 2 == 0 {
-                        CommitMessage::RevealMessage
-                    } else {
-                        CommitMessage::BlindMessageRandomly(msg)
-                    }
-                }),
+                messages.iter().enumerate().map(
+                    |(idx, msg)| {
+                        if idx % 2 == 0 {
+                            None
+                        } else {
+                            Some(msg)
+                        }
+                    },
+                ),
                 &params,
                 &h,
             )
@@ -410,12 +415,12 @@ mod tests {
 
             let pok = MessagesPoKGenerator::init(
                 &mut rng,
-                messages
-                    .iter()
-                    .map(|message| CommitMessage::BlindMessageWithConcreteBlinding {
+                messages.iter().copied().map(|message| {
+                    CommitMessage::BlindMessageWithConcreteBlinding {
                         message,
                         blinding: Fr::one(),
-                    }),
+                    }
+                }),
                 &params,
                 &h,
             )
@@ -444,12 +449,12 @@ mod tests {
 
         let pok = MessagesPoKGenerator::init(
             &mut rng,
-            messages
-                .iter()
-                .map(|message| CommitMessage::BlindMessageWithConcreteBlinding {
+            messages.iter().copied().map(|message| {
+                CommitMessage::BlindMessageWithConcreteBlinding {
                     message,
                     blinding: Fr::one(),
-                }),
+                }
+            }),
             &params,
             &h,
         )
@@ -482,12 +487,12 @@ mod tests {
 
         let pok = MessagesPoKGenerator::init(
             &mut rng,
-            messages
-                .iter()
-                .map(|message| CommitMessage::BlindMessageWithConcreteBlinding {
+            messages.iter().copied().map(|message| {
+                CommitMessage::BlindMessageWithConcreteBlinding {
                     message,
                     blinding: Fr::one(),
-                }),
+                }
+            }),
             &params,
             &h,
         )
@@ -520,12 +525,12 @@ mod tests {
 
         let pok = MessagesPoKGenerator::init(
             &mut rng,
-            messages
-                .iter()
-                .map(|message| CommitMessage::BlindMessageWithConcreteBlinding {
+            messages.iter().copied().map(|message| {
+                CommitMessage::BlindMessageWithConcreteBlinding {
                     message,
                     blinding: Fr::one(),
-                }),
+                }
+            }),
             &params,
             &h,
         )

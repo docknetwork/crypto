@@ -36,6 +36,7 @@ fn construction_pac_workflow() {
             let (blind_msgs, reveal_msgs) = msgs.split_at(blind_message_count);
             let comms = blind_msgs
                 .iter()
+                .copied()
                 .map(CommitMessage::BlindMessageRandomly)
                 .chain(reveal_msgs.iter().map(|_| CommitMessage::RevealMessage));
             let blind_indices = 0..blind_msgs.len();
@@ -67,8 +68,14 @@ fn construction_pac_workflow() {
             // https://eprint.iacr.org/2022/011.pdf 7.3
             let m_comms = proof
                 .commitments()
+                .copied()
                 .map(CommitmentOrMessage::BlindedMessage)
-                .chain(reveal_msgs.iter().map(CommitmentOrMessage::RevealedMessage));
+                .chain(
+                    reveal_msgs
+                        .iter()
+                        .copied()
+                        .map(CommitmentOrMessage::RevealedMessage),
+                );
             let blind_signature = BlindSignature::new(m_comms, &sk, &h).unwrap();
 
             let sig = blind_signature
