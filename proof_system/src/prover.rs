@@ -21,7 +21,8 @@ use crate::{
     statement_proof::StatementProof,
     sub_protocols::{
         accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol},
-        bbs_plus::PoKBBSSigG1SubProtocol,
+        bbs_23::PoKBBSSigG1SubProtocol,
+        bbs_plus::PoKBBSSigG1SubProtocol as PoKBBSPlusSigG1SubProtocol,
         bound_check_legogroth16::BoundCheckProtocol,
         r1cs_legogorth16::R1CSLegogroth16Protocol,
         saver::SaverProtocol,
@@ -155,7 +156,7 @@ where
                         }
                         let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let mut sp = PoKBBSSigG1SubProtocol::new(
+                        let mut sp = PoKBBSPlusSigG1SubProtocol::new(
                             s_idx,
                             &s.revealed_messages,
                             sig_params,
@@ -163,6 +164,35 @@ where
                         );
                         sp.init(rng, blindings_map, w)?;
                         sub_protocols.push(SubProtocol::PoKBBSSignatureG1(sp));
+                    }
+                    _ => {
+                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", witness),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
+                Statement::PoKBBSSignature23G1(s) => match witness {
+                    Witness::PoKBBSSignature23G1(w) => {
+                        // Prepare blindings for this BBS+ signature proof
+                        let mut blindings_map = BTreeMap::new();
+                        for k in w.unrevealed_messages.keys() {
+                            match blindings.remove(&(s_idx, *k)) {
+                                Some(b) => blindings_map.insert(*k, b),
+                                None => None,
+                            };
+                        }
+                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = PoKBBSSigG1SubProtocol::new(
+                            s_idx,
+                            &s.revealed_messages,
+                            sig_params,
+                            pk,
+                        );
+                        sp.init(rng, blindings_map, w)?;
+                        sub_protocols.push(SubProtocol::PoKBBSSignature23G1(sp));
                     }
                     _ => {
                         return Err(ProofSystemError::WitnessIncompatibleWithStatement(

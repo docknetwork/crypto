@@ -7,6 +7,8 @@ use ark_std::{
 use serde::{Deserialize, Serialize};
 
 pub mod accumulator;
+pub mod bbs_23;
+#[macro_use]
 pub mod bbs_plus;
 pub mod bound_check_legogroth16;
 pub mod ped_comm;
@@ -42,6 +44,8 @@ pub enum Statement<E: Pairing, G: AffineRepr> {
     R1CSCircomVerifier(r1cs_legogroth16::R1CSCircomVerifier<E>),
     /// For proof of knowledge of Pointcheval-Sanders signature.
     PoKPSSignature(ps_signature::PoKPSSignatureStatement<E>),
+    /// For proof of knowledge of BBS signature
+    PoKBBSSignature23G1(bbs_23::PoKBBSSignature23G1<E>),
 }
 
 /// A collection of statements
@@ -91,7 +95,8 @@ macro_rules! delegate {
                 BoundCheckLegoGroth16Verifier,
                 R1CSCircomProver,
                 R1CSCircomVerifier,
-                PoKPSSignature
+                PoKPSSignature,
+                PoKBBSSignature23G1
             : $($tt)+
         }
     }}
@@ -111,7 +116,8 @@ macro_rules! delegate_reverse {
                 BoundCheckLegoGroth16Verifier,
                 R1CSCircomProver,
                 R1CSCircomVerifier,
-                PoKPSSignature
+                PoKPSSignature,
+                PoKBBSSignature23G1
             : $($tt)+
         }
 
@@ -179,7 +185,7 @@ mod tests {
     };
     use test_utils::{
         accumulators::{setup_positive_accum, setup_universal_accum},
-        bbs_plus::sig_setup,
+        bbs::{bbs_plus_sig_setup, bbs_sig_setup},
         test_serialization,
     };
     use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
@@ -187,7 +193,8 @@ mod tests {
     #[test]
     fn statement_serialization_deserialization() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let (_, params_1, keypair_1, _) = sig_setup(&mut rng, 5);
+        let (_, params_1, keypair_1, _) = bbs_plus_sig_setup(&mut rng, 5);
+        let (_, params_23, keypair_23, _) = bbs_sig_setup(&mut rng, 5);
         let (pos_params, pos_keypair, pos_accumulator, _) = setup_positive_accum(&mut rng);
         let (uni_params, uni_keypair, uni_accumulator, _, _) = setup_universal_accum(&mut rng, 100);
         let mem_prk =
@@ -245,6 +252,16 @@ mod tests {
         test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_4);
 
         statements.add(stmt_4);
+        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
+
+        let stmt_5 = bbs_23::PoKBBSSignature23G1::new_statement_from_params(
+            params_23,
+            keypair_23.public_key.clone(),
+            BTreeMap::new(),
+        );
+        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_5);
+
+        statements.add(stmt_5);
         test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
     }
 }

@@ -8,7 +8,9 @@
 //! ```
 //! use ark_bls12_381::Bls12_381;
 //! use blake2::Blake2b512;
-//! use bbs_plus::setup::{SignatureParamsG1, SignatureParamsG2, KeypairG1, KeypairG2};
+//! use bbs_plus::setup::{SignatureParamsG1, SignatureParamsG2, KeypairG1, KeypairG2, PublicKeyG2, SignatureParams23G1};
+//!
+//! // For BBS+ signatures
 //!
 //! let params_g1 = SignatureParamsG1::<Bls12_381>::generate_using_rng(&mut rng, 5);
 //! let params_g2 = SignatureParamsG2::<Bls12_381>::generate_using_rng(&mut rng, 5);
@@ -21,11 +23,27 @@
 //! // Generate keypair using a secret `seed`. The same seed will return same keypair. The seed
 //! // is hashed (along with other things) using the given hash function, the example below use Blake2b512
 //! // let seed: &[u8] = <Some secret seed>
-//! let keypair_g21 = KeypairG2::<Bls12_381>::generate_using_seed::<Blake2b512>(seed, &params);
+//! let keypair_g21 = KeypairG2::<Bls12_381>::generate_using_seed::<Blake2b512>(seed, &params_g1);
+//!
+//! // public and secret key from `Keypair`
+//! let sk = keypair_g2.secret_key;
+//! let pk = keypair_g2.public_key;
 //!
 //! // Another way to generate keypair is
 //! let sk = SecretKey::generate_using_seed::<Blake2b512>(&seed);
-//! let pk = KeypairG2::public_key_from_secret_key(&sk, &params);
+//! let pk = PublicKeyG2::public_key_from_secret_key(&sk, &params_g1);
+//! KeypairG2 {secret_key: sk, public_key: pk}
+//!
+//! // For BBS signatures
+//!
+//! // For BBS, sig params are `SignatureParams23G1` but public key is `PublicKeyG2`
+//! let params = SignatureParams23G1::<Bls12_381>::generate_using_rng(&mut rng, 5);
+//! let params_1 = SignatureParams23G1::<Bls12_381>::new::<Blake2b512>(&[1, 2, 3, 4], 5);
+//!
+//! let keypair = KeypairG2::<Bls12_381>::generate_using_rng_and_bbs23_params(&mut rng, &params);
+//! let keypair_1 = KeypairG2::<Bls12_381>::generate_using_seed_and_bbs23_params::<Blake2b512>(seed, &params);
+//!
+//! let pk = PublicKeyG2::generate_using_secret_key_and_bbs23_params(&sk, &params);
 //! KeypairG2 {secret_key: sk, public_key: pk}
 //! ```
 
@@ -329,13 +347,6 @@ macro_rules! impl_public_key {
         where
             E: Pairing,
         {
-            /*/// Generate public key from given secret key and signature parameter g_2
-            pub fn generate_using_secret_key(
-                secret_key: &SecretKey<E::ScalarField>,
-                params: &$params<E>,
-            ) -> Self {
-                Self(params.g2.mul_bigint(secret_key.0.into_bigint()).into())
-            }*/
             impl_public_key_generation!(generate_using_secret_key, $params);
 
             /// Public key shouldn't be 0. A verifier on receiving this must first check that its

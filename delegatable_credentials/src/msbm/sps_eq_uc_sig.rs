@@ -20,7 +20,7 @@ use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
     mercurial_sig::Signature as MercurialSig,

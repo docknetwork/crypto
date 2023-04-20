@@ -187,8 +187,11 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
             CanonicalDeserialize,
             Serialize,
             Deserialize,
+            Zeroize,
+            ZeroizeOnDrop,
         )]
         pub struct $protocol_name<G: AffineRepr> {
+            #[zeroize(skip)]
             #[serde_as(as = "ArkObjectBytes")]
             pub t: G,
             #[serde_as(as = "ArkObjectBytes")]
@@ -254,20 +257,6 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
                 base.serialize_compressed(&mut writer)?;
                 y.serialize_compressed(&mut writer)?;
                 t.serialize_compressed(writer).map_err(|e| e.into())
-            }
-        }
-
-        impl<G: AffineRepr> Zeroize for $protocol_name<G> {
-            fn zeroize(&mut self) {
-                // Not zeroizing `self.t` as its public
-                self.blinding.zeroize();
-                self.witness.zeroize();
-            }
-        }
-
-        impl<G: AffineRepr> Drop for $protocol_name<G> {
-            fn drop(&mut self) {
-                self.zeroize();
             }
         }
 

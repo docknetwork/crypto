@@ -6,6 +6,7 @@ use crate::{
     statement_proof::StatementProof,
     sub_protocols::{
         accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol},
+        bbs_23::PoKBBSSigG1SubProtocol as PoKBBSSig23G1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol,
         bound_check_legogroth16::BoundCheckProtocol,
         ps_signature::PSSignaturePoK,
@@ -113,12 +114,13 @@ where
             derived_gens,
             derived_ek,
             derived_saver_vk,
-            derived_bbs_param,
+            derived_bbs_plus_param,
             derived_bbs_pk,
             derived_accum_param,
             derived_accum_pk,
             derived_ps_param,
             derived_ps_pk,
+            derived_bbs_param,
         ) = proof_spec.derive_prepared_parameters()?;
 
         // All the distinct equalities in `ProofSpec`
@@ -156,6 +158,40 @@ where
             match statement {
                 Statement::PoKBBSSignatureG1(s) => match proof {
                     StatementProof::PoKBBSSignatureG1(p) => {
+                        let revealed_msg_ids = s.revealed_messages.keys().copied().collect();
+                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
+                        // Check witness equalities for this statement.
+                        for i in 0..sig_params.supported_message_count() {
+                            let w_ref = (s_idx, i);
+                            for j in 0..witness_equalities.len() {
+                                if witness_equalities[j].contains(&w_ref) {
+                                    let resp = p.get_resp_for_message(i, &revealed_msg_ids)?;
+                                    Self::check_response_for_equality(
+                                        s_idx,
+                                        i,
+                                        j,
+                                        &mut responses_for_equalities,
+                                        resp,
+                                    )?;
+                                }
+                            }
+                        }
+                        p.challenge_contribution(
+                            &s.revealed_messages,
+                            sig_params,
+                            &mut challenge_bytes,
+                        )?;
+                    }
+                    _ => {
+                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", proof),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
+                Statement::PoKBBSSignature23G1(s) => match proof {
+                    StatementProof::PoKBBSSignature23G1(p) => {
                         let revealed_msg_ids = s.revealed_messages.keys().copied().collect();
                         let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
                         // Check witness equalities for this statement.
@@ -525,6 +561,32 @@ where
                         let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
                         let sp = PoKBBSSigG1SubProtocol::new(
+                            s_idx,
+                            &s.revealed_messages,
+                            sig_params,
+                            pk,
+                        );
+                        sp.verify_proof_contribution(
+                            &challenge,
+                            p,
+                            derived_bbs_pk.get(s_idx).unwrap().clone(),
+                            derived_bbs_plus_param.get(s_idx).unwrap().clone(),
+                            &mut pairing_checker,
+                        )?
+                    }
+                    _ => {
+                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                            s_idx,
+                            format!("{:?}", proof),
+                            format!("{:?}", s),
+                        ))
+                    }
+                },
+                Statement::PoKBBSSignature23G1(s) => match proof {
+                    StatementProof::PoKBBSSignature23G1(ref p) => {
+                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = PoKBBSSig23G1SubProtocol::new(
                             s_idx,
                             &s.revealed_messages,
                             sig_params,

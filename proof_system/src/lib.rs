@@ -96,13 +96,13 @@
 //! call other [`SubProtocol`]s, eg [`SaverProtocol`] invokes several [`SchnorrProtocol`]s
 //!
 //! Currently supports
-//! - proof of knowledge of a BBS+ signature and signed messages
-//! - proof of knowledge of multiple BBS+ signature and equality of certain messages
+//! - proof of knowledge of a BBS or BBS+ signature and signed messages
+//! - proof of knowledge of multiple BBS or BBS+ signature and equality of certain messages
 //! - proof of knowledge of accumulator membership and non-membership
 //! - proof of knowledge of Pedersen commitment opening.
-//! - proof of knowledge of BBS+ signature(s) and that certain message(s) satisfy given bounds (range proof)
-//! - verifiable encryption of messages in a BBS+ signature
-//! - proof of knowledge of BBS+ signature(s) and that certain message(s) satisfy given R1CS. The R1CS is generated
+//! - proof of knowledge of BBS or BBS+ signature(s) and that certain message(s) satisfy given bounds (range proof)
+//! - verifiable encryption of messages in a BBS or BBS+ signature
+//! - proof of knowledge of BBS or BBS+ signature(s) and that certain message(s) satisfy given R1CS. The R1CS is generated
 //!   from [Circom](https://github.com/iden3/circom) and the proof system used is [LegoGroth16](https://github.com/lovesh/legogro16).
 //!   LegoGroth16 is similar to Groth16 but in addition to the zero knowledge proof, it provides a Pedersen
 //!   commitment to the witness (signed messages in our case). This commitment allows us to prove that the witness in

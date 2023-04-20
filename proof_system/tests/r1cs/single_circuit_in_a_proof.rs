@@ -27,7 +27,7 @@ use proof_system::{
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::r1cs::get_r1cs_and_wasm_bytes;
-use test_utils::{bbs_plus::*, test_serialization, Fr, ProofG1, G1};
+use test_utils::{bbs::*, test_serialization, Fr, ProofG1, G1};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
@@ -38,7 +38,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     let msg_count = 5;
     let msgs: Vec<Fr> = (0..msg_count).map(|_| Fr::rand(&mut rng)).collect();
 
-    let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
+    let (sig_params, sig_keypair, sig) = bbs_plus_sig_setup_given_messages(&mut rng, &msgs);
 
     // A random value with which inequality will be proved. This will be public.
     let a_random_value = Fr::rand(&mut rng);
@@ -221,14 +221,14 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     let mut msgs_1: Vec<Fr> = (0..msg_count_1).map(|_| Fr::rand(&mut rng)).collect();
     msgs_1[1] = Fr::from(100u64);
     msgs_1[3] = Fr::from(300u64);
-    let (sig_params_1, sig_keypair_1, sig_1) = sig_setup_given_messages(&mut rng, &msgs_1);
+    let (sig_params_1, sig_keypair_1, sig_1) = bbs_plus_sig_setup_given_messages(&mut rng, &msgs_1);
 
     // 2nd BBS+ sig
     let msg_count_2 = 10;
     let mut msgs_2: Vec<Fr> = (0..msg_count_2).map(|_| Fr::rand(&mut rng)).collect();
     msgs_2[4] = Fr::from(50u64);
     msgs_2[5] = Fr::from(200u64);
-    let (sig_params_2, sig_keypair_2, sig_2) = sig_setup_given_messages(&mut rng, &msgs_2);
+    let (sig_params_2, sig_keypair_2, sig_2) = bbs_plus_sig_setup_given_messages(&mut rng, &msgs_2);
 
     let commit_witness_count = 2;
     // Circom code for following in tests/r1cs/circom/circuits/less_than_32.circom
@@ -639,7 +639,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         .map(|i| Fr::from((100 + i) * 10_u64))
         .collect();
 
-    let (sig_params, sig_keypair, sig) = sig_setup_given_messages(&mut rng, &msgs);
+    let (sig_params, sig_keypair, sig) = bbs_plus_sig_setup_given_messages(&mut rng, &msgs);
 
     let msg_1_idx = 1;
     let msg_2_idx = 3;

@@ -7,7 +7,10 @@
 
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::vec::Vec;
-use bbs_plus::prelude::{PublicKeyG2 as BBSPublicKeyG2, SignatureParamsG1 as BBSSignatureParamsG1};
+use bbs_plus::prelude::{
+    PublicKeyG2 as BBSPublicKeyG2, SignatureParams23G1 as BBSSignatureParams23G1,
+    SignatureParamsG1 as BBSSignatureParamsG1,
+};
 use legogroth16::{
     circom::R1CS,
     data_structures::{ProvingKey as LegoSnarkProvingKey, VerifyingKey as LegoSnarkVerifyingKey},
@@ -49,6 +52,7 @@ pub enum SetupParams<E: Pairing, G: AffineRepr> {
     FieldElemVec(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
     PSSignatureParams(coconut_crypto::setup::SignatureParams<E>),
     PSSignaturePublicKey(coconut_crypto::setup::PublicKey<E>),
+    BBSSignatureParams23(BBSSignatureParams23G1<E>),
 }
 
 macro_rules! delegate {
@@ -73,7 +77,8 @@ macro_rules! delegate {
                 Bytes,
                 FieldElemVec,
                 PSSignatureParams,
-                PSSignaturePublicKey
+                PSSignaturePublicKey,
+                BBSSignatureParams23
             : $($tt)+
         }
     }};
@@ -101,7 +106,8 @@ macro_rules! delegate_reverse {
                 Bytes,
                 FieldElemVec,
                 PSSignatureParams,
-                PSSignaturePublicKey
+                PSSignaturePublicKey,
+                BBSSignatureParams23
             : $($tt)+
         }
 
