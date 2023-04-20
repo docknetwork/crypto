@@ -6,8 +6,8 @@ use crate::pairs::Pairs;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::*;
-use itertools::{process_results, Itertools};
-use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+
+use serde::{de::Error, Deserializer, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 use zeroize::Zeroize;
 
