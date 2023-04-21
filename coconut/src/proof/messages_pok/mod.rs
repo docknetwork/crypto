@@ -52,7 +52,7 @@ pub struct MessagesPoKGenerator<E: Pairing> {
 type Result<T, E = MessagesPoKError> = core::result::Result<T, E>;
 
 impl<E: Pairing> MessagesPoKGenerator<E> {
-    /// Initializes Commitments Proof of Knowledge generator with supplied params.
+    /// Initializes Proof of Knowledge of messages generator with supplied params.
     /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
     /// By default, a message is blinded with random blinding.
     pub fn init<CMI, R: RngCore>(
