@@ -52,7 +52,7 @@ pub struct MessagesPoKGenerator<E: Pairing> {
 type Result<T, E = MessagesPoKError> = core::result::Result<T, E>;
 
 impl<E: Pairing> MessagesPoKGenerator<E> {
-    /// Initializes Proof of Knowledge of messages generator with supplied params.
+    /// Initializes generator of Proof of Knowledge of messages with supplied params.
     /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
     /// By default, a message is blinded with random blinding.
     pub fn init<CMI, R: RngCore>(
@@ -75,7 +75,7 @@ impl<E: Pairing> MessagesPoKGenerator<E> {
         // Create new randomness `o` and capture `blindings`, `g`, and `h` from signature params.
         let com_randomness =
             MultiMessageCommitmentRandomness::<E>::init(rng, h_blinging_pairs, &params.g);
-        // Create new randomness `o` and captures `blindings` along with `h`, and `g` from signature params.
+        // Create new randomnesses `o` and captures `blindings` along with `h`, and `g` from signature params.
         let com_j_randomness = MessageCommitmentRandomness::init(rng, &blindings, h, params);
 
         let MessagesPoKWitnesses { o, o_m_pairs } = &witnesses;

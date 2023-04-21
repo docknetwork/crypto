@@ -45,7 +45,7 @@ pub struct SignaturePoKGenerator<E: Pairing> {
 }
 
 impl<E: Pairing> SignaturePoKGenerator<E> {
-    /// Initializes `SignaturePoK` generator using supplied params.
+    /// Initializes generator of Proof of Knowledge of signature with supplied params.
     /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
     /// By default, a message is blinded with random blinding.
     /// Signature will be randomized and **must be** verified later using generated `k`.
