@@ -21,7 +21,6 @@ impl AsCanonical {
         x.serialize_compressed(&mut bytes)
             .map_err(serde::ser::Error::custom)?;
         Serialize::serialize(&bytes, serializer)
-        // serializer.serialize_bytes(&bytes)
     }
     pub fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
     where
