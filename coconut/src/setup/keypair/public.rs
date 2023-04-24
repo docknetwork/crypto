@@ -50,9 +50,10 @@ impl<E: Pairing> PublicKey<E> {
 
     /// Returns `true` if the public key is valid, i.e don't have zero elements.
     pub fn valid(&self) -> bool {
-        !once(&self.alpha_tilde)
-            .chain(&self.beta_tilde)
-            .any(AffineRepr::is_zero)
+        self.beta.len() == self.beta_tilde.len()
+            && !once(&self.alpha_tilde)
+                .chain(&self.beta_tilde)
+                .any(AffineRepr::is_zero)
             && !self.beta.iter().any(AffineRepr::is_zero)
     }
 }
