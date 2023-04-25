@@ -172,7 +172,7 @@ macro_rules! impl_into_indexed_iter {
     (<Item = $item: ty> $($tt: tt)*) => { impl core::iter::IntoIterator<Item = $item, IntoIter = impl $crate::aliases::DoubleEndedExactSizeIterator<Item = $item> $($tt)*> $($tt)* }
 }
 
-/// Attempts to build `OwnedPairs` from the given vectors, returning `(left length, right length)` in case of error.
+/// Converts given vectors to `OwnedPairs`, panics in case of error.
 #[macro_export]
 macro_rules! owned_pairs {
     ($left: expr, $right: expr) => {
@@ -182,7 +182,7 @@ macro_rules! owned_pairs {
     };
 }
 
-/// Converts given vectors to `OwnedPairs`, panics in case of error.
+/// Attempts to build `OwnedPairs` from the given vectors, returning `(left length, right length)` in case of error.
 #[macro_export]
 macro_rules! try_owned_pairs {
     ($left: expr, $right: expr) => {
