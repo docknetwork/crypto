@@ -21,6 +21,9 @@ pub struct SecretKey<F: PrimeField> {
 }
 
 impl<F: PrimeField> SecretKey<F> {
+    const X_SALT: &[u8] = b"PS-SIG-X-KEYGEN-SALT";
+    const Y_SALT: &[u8] = b"PS-SIG-Y-KEYGEN-SALT";
+
     /// Generates random secret key compatible with `message_count` messages.
     pub fn rand<R: RngCore>(rng: &mut R, message_count: usize) -> Self {
         let x = rand(rng);
@@ -34,16 +37,44 @@ impl<F: PrimeField> SecretKey<F> {
     where
         D: FullDigest + SyncIfParallel,
     {
-        const X_SALT: &[u8] = b"PS-SIG-X-KEYGEN-SALT";
-        const Y_SALT: &[u8] = b"PS-SIG-Y-KEYGEN-SALT";
-
         let hasher = <DefaultFieldHasher<D> as HashToField<F>>::new;
 
         let (x, y) = join!(
-            hasher(X_SALT).hash_to_field(seed, 1).pop().unwrap(),
-            hasher(Y_SALT).hash_to_field(seed, message_count)
+            hasher(Self::X_SALT).hash_to_field(seed, 1).pop().unwrap(),
+            hasher(Self::Y_SALT).hash_to_field(seed, message_count)
         );
 
         Self { x, y }
+    }
+
+    /// Returns max amount of messages supported by this secret key.
+    pub fn supported_message_count(&self) -> usize {
+        self.y.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_bls12_381::Bls12_381;
+    use ark_ec::pairing::Pairing;
+    use blake2::Blake2b512;
+
+    type Fr = <Bls12_381 as Pairing>::ScalarField;
+
+    #[test]
+    fn from_seed() {
+        let seed = b"test-seed";
+        let other_seed = b"other-seed";
+
+        assert_eq!(
+            SecretKey::<Fr>::from_seed::<Blake2b512>(seed, 10),
+            SecretKey::<Fr>::from_seed::<Blake2b512>(seed, 10),
+        );
+
+        assert!(
+            SecretKey::<Fr>::from_seed::<Blake2b512>(seed, 10)
+                != SecretKey::<Fr>::from_seed::<Blake2b512>(other_seed, 10)
+        );
     }
 }
