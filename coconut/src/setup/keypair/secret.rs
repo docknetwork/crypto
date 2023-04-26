@@ -11,7 +11,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::helpers::{n_rand, rand, FullDigest};
 use utils::{aliases::SyncIfParallel, join};
 
-/// `SecretKey` used in Pointcheval-Sanders signature scheme.
+/// `SecretKey` used in the modified Pointcheval-Sanders signature scheme.
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
