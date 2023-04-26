@@ -15,7 +15,7 @@ use utils::join;
 
 use super::SecretKey;
 
-/// `PublicKey` used in Pointcheval-Sanders signature scheme and PoKs.
+/// `PublicKey` used in the modified Pointcheval-Sanders signature scheme and PoKs.
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -48,7 +48,13 @@ impl<E: Pairing> PublicKey<E> {
         }
     }
 
-    /// Returns `true` if the public key is valid, i.e don't have zero elements.
+    /// Returns max amount of messages supported by this public key.
+    pub fn supported_message_count(&self) -> usize {
+        self.beta.len()
+    }
+
+    /// Returns `true` if the public key is valid, i.e don't have zero elements
+    /// and have `beta` length equal to `beta_tilde` length.
     pub fn valid(&self) -> bool {
         self.beta.len() == self.beta_tilde.len()
             && !once(&self.alpha_tilde)
