@@ -5,11 +5,14 @@ use ark_ff::{
     PrimeField,
 };
 use ark_serialize::*;
-use ark_std::rand::RngCore;
+use ark_std::{cfg_into_iter, rand::RngCore};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 use crate::helpers::{n_rand, rand, FullDigest};
-use utils::{aliases::SyncIfParallel, join};
+use utils::{aliases::SyncIfParallel, concat_slices, join};
 
 /// `SecretKey` used in the modified Pointcheval-Sanders signature scheme.
 #[derive(
@@ -41,7 +44,19 @@ impl<F: PrimeField> SecretKey<F> {
 
         let (x, y) = join!(
             hasher(Self::X_SALT).hash_to_field(seed, 1).pop().unwrap(),
-            hasher(Self::Y_SALT).hash_to_field(seed, message_count)
+            {
+                let hasher = hasher(Self::Y_SALT);
+
+                cfg_into_iter!(0..message_count)
+                    .map(usize::to_be_bytes)
+                    .map(|i| {
+                        hasher
+                            .hash_to_field(&concat_slices!(seed, i), 1)
+                            .pop()
+                            .unwrap()
+                    })
+                    .collect()
+            }
         );
 
         Self { x, y }
@@ -75,6 +90,11 @@ mod tests {
         assert!(
             SecretKey::<Fr>::from_seed::<Blake2b512>(seed, 10)
                 != SecretKey::<Fr>::from_seed::<Blake2b512>(other_seed, 10)
+        );
+
+        assert_eq!(
+            SecretKey::<Fr>::from_seed::<Blake2b512>(seed, 10).y[0..9],
+            SecretKey::<Fr>::from_seed::<Blake2b512>(seed, 9).y,
         );
     }
 }
