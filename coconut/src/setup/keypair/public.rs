@@ -30,7 +30,7 @@ pub struct PublicKey<E: Pairing> {
 }
 
 impl<E: Pairing> PublicKey<E> {
-    /// Derives `PublicKey` from supplied seed and params.
+    /// Derives `PublicKey` from supplied secret key and params.
     pub fn new(
         SecretKey { x, y }: &SecretKey<E::ScalarField>,
         SignatureParams { g, g_tilde, .. }: &SignatureParams<E>,
