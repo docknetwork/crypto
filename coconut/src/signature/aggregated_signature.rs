@@ -23,6 +23,7 @@ type Result<T, E = AggregatedPSError> = core::result::Result<T, E>;
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct AggregatedSignature<E: Pairing>(Signature<E>);
 utils::impl_deref! { AggregatedSignature<E: Pairing>(Signature<E>) }
 

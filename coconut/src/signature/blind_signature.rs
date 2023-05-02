@@ -50,7 +50,10 @@ impl<E: Pairing> From<&'_ MessageCommitment<E>> for CommitmentOrMessage<E> {
 
 /// Modified Pointcheval-Sanders signature created over commitments (blinded messages) and revealed messages.
 /// To verify this signature, you would have to unblind by providing blindings used to produce commitments.
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, CanonicalSerialize, CanonicalDeserialize,
+)]
+#[serde(bound = "")]
 pub struct BlindSignature<E: Pairing>(Signature<E>);
 
 type DoubleOwnedPairs<A, B, C, D> = (ExtendSome<OwnedPairs<A, B>>, ExtendSome<OwnedPairs<C, D>>);

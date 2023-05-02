@@ -7,6 +7,8 @@ use ark_ff::{
 use ark_serialize::*;
 use ark_std::{cfg_into_iter, rand::RngCore};
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use utils::serde_utils::ArkObjectBytes;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
@@ -16,6 +18,7 @@ use crate::helpers::{n_rand, rand, FullDigest};
 use utils::{aliases::SyncIfParallel, concat_slices, join};
 
 /// `SecretKey` used in the modified Pointcheval-Sanders signature scheme.
+#[serde_as]
 #[derive(
     Clone,
     Debug,
@@ -29,7 +32,9 @@ use utils::{aliases::SyncIfParallel, concat_slices, join};
     ZeroizeOnDrop,
 )]
 pub struct SecretKey<F: PrimeField> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub x: F,
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub y: Vec<F>,
 }
 
