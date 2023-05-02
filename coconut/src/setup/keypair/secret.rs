@@ -19,8 +19,8 @@ use utils::{aliases::SyncIfParallel, concat_slices, join};
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
 pub struct SecretKey<F: PrimeField> {
-    pub(crate) x: F,
-    pub(crate) y: Vec<F>,
+    pub x: F,
+    pub y: Vec<F>,
 }
 
 impl<F: PrimeField> SecretKey<F> {

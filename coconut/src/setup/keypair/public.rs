@@ -22,11 +22,11 @@ use super::SecretKey;
 )]
 pub struct PublicKey<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
-    pub(crate) alpha_tilde: E::G2Affine,
+    pub alpha_tilde: E::G2Affine,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
-    pub(crate) beta: Vec<E::G1Affine>,
+    pub beta: Vec<E::G1Affine>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
-    pub(crate) beta_tilde: Vec<E::G2Affine>,
+    pub beta_tilde: Vec<E::G2Affine>,
 }
 
 impl<E: Pairing> PublicKey<E> {
