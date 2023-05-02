@@ -6,6 +6,7 @@ use ark_ff::{
 };
 use ark_serialize::*;
 use ark_std::{cfg_into_iter, rand::RngCore};
+use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
@@ -16,7 +17,16 @@ use utils::{aliases::SyncIfParallel, concat_slices, join};
 
 /// `SecretKey` used in the modified Pointcheval-Sanders signature scheme.
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Zeroize,
+    ZeroizeOnDrop,
 )]
 pub struct SecretKey<F: PrimeField> {
     pub x: F,
@@ -24,8 +34,8 @@ pub struct SecretKey<F: PrimeField> {
 }
 
 impl<F: PrimeField> SecretKey<F> {
-    const X_SALT: &[u8] = b"PS-SIG-X-KEYGEN-SALT";
-    const Y_SALT: &[u8] = b"PS-SIG-Y-KEYGEN-SALT";
+    pub const X_SALT: &[u8] = b"PS-SIG-X-KEYGEN-SALT";
+    pub const Y_SALT: &[u8] = b"PS-SIG-Y-KEYGEN-SALT";
 
     /// Generates random secret key compatible with `message_count` messages.
     pub fn rand<R: RngCore>(rng: &mut R, message_count: usize) -> Self {
