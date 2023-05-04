@@ -37,7 +37,8 @@ impl<E: Pairing> SignatureParams<E> {
             affine_group_elem_from_try_and_incr::<_, D>(&concat_slices!(label, b" : g")),
             affine_group_elem_from_try_and_incr::<_, D>(&concat_slices!(label, b" : g_tilde")),
             cfg_into_iter!(0..message_count)
-                .map(|i| concat_slices!(label, b" : h_", i.to_be_bytes()))
+                .map(usize::to_le_bytes)
+                .map(|i| concat_slices!(label, b" : h_", i))
                 .map(|bytes| affine_group_elem_from_try_and_incr::<_, D>(&bytes))
                 .collect()
         );

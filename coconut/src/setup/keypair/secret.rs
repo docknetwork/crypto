@@ -55,21 +55,20 @@ impl<F: PrimeField> SecretKey<F> {
     where
         D: FullDigest + SyncIfParallel,
     {
-        let hasher = <DefaultFieldHasher<D> as HashToField<F>>::new;
+        let new_hasher = <DefaultFieldHasher<D> as HashToField<F>>::new;
 
         let (x, y) = join!(
-            hasher(Self::X_SALT).hash_to_field(seed, 1).pop().unwrap(),
+            new_hasher(Self::X_SALT)
+                .hash_to_field(seed, 1)
+                .pop()
+                .unwrap(),
             {
-                let hasher = hasher(Self::Y_SALT);
+                let hasher = new_hasher(Self::Y_SALT);
 
                 cfg_into_iter!(0..message_count)
-                    .map(usize::to_be_bytes)
-                    .map(|i| {
-                        hasher
-                            .hash_to_field(&concat_slices!(seed, i), 1)
-                            .pop()
-                            .unwrap()
-                    })
+                    .map(usize::to_le_bytes)
+                    .map(|i| concat_slices!(seed, i))
+                    .map(|seed| hasher.hash_to_field(&seed, 1).pop().unwrap())
                     .collect()
             }
         );
