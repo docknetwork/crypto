@@ -64,7 +64,7 @@ macro_rules! impl_bbs_subprotocol {
 
             // Create messages from revealed messages in statement and unrevealed in witness
             let mut invalid_blinding_idx = None;
-            let messages_to_blind_with_blindings = merge_indexed_messages_with_blindings(
+            let messages_to_commit = merge_indexed_messages_with_blindings(
                 &witness.unrevealed_messages,
                 blindings,
                 MessageOrBlinding::BlindMessageRandomly,
@@ -73,7 +73,7 @@ macro_rules! impl_bbs_subprotocol {
             );
             let mut non_seq_idx = None;
             let all_messages = take_while_satisfy(
-                messages_to_blind_with_blindings.merge_by(
+                messages_to_commit.merge_by(
                     self.revealed_messages
                         .iter()
                         .map(|(idx, msg)| (*idx, MessageOrBlinding::RevealMessage(msg))),

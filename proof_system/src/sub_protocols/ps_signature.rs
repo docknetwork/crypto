@@ -56,7 +56,7 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         }
 
         let mut invalid_blinding_idx = None;
-        let messages_to_blind_with_blindings = merge_indexed_messages_with_blindings(
+        let messages_to_commit = merge_indexed_messages_with_blindings(
             witness.unrevealed_messages,
             blindings,
             CommitMessage::BlindMessageRandomly,
@@ -65,7 +65,7 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         );
         let mut non_seq_idx = None;
         let all_messages = take_while_satisfy(
-            messages_to_blind_with_blindings.merge_by(
+            messages_to_commit.merge_by(
                 self.revealed_messages
                     .iter()
                     .map(|(idx, _)| (*idx, CommitMessage::RevealMessage)),
