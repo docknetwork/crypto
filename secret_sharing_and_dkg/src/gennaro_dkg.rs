@@ -218,8 +218,8 @@ pub mod tests {
     fn gennaro_distributed_key_generation() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let ped_comm_key = CommitmentKey::<G1>::new::<Blake2b512>(b"test");
-        let fed_comm_key = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
-        let fed_comm_key_g2 = <Bls12_381 as Pairing>::G2::rand(&mut rng).into_affine();
+        let fed_comm_key = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
+        let fed_comm_key_g2 = <Bls12_381 as Pairing>::G2Affine::rand(&mut rng);
 
         fn check<GP1: AffineRepr, GP2: AffineRepr<ScalarField = GP1::ScalarField>>(
             rng: &mut StdRng,

@@ -1,0 +1,37 @@
+[package]
+name = "oblivious_transfer"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Oblivious Transfer (OT) and Oblivious Transfer Extension (OTE)"
+
+[dependencies]
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-std.workspace = true
+ark-serialize.workspace = true
+digest.workspace = true
+serde.workspace = true
+serde_with.workspace = true
+zeroize.workspace = true
+dock_crypto_utils = { version = "0.11.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.10.0", default-features = false, path = "../schnorr_pok" }
+cipher = { version = "0.4.4", default-features = false, features = ["alloc"] }
+rayon = {workspace = true, optional = true}
+sha3 = { version = "0.10.6", default-features = false }
+aes = { version = "0.8.2", default-features = false }
+itertools = {version = "0.10.5", default-features = false}
+byteorder = { version = "1.4", default-features = false }
+
+[dev-dependencies]
+blake2.workspace = true
+ark-bls12-381.workspace = true
+serde_json = "1.0"
+ark-poly.workspace = true
+
+[features]
+default = [ "parallel"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std"]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon"]

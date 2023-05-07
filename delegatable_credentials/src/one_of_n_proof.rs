@@ -212,13 +212,13 @@ mod tests {
     use std::{ops::Mul, time::Instant};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
-    type G2 = <Bls12_381 as Pairing>::G2;
+    type G2Affine = <Bls12_381 as Pairing>::G2Affine;
 
     #[test]
     fn one_of_n_proof() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        let P1 = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
+        let P1 = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
         let (srs, _) = OneOfNSrs::<Bls12_381>::new(&mut rng, &P1);
 
         fn check(
@@ -228,15 +228,9 @@ mod tests {
             P1: &<Bls12_381 as Pairing>::G1Affine,
             srs: &OneOfNSrs<Bls12_381>,
         ) {
-            let actual = (0..size)
-                .map(|_| G2::rand(rng).into_affine())
-                .collect::<Vec<_>>();
+            let actual = (0..size).map(|_| G2Affine::rand(rng)).collect::<Vec<_>>();
             let decoys = (0..count_decoys)
-                .map(|_| {
-                    (0..size)
-                        .map(|_| G2::rand(rng).into_affine())
-                        .collect::<Vec<_>>()
-                })
+                .map(|_| (0..size).map(|_| G2Affine::rand(rng)).collect::<Vec<_>>())
                 .collect::<Vec<_>>();
             let witness = Fr::rand(rng);
             let instance = actual

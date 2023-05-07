@@ -24,6 +24,7 @@ Library providing privacy enhancing cryptographic primitives.
 7. [Secret sharing schemes and DKG](./secret_sharing_and_dkg). Implements verifiable secret sharing schemes and DKG from Gennaro and FROST.
 8. [Cocount and PS signatures](./coconut/). Based on the paper [Security Analysis of Coconut, an Attribute-Based Credential Scheme with Threshold Issuance](https://eprint.iacr.org/2022/011)
 9. [LegoGroth16](./legogroth16/).  LegoGroth16, the [LegoSNARK](https://eprint.iacr.org/2019/142) variant of [Groth16](https://eprint.iacr.org/2016/260) zkSNARK proof system
+10. [Oblivious Transfer (OT) and Oblivious Transfer Extensions (OTE)](./oblivious_transfer).
 
 ## Composite proof system
 

@@ -798,7 +798,7 @@ pub(crate) mod tests {
         let n = chunks_count::<Fr>(chunk_bit_size) as usize;
         let gens = EncryptionGens::<Bls12_381>::new_using_rng(rng);
         let g_i = (0..n)
-            .map(|_| <Bls12_381 as Pairing>::G1::rand(rng).into_affine())
+            .map(|_| <Bls12_381 as Pairing>::G1Affine::rand(rng))
             .collect::<Vec<_>>();
         let delta = Fr::rand(rng);
         let gamma = Fr::rand(rng);

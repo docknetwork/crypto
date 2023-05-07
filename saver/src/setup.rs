@@ -48,8 +48,8 @@ impl<E: Pairing> EncryptionGens<E> {
     }
 
     pub fn new_using_rng<R: RngCore>(rng: &mut R) -> Self {
-        let G = E::G1::rand(rng).into_affine();
-        let H = E::G2::rand(rng).into_affine();
+        let G = E::G1Affine::rand(rng);
+        let H = E::G2Affine::rand(rng);
         Self { G, H }
     }
 }

@@ -1,7 +1,8 @@
+use ark_ec::AffineRepr;
 use ark_ff::fields::Field;
 use ark_serialize::CanonicalSerialize;
 use ark_std::{vec, vec::Vec};
-use merlin::Transcript as Merlin;
+pub use merlin::Transcript as Merlin;
 
 /// must be specific to the application.
 pub fn new_merlin_transcript(label: &'static [u8]) -> impl Transcript {
@@ -14,7 +15,10 @@ pub fn new_merlin_transcript(label: &'static [u8]) -> impl Transcript {
 /// Taken from https://github.com/nikkolasg/snarkpack
 pub trait Transcript {
     fn append<S: CanonicalSerialize>(&mut self, label: &'static [u8], point: &S);
+    fn append_message(&mut self, label: &'static [u8], bytes: &[u8]);
     fn challenge_scalar<F: Field>(&mut self, label: &'static [u8]) -> F;
+    fn challenge_scalars<F: Field>(&mut self, label: &'static [u8], count: usize) -> Vec<F>;
+    fn challenge_group_elem<G: AffineRepr>(&mut self, label: &'static [u8]) -> G;
 }
 
 impl Transcript for Merlin {
@@ -26,8 +30,13 @@ impl Transcript for Merlin {
         self.append_message(label, &buff);
     }
 
+    fn append_message(&mut self, label: &'static [u8], bytes: &[u8]) {
+        self.append_message(label, bytes)
+    }
+
     fn challenge_scalar<F: Field>(&mut self, label: &'static [u8]) -> F {
         // Reduce a double-width scalar to ensure a uniform distribution
+        // TODO: It assumes 32 byte field element. Make it generic
         let mut buf = [0; 64];
         self.challenge_bytes(label, &mut buf);
         let mut counter = 0;
@@ -37,6 +46,48 @@ impl Transcript for Merlin {
                 if let Some(c_inv) = chal.inverse() {
                     return c_inv;
                 }
+            }
+
+            buf[0] = counter;
+            counter += 1;
+            self.challenge_bytes(label, &mut buf);
+        }
+    }
+
+    fn challenge_scalars<F: Field>(&mut self, label: &'static [u8], count: usize) -> Vec<F> {
+        // Reduce a double-width scalar to ensure a uniform distribution
+        // TODO: It assumes 32 byte field element. Make it generic
+        let mut buf = vec![0; count * 64];
+        self.challenge_bytes(label, &mut buf);
+        let mut out = Vec::with_capacity(count);
+        for i in 0..count {
+            let mut counter = 0;
+            let start = i * 64;
+            let end = (i + 1) * 64;
+            loop {
+                let c = F::from_random_bytes(&buf[start..end]);
+                if let Some(chal) = c {
+                    if let Some(c_inv) = chal.inverse() {
+                        out.push(c_inv);
+                        break;
+                    }
+                }
+                buf[start] = counter;
+                counter += 1;
+                self.challenge_bytes(label, &mut buf[start..end]);
+            }
+        }
+        out
+    }
+
+    fn challenge_group_elem<G: AffineRepr>(&mut self, label: &'static [u8]) -> G {
+        let mut buf = [0; 64];
+        self.challenge_bytes(label, &mut buf);
+        let mut counter = 0;
+        loop {
+            let c = G::from_random_bytes(&buf);
+            if let Some(chal) = c {
+                return chal;
             }
 
             buf[0] = counter;

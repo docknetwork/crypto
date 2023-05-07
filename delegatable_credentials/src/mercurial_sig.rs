@@ -419,7 +419,6 @@ mod tests {
     use super::*;
     use crate::util::generator_pair;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::CurveGroup;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
@@ -439,7 +438,7 @@ mod tests {
         assert!(count == sk.size() && sk.size() == pk.size() && pk.size() == prep_pk.size());
 
         let msgs = (0..count)
-            .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
+            .map(|_| <Bls12_381 as Pairing>::G1Affine::rand(&mut rng))
             .collect::<Vec<_>>();
 
         let sig = Signature::new(&mut rng, &msgs, &sk, &P1, &P2).unwrap();
@@ -473,7 +472,7 @@ mod tests {
 
         let pk = PublicKeyG1::<Bls12_381>::new(&sk, &P1);
         let msgs = (0..count)
-            .map(|_| <Bls12_381 as Pairing>::G2::rand(&mut rng).into_affine())
+            .map(|_| <Bls12_381 as Pairing>::G2Affine::rand(&mut rng))
             .collect::<Vec<_>>();
 
         let sig = SignatureG2::new(&mut rng, &msgs, &sk, &P2, &P1).unwrap();

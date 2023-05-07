@@ -104,8 +104,8 @@ pub mod tests {
     #[test]
     fn feldman_verifiable_secret_sharing() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let g1 = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
-        let g2 = <Bls12_381 as Pairing>::G2::rand(&mut rng).into_affine();
+        let g1 = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
+        let g2 = <Bls12_381 as Pairing>::G2Affine::rand(&mut rng);
 
         fn check<G: AffineRepr>(rng: &mut StdRng, g: &G) {
             for (threshold, total) in vec![

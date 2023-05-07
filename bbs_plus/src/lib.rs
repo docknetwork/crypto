@@ -43,6 +43,7 @@ pub mod proof_23_alternate;
 pub mod setup;
 pub mod signature;
 pub mod signature_23;
+pub mod threshold;
 
 pub mod prelude {
     pub use crate::{

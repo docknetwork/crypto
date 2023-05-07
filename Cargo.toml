@@ -13,7 +13,8 @@ members = [
     "test_utils",
     "delegatable_credentials",
     "secret_sharing_and_dkg",
-    "legogroth16"
+    "legogroth16",
+    "oblivious_transfer"
 ]
 resolver = "2"
 
@@ -40,6 +41,7 @@ zeroize = { version = "1.6.0", features = ["derive"] }
 blake2 = { version = "0.10", default-features = false }
 ark-bls12-381 = { version = "^0.4.0", default-features = false, features = [ "curve" ] }
 merlin = { version = "^3.0", default-features = false }
+legogroth16 = { version = "0.6.0" , default-features = false }
 
 [profile.release]
 lto = true

@@ -291,9 +291,9 @@ macro_rules! impl_sig_params {
                     .map(|_| E::$group_projective::rand(rng))
                     .collect::<Vec<E::$group_projective>>();
                 Self {
-                    g1: E::$group_projective::rand(rng).into(),
-                    g2: E::$other_group_projective::rand(rng).into(),
-                    h_0: E::$group_projective::rand(rng).into(),
+                    g1: E::$group_affine::rand(rng),
+                    g2: E::$other_group_affine::rand(rng),
+                    h_0: E::$group_affine::rand(rng),
                     h: E::$group_projective::normalize_batch(&h),
                 }
             }

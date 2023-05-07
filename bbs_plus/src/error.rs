@@ -6,6 +6,7 @@ use dock_crypto_utils::{
     serde_utils::ArkSerializationError,
     try_iter::{IndexIsOutOfBounds, InvalidPair},
 };
+use oblivious_transfer::{error::OTError, ParticipantId};
 use schnorr_pok::error::SchnorrError;
 use serde::Serialize;
 
@@ -29,6 +30,24 @@ pub enum BBSPlusError {
     SchnorrError(SchnorrError),
     MessageIndicesMustBeUniqueAndSorted(InvalidPair<usize>),
     MessageIndexIsOutOfBounds(IndexIsOutOfBounds),
+    OTError(OTError),
+    SenderIdCannotBeSameAsSelf(ParticipantId, ParticipantId),
+    AlreadyHaveCommitmentFromParticipant(ParticipantId),
+    MissingCommitmentFromParticipant(ParticipantId),
+    IncorrectNoOfCommitments(usize, usize),
+    MissingSharesFromParticipant(ParticipantId),
+    AlreadyHaveSharesFromParticipant(ParticipantId),
+    IncorrectNoOfShares(usize, usize),
+    IncorrectCommitment,
+    UnexpectedParticipant(ParticipantId),
+    MissingOTReceiverFor(ParticipantId),
+    MissingOTSenderFor(ParticipantId),
+    NotAMultiplicationParty2(ParticipantId),
+    NotAMultiplicationParty1(ParticipantId),
+    UnexpectedMultiplicationParty1(ParticipantId),
+    UnexpectedMultiplicationParty2(ParticipantId),
+    IncorrectEByParticipant(ParticipantId),
+    IncorrectSByParticipant(ParticipantId),
 }
 
 impl From<SchnorrError> for BBSPlusError {
@@ -52,5 +71,11 @@ impl From<IndexIsOutOfBounds> for BBSPlusError {
 impl From<SerializationError> for BBSPlusError {
     fn from(e: SerializationError) -> Self {
         Self::Serialization(e)
+    }
+}
+
+impl From<OTError> for BBSPlusError {
+    fn from(e: OTError) -> Self {
+        Self::OTError(e)
     }
 }

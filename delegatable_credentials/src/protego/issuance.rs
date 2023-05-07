@@ -692,7 +692,7 @@ pub mod tests {
             .map(|_| Fr::rand(&mut rng))
             .collect::<Vec<_>>();
 
-        let Q = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
+        let Q = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
         let nym = Fr::rand(&mut rng);
 
         let (accum_srs, _) = SetCommitmentSRS::<Bls12_381>::generate_with_random_trapdoor::<

@@ -119,8 +119,8 @@ where
     /// Generate params using a random number generator
     pub fn generate_using_rng<R: RngCore>(rng: &mut R) -> Self {
         Self {
-            P: E::G1::rand(rng).into(),
-            P_tilde: E::G2::rand(rng).into(),
+            P: E::G1Affine::rand(rng),
+            P_tilde: E::G2Affine::rand(rng),
         }
     }
 

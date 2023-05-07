@@ -52,7 +52,7 @@ pub fn init_accum(
 
     let rsk = RSk::new(rng);
     let rpk = RPk::new(&rsk, accum_srs.get_P2());
-    let Q = <Bls12_381 as Pairing>::G1::rand(rng).into_affine();
+    let Q = <Bls12_381 as Pairing>::G1Affine::rand(rng);
 
     let prpk = PRpk::from(rpk.clone());
 
