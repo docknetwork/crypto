@@ -953,7 +953,8 @@ fn requesting_partially_blind_ps_sig() {
         MessageCommitment::new_iter(blinding_m_pairs.as_ref(), &h, &sig_params).collect();
 
     let h_m_pairs = Pairs::new_truncate_to_min(&sig_params.h, &commit_msgs);
-    let multi_message_commitment = MultiMessageCommitment::new(h_m_pairs, &sig_params, &blinding);
+    let multi_message_commitment =
+        MultiMessageCommitment::<Bls12_381>::new(h_m_pairs, &sig_params.g, &blinding);
 
     // Requester proves knowledge of committed messages
     let mut statements = Statements::new();

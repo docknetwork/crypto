@@ -11,10 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use utils::serde_utils::ArkObjectBytes;
 
-use crate::{
-    helpers::{rand, OwnedPairs, Pairs, WithSchnorrAndBlindings, WithSchnorrResponse},
-    setup::SignatureParams,
-};
+use crate::helpers::{rand, OwnedPairs, Pairs, WithSchnorrAndBlindings, WithSchnorrResponse};
 
 /// `g * o + \sum_{i}(h_{i} * m_{i})`
 #[serde_as]
@@ -36,7 +33,7 @@ impl<E: Pairing> MultiMessageCommitment<E> {
     /// `g * o + \sum_{i}(h_{i} * m_{i})`
     pub fn new(
         h_m_pairs: Pairs<impl Borrow<E::G1Affine>, impl Borrow<E::ScalarField>>,
-        SignatureParams { g, .. }: &SignatureParams<E>,
+        g: &E::G1Affine,
         o: &E::ScalarField,
     ) -> Self {
         let bases_exps: OwnedPairs<_, _> = Self::bases_exps(g, o, h_m_pairs).collect();

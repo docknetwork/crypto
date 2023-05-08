@@ -85,7 +85,7 @@ impl<E: Pairing> MessagesPoKGenerator<E> {
         let o_m_pairs = pairs!(o_arr, m);
 
         let (com, com_schnorr, com_j) = join!(
-            MultiMessageCommitment::new(h_m_pairs, params, o),
+            MultiMessageCommitment::new(h_m_pairs, &params.g, o),
             com_randomness.commit(),
             MessageCommitment::new_iter(o_m_pairs, h, params)
                 .zip(com_j_randomness.commit())
