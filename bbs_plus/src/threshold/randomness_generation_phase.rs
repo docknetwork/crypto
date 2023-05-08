@@ -1,0 +1,92 @@
+use crate::{
+    error::BBSPlusError,
+    threshold::{
+        commitment::{Commitments, SALT_SIZE},
+        utils::compute_masked_arguments_to_multiply,
+    },
+};
+use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::vec::Vec;
+use digest::DynDigest;
+use oblivious_transfer::ParticipantId;
+
+/// This is the first phase of the signing protocol where parties generate random values, jointly and
+/// individually including additive shares of 0.
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct Phase1<F: PrimeField> {
+    pub id: ParticipantId,
+    /// Number of threshold signatures being generated in a single batch.
+    pub batch_size: usize,
+    pub r: Vec<F>,
+    pub commitment_protocol: super::commitment::Party<F>,
+    pub zero_sharing_protocol: super::zero_sharing::Party<F>,
+}
+
+impl<F: PrimeField> Phase1<F> {
+    pub fn get_comm_shares_and_salts(&self) -> Vec<(F, [u8; SALT_SIZE])> {
+        self.commitment_protocol.own_shares_and_salts.clone()
+    }
+
+    pub fn get_comm_shares_and_salts_for_zero_sharing_protocol_with_other(
+        &self,
+        other_id: &ParticipantId,
+    ) -> Vec<(F, [u8; SALT_SIZE])> {
+        // TODO: Remove unwrap
+        self.zero_sharing_protocol
+            .cointoss_protocols
+            .get(other_id)
+            .unwrap()
+            .own_shares_and_salts
+            .clone()
+    }
+
+    pub fn receive_commitment(
+        &mut self,
+        sender_id: ParticipantId,
+        comm: Commitments,
+        comm_zero_share: Commitments,
+    ) -> Result<(), BBSPlusError> {
+        self.commitment_protocol
+            .receive_commitment(sender_id, comm)?;
+        self.zero_sharing_protocol
+            .receive_commitment(sender_id, comm_zero_share)?;
+        Ok(())
+    }
+
+    pub fn receive_shares(
+        &mut self,
+        sender_id: ParticipantId,
+        shares: Vec<(F, [u8; SALT_SIZE])>,
+        comm_zero_shares: Vec<(F, [u8; SALT_SIZE])>,
+    ) -> Result<(), BBSPlusError> {
+        self.commitment_protocol.receive_shares(sender_id, shares)?;
+        self.zero_sharing_protocol
+            .receive_shares(sender_id, comm_zero_shares)?;
+        Ok(())
+    }
+
+    pub fn compute_joint_randomness_and_masked_arguments_to_multiply<
+        D: Default + DynDigest + Clone,
+    >(
+        self,
+        signing_key: &F,
+    ) -> Result<(Vec<ParticipantId>, Vec<F>, Vec<F>, Vec<F>), BBSPlusError> {
+        let others = self
+            .commitment_protocol
+            .other_shares
+            .keys()
+            .map(|p| *p)
+            .collect::<Vec<_>>();
+        let randomness = self.commitment_protocol.compute_joint_randomness();
+        let zero_shares = self.zero_sharing_protocol.compute_zero_shares::<D>()?;
+        let (masked_signing_key_share, masked_r) = compute_masked_arguments_to_multiply(
+            signing_key,
+            self.r,
+            zero_shares,
+            self.id,
+            &others,
+        );
+        Ok((others, randomness, masked_signing_key_share, masked_r))
+    }
+}

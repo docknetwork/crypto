@@ -9,7 +9,8 @@ Library providing privacy enhancing cryptographic primitives.
 ## Primitives
 
 1. [Schnorr proof of knowledge protocol](./schnorr_pok) to prove knowledge of discrete log. [This](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) is a good reference. 
-2. [BBS and BBS+ signatures](./bbs_plus) for anonymous credentials. BBS+ is based on the paper [Anonymous Attestation Using the Strong Diffie Hellman Assumption Revisited](https://eprint.iacr.org/2016/663) and BBS is based on the paper [Revisiting BBS Signatures](https://eprint.iacr.org/2023/275).
+2. [BBS and BBS+ signatures](./bbs_plus) for anonymous credentials. BBS+ is based on the paper [Anonymous Attestation Using the Strong Diffie Hellman Assumption Revisited](https://eprint.iacr.org/2016/663) and 
+   BBS is based on the paper [Revisiting BBS Signatures](https://eprint.iacr.org/2023/275). Also implements the threshold variants of these based on the paper [Threshold BBS+ Signatures for Distributed Anonymous Credential Issuance](https://eprint.iacr.org/2023/602)
 3. [Dynamic accumulators, both positive and universal](./vb_accumulator). Based on the paper [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
 4. [Composite proof system](./proof_system) that combines above primitives for use cases like 
    - prove knowledge of a BBS+ signature and the corresponding messages

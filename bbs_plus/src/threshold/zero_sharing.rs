@@ -1,5 +1,5 @@
 //! Generate a secret sharing of 0. Does not use a trusted party or Shamir secret sharing.
-//! Called F_zero in the paper
+//! Called F_zero and described in section 3.1 in the paper
 
 use crate::{
     error::BBSPlusError,
@@ -25,6 +25,7 @@ pub struct Party<F: PrimeField> {
     pub id: ParticipantId,
     pub protocol_id: Vec<u8>,
     pub batch_size: usize,
+    /// Commit-and-release coin tossing protocols run with each party
     pub cointoss_protocols: BTreeMap<ParticipantId, CommitmentParty<F>>,
 }
 

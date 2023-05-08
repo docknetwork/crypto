@@ -1,4 +1,4 @@
-use crate::threshold::commitment::{Commitments, SALT_SIZE};
+use crate::threshold::commitment::Commitments;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField, Zero};
 
@@ -15,49 +15,46 @@ use crate::{
     error::BBSPlusError,
     setup::{MultiMessageSignatureParams, SignatureParamsG1},
     signature::SignatureG1,
+    threshold::randomness_generation_phase::Phase1,
 };
 
-use super::{
-    multiplication_phase::Phase2Output,
-    utils::{compute_R_and_u, compute_masked_arguments_to_multiply},
-};
+use super::{multiplication_phase::Phase2Output, utils::compute_R_and_u};
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Phase1<F: PrimeField> {
-    pub id: ParticipantId,
-    pub r: F,
-    pub commitment_protocol: super::commitment::Party<F>,
-    pub zero_sharing_protocol: super::zero_sharing::Party<F>,
-}
-
+/// The length of vectors `r`, `e`, `s`, `masked_signing_key_shares`, `masked_rs` should
+/// be `batch_size` each item of the vector corresponds to 1 signature
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Phase1Output<F: PrimeField> {
     pub id: ParticipantId,
-    pub r: F,
-    pub e: F,
-    pub s: F,
-    /// Additive share of the signing key masked by a random `alpha`
-    pub masked_signing_key_share: F,
-    /// Additive share of `r` masked by a random `beta`
-    pub masked_r: F,
+    pub batch_size: usize,
+    pub r: Vec<F>,
+    pub e: Vec<F>,
+    pub s: Vec<F>,
+    /// Additive shares of the signing key masked by a random `alpha`
+    pub masked_signing_key_shares: Vec<F>,
+    /// Additive shares of `r` masked by a random `beta`
+    pub masked_rs: Vec<F>,
     pub others: Vec<ParticipantId>,
 }
 
 impl<F: PrimeField> Phase1<F> {
-    pub fn init<R: RngCore>(
+    pub fn init_for_bbs_plus<R: RngCore>(
         rng: &mut R,
+        batch_size: usize,
         id: ParticipantId,
         others: BTreeSet<ParticipantId>,
         protocol_id: Vec<u8>,
     ) -> (Self, Commitments, BTreeMap<ParticipantId, Commitments>) {
-        let r = F::rand(rng);
+        let r = (0..batch_size).map(|_| F::rand(rng)).collect();
+        // 2 because 2 random values `e` and `s` need to be generated per signature
         let (commitment_protocol, comm) =
-            super::commitment::Party::commit(rng, id, 2, protocol_id.clone());
+            super::commitment::Party::commit(rng, id, 2 * batch_size, protocol_id.clone());
+        // Each signature will have its own zero-sharing of `alpha` and `beta`
         let (zero_sharing_protocol, comm_zero_share) =
-            super::zero_sharing::Party::init(rng, id, 2, others, protocol_id);
+            super::zero_sharing::Party::init(rng, id, 2 * batch_size, others, protocol_id);
         (
             Self {
                 id,
+                batch_size,
                 r,
                 commitment_protocol,
                 zero_sharing_protocol,
@@ -67,78 +64,27 @@ impl<F: PrimeField> Phase1<F> {
         )
     }
 
-    pub fn get_comm_shares_and_salts(&self) -> Vec<(F, [u8; SALT_SIZE])> {
-        self.commitment_protocol.own_shares_and_salts.clone()
-    }
-
-    pub fn get_comm_shares_and_salts_for_zero_sharing_protocol_with_other(
-        &self,
-        other_id: &ParticipantId,
-    ) -> Vec<(F, [u8; SALT_SIZE])> {
-        // TODO: Remove unwrap
-        self.zero_sharing_protocol
-            .cointoss_protocols
-            .get(other_id)
-            .unwrap()
-            .own_shares_and_salts
-            .clone()
-    }
-
-    pub fn receive_commitment(
-        &mut self,
-        sender_id: ParticipantId,
-        comm: Commitments,
-        comm_zero_share: Commitments,
-    ) -> Result<(), BBSPlusError> {
-        self.commitment_protocol
-            .receive_commitment(sender_id, comm)?;
-        self.zero_sharing_protocol
-            .receive_commitment(sender_id, comm_zero_share)?;
-        Ok(())
-    }
-
-    pub fn receive_shares(
-        &mut self,
-        sender_id: ParticipantId,
-        shares: Vec<(F, [u8; SALT_SIZE])>,
-        comm_zero_shares: Vec<(F, [u8; SALT_SIZE])>,
-    ) -> Result<(), BBSPlusError> {
-        self.commitment_protocol.receive_shares(sender_id, shares)?;
-        self.zero_sharing_protocol
-            .receive_shares(sender_id, comm_zero_shares)?;
-        Ok(())
-    }
-
-    pub fn finish<D: Default + DynDigest + Clone>(
+    pub fn finish_for_bbs_plus<D: Default + DynDigest + Clone>(
         self,
         signing_key: &F,
     ) -> Result<Phase1Output<F>, BBSPlusError> {
         // TODO: Ensure every one has participated in both protocols
-        let others = self
-            .commitment_protocol
-            .other_shares
-            .keys()
-            .map(|p| *p)
-            .collect::<Vec<_>>();
-        let mut es = self.commitment_protocol.compute_joint_randomness();
-        let zero_shares = self.zero_sharing_protocol.compute_zero_shares::<D>()?;
-        debug_assert_eq!(es.len(), 2);
-        let e = es.pop().unwrap();
-        let s = es.pop().unwrap();
-        let (masked_signing_key_share, masked_r) = compute_masked_arguments_to_multiply(
-            signing_key,
-            &self.r,
-            zero_shares,
-            self.id,
-            &others,
-        );
+        let id = self.id;
+        let batch_size = self.batch_size;
+        let r = self.r.clone();
+        let (others, mut randomness, masked_signing_key_shares, masked_rs) =
+            self.compute_joint_randomness_and_masked_arguments_to_multiply::<D>(signing_key)?;
+        debug_assert_eq!(randomness.len(), 2 * batch_size);
+        let e = randomness.drain(0..batch_size).collect();
+        let s = randomness;
         Ok(Phase1Output {
-            id: self.id,
-            r: self.r,
+            id,
+            batch_size,
+            r,
             e,
             s,
-            masked_signing_key_share,
-            masked_r,
+            masked_signing_key_shares,
+            masked_rs,
             others,
         })
     }
@@ -153,10 +99,12 @@ pub struct BBSPlusSignatureShare<E: Pairing> {
 }
 
 impl<E: Pairing> BBSPlusSignatureShare<E> {
+    /// `index_in_output` is the index of this signature in the Phase1 and Phase2 outputs
     pub fn new(
         messages: &[E::ScalarField],
-        phase1: Phase1Output<E::ScalarField>,
-        phase1_ote: Phase2Output<E::ScalarField>,
+        index_in_output: usize,
+        phase1: &Phase1Output<E::ScalarField>,
+        phase2: &Phase2Output<E::ScalarField>,
         sig_params: &SignatureParamsG1<E>,
     ) -> Result<Self, BBSPlusError> {
         if messages.is_empty() {
@@ -174,33 +122,37 @@ impl<E: Pairing> BBSPlusSignatureShare<E> {
         Self::new_with_committed_messages(
             &E::G1Affine::zero(),
             msg_map,
+            index_in_output,
             phase1,
-            phase1_ote,
+            phase2,
             sig_params,
         )
     }
 
+    /// `index_in_output` is the index of this signature in the Phase1 and Phase2 outputs
     pub fn new_with_committed_messages(
         commitment: &E::G1Affine,
         uncommitted_messages: BTreeMap<usize, &E::ScalarField>,
-        phase1: Phase1Output<E::ScalarField>,
-        phase2: Phase2Output<E::ScalarField>,
+        index_in_output: usize,
+        phase1: &Phase1Output<E::ScalarField>,
+        phase2: &Phase2Output<E::ScalarField>,
         sig_params: &SignatureParamsG1<E>,
     ) -> Result<Self, BBSPlusError> {
-        let b = sig_params.b(uncommitted_messages, &phase1.s)?;
+        let b = sig_params.b(uncommitted_messages, &phase1.s[index_in_output])?;
         let commitment_plus_b = b + commitment;
         let (R, u) = compute_R_and_u(
             commitment_plus_b,
-            phase1.r,
-            phase1.e,
-            phase1.masked_r,
-            phase1.masked_signing_key_share,
+            &phase1.r[index_in_output],
+            &phase1.e[index_in_output],
+            &phase1.masked_rs[index_in_output],
+            &phase1.masked_signing_key_shares[index_in_output],
+            index_in_output,
             phase2,
         );
         Ok(Self {
             id: phase1.id,
-            e: phase1.e,
-            s: phase1.s,
+            e: phase1.e[index_in_output],
+            s: phase1.s[index_in_output],
             u,
             R,
         })
@@ -243,6 +195,7 @@ pub mod tests {
     use ark_ec::pairing::Pairing;
     use ark_ff::Zero;
     use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
+    use std::time::{Duration, Instant};
 
     use crate::{
         setup::{PublicKeyG2, SecretKey},
@@ -304,16 +257,26 @@ pub mod tests {
 
         let protocol_id = b"test".to_vec();
 
-        let num_parties = 5;
-        let all_party_set = (1..=num_parties).into_iter().collect::<BTreeSet<_>>();
+        let sig_batch_size = 10;
+        let num_signers = 5;
+        let all_party_set = (1..=num_signers).into_iter().collect::<BTreeSet<_>>();
         let (sk, sk_shares, _poly) =
-            deal_random_secret::<_, Fr>(&mut rng, num_parties, num_parties);
+            deal_random_secret::<_, Fr>(&mut rng, num_signers, num_signers);
 
         let base_ot_outputs = do_base_ot_for_threshold_sig::<BASE_OT_KEY_SIZE>(
             &mut rng,
             ote_params.num_base_ot(),
-            num_parties,
+            num_signers,
             all_party_set.clone(),
+        );
+
+        let message_count = 3;
+        let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(&mut rng, message_count);
+        let public_key = PublicKeyG2::generate_using_secret_key(&SecretKey(sk), &params);
+
+        println!(
+            "For a batch size of {} BBS+ signatures and {} signers",
+            sig_batch_size, num_signers
         );
 
         let mut round1s = vec![];
@@ -321,18 +284,24 @@ pub mod tests {
         let mut commitments_zero_share = vec![];
         let mut round1outs = vec![];
 
-        for i in 1..=num_parties {
+        let start = Instant::now();
+        for i in 1..=num_signers {
             let mut others = all_party_set.clone();
             others.remove(&i);
-            let (round1, comm, comm_zero) =
-                Phase1::<Fr>::init(&mut rng, i, others, protocol_id.clone());
+            let (round1, comm, comm_zero) = Phase1::<Fr>::init_for_bbs_plus(
+                &mut rng,
+                sig_batch_size,
+                i,
+                others,
+                protocol_id.clone(),
+            );
             round1s.push(round1);
             commitments.push(comm);
             commitments_zero_share.push(comm_zero);
         }
 
-        for i in 1..=num_parties {
-            for j in 1..=num_parties {
+        for i in 1..=num_signers {
+            for j in 1..=num_signers {
                 if i != j {
                     round1s[i as usize - 1]
                         .receive_commitment(
@@ -348,8 +317,8 @@ pub mod tests {
             }
         }
 
-        for i in 1..=num_parties {
-            for j in 1..=num_parties {
+        for i in 1..=num_signers {
+            for j in 1..=num_signers {
                 if i != j {
                     let share = round1s[j as usize - 1].get_comm_shares_and_salts();
                     let zero_share = round1s[j as usize - 1]
@@ -363,13 +332,16 @@ pub mod tests {
 
         let mut expected_sk = Fr::zero();
         for (i, round1) in round1s.into_iter().enumerate() {
-            let out = round1.finish::<Blake2b512>(&sk_shares[i]).unwrap();
-            expected_sk += out.masked_signing_key_share;
+            let out = round1
+                .finish_for_bbs_plus::<Blake2b512>(&sk_shares[i])
+                .unwrap();
+            expected_sk += out.masked_signing_key_shares.iter().sum::<Fr>();
             round1outs.push(out);
         }
-        assert_eq!(expected_sk, sk);
+        println!("Phase 1 took {:?}", start.elapsed());
 
-        for i in 1..num_parties {
+        assert_eq!(expected_sk, sk * Fr::from(sig_batch_size as u64));
+        for i in 1..num_signers {
             assert_eq!(round1outs[0].e, round1outs[i as usize].e);
             assert_eq!(round1outs[0].s, round1outs[i as usize].s);
         }
@@ -377,14 +349,15 @@ pub mod tests {
         let mut round2s = vec![];
         let mut all_u = vec![];
 
-        for i in 1..=num_parties {
+        let start = Instant::now();
+        for i in 1..=num_signers {
             let mut others = all_party_set.clone();
             others.remove(&i);
             let (phase, U) = Phase2::init(
                 &mut rng,
                 i,
-                round1outs[i as usize - 1].masked_signing_key_share,
-                round1outs[i as usize - 1].masked_r,
+                round1outs[i as usize - 1].masked_signing_key_shares.clone(),
+                round1outs[i as usize - 1].masked_rs.clone(),
                 base_ot_outputs[i as usize - 1].clone(),
                 others,
                 ote_params,
@@ -412,49 +385,57 @@ pub mod tests {
         }
 
         let round2_outputs = round2s.into_iter().map(|p| p.finish()).collect::<Vec<_>>();
+        println!("Phase 2 took {:?}", start.elapsed());
 
-        for i in 1..=num_parties {
+        for i in 1..=num_signers {
             for (j, z_A) in &round2_outputs[i as usize - 1].z_A {
                 let z_B = round2_outputs[*j as usize - 1].z_B.get(&i).unwrap();
-                assert_eq!(
-                    z_A.0 + z_B.0,
-                    round1outs[i as usize - 1].masked_signing_key_share
-                        * round1outs[*j as usize - 1].masked_r
-                );
-                assert_eq!(
-                    z_A.1 + z_B.1,
-                    round1outs[i as usize - 1].masked_r
-                        * round1outs[*j as usize - 1].masked_signing_key_share
-                );
+                for k in 0..sig_batch_size {
+                    assert_eq!(
+                        z_A.0[k] + z_B.0[k],
+                        round1outs[i as usize - 1].masked_signing_key_shares[k]
+                            * round1outs[*j as usize - 1].masked_rs[k]
+                    );
+                    assert_eq!(
+                        z_A.1[k] + z_B.1[k],
+                        round1outs[i as usize - 1].masked_rs[k]
+                            * round1outs[*j as usize - 1].masked_signing_key_shares[k]
+                    );
+                }
             }
         }
 
-        let message_count = 10;
-        let messages = (0..message_count)
-            .into_iter()
-            .map(|_| Fr::rand(&mut rng))
-            .collect::<Vec<_>>();
-        let _message_map = messages
-            .iter()
-            .enumerate()
-            .map(|m| m)
-            .collect::<BTreeMap<_, _>>();
-        let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(&mut rng, message_count);
-        let public_key = PublicKeyG2::generate_using_secret_key(&SecretKey(sk), &params);
+        let mut sig_shares_time = Duration::default();
+        let mut sig_aggr_time = Duration::default();
+        for k in 0..sig_batch_size {
+            let messages = (0..message_count)
+                .into_iter()
+                .map(|_| Fr::rand(&mut rng))
+                .collect::<Vec<_>>();
 
-        let mut shares = vec![];
-        for i in 0..num_parties as usize {
-            let share = BBSPlusSignatureShare::new(
-                &messages,
-                round1outs[i].clone(),
-                round2_outputs[i].clone(),
-                &params,
-            )
-            .unwrap();
-            shares.push(share);
+            let mut shares = vec![];
+            let start = Instant::now();
+            for i in 0..num_signers as usize {
+                let share = BBSPlusSignatureShare::new(
+                    &messages,
+                    k,
+                    &round1outs[i],
+                    &round2_outputs[i],
+                    &params,
+                )
+                .unwrap();
+                shares.push(share);
+            }
+            sig_shares_time += start.elapsed();
+
+            let start = Instant::now();
+            let sig = BBSPlusSignatureShare::aggregate(shares).unwrap();
+            sig_aggr_time += start.elapsed();
+            sig.verify(&messages, public_key.clone(), params.clone())
+                .unwrap();
         }
 
-        let sig = BBSPlusSignatureShare::aggregate(shares).unwrap();
-        sig.verify(&messages, public_key, params).unwrap();
+        println!("Generating signature shares took {:?}", sig_shares_time);
+        println!("Aggregating signature shares took {:?}", sig_aggr_time);
     }
 }

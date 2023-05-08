@@ -5,10 +5,11 @@ use ark_ff::PrimeField;
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
     rand::RngCore,
-    vec,
+    vec::Vec,
 };
 use digest::DynDigest;
 use dock_crypto_utils::transcript::Merlin;
+use itertools::interleave;
 use oblivious_transfer::{
     ot_based_multiplication::{
         dkls18_mul_2p::MultiplicationOTEParams,
@@ -20,23 +21,27 @@ use oblivious_transfer::{
 
 /// The participant will acts as
 ///     - a receiver in OT extension where its id is less than other participant
+///     - a sender in OT extension where its id is greater than other participant
 #[derive(Clone)]
 pub struct Phase2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
     pub id: ParticipantId,
+    /// Number of threshold signatures being generated in a single batch.
+    pub batch_size: usize,
+    /// Transcripts to record protocol interactions with each participant and later used to generate random challenges
     pub transcripts: BTreeMap<ParticipantId, Merlin>,
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     pub multiplication_party1:
         BTreeMap<ParticipantId, Party1<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>>,
     pub multiplication_party2:
         BTreeMap<ParticipantId, Party2<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>>,
-    pub z_A: BTreeMap<ParticipantId, (F, F)>,
-    pub z_B: BTreeMap<ParticipantId, (F, F)>,
+    pub z_A: BTreeMap<ParticipantId, (Vec<F>, Vec<F>)>,
+    pub z_B: BTreeMap<ParticipantId, (Vec<F>, Vec<F>)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Phase2Output<F: PrimeField> {
-    pub z_A: BTreeMap<ParticipantId, (F, F)>,
-    pub z_B: BTreeMap<ParticipantId, (F, F)>,
+    pub z_A: BTreeMap<ParticipantId, (Vec<F>, Vec<F>)>,
+    pub z_B: BTreeMap<ParticipantId, (Vec<F>, Vec<F>)>,
 }
 
 impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
@@ -45,8 +50,8 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     pub fn init<R: RngCore>(
         rng: &mut R,
         id: ParticipantId,
-        masked_signing_key_share: F,
-        masked_r: F,
+        masked_signing_key_share: Vec<F>,
+        masked_r: Vec<F>,
         mut base_ot_output: BaseOTPhaseOutput,
         others: BTreeSet<ParticipantId>,
         ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
@@ -58,21 +63,32 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         ),
         BBSPlusError,
     > {
+        assert_eq!(masked_signing_key_share.len(), masked_r.len());
+        let batch_size = masked_signing_key_share.len();
+
         let mut transcripts = BTreeMap::<ParticipantId, Merlin>::new();
         let mut multiplication_party1 =
             BTreeMap::<ParticipantId, Party1<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>>::new();
         let mut multiplication_party2 =
             BTreeMap::<ParticipantId, Party2<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>>::new();
         let mut Us = BTreeMap::new();
+
+        // When an OT extension receiver, generate input to multiplication as `[masked_signing_key_share[0], masked_r[0], masked_signing_key_share[1], masked_r[1]], masked_signing_key_share[2], masked_r[2], ...`
+        let mult_when_ot_recv =
+            interleave(masked_signing_key_share.clone(), masked_r.clone()).collect::<Vec<_>>();
+        // When an OT extension sender, generate input to multiplication as `[masked_r[0], masked_signing_key_share[0], masked_r[1], masked_signing_key_share[1], masked_r[2], masked_signing_key_share[2], ...`
+        let mult_when_ot_sendr =
+            interleave(masked_r.clone(), masked_signing_key_share.clone()).collect::<Vec<_>>();
+
         for other in others {
-            let mut trans = Merlin::new(b"t-BBS+");
-            if id >= other {
+            let mut trans = Merlin::new(b"Multiplication phase for threshold BBS and BBS+");
+            if id > other {
                 if let Some((base_ot_choices, base_ot_keys)) =
                     base_ot_output.receiver.remove(&other)
                 {
                     let party1 = Party1::new(
                         rng,
-                        vec![masked_signing_key_share, masked_r],
+                        mult_when_ot_recv.clone(),
                         base_ot_choices,
                         base_ot_keys,
                         ote_params,
@@ -85,7 +101,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
                 if let Some(base_ot_keys) = base_ot_output.sender_keys.remove(&other) {
                     let (party2, U, rlc, gamma) = Party2::new(
                         rng,
-                        vec![masked_r, masked_signing_key_share],
+                        mult_when_ot_sendr.clone(),
                         base_ot_keys,
                         &mut trans,
                         ote_params,
@@ -102,6 +118,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         Ok((
             Self {
                 id,
+                batch_size,
                 transcripts,
                 ote_params,
                 multiplication_party1,
@@ -130,11 +147,18 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         let party1 = self.multiplication_party1.remove(&sender_id).unwrap();
         let trans = self.transcripts.get_mut(&sender_id).unwrap();
 
-        let (mut shares, tau, r, gamma_a) =
+        let (shares, tau, r, gamma_a) =
             party1.receive::<D>(U, rlc, gamma, trans, &gadget_vector)?;
-        debug_assert_eq!(shares.len(), 2);
-        let z_A_1 = shares.0.pop().unwrap();
-        let z_A_0 = shares.0.pop().unwrap();
+        debug_assert_eq!(shares.len(), 2 * self.batch_size);
+        let mut z_A_0 = Vec::with_capacity(self.batch_size);
+        let mut z_A_1 = Vec::with_capacity(self.batch_size);
+        for (i, share) in shares.0.into_iter().enumerate() {
+            if (i & 1) == 0 {
+                z_A_0.push(share);
+            } else {
+                z_A_1.push(share);
+            }
+        }
         self.z_A.insert(sender_id, (z_A_0, z_A_1));
         Ok((tau, r, gamma_a))
     }
@@ -156,10 +180,17 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 
         let party2 = self.multiplication_party2.remove(&sender_id).unwrap();
         let trans = self.transcripts.get_mut(&sender_id).unwrap();
-        let mut shares = party2.receive::<D>(tau, rlc, gamma, trans, &gadget_vector)?;
-        debug_assert_eq!(shares.len(), 2);
-        let z_B_1 = shares.0.pop().unwrap();
-        let z_B_0 = shares.0.pop().unwrap();
+        let shares = party2.receive::<D>(tau, rlc, gamma, trans, &gadget_vector)?;
+        debug_assert_eq!(shares.len(), 2 * self.batch_size);
+        let mut z_B_0 = Vec::with_capacity(self.batch_size);
+        let mut z_B_1 = Vec::with_capacity(self.batch_size);
+        for (i, share) in shares.0.into_iter().enumerate() {
+            if (i & 1) == 0 {
+                z_B_0.push(share);
+            } else {
+                z_B_1.push(share);
+            }
+        }
         self.z_B.insert(sender_id, (z_B_0, z_B_1));
         Ok(())
     }

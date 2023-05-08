@@ -524,15 +524,15 @@ pub mod tests {
                     .expect("Error in creating keys for OT receiver");
             assert_eq!(R.len(), ot_config.num_ot as usize);
 
-            let strng = format!("{} byte keys for {} 1-of-{}", KEY_SIZE, m, n);
+            let string = format!("{} byte keys for {} 1-of-{}", KEY_SIZE, m, n);
 
-            println!("Receiver gets {} ROTs in {:?}", strng, start.elapsed());
+            println!("Receiver gets {} ROTs in {:?}", string, start.elapsed());
 
             let start = Instant::now();
             let sender_keys = sender_setup
                 .derive_keys::<KEY_SIZE>(R)
                 .expect("Error in creating keys for OT sender");
-            println!("Sender creates {} ROTs in {:?}", strng, start.elapsed());
+            println!("Sender creates {} ROTs in {:?}", string, start.elapsed());
 
             assert_eq!(sender_keys.len(), ot_config.num_ot as usize);
             assert_eq!(receiver_keys.len(), ot_config.num_ot as usize);
@@ -602,7 +602,7 @@ pub mod tests {
                 start.elapsed()
             );
 
-            let strng = format!("{} byte keys for {}", KEY_SIZE, num_base_ot);
+            let string = format!("{} byte keys for {}", KEY_SIZE, num_base_ot);
 
             let start = Instant::now();
             let (receiver_keys, R) =
@@ -615,7 +615,7 @@ pub mod tests {
                 .expect("Error in creating keys for OT receiver");
             println!(
                 "Receiver gets {} 1-of-2 VROTs in {:?}",
-                strng,
+                string,
                 start.elapsed()
             );
 
@@ -625,7 +625,7 @@ pub mod tests {
                 .expect("Error in creating keys for OT sender");
             println!(
                 "Sender creates {} 1-of-2 VROTs in {:?}",
-                strng,
+                string,
                 start.elapsed()
             );
 
@@ -640,7 +640,7 @@ pub mod tests {
             );
 
             let start = Instant::now();
-            let (receiver_challenger, responses) =
+            let (receiver_responder, responses) =
                 VSROTResponder::new(&receiver_keys, choices.clone(), challenges)
                     .expect("Error in creating responses");
             println!(
@@ -669,7 +669,7 @@ pub mod tests {
             );
 
             let start = Instant::now();
-            receiver_challenger
+            receiver_responder
                 .verify_sender_hashed_keys(hashed_keys)
                 .expect("Error in verifying hashed keys from OT sender");
             println!(

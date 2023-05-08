@@ -10,6 +10,7 @@ use sha3::Sha3_256;
 use oblivious_transfer::ParticipantId;
 
 use crate::error::BBSPlusError;
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -24,7 +25,10 @@ pub struct Party<F: PrimeField> {
     pub id: ParticipantId,
     pub protocol_id: Vec<u8>,
     pub own_shares_and_salts: Vec<(F, [u8; SALT_SIZE])>,
+    /// Stores commitments to shares received from other parties and used to verify against the
+    /// shares received from them in a future round
     pub commitments: BTreeMap<ParticipantId, Commitments>,
+    /// Stores shares received from other parties and used to compute the joint randomness
     pub other_shares: BTreeMap<ParticipantId, Vec<F>>,
 }
 
@@ -201,7 +205,7 @@ pub mod tests {
                 if i != j {
                     assert_eq!(
                         parties[j as usize - 1].other_shares.get(&i).unwrap(),
-                        &parties[i as usize - 1] // TODO: Add a function
+                        &parties[i as usize - 1]
                             .own_shares_and_salts
                             .clone()
                             .into_iter()

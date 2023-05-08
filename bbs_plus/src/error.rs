@@ -48,6 +48,14 @@ pub enum BBSPlusError {
     UnexpectedMultiplicationParty2(ParticipantId),
     IncorrectEByParticipant(ParticipantId),
     IncorrectSByParticipant(ParticipantId),
+    NotABaseOTSender(ParticipantId),
+    NotABaseOTReceiver(ParticipantId),
+    AlreadyHaveSenderPubkeyFrom(ParticipantId),
+    AlreadyHaveReceiverPubkeyFrom(ParticipantId),
+    ReceiverNotReadyForChallengeFrom(ParticipantId),
+    AlreadyHaveChallengesFrom(ParticipantId),
+    SenderEitherNotReadyForResponseOrAlreadySentIt(ParticipantId),
+    ReceiverEitherNotReadyForHashedKeysOrAlreadyVerifiedIt(ParticipantId),
 }
 
 impl From<SchnorrError> for BBSPlusError {
