@@ -1,6 +1,6 @@
 use ark_ec::{AffineRepr, CurveGroup};
 
-use super::{commitment::Commitments, multiplication_phase::Phase2Output, utils::compute_R_and_u};
+use super::{cointoss::Commitments, multiplication_phase::Phase2Output, utils::compute_R_and_u};
 use ark_ec::pairing::Pairing;
 use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -34,6 +34,8 @@ pub struct Phase1Output<F: PrimeField> {
     pub others: Vec<ParticipantId>,
 }
 
+/// A share of the BBS signature created by one signer. A client will aggregate many such shares to
+/// create the final signature.
 pub struct BBSSignatureShare<E: Pairing> {
     pub id: ParticipantId,
     pub e: E::ScalarField,
@@ -41,7 +43,7 @@ pub struct BBSSignatureShare<E: Pairing> {
     pub R: E::G1Affine,
 }
 
-impl<F: PrimeField> Phase1<F> {
+impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
     pub fn init_for_bbs<R: RngCore>(
         rng: &mut R,
         batch_size: usize,
@@ -52,7 +54,7 @@ impl<F: PrimeField> Phase1<F> {
         let r = (0..batch_size).map(|_| F::rand(rng)).collect();
         // 1 random values `e` need to be generated per signature
         let (commitment_protocol, comm) =
-            super::commitment::Party::commit(rng, id, batch_size, protocol_id.clone());
+            super::cointoss::Party::commit(rng, id, batch_size, protocol_id.clone());
         // Each signature will have its own zero-sharing of `alpha` and `beta`
         let (zero_sharing_protocol, comm_zero_share) =
             super::zero_sharing::Party::init(rng, id, 2 * batch_size, others, protocol_id);
@@ -211,7 +213,7 @@ pub mod tests {
         let ote_params = MultiplicationOTEParams::<KAPPA, STATISTICAL_SECURITY_PARAMETER> {};
         let gadget_vector = GadgetVector::<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>::new::<
             Blake2b512,
-        >(ote_params, b"test");
+        >(ote_params, b"test-gadget-vector");
 
         let protocol_id = b"test".to_vec();
 
@@ -247,7 +249,7 @@ pub mod tests {
         for i in 1..=num_signers {
             let mut others = all_party_set.clone();
             others.remove(&i);
-            let (round1, comm, comm_zero) = Phase1::<Fr>::init_for_bbs(
+            let (round1, comm, comm_zero) = Phase1::<Fr, 256>::init_for_bbs(
                 &mut rng,
                 sig_batch_size,
                 i,

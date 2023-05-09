@@ -13,7 +13,7 @@
 //! Both BBS and BBS+ implementations share the same multiplication phase and the base OT phase but their phase 1 is slightly different.
 
 pub mod base_ot_phase;
-pub mod commitment;
+pub mod cointoss;
 pub mod multiplication_phase;
 pub mod randomness_generation_phase;
 pub mod threshold_bbs;
