@@ -10,7 +10,7 @@ use ark_std::{
     UniformRand,
 };
 use digest::Digest;
-use oblivious_transfer::{
+use oblivious_transfer_protocols::{
     base_ot::simplest_ot::{
         Challenges, HashedKey, OneOfTwoROTSenderKeys, ROTReceiverKeys, ROTSenderSetup,
         ReceiverPubKeys, Responses, SecretKnowledgeProof, SenderPubKey, VSROTChallenger,

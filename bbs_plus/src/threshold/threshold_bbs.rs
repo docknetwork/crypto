@@ -17,7 +17,7 @@ use crate::{
     signature_23::Signature23G1,
     threshold::randomness_generation_phase::Phase1,
 };
-use oblivious_transfer::ParticipantId;
+use oblivious_transfer_protocols::ParticipantId;
 
 /// The length of vectors `r`, `e`, `masked_signing_key_shares`, `masked_rs` should
 /// be `batch_size` each item of the vector corresponds to 1 signature
@@ -196,7 +196,7 @@ pub mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use oblivious_transfer::ot_based_multiplication::{
+    use oblivious_transfer_protocols::ot_based_multiplication::{
         dkls18_mul_2p::MultiplicationOTEParams, dkls19_batch_mul_2p::GadgetVector,
     };
 

@@ -9,7 +9,7 @@ use ark_std::{
     vec::Vec,
 };
 use digest::DynDigest;
-use oblivious_transfer::ParticipantId;
+use oblivious_transfer_protocols::ParticipantId;
 
 use crate::{
     error::BBSPlusError,
@@ -203,7 +203,7 @@ pub mod tests {
             base_ot_phase::tests::do_base_ot_for_threshold_sig, multiplication_phase::Phase2,
         },
     };
-    use oblivious_transfer::ot_based_multiplication::{
+    use oblivious_transfer_protocols::ot_based_multiplication::{
         dkls18_mul_2p::MultiplicationOTEParams, dkls19_batch_mul_2p::GadgetVector,
     };
 

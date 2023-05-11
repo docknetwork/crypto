@@ -10,7 +10,7 @@ use ark_std::{
 use digest::DynDigest;
 use dock_crypto_utils::transcript::Merlin;
 use itertools::interleave;
-use oblivious_transfer::{
+use oblivious_transfer_protocols::{
     ot_based_multiplication::{
         dkls18_mul_2p::MultiplicationOTEParams,
         dkls19_batch_mul_2p::{GadgetVector, MaskedInputs, Party1, Party2, RLC},

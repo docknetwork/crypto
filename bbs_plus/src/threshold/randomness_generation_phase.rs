@@ -9,7 +9,7 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use digest::DynDigest;
-use oblivious_transfer::ParticipantId;
+use oblivious_transfer_protocols::ParticipantId;
 
 /// This is the first phase of the signing protocol where parties generate random values, jointly and
 /// individually including additive shares of 0.

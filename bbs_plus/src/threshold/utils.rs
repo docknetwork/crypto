@@ -3,7 +3,7 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_std::{cfg_into_iter, ops::Mul, vec::Vec};
 use itertools::Itertools;
-use oblivious_transfer::ParticipantId;
+use oblivious_transfer_protocols::ParticipantId;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

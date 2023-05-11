@@ -7,7 +7,7 @@ use ark_std::{cfg_into_iter, collections::BTreeMap, rand::RngCore, vec, vec::Vec
 use digest::Digest;
 use sha3::Sha3_256;
 
-use oblivious_transfer::ParticipantId;
+use oblivious_transfer_protocols::ParticipantId;
 
 use crate::error::BBSPlusError;
 

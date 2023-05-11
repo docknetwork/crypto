@@ -6,7 +6,7 @@ use dock_crypto_utils::{
     serde_utils::ArkSerializationError,
     try_iter::{IndexIsOutOfBounds, InvalidPair},
 };
-use oblivious_transfer::{error::OTError, ParticipantId};
+use oblivious_transfer_protocols::{error::OTError, ParticipantId};
 use schnorr_pok::error::SchnorrError;
 use serde::Serialize;
 

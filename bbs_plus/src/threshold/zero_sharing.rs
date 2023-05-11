@@ -17,7 +17,7 @@ use ark_std::{
     vec::Vec,
 };
 use digest::DynDigest;
-use oblivious_transfer::ParticipantId;
+use oblivious_transfer_protocols::ParticipantId;
 
 // TODO: This should be generic over the size of random committed seeds. Called lambda in the paper
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
