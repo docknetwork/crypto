@@ -14,7 +14,7 @@ use schnorr_pok::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 

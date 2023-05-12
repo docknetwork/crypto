@@ -86,8 +86,6 @@ fn pok_sig_benchmark(c: &mut Criterion) {
                     b.iter(|| {
                         let pok = PoKOfSignature23G1Protocol::init(
                             &mut rng,
-                            None,
-                            None,
                             black_box(sig),
                             black_box(params),
                             black_box(messages.iter().enumerate().map(|(idx, msg)| {
@@ -125,8 +123,6 @@ fn pok_sig_benchmark(c: &mut Criterion) {
         for j in 0..revealed_indices_range[i].len() {
             let pok = PoKOfSignature23G1Protocol::init(
                 &mut rng,
-                None,
-                None,
                 sig,
                 params,
                 messages.iter().enumerate().map(|(idx, msg)| {

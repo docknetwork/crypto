@@ -1,7 +1,7 @@
 //! Compressed sigma protocol as described as Protocol 5 of the paper "Compressed Sigma Protocol Theory..."
 
 use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::{Field, One, PrimeField, Zero};
+use ark_ff::{Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     cfg_iter,

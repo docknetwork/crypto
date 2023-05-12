@@ -1,7 +1,7 @@
 //! Compressed sigma protocol with homomorphism as described in section 3 of the paper "Compressing Proofs of k-Out-Of-n".
 
 use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::{Field, One, PrimeField, Zero};
+use ark_ff::{Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, ops::MulAssign, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
@@ -404,6 +404,7 @@ mod tests {
     };
     use blake2::Blake2b512;
     use std::time::Instant;
+    use ark_ff::Zero;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
     type G1 = <Bls12_381 as Pairing>::G1Affine;

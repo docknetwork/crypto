@@ -1,5 +1,5 @@
 use ark_bls12_381::Bls12_381;
-use ark_ec::{pairing::Pairing, CurveGroup};
+use ark_ec::{pairing::Pairing};
 use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
