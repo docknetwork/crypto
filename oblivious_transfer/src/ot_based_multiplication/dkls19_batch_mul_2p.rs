@@ -59,12 +59,14 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 }
 
 /// Random Linear Combination used for error checking
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RLC<F: PrimeField> {
     pub r: Vec<F>,
     pub u: Vec<F>,
 }
 
 /// Inputs to the multiplier masked by a random pad
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct MaskedInputs<F: PrimeField>(pub Vec<F>);
 
 /// Acts as sender in OT extension

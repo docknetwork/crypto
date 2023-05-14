@@ -23,6 +23,7 @@ use crate::{
 use dock_crypto_utils::transcript::Transcript;
 
 use crate::util::is_multiple_of_8;
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -38,6 +39,7 @@ pub struct GadgetVector<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECUR
 );
 
 /// Random Linear Combination used for error checking
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RLC<F: PrimeField> {
     pub r: Vec<F>,
     pub u: F,

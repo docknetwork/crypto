@@ -90,6 +90,7 @@ impl<F: PrimeField> Phase1<F> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct BBSPlusSignatureShare<E: Pairing> {
     pub id: ParticipantId,
     pub e: E::ScalarField,

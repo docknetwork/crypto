@@ -19,11 +19,12 @@ serde_with.workspace = true
 blake2 = { version = "0.10", default-features = false }
 itertools = "0.10.5"
 coconut-crypto = { version = "0.3.0", default-features = false, path = "../coconut" }
+oblivious_transfer_protocols = { version = "0.1.0", default-features = false, path = "../oblivious_transfer" }
 dock_crypto_utils = { default-features = false, path = "../utils" }
 zeroize.workspace = true
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.4.0"
 ark-serialize = { version = "^0.4.1", default-features = false, features = [ "derive" ] }
 
 [[bench]]
@@ -74,4 +75,14 @@ harness = false
 [[bench]]
 name = "bbs_proof"
 path = "benches/bbs_proof.rs"
+harness = false
+
+[[bench]]
+name = "kos_ote"
+path = "benches/kos_ote.rs"
+harness = false
+
+[[bench]]
+name = "dkls19_batch_mul_2p"
+path = "benches/dkls19_batch_mul_2p.rs"
 harness = false

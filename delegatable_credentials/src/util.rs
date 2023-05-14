@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing};
+use ark_ec::pairing::Pairing;
 use ark_std::{rand::RngCore, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::{concat_slices, hashing_utils::projective_group_elem_from_try_and_incr};

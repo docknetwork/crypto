@@ -398,13 +398,13 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
+    use ark_ff::Zero;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
     use blake2::Blake2b512;
     use std::time::Instant;
-    use ark_ff::Zero;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
     type G1 = <Bls12_381 as Pairing>::G1Affine;

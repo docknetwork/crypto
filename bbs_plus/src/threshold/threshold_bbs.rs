@@ -34,6 +34,7 @@ pub struct Phase1Output<F: PrimeField> {
     pub others: Vec<ParticipantId>,
 }
 
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct BBSSignatureShare<E: Pairing> {
     pub id: ParticipantId,
     pub e: E::ScalarField,

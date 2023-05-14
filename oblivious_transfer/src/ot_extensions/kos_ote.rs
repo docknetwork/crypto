@@ -24,6 +24,7 @@ use crate::{configs::OTEConfig, error::OTError};
 use rayon::prelude::*;
 
 /// Random Linear Combination used for error checking
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RLC {
     pub x: Vec<u8>,
     pub t: Vec<u8>,
