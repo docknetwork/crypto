@@ -244,7 +244,7 @@ pub fn transpose(input: &[u8], nrows: usize, ncols: usize) -> Vec<u8> {
     return transpose_using_sse(input, nrows, ncols);
 
     #[cfg(not(target_arch = "x86_64"))]
-    return transpose_portable(m, nrows, ncols);
+    return transpose_portable(input, nrows, ncols);
 }
 
 #[cfg(test)]
