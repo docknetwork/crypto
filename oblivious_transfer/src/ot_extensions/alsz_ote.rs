@@ -22,10 +22,12 @@ use ark_std::{
     vec::Vec,
 };
 use digest::{ExtendableOutput, Update};
+use dock_crypto_utils::join;
 use itertools::Itertools;
 use sha3::Shake256;
 
 use crate::{configs::OTEConfig, error::OTError, util::is_multiple_of_8};
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -131,15 +133,13 @@ impl OTExtensionReceiverSetup {
             for j in i + 1..ote_config.num_base_ot {
                 let prg_i = &prgs[i as usize];
                 let prg_j = &prgs[j as usize];
-                hashes.insert(
-                    (i, j),
-                    (
-                        hash_prg(i, j, &xor(&prg_i.0, &prg_j.0), packed_choices.len()),
-                        hash_prg(i, j, &xor(&prg_i.0, &prg_j.1), packed_choices.len()),
-                        hash_prg(i, j, &xor(&prg_i.1, &prg_j.0), packed_choices.len()),
-                        hash_prg(i, j, &xor(&prg_i.1, &prg_j.1), packed_choices.len()),
-                    ),
+                let (i_0, i_1, i_2, i_3) = join!(
+                    hash_prg(i, j, &xor(&prg_i.0, &prg_j.0), packed_choices.len()),
+                    hash_prg(i, j, &xor(&prg_i.0, &prg_j.1), packed_choices.len()),
+                    hash_prg(i, j, &xor(&prg_i.1, &prg_j.0), packed_choices.len()),
+                    hash_prg(i, j, &xor(&prg_i.1, &prg_j.1), packed_choices.len())
                 );
+                hashes.insert((i, j), (i_0, i_1, i_2, i_3));
             }
         }
         // TODO: Shorten transpose matrix
@@ -304,8 +304,10 @@ impl OTExtensionReceiverSetup {
     ) -> (Vec<u8>, Vec<u8>) {
         let t_i = &mut T[t_row_index * column_size..(t_row_index + 1) * column_size];
         let u_i = &mut U[u_row_index * column_size..(u_row_index + 1) * column_size];
-        key_to_aes_rng(k0).fill_bytes(t_i);
-        key_to_aes_rng(k1).fill_bytes(u_i);
+        join!(
+            key_to_aes_rng(k0).fill_bytes(t_i),
+            key_to_aes_rng(k1).fill_bytes(u_i)
+        );
         let k_0 = t_i.to_vec();
         let k_1 = u_i.to_vec();
         xor_in_place(u_i, t_i);
@@ -419,6 +421,7 @@ impl OTExtensionSenderSetup {
                     } else {
                         (&hashes.3, &hashes.0)
                     };
+
                     let xor_a_b = xor(&prgs[i as usize], &prgs[j as usize]);
                     if h != &hash_prg(i, j, &xor_a_b, column_size) {
                         return Err(OTError::ConsistencyCheckFailed(i, j));
@@ -828,7 +831,7 @@ pub mod tests {
                 });
         }
 
-        for (base_ot_count, extended_ot_count) in [(128, 1024), (192, 4096), (200, 8192)] {
+        for (base_ot_count, extended_ot_count) in [(256, 1024), (512, 2048), (1024, 4096)] {
             let choices = (0..extended_ot_count)
                 .map(|_| u8::rand(&mut rng) % 2 != 0)
                 .collect();
@@ -838,7 +841,7 @@ pub mod tests {
                 base_ot_config.num_ot,
                 extended_ot_count,
                 choices,
-                512,
+                1024,
                 &B,
             );
         }
@@ -930,9 +933,9 @@ pub mod tests {
                 });
         }
 
-        for (base_ot_count, extended_ot_count) in [(128, 1024), (192, 4096), (200, 8192)] {
+        for (base_ot_count, extended_ot_count) in [(256, 1024), (512, 2048), (1024, 4096)] {
             let base_ot_config = OTConfig::new_for_alsz_ote(base_ot_count).unwrap();
-            check::<128>(&mut rng, base_ot_config.num_ot, extended_ot_count, 512, &B);
+            check::<128>(&mut rng, base_ot_config.num_ot, extended_ot_count, 1024, &B);
         }
     }
 
@@ -1018,7 +1021,7 @@ pub mod tests {
                 });
         }
 
-        for (base_ot_count, extended_ot_count) in [(128, 1024), (192, 4096), (200, 8192)] {
+        for (base_ot_count, extended_ot_count) in [(256, 1024), (512, 2048), (1024, 4096)] {
             let choices = (0..extended_ot_count)
                 .map(|_| u8::rand(&mut rng) % 2 != 0)
                 .collect();
@@ -1029,7 +1032,7 @@ pub mod tests {
                 base_ot_config.num_ot,
                 extended_ot_count,
                 choices,
-                512,
+                1024,
                 &B,
             );
         }

@@ -22,6 +22,7 @@ pub type Message = Vec<u8>;
 // TODO: Should include dimensions
 // TODO: Consider using ndarray for bit-vectors https://github.com/rust-ndarray/ndarray
 
+/// A bit matrix stored in row-major order
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct BitMatrix(pub Vec<u8>);
 

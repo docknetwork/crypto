@@ -31,6 +31,9 @@ ark-bls12-381.workspace = true
 serde_json = "1.0"
 ark-poly.workspace = true
 
+[build-dependencies]
+cc = "1.0.77"
+
 [features]
 default = [ "parallel"]
 std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std"]

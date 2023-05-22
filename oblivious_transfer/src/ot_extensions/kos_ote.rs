@@ -20,6 +20,8 @@ use crate::{
 };
 
 use crate::{configs::OTEConfig, error::OTError};
+use dock_crypto_utils::join;
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -91,23 +93,25 @@ impl OTExtensionReceiverSetup {
         let zeroes = vec![0; row_byte_size];
         for i in 0..l_prime {
             let chi_i = &chi[i * row_byte_size..(i + 1) * row_byte_size];
-            xor_in_place(
-                &mut x,
-                &and(
-                    if setup.ot_extension_choices[i] {
-                        &ones
-                    } else {
-                        &zeroes
-                    },
-                    chi_i,
+            join!(
+                xor_in_place(
+                    &mut x,
+                    &and(
+                        if setup.ot_extension_choices[i] {
+                            &ones
+                        } else {
+                            &zeroes
+                        },
+                        chi_i,
+                    ),
                 ),
-            );
-            xor_in_place(
-                &mut t,
-                &and(
-                    &setup.T.0[i * row_byte_size..(i + 1) * row_byte_size],
-                    chi_i,
-                ),
+                xor_in_place(
+                    &mut t,
+                    &and(
+                        &setup.T.0[i * row_byte_size..(i + 1) * row_byte_size],
+                        chi_i,
+                    ),
+                )
             );
         }
         Ok((
@@ -212,13 +216,14 @@ impl OTExtensionSenderSetup {
         let l_prime = ote_config.num_ot_extensions
             + ote_config.num_base_ot as usize
             + STATISTICAL_SECURITY_PARAMETER as usize;
+        let new_ote_config = OTEConfig::new(ote_config.num_base_ot, l_prime)?;
+
         let chi = gen_randomness(
             ote_config.num_base_ot as usize,
             l_prime,
             &U,
             row_byte_size * l_prime,
         );
-        let new_ote_config = OTEConfig::new(ote_config.num_base_ot, l_prime)?;
         let setup = alsz_ote::OTExtensionSenderSetup::new(
             new_ote_config,
             U,
@@ -352,6 +357,7 @@ pub fn hash_to_field<F: PrimeField, D: Default + DynDigest + Clone>(
 pub mod tests {
     use super::*;
     use crate::base_ot::simplest_ot::tests::do_1_of_2_base_ot;
+    use std::time::Instant;
 
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_ec::pairing::Pairing;
@@ -381,6 +387,7 @@ pub mod tests {
 
             let ote_config = OTEConfig::new(base_ot_count, extended_ot_count).unwrap();
 
+            let start = Instant::now();
             // Perform OT extension
             let (ext_receiver_setup, U, rlc) = OTExtensionReceiverSetup::new::<_, SSP>(
                 rng,
@@ -389,11 +396,14 @@ pub mod tests {
                 base_ot_sender_keys,
             )
             .unwrap();
+            let receiver_setup_time = start.elapsed();
+
             assert_eq!(
                 ext_receiver_setup.ot_extension_choices.len(),
                 ot_ext_choices.len() + base_ot_count as usize + SSP as usize
             );
 
+            let start = Instant::now();
             let base_ot_choices = base_ot_choices
                 .into_iter()
                 .map(|b| b % 2 != 0)
@@ -406,6 +416,7 @@ pub mod tests {
                 base_ot_receiver_keys,
             )
             .unwrap();
+            let sender_setup_time = start.elapsed();
 
             let messages = (0..extended_ot_count)
                 .map(|_| {
@@ -424,12 +435,18 @@ pub mod tests {
                 })
                 .collect::<Vec<_>>();
 
+            let start = Instant::now();
             let encryptions = ext_sender_setup
                 .encrypt(messages.clone(), message_size)
                 .unwrap();
+            let encryption_time = start.elapsed();
+
+            let start = Instant::now();
             let decryptions = ext_receiver_setup
                 .decrypt(encryptions, message_size)
                 .unwrap();
+            let decryption_time = start.elapsed();
+
             assert_eq!(decryptions.len(), extended_ot_count);
             cfg_into_iter!(decryptions)
                 .enumerate()
@@ -443,6 +460,7 @@ pub mod tests {
                 });
 
             // Perform Correlated OT extension
+            let start = Instant::now();
             let deltas = (0..extended_ot_count)
                 .map(|_| {
                     let mut bytes = vec![0u8; message_size];
@@ -450,13 +468,17 @@ pub mod tests {
                     move |m: &Vec<u8>| xor(m, &bytes)
                 })
                 .collect::<Vec<_>>();
-
             let (messages, encryptions) = ext_sender_setup
                 .encrypt_correlated(deltas.clone(), message_size)
                 .unwrap();
+            let cot_encryption_time = start.elapsed();
+
+            let start = Instant::now();
             let decryptions = ext_receiver_setup
                 .decrypt_correlated(encryptions, message_size)
                 .unwrap();
+            let cot_decryption_time = start.elapsed();
+
             assert_eq!(messages.len(), extended_ot_count);
             assert_eq!(decryptions.len(), extended_ot_count);
             cfg_into_iter!(decryptions)
@@ -471,14 +493,21 @@ pub mod tests {
                     assert_eq!(messages[i].1, deltas[i](&messages[i].0));
                 });
 
+            // Perform Correlated OT extension
+            let start = Instant::now();
             let alpha = (0..extended_ot_count)
                 .map(|_| (Fr::rand(rng), Fr::rand(rng)))
                 .collect::<Vec<_>>();
             let (t_A, tau) = ext_sender_setup
                 .transfer::<Fr, Blake2b512>(alpha.clone())
                 .unwrap();
+            let cot_1_encryption_time = start.elapsed();
             assert_eq!(t_A.len(), tau.len());
+
+            let start = Instant::now();
             let t_B = ext_receiver_setup.receive::<Fr, Blake2b512>(tau).unwrap();
+            let cot_1_decryption_time = start.elapsed();
+
             assert_eq!(t_A.len(), t_B.len());
             cfg_into_iter!(t_A.0)
                 .zip(t_B.0)
@@ -492,13 +521,48 @@ pub mod tests {
                         assert_eq!(alpha[i].1 - t_A_i.1, t_B_i.1);
                     }
                 });
+
+            println!(
+                "For {} base OTs and {} extensions",
+                base_ot_count, extended_ot_count
+            );
+            println!(
+                "Sender setup takes {:?} and receiver setup takes {:?}",
+                sender_setup_time, receiver_setup_time
+            );
+            println!(
+                "Encrypting messages of {} bytes takes {:?} and decryption takes {:?}",
+                message_size, encryption_time, decryption_time
+            );
+            println!(
+                "Doing Correlated OT takes {:?} and decryption takes {:?}",
+                cot_encryption_time, cot_decryption_time
+            );
+            println!(
+                "Doing Correlated OT takes {:?} and decryption takes {:?}",
+                cot_1_encryption_time, cot_1_decryption_time
+            );
         }
 
-        for (base_ot_count, extended_ot_count) in [(128, 1024), (192, 4096), (200, 8192)] {
+        for (base_ot_count, extended_ot_count) in [
+            (256, 1024),
+            (256, 2048),
+            (512, 2048),
+            (512, 4096),
+            (1024, 4096),
+            (1024, 8192),
+        ] {
             let choices = (0..extended_ot_count)
                 .map(|_| u8::rand(&mut rng) % 2 != 0)
                 .collect();
-            check::<128, 80>(&mut rng, base_ot_count, extended_ot_count, choices, 512, &B);
+            check::<128, 80>(
+                &mut rng,
+                base_ot_count,
+                extended_ot_count,
+                choices,
+                1024,
+                &B,
+            );
         }
     }
 }

@@ -3,7 +3,7 @@
 
 use crate::{
     error::BBSPlusError,
-    threshold::commitment::{Commitments, Party as CommitmentParty, SALT_SIZE},
+    threshold::cointoss::{Commitments, Party as CommitmentParty},
 };
 use ark_ff::{
     field_hashers::{DefaultFieldHasher, HashToField},
@@ -21,15 +21,19 @@ use oblivious_transfer_protocols::ParticipantId;
 
 // TODO: This should be generic over the size of random committed seeds. Called lambda in the paper
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Party<F: PrimeField> {
+pub struct Party<F: PrimeField, const SALT_SIZE: usize> {
     pub id: ParticipantId,
     pub protocol_id: Vec<u8>,
     pub batch_size: usize,
     /// Commit-and-release coin tossing protocols run with each party
-    pub cointoss_protocols: BTreeMap<ParticipantId, CommitmentParty<F>>,
+    pub cointoss_protocols: BTreeMap<ParticipantId, CommitmentParty<F, SALT_SIZE>>,
 }
 
-impl<F: PrimeField> Party<F> {
+impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
+    /// Initiates a coin-tossing protocol with each party specified in `others`. `batch_size` is the number
+    /// of 0s whose shares are generated, eg, if `batch_size` is 3, then `a_1, a_2, ..., a_n`,
+    /// `b_1, b_2, ..., b_n` and `c_1, c_2, ..., c_n` are generated such that `\sum_{i}(a_{i}) = 0`,
+    /// `\sum_{i}(b_{i}) = 0` and `\sum_{i}(c_{i}) = 0`.
     pub fn init<R: RngCore>(
         rng: &mut R,
         id: ParticipantId,
@@ -56,6 +60,7 @@ impl<F: PrimeField> Party<F> {
         )
     }
 
+    /// Process received commitments to the shares from another party and store it
     pub fn receive_commitment(
         &mut self,
         sender_id: ParticipantId,
@@ -69,6 +74,8 @@ impl<F: PrimeField> Party<F> {
         Ok(())
     }
 
+    /// Process a received share from another party, verify it against the commitment receiver earlier
+    /// and store the shares
     pub fn receive_shares(
         &mut self,
         sender_id: ParticipantId,
@@ -82,6 +89,7 @@ impl<F: PrimeField> Party<F> {
         Ok(())
     }
 
+    /// Use the shares received from all parties to create `batch_size` sets of shares of 0
     pub fn compute_zero_shares<D: Default + DynDigest + Clone>(
         self,
     ) -> Result<Vec<F>, BBSPlusError> {
@@ -149,6 +157,7 @@ pub mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
     use ark_ff::Zero;
+    use std::time::Instant;
 
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
@@ -158,57 +167,82 @@ pub mod tests {
     #[test]
     fn zero_sharing() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let protocol_id = b"test".to_vec();
-        let batch_size = 10;
-        let num_parties = 5;
-        let all_party_set = (1..=num_parties).into_iter().collect::<BTreeSet<_>>();
-        let mut parties = vec![];
-        let mut commitments = vec![];
 
-        for i in 1..=num_parties {
-            let mut others = all_party_set.clone();
-            others.remove(&i);
-            let (party, comm) =
-                Party::<Fr>::init(&mut rng, i, batch_size, others, protocol_id.clone());
-            parties.push(party);
-            commitments.push(comm);
-        }
+        fn check(rng: &mut StdRng, batch_size: usize, num_parties: u16) {
+            let protocol_id = b"test".to_vec();
+            let all_party_set = (1..=num_parties).into_iter().collect::<BTreeSet<_>>();
+            let mut parties = vec![];
+            let mut commitments = vec![];
 
-        for i in 1..=num_parties {
-            for j in 1..=num_parties {
-                if i != j {
-                    parties[i as usize - 1]
-                        .receive_commitment(j, commitments[j as usize - 1].get(&i).unwrap().clone())
-                        .unwrap();
+            let start = Instant::now();
+            for i in 1..=num_parties {
+                let mut others = all_party_set.clone();
+                others.remove(&i);
+                let (party, comm) =
+                    Party::<Fr, 256>::init(rng, i, batch_size, others, protocol_id.clone());
+                parties.push(party);
+                commitments.push(comm);
+            }
+            let commit_time = start.elapsed();
+
+            let start = Instant::now();
+            for i in 1..=num_parties {
+                for j in 1..=num_parties {
+                    if i != j {
+                        parties[i as usize - 1]
+                            .receive_commitment(
+                                j,
+                                commitments[j as usize - 1].get(&i).unwrap().clone(),
+                            )
+                            .unwrap();
+                    }
                 }
             }
-        }
+            let process_commit_time = start.elapsed();
 
-        for i in 1..=num_parties {
-            for j in 1..=num_parties {
-                if i != j {
-                    let share = parties[j as usize - 1] // TODO: Add a function for this.
-                        .cointoss_protocols
-                        .get(&i)
-                        .unwrap()
-                        .own_shares_and_salts
-                        .clone();
-                    parties[i as usize - 1].receive_shares(j, share).unwrap();
+            let start = Instant::now();
+            for i in 1..=num_parties {
+                for j in 1..=num_parties {
+                    if i != j {
+                        let share = parties[j as usize - 1] // TODO: Add a function for this.
+                            .cointoss_protocols
+                            .get(&i)
+                            .unwrap()
+                            .own_shares_and_salts
+                            .clone();
+                        parties[i as usize - 1].receive_shares(j, share).unwrap();
+                    }
                 }
             }
+            let process_shares_time = start.elapsed();
+
+            let start = Instant::now();
+            let mut zero_shares = vec![];
+            for party in parties {
+                zero_shares.push(party.compute_zero_shares::<Blake2b512>().unwrap());
+            }
+            let compute_zero_shares_time = start.elapsed();
+
+            assert_eq!(zero_shares.len(), num_parties as usize);
+            for i in 0..batch_size {
+                let mut sum = Fr::zero();
+                for j in 0..num_parties {
+                    sum += zero_shares[j as usize][i];
+                }
+                assert!(sum.is_zero());
+            }
+
+            println!("For a batch size of {} and {} parties, below is the total time taken by all parties", batch_size, num_parties);
+            println!("Commitment time {:?}", commit_time);
+            println!("Processing commitment time {:?}", process_commit_time);
+            println!("Processing shares time {:?}", process_shares_time);
+            println!("Computing zero shares time {:?}", compute_zero_shares_time);
         }
 
-        let mut zero_shares = vec![];
-        for party in parties {
-            zero_shares.push(party.compute_zero_shares::<Blake2b512>().unwrap());
-        }
-        assert_eq!(zero_shares.len(), num_parties as usize);
-        for i in 0..batch_size {
-            let mut sum = Fr::zero();
-            for j in 0..num_parties {
-                sum += zero_shares[j as usize][i];
-            }
-            assert!(sum.is_zero());
-        }
+        check(&mut rng, 10, 5);
+        check(&mut rng, 20, 5);
+        check(&mut rng, 30, 5);
+        check(&mut rng, 10, 10);
+        check(&mut rng, 10, 20);
     }
 }

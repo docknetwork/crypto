@@ -1,4 +1,4 @@
-//! Generate 1 or more random numbers using commit-and-release coin tossing
+//! Generate 1 or more random numbers using commit-and-release coin tossing.
 //! Called F_com in the paper
 
 use ark_ff::PrimeField;
@@ -14,17 +14,18 @@ use crate::error::BBSPlusError;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-pub const SALT_SIZE: usize = 32;
-
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Commitments(pub Vec<Vec<u8>>);
 
-// TODO: Use security parameter as const generic and the salt size should be double of that
+// Note: The correct thing would be to use security parameter as const generic and the salt size
+// should be double of that but that doesn't compile with stable Rust
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Party<F: PrimeField> {
+pub struct Party<F: PrimeField, const SALT_SIZE: usize> {
     pub id: ParticipantId,
     pub protocol_id: Vec<u8>,
     pub own_shares_and_salts: Vec<(F, [u8; SALT_SIZE])>,
+    // Following isn't allowed in stable Rust
+    // pub own_shares_and_salts: Vec<(F, [u8; 2*SECURITY_PARAM])>,
     /// Stores commitments to shares received from other parties and used to verify against the
     /// shares received from them in a future round
     pub commitments: BTreeMap<ParticipantId, Commitments>,
@@ -32,7 +33,10 @@ pub struct Party<F: PrimeField> {
     pub other_shares: BTreeMap<ParticipantId, Vec<F>>,
 }
 
-impl<F: PrimeField> Party<F> {
+impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
+    /// Creates randomness, commits to it and returns the commitments to be sent to the other parties.
+    /// The randomness will serve as a share to the joint randomness. `batch_size` is the number of
+    /// random values generated.
     pub fn commit<R: RngCore>(
         rng: &mut R,
         id: ParticipantId,
@@ -59,6 +63,7 @@ impl<F: PrimeField> Party<F> {
         )
     }
 
+    /// Process received commitments to the shares from another party and store it
     pub fn receive_commitment(
         &mut self,
         sender_id: ParticipantId,
@@ -82,6 +87,8 @@ impl<F: PrimeField> Party<F> {
         Ok(())
     }
 
+    /// Process a received share from another party, verify it against the commitment receiver earlier
+    /// and store the shares
     pub fn receive_shares(
         &mut self,
         sender_id: ParticipantId,
@@ -113,6 +120,7 @@ impl<F: PrimeField> Party<F> {
         Ok(())
     }
 
+    /// Use the shares received from all parties to compute the joint randomness
     pub fn compute_joint_randomness(self) -> Vec<F> {
         cfg_into_iter!(0..self.own_shares_and_salts.len())
             .map(|i| {
@@ -132,6 +140,10 @@ impl<F: PrimeField> Party<F> {
     pub fn has_shares_from(&self, id: &ParticipantId) -> bool {
         self.other_shares.contains_key(id)
     }
+
+    // pub const fn salt_size() -> usize {
+    //     2 * SECURITY_PARAM
+    // }
 
     fn compute_commitments(
         shares_and_salts: &[(F, [u8; SALT_SIZE])],
@@ -159,6 +171,7 @@ pub mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
+    use std::time::Instant;
 
     use ark_std::rand::{rngs::StdRng, SeedableRng};
 
@@ -167,64 +180,90 @@ pub mod tests {
     #[test]
     fn cointoss() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let label = b"test".to_vec();
-        let batch_size = 10;
-        let num_parties = 5;
-        let mut parties = vec![];
-        let mut commitments = vec![];
-        // All parties generate and commit to their share of the joint randomness
-        for i in 1..=num_parties {
-            let (party, comm) = Party::<Fr>::commit(&mut rng, i, batch_size, label.clone());
-            parties.push(party);
-            commitments.push(comm);
-        }
 
-        // All parties send commitment to their shares to others
-        for i in 1..=num_parties {
-            for j in 1..=num_parties {
-                if i != j {
-                    parties[i as usize - 1]
-                        .receive_commitment(j, commitments[j as usize - 1].clone())
-                        .unwrap();
+        fn check<const SALT_SIZE: usize>(rng: &mut StdRng, batch_size: usize, num_parties: u16) {
+            let label = b"test".to_vec();
+            let mut parties = vec![];
+            let mut commitments = vec![];
+
+            // All parties generate and commit to their share of the joint randomness
+            let start = Instant::now();
+            for i in 1..=num_parties {
+                let (party, comm) =
+                    Party::<Fr, SALT_SIZE>::commit(rng, i, batch_size, label.clone());
+                parties.push(party);
+                commitments.push(comm);
+            }
+            let commit_time = start.elapsed();
+
+            // All parties send commitment to their shares to others
+            let start = Instant::now();
+            for i in 1..=num_parties {
+                for j in 1..=num_parties {
+                    if i != j {
+                        parties[i as usize - 1]
+                            .receive_commitment(j, commitments[j as usize - 1].clone())
+                            .unwrap();
+                    }
                 }
             }
-        }
+            let process_commit_time = start.elapsed();
 
-        // All parties send their shares to others
-        for i in 1..=num_parties {
-            for j in 1..=num_parties {
-                if i != j {
-                    let share = parties[j as usize - 1].own_shares_and_salts.clone();
-                    parties[i as usize - 1].receive_shares(j, share).unwrap();
+            // All parties send their shares to others
+            let start = Instant::now();
+            for i in 1..=num_parties {
+                for j in 1..=num_parties {
+                    if i != j {
+                        let share = parties[j as usize - 1].own_shares_and_salts.clone();
+                        parties[i as usize - 1].receive_shares(j, share).unwrap();
+                    }
                 }
             }
-        }
+            let process_shares_time = start.elapsed();
 
-        for i in 1..=num_parties {
-            for j in 1..=num_parties {
-                if i != j {
-                    assert_eq!(
-                        parties[j as usize - 1].other_shares.get(&i).unwrap(),
-                        &parties[i as usize - 1]
-                            .own_shares_and_salts
-                            .clone()
-                            .into_iter()
-                            .map(|s| s.0)
-                            .collect::<Vec<_>>()
-                    )
+            for i in 1..=num_parties {
+                for j in 1..=num_parties {
+                    if i != j {
+                        assert_eq!(
+                            parties[j as usize - 1].other_shares.get(&i).unwrap(),
+                            &parties[i as usize - 1]
+                                .own_shares_and_salts
+                                .clone()
+                                .into_iter()
+                                .map(|s| s.0)
+                                .collect::<Vec<_>>()
+                        )
+                    }
                 }
             }
+
+            // All parties compute the joint randomness
+            let start = Instant::now();
+            let mut joint_randomness = vec![];
+            for party in parties {
+                joint_randomness.push(party.compute_joint_randomness());
+            }
+            let compute_randomness_time = start.elapsed();
+
+            // All parties have the same joint randomness
+            for i in 1..num_parties as usize {
+                assert_eq!(joint_randomness[0], joint_randomness[i]);
+            }
+
+            println!("For a batch size of {} and {} parties, below is the total time taken by all parties", batch_size, num_parties);
+            println!("Commitment time {:?}", commit_time);
+            println!("Processing commitment time {:?}", process_commit_time);
+            println!("Processing shares time {:?}", process_shares_time);
+            println!(
+                "Computing joint randomness time {:?}",
+                compute_randomness_time
+            );
         }
 
-        // All parties compute the joint randomness
-        let mut joint_randomness = vec![];
-        for party in parties {
-            joint_randomness.push(party.compute_joint_randomness());
-        }
-
-        // All parties have the same joint randomness
-        for i in 1..num_parties as usize {
-            assert_eq!(joint_randomness[0], joint_randomness[i]);
-        }
+        check::<256>(&mut rng, 10, 5);
+        check::<256>(&mut rng, 20, 5);
+        check::<256>(&mut rng, 30, 5);
+        check::<256>(&mut rng, 10, 10);
+        check::<256>(&mut rng, 10, 20);
     }
 }

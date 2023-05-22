@@ -13,7 +13,7 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec::Vec, UniformRand};
 use digest::{Digest, DynDigest};
-use dock_crypto_utils::{concat_slices, hashing_utils::field_elem_from_try_and_incr};
+use dock_crypto_utils::{concat_slices, hashing_utils::field_elem_from_try_and_incr, join};
 use itertools::Itertools;
 
 use crate::{
@@ -148,8 +148,9 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             return Err(OTError::IncorrectBatchSize(batch_size, gamma_b.len()));
         }
         add_to_transcript(transcript, &U, &rlc);
-        let correlations = self.get_ote_correlation();
         let ote_config = OTEConfig::new(self.ote_params.num_base_ot(), batch_size * overhead)?;
+
+        let correlations = self.get_ote_correlation();
         let ext_sender_setup = OTExtensionSenderSetup::new::<STATISTICAL_SECURITY_PARAMETER>(
             ote_config,
             U,
@@ -157,28 +158,33 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             self.base_ot_choices,
             self.base_ot_keys,
         )?;
+
         let (t_A, tau) = ext_sender_setup.transfer::<F, D>(correlations)?;
         add_tau_to_transcript(transcript, &tau);
         let chi = transcript.challenge_scalars::<F>(b"chi", batch_size);
         let chi_hat = transcript.challenge_scalars::<F>(b"chi_hat", batch_size);
-        let r = cfg_into_iter!(0..overhead)
-            .map(|i| {
-                cfg_into_iter!(0..batch_size)
-                    .map(|j| {
-                        chi[j] * t_A.0[j * overhead + i].0 + chi_hat[j] * t_A.0[j * overhead + i].1
-                    })
-                    .sum::<F>()
-            })
-            .collect::<Vec<_>>();
-        let (u, gamma_a) = cfg_into_iter!(0..batch_size)
-            .map(|i| {
-                let u_i = chi[i] * self.a_tilde[i] + chi_hat[i] * self.a_hat[i];
-                let gamma_a_i = self.a[i] - self.a_tilde[i];
-                (u_i, gamma_a_i)
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .multiunzip::<(Vec<_>, Vec<_>)>();
+        let (r, ua) = join!(
+            cfg_into_iter!(0..overhead)
+                .map(|i| {
+                    cfg_into_iter!(0..batch_size)
+                        .map(|j| {
+                            chi[j] * t_A.0[j * overhead + i].0
+                                + chi_hat[j] * t_A.0[j * overhead + i].1
+                        })
+                        .sum::<F>()
+                })
+                .collect::<Vec<_>>(),
+            cfg_into_iter!(0..batch_size)
+                .map(|i| {
+                    let u_i = chi[i] * self.a_tilde[i] + chi_hat[i] * self.a_hat[i];
+                    let gamma_a_i = self.a[i] - self.a_tilde[i];
+                    (u_i, gamma_a_i)
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .multiunzip::<(Vec<_>, Vec<_>)>()
+        );
+        let (u, gamma_a) = ua;
 
         // Party 1 generates their multiplication share
         let shares = cfg_into_iter!(0..batch_size)
@@ -263,6 +269,8 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         assert_eq!(ote_params, gadget_vector.0);
         let batch_size = b.len();
         let overhead = ote_params.overhead() as usize;
+        let extended_ot_count = batch_size * ote_params.overhead();
+        let ote_config = OTEConfig::new(ote_params.num_base_ot(), extended_ot_count)?;
         let b_tilde = cfg_into_iter!(0..batch_size)
             .map(|i| {
                 cfg_iter!(beta[i * overhead..((i + 1) * overhead)])
@@ -279,17 +287,15 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
                     .sum::<F>()
             })
             .collect::<Vec<F>>();
-        let extended_ot_count = batch_size * ote_params.overhead();
-        let ote_config = OTEConfig::new(ote_params.num_base_ot(), extended_ot_count)?;
-
         let (ext_receiver_setup, U, rlc) = OTExtensionReceiverSetup::new::<
             _,
             STATISTICAL_SECURITY_PARAMETER,
         >(rng, ote_config, beta.clone(), base_ot_keys)?;
-        add_to_transcript(transcript, &U, &rlc);
         let gamma_b = cfg_into_iter!(0..batch_size)
             .map(|i| b[i] - b_tilde[i])
             .collect::<Vec<_>>();
+
+        add_to_transcript(transcript, &U, &rlc);
         Ok((
             Self {
                 batch_size,
@@ -335,7 +341,6 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         add_tau_to_transcript(transcript, &tau);
         let chi = transcript.challenge_scalars::<F>(b"chi", batch_size);
         let chi_hat = transcript.challenge_scalars::<F>(b"chi_hat", batch_size);
-
         let t_B = self.ote_setup.receive::<F, D>(tau)?;
         let res = cfg_into_iter!(0..overhead).try_for_each(|i| {
             let mut lhs = cfg_into_iter!(0..batch_size)
@@ -497,7 +502,7 @@ pub mod tests {
         let ote_params = MultiplicationOTEParams::<KAPPA, SSP> {};
         let gadget_vector =
             GadgetVector::<Fr, KAPPA, SSP>::new::<Blake2b512>(ote_params, b"test-gadget-vector");
-        for batch_size in [2, 4, 8, 16, 32] {
+        for batch_size in [2, 4, 8, 20, 40, 80] {
             let a = (0..batch_size)
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<Vec<_>>();
