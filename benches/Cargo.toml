@@ -9,7 +9,7 @@ license.workspace = true
 bbs_plus = { version = "0.15.0", default-features = false, path = "../bbs_plus" }
 schnorr_pok = { version = "0.13.0", default-features = false, path = "../schnorr_pok" }
 vb_accumulator = { version = "0.16.0", default-features = false, path = "../vb_accumulator" }
-test_utils = { version = "0.1.0", default-features = false, path = "../test_utils" }
+test_utils = { default-features = false, path = "../test_utils" }
 ark-ff.workspace = true
 ark-ec.workspace = true
 ark-std.workspace = true
