@@ -17,7 +17,7 @@ ark-bls12-381.workspace = true
 serde.workspace = true
 serde_with.workspace = true
 blake2 = { version = "0.10", default-features = false }
-itertools = "0.10.5"
+itertools.workspace = true
 coconut-crypto = { version = "0.4.0", default-features = false, path = "../coconut" }
 oblivious_transfer_protocols = { version = "0.2.0", default-features = false, path = "../oblivious_transfer" }
 dock_crypto_utils = { default-features = false, path = "../utils" }

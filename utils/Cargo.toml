@@ -23,7 +23,7 @@ serde.workspace = true
 serde_with.workspace = true
 rayon = {workspace = true, optional = true}
 merlin = { package = "dock_merlin", version = "2.0", default-features = false, path = "../merlin" }
-itertools = "0.10.5"
+itertools.workspace = true
 
 [dev-dependencies]
 blake2.workspace = true
