@@ -41,7 +41,7 @@ serde_with = { version = "1.10.0", default-features = false, features = ["macros
 zeroize = { version = "1.6.0", features = ["derive"] }
 blake2 = { version = "0.10", default-features = false }
 ark-bls12-381 = { version = "^0.4.0", default-features = false, features = [ "curve" ] }
-itertools = {version = "0.10.5", default-features = false}
+itertools = "0.10.5"
 
 [profile.release]
 lto = true
