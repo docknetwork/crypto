@@ -13,8 +13,12 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec::Vec, UniformRand};
 use digest::{Digest, DynDigest};
-use dock_crypto_utils::{concat_slices, hashing_utils::field_elem_from_try_and_incr, join};
+use dock_crypto_utils::{
+    concat_slices, hashing_utils::field_elem_from_try_and_incr, join, serde_utils::ArkObjectBytes,
+};
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::{
     base_ot::simplest_ot::{OneOfTwoROTSenderKeys, ROTReceiverKeys},
@@ -31,10 +35,13 @@ use rayon::prelude::*;
 
 /// A public vector of random values used by both multiplication participants. Its important that the
 /// values are random and not influenced by any participant
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct GadgetVector<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>(
     pub MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
-    pub Vec<F>,
+    #[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<F>,
 );
 
 impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
@@ -59,47 +66,72 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 }
 
 /// Random Linear Combination used for error checking
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct RLC<F: PrimeField> {
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub r: Vec<F>,
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub u: Vec<F>,
 }
 
 /// Inputs to the multiplier masked by a random pad
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct MaskedInputs<F: PrimeField>(pub Vec<F>);
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct MaskedInputs<F: PrimeField>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<F>);
 
 /// Acts as sender in OT extension
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct Party1<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
     pub batch_size: usize,
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     /// Vector of values to multiply
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub a: Vec<F>,
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub a_hat: Vec<F>,
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub a_tilde: Vec<F>,
     pub base_ot_choices: Vec<Bit>,
     pub base_ot_keys: ROTReceiverKeys,
 }
 
 /// Acts as receiver in OT extension
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct Party2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
     pub batch_size: usize,
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     /// Vector of values to multiply
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub b: Vec<F>,
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub b_tilde: Vec<F>,
     /// Choices for OT extension
     pub beta: Vec<Bit>,
     pub ote_setup: OTExtensionReceiverSetup,
 }
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Party1Shares<F: PrimeField>(pub Vec<F>);
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct Party1Shares<F: PrimeField>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<F>);
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Party2Shares<F: PrimeField>(pub Vec<F>);
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct Party2Shares<F: PrimeField>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<F>);
 
 impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     Party1<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>
@@ -415,13 +447,14 @@ pub mod tests {
     };
     use blake2::Blake2b512;
     use dock_crypto_utils::transcript::new_merlin_transcript;
+    use test_utils::{test_serialization, G1};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn two_party_batch_multiplication() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let B = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
+        let B = G1::rand(&mut rng);
 
         fn check<const KEY_SIZE: u16, const KAPPA: u16, const SSP: u16>(
             rng: &mut StdRng,
@@ -429,7 +462,8 @@ pub mod tests {
             b: Vec<Fr>,
             ote_params: MultiplicationOTEParams<KAPPA, SSP>,
             gadget_vector: &GadgetVector<Fr, KAPPA, SSP>,
-            B: &<Bls12_381 as Pairing>::G1Affine,
+            B: &G1,
+            check_serialization: bool,
         ) {
             // Perform base OT with roles reversed
             // In practice do VSOT
@@ -476,13 +510,27 @@ pub mod tests {
 
             let start = Instant::now();
             let (shares_1, tau, rlc, gamma_a) = party1
-                .receive::<Blake2b512>(U, kos_rlc, gamma_b, &mut party1_transcript, &gadget_vector)
+                .clone()
+                .receive::<Blake2b512>(
+                    U,
+                    kos_rlc,
+                    gamma_b.clone(),
+                    &mut party1_transcript,
+                    &gadget_vector,
+                )
                 .unwrap();
             party1_time += start.elapsed();
 
             let start = Instant::now();
             let shares_2 = party2
-                .receive::<Blake2b512>(tau, rlc, gamma_a, &mut party2_transcript, &gadget_vector)
+                .clone()
+                .receive::<Blake2b512>(
+                    tau,
+                    rlc,
+                    gamma_a.clone(),
+                    &mut party2_transcript,
+                    &gadget_vector,
+                )
                 .unwrap();
             party2_time += start.elapsed();
 
@@ -495,6 +543,15 @@ pub mod tests {
                 "For batch size {}, party1 takes {:?} and party2 takes {:?}",
                 batch_size, party1_time, party2_time
             );
+
+            if check_serialization {
+                test_serialization!(Party1<Fr, KAPPA, SSP>, party1);
+                test_serialization!(Party2<Fr, KAPPA, SSP>, party2);
+                test_serialization!(MaskedInputs<Fr>, gamma_a);
+                test_serialization!(MaskedInputs<Fr>, gamma_b);
+                test_serialization!(Party1Shares<Fr>, shares_1);
+                test_serialization!(Party2Shares<Fr>, shares_2);
+            }
         }
 
         const KAPPA: u16 = 256;
@@ -502,6 +559,9 @@ pub mod tests {
         let ote_params = MultiplicationOTEParams::<KAPPA, SSP> {};
         let gadget_vector =
             GadgetVector::<Fr, KAPPA, SSP>::new::<Blake2b512>(ote_params, b"test-gadget-vector");
+        test_serialization!(GadgetVector<Fr, KAPPA, SSP>, gadget_vector);
+
+        let mut checked = false;
         for batch_size in [2, 4, 8, 20, 40, 80] {
             let a = (0..batch_size)
                 .map(|_| Fr::rand(&mut rng))
@@ -509,7 +569,8 @@ pub mod tests {
             let b = (0..batch_size)
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<Vec<_>>();
-            check::<128, KAPPA, SSP>(&mut rng, a, b, ote_params, &gadget_vector, &B);
+            check::<128, KAPPA, SSP>(&mut rng, a, b, ote_params, &gadget_vector, &B, !checked);
+            checked = true;
         }
     }
 }

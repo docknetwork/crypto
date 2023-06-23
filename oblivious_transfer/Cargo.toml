@@ -1,6 +1,6 @@
 [package]
 name = "oblivious_transfer_protocols"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -16,8 +16,8 @@ digest.workspace = true
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
-dock_crypto_utils = { version = "0.12.0", default-features = false, path = "../utils" }
-schnorr_pok = { version = "0.11.0", default-features = false, path = "../schnorr_pok" }
+dock_crypto_utils = { version = "0.13.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.12.0", default-features = false, path = "../schnorr_pok" }
 cipher = { version = "0.4.4", default-features = false, features = ["alloc"] }
 rayon = {workspace = true, optional = true}
 sha3 = { version = "0.10.6", default-features = false }
@@ -29,7 +29,8 @@ byteorder = { version = "1.4", default-features = false }
 blake2.workspace = true
 ark-bls12-381.workspace = true
 serde_json = "1.0"
-ark-poly.workspace = true
+rmp-serde = "1.0"
+test_utils = { version = "0.1.0", path = "../test_utils" }
 
 [build-dependencies]
 cc = "1.0.77"

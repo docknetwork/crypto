@@ -11,11 +11,15 @@
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::univariate::DensePolynomial;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, ops::Add, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
-
-use dock_crypto_utils::{concat_slices, ff::powers};
+use dock_crypto_utils::{
+    concat_slices, ff::powers, hashing_utils::projective_group_elem_from_try_and_incr,
+    serde_utils::ArkObjectBytes,
+};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -26,8 +30,14 @@ use crate::{
     shamir_ss,
 };
 
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct CommitmentKey<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub g: G,
+    #[serde_as(as = "ArkObjectBytes")]
     pub h: G,
 }
 
@@ -177,14 +187,10 @@ impl<F: PrimeField> VerifiableShares<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
-    use ark_ec::pairing::Pairing;
     use ark_ff::One;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
-
-    type G1 = <Bls12_381 as Pairing>::G1Affine;
-    type G2 = <Bls12_381 as Pairing>::G2Affine;
+    use test_utils::{test_serialization, G1, G2};
 
     #[test]
     fn pedersen_verifiable_secret_sharing() {
@@ -237,6 +243,10 @@ pub mod tests {
                 let (s, t) = shares.reconstruct_secret().unwrap();
                 assert_eq!(s, secret);
                 assert_eq!(t, blinding);
+
+                test_serialization!(VerifiableShares<G::ScalarField>, shares);
+                test_serialization!(VerifiableShare<G::ScalarField>, shares.0[0]);
+                test_serialization!(CommitmentToCoefficients<G>, commitments);
             }
         }
 

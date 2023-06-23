@@ -48,6 +48,7 @@ pub enum BBSPlusError {
     UnexpectedMultiplicationParty2(ParticipantId),
     IncorrectEByParticipant(ParticipantId),
     IncorrectSByParticipant(ParticipantId),
+    ParticipantCannotBePresentInOthers(ParticipantId),
     NotABaseOTSender(ParticipantId),
     NotABaseOTReceiver(ParticipantId),
     AlreadyHaveSenderPubkeyFrom(ParticipantId),

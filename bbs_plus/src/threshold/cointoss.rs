@@ -28,7 +28,7 @@ pub struct Party<F: PrimeField, const SALT_SIZE: usize> {
     // pub own_shares_and_salts: Vec<(F, [u8; 2*SECURITY_PARAM])>,
     /// Stores commitments to shares received from other parties and used to verify against the
     /// shares received from them in a future round
-    pub commitments: BTreeMap<ParticipantId, Commitments>,
+    pub other_commitments: BTreeMap<ParticipantId, Commitments>,
     /// Stores shares received from other parties and used to compute the joint randomness
     pub other_shares: BTreeMap<ParticipantId, Vec<F>>,
 }
@@ -56,7 +56,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
                 id,
                 protocol_id,
                 own_shares_and_salts: shares_and_salts,
-                commitments: Default::default(),
+                other_commitments: Default::default(),
                 other_shares: Default::default(),
             },
             Commitments(commitments),
@@ -72,7 +72,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         if self.id == sender_id {
             return Err(BBSPlusError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
         }
-        if self.commitments.contains_key(&sender_id) {
+        if self.other_commitments.contains_key(&sender_id) {
             return Err(BBSPlusError::AlreadyHaveCommitmentFromParticipant(
                 sender_id,
             ));
@@ -83,7 +83,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
                 commitments.0.len(),
             ));
         }
-        self.commitments.insert(sender_id, commitments);
+        self.other_commitments.insert(sender_id, commitments);
         Ok(())
     }
 
@@ -97,7 +97,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         if self.id == sender_id {
             return Err(BBSPlusError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
         }
-        if !self.commitments.contains_key(&sender_id) {
+        if !self.other_commitments.contains_key(&sender_id) {
             return Err(BBSPlusError::MissingCommitmentFromParticipant(sender_id));
         }
         if self.other_shares.contains_key(&sender_id) {
@@ -110,7 +110,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
             ));
         }
         let expected_commitments = Self::compute_commitments(&shares_and_salts, &self.protocol_id);
-        if expected_commitments != self.commitments.get(&sender_id).unwrap().0 {
+        if expected_commitments != self.other_commitments.get(&sender_id).unwrap().0 {
             return Err(BBSPlusError::IncorrectCommitment);
         }
         self.other_shares.insert(
@@ -134,11 +134,16 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
     }
 
     pub fn has_commitment_from(&self, id: &ParticipantId) -> bool {
-        self.commitments.contains_key(id)
+        self.other_commitments.contains_key(id)
     }
 
     pub fn has_shares_from(&self, id: &ParticipantId) -> bool {
         self.other_shares.contains_key(id)
+    }
+
+    /// Returns true if it has got shares from all other participants that sent commitments.
+    pub fn has_shares_from_all_who_committed(&self) -> bool {
+        self.other_shares.len() == self.other_commitments.len()
     }
 
     // pub const fn salt_size() -> usize {
@@ -211,16 +216,23 @@ pub mod tests {
 
             // All parties send their shares to others
             let start = Instant::now();
-            for i in 1..=num_parties {
-                for j in 1..=num_parties {
-                    if i != j {
-                        let share = parties[j as usize - 1].own_shares_and_salts.clone();
-                        parties[i as usize - 1].receive_shares(j, share).unwrap();
+            for receiver_id in 1..=num_parties {
+                for sender_id in 1..=num_parties {
+                    if receiver_id != sender_id {
+                        assert!(
+                            !parties[receiver_id as usize - 1].has_shares_from_all_who_committed()
+                        );
+                        let share = parties[sender_id as usize - 1].own_shares_and_salts.clone();
+                        parties[receiver_id as usize - 1]
+                            .receive_shares(sender_id, share)
+                            .unwrap();
                     }
                 }
+                assert!(parties[receiver_id as usize - 1].has_shares_from_all_who_committed());
             }
             let process_shares_time = start.elapsed();
 
+            // Shares are received correctly
             for i in 1..=num_parties {
                 for j in 1..=num_parties {
                     if i != j {
@@ -235,6 +247,10 @@ pub mod tests {
                         )
                     }
                 }
+            }
+
+            for i in 0..num_parties as usize {
+                assert!(parties[i].has_shares_from_all_who_committed());
             }
 
             // All parties compute the joint randomness

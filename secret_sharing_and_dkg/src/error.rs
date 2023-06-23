@@ -6,6 +6,7 @@ pub enum SSError {
     InvalidThresholdOrTotal(ShareId, ShareId),
     BelowThreshold(ShareId, ShareId),
     InvalidShare,
+    InvalidParticipantId(ParticipantId),
     AlreadyProcessedFromSender(ParticipantId),
     MissingSomeParticipants(ParticipantId),
     UnequalThresholdInReceivedShare(ShareId, ShareId),

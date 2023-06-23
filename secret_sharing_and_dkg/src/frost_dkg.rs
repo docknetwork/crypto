@@ -1,6 +1,6 @@
 //! This is the keygen implemented in the [FROST paper](https://eprint.iacr.org/2020/852.pdf) in Figure 1.
 //! This is a slight addition to the DKG based on Feldman VSS as it contains a Schnorr proof of knowledge
-//! for the secret key.
+//! of the secret key.
 
 use crate::{
     common::{CommitmentToCoefficients, ParticipantId, Share, ShareId, Shares},
@@ -23,7 +23,11 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 impl_proof_of_knowledge_of_discrete_log!(SecretKeyKnowledgeProtocol, SecretKeyKnowledge);
 
 /// State of a participant during Round 1
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct Round1State<G: AffineRepr> {
     pub id: ParticipantId,
     pub threshold: ShareId,
@@ -31,11 +35,15 @@ pub struct Round1State<G: AffineRepr> {
     /// Stores the commitment to the coefficients of the polynomial by each participant
     pub coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
     /// Secret chosen by the participant
+    #[serde_as(as = "ArkObjectBytes")]
     pub secret: G::ScalarField,
 }
 
 /// Message sent by a participant during Round 1
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct Round1Msg<G: AffineRepr> {
     pub sender_id: ParticipantId,
     pub comm_coeffs: CommitmentToCoefficients<G>,
@@ -44,7 +52,10 @@ pub struct Round1Msg<G: AffineRepr> {
 }
 
 /// State of a participant during Round 2
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct Round2State<G: AffineRepr> {
     pub id: ParticipantId,
     pub threshold: ShareId,
@@ -55,14 +66,15 @@ pub struct Round2State<G: AffineRepr> {
 }
 
 impl<G: AffineRepr> Round1State<G> {
-    /// Start Phase 1 with a randomly generated secret.
-    pub fn start_with_random_secret<R: RngCore, D: Digest>(
+    /// Start Phase 1 with a randomly generated secret. `schnorr_proof_ctx` is the context used in the Schnorr proof
+    /// to prevent replay attacks. `pk_gen` is the EC group generator for the public key
+    pub fn start_with_random_secret<'a, R: RngCore, D: Digest>(
         rng: &mut R,
         participant_id: ParticipantId,
         threshold: ShareId,
         total: ShareId,
         schnorr_proof_ctx: &[u8],
-        comm_key: &G,
+        pk_gen: impl Into<&'a G> + Clone,
     ) -> Result<(Self, Round1Msg<G>), SSError> {
         let secret = G::ScalarField::rand(rng);
         Self::start_with_given_secret::<R, D>(
@@ -72,33 +84,37 @@ impl<G: AffineRepr> Round1State<G> {
             threshold,
             total,
             schnorr_proof_ctx,
-            comm_key,
+            pk_gen,
         )
     }
 
-    /// Start Phase 1 with a given secret.
-    pub fn start_with_given_secret<R: RngCore, D: Digest>(
+    /// Similar to `Self::start_with_random_secret` except it expects a secret from the caller.
+    pub fn start_with_given_secret<'a, R: RngCore, D: Digest>(
         rng: &mut R,
         id: ParticipantId,
         secret: G::ScalarField,
         threshold: ShareId,
         total: ShareId,
         schnorr_proof_ctx: &[u8],
-        comm_key: &G,
+        pk_gen: impl Into<&'a G> + Clone,
     ) -> Result<(Self, Round1Msg<G>), SSError> {
+        if id == 0 || id > total {
+            return Err(SSError::InvalidParticipantId(id));
+        }
         // Create shares of the secret and commit to it
         let (shares, commitments, _) =
-            feldman_vss::deal_secret::<R, G>(rng, secret, threshold, total, comm_key)?;
+            feldman_vss::deal_secret::<R, G>(rng, secret, threshold, total, pk_gen.clone())?;
         let mut coeff_comms = BTreeMap::new();
         coeff_comms.insert(id, commitments.clone());
 
+        let pk_gen = pk_gen.into();
         // Create the proof of knowledge for the secret key
         let blinding = G::ScalarField::rand(rng);
-        let schnorr = SecretKeyKnowledgeProtocol::init(secret, blinding, comm_key);
+        let schnorr = SecretKeyKnowledgeProtocol::init(secret, blinding, pk_gen);
         let mut challenge_bytes = vec![];
         schnorr
             .challenge_contribution(
-                comm_key,
+                pk_gen,
                 commitments.commitment_to_secret(),
                 &mut challenge_bytes,
             )
@@ -123,11 +139,11 @@ impl<G: AffineRepr> Round1State<G> {
     }
 
     /// Called by a participant when it receives a message during Round 1
-    pub fn add_received_message<R: RngCore, D: Digest>(
+    pub fn add_received_message<'a, D: Digest>(
         &mut self,
         msg: Round1Msg<G>,
         schnorr_proof_ctx: &[u8],
-        comm_key: &G,
+        pk_gen: impl Into<&'a G>,
     ) -> Result<(), SSError> {
         if msg.sender_id == self.id {
             return Err(SSError::SenderIdSameAsReceiver(msg.sender_id, self.id));
@@ -135,11 +151,12 @@ impl<G: AffineRepr> Round1State<G> {
         if !msg.comm_coeffs.supports_threshold(self.threshold) {
             return Err(SSError::DoesNotSupportThreshold(self.threshold));
         }
+        let pk_gen = pk_gen.into();
         // Verify Schnorr proof
         let mut challenge_bytes = vec![];
         msg.schnorr_proof
             .challenge_contribution(
-                comm_key,
+                pk_gen,
                 msg.comm_coeffs.commitment_to_secret(),
                 &mut challenge_bytes,
             )
@@ -148,7 +165,7 @@ impl<G: AffineRepr> Round1State<G> {
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         if !msg
             .schnorr_proof
-            .verify(msg.comm_coeffs.commitment_to_secret(), comm_key, &challenge)
+            .verify(msg.comm_coeffs.commitment_to_secret(), pk_gen, &challenge)
         {
             return Err(SSError::InvalidProofOfSecretKeyKnowledge);
         }
@@ -159,10 +176,16 @@ impl<G: AffineRepr> Round1State<G> {
     }
 
     /// Participant finishes Round 1 and starts Round 2.
-    pub fn finish(self) -> (Round2State<G>, Shares<G::ScalarField>) {
+    pub fn finish(self) -> Result<(Round2State<G>, Shares<G::ScalarField>), SSError> {
+        // Check that sufficient shares present
+        let len = self.shares.0.len() as ShareId;
+        if self.threshold > (len + 1) {
+            // + 1 because its own share will be added later
+            return Err(SSError::BelowThreshold(self.threshold, len));
+        }
         let mut shares = BTreeMap::new();
         shares.insert(self.id, self.shares.0[self.id as usize - 1].clone());
-        (
+        Ok((
             Round2State {
                 id: self.id,
                 threshold: self.threshold,
@@ -170,7 +193,7 @@ impl<G: AffineRepr> Round1State<G> {
                 coeff_comms: self.coeff_comms,
             },
             self.shares,
-        )
+        ))
     }
 
     pub fn total_participants(&self) -> usize {
@@ -180,11 +203,11 @@ impl<G: AffineRepr> Round1State<G> {
 
 impl<G: AffineRepr> Round2State<G> {
     /// Called by a participant when it receives its share during Round 1
-    pub fn add_received_share<R: RngCore>(
+    pub fn add_received_share<'a>(
         &mut self,
         sender_id: ShareId,
         share: Share<G::ScalarField>,
-        comm_key: &G,
+        pk_gen: impl Into<&'a G>,
     ) -> Result<(), SSError> {
         if sender_id == self.id {
             return Err(SSError::SenderIdSameAsReceiver(sender_id, self.id));
@@ -202,7 +225,7 @@ impl<G: AffineRepr> Round2State<G> {
             ));
         }
         if let Some(comm) = self.coeff_comms.get(&sender_id) {
-            share.verify(comm, comm_key)?;
+            share.verify(comm, pk_gen.into())?;
             self.shares.insert(sender_id, share);
             Ok(())
         } else {
@@ -212,13 +235,16 @@ impl<G: AffineRepr> Round2State<G> {
 
     /// Participant finishes Round 1 and outputs final share that contains its own secret key, its own
     /// public key and the threshold public key
-    pub fn finish(self, comm_key: &G) -> Result<(Share<G::ScalarField>, G, G), SSError> {
+    pub fn finish<'a>(
+        self,
+        pk_gen: impl Into<&'a G>,
+    ) -> Result<(Share<G::ScalarField>, G, G), SSError> {
         feldman_dvss_dkg::SharesAccumulator::gen_final_share_and_public_key(
             self.id,
             self.threshold,
             self.shares,
             self.coeff_comms,
-            comm_key,
+            pk_gen.into(),
         )
     }
 }
@@ -226,21 +252,21 @@ impl<G: AffineRepr> Round2State<G> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
-    use ark_ec::pairing::Pairing;
     use ark_std::{
+        iterable::Iterable,
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
     use blake2::Blake2b512;
+    use test_utils::{test_serialization, G1, G2};
 
     #[test]
     fn frost_distributed_key_generation() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let g1 = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
-        let g2 = <Bls12_381 as Pairing>::G2Affine::rand(&mut rng);
+        let g1 = G1::rand(&mut rng);
+        let g2 = G2::rand(&mut rng);
 
-        fn check<G: AffineRepr>(rng: &mut StdRng, comm_key: &G) {
+        fn check<G: AffineRepr>(rng: &mut StdRng, pub_key_base: &G) {
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -276,13 +302,16 @@ pub mod tests {
                             threshold as ShareId,
                             total as ShareId,
                             schnorr_ctx,
-                            comm_key,
+                            pub_key_base,
                         )
                         .unwrap();
                     secrets.push(round1_state.secret.clone());
                     all_round1_states.push(round1_state);
                     all_round1_msgs.push(round1_msg);
                 }
+
+                test_serialization!(Round1State<G>, all_round1_states[0].clone());
+                test_serialization!(Round1Msg<G>, all_round1_msgs[0].clone());
 
                 // Each participant receives message during Round 1
                 for i in 0..total {
@@ -292,49 +321,54 @@ pub mod tests {
                             let mut msg_with_wrong_id = all_round1_msgs[j].clone();
                             msg_with_wrong_id.sender_id = i as ShareId + 1;
                             assert!(all_round1_states[i]
-                                .add_received_message::<StdRng, Blake2b512>(
+                                .add_received_message::<Blake2b512>(
                                     msg_with_wrong_id,
                                     schnorr_ctx,
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .is_err());
 
                             let mut comms = all_round1_msgs[j].clone();
                             comms.comm_coeffs.0.remove(0);
                             assert!(all_round1_states[i]
-                                .add_received_message::<StdRng, Blake2b512>(
+                                .add_received_message::<Blake2b512>(
                                     comms,
                                     schnorr_ctx,
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .is_err());
 
                             assert!(all_round1_states[i]
-                                .add_received_message::<StdRng, Blake2b512>(
+                                .add_received_message::<Blake2b512>(
                                     all_round1_msgs[j].clone(),
                                     b"another-ctx",
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .is_err());
 
+                            // Process valid message
                             all_round1_states[i]
-                                .add_received_message::<StdRng, Blake2b512>(
+                                .add_received_message::<Blake2b512>(
                                     all_round1_msgs[j].clone(),
                                     schnorr_ctx,
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .unwrap();
                         }
                     }
+
+                    test_serialization!(Round1State<G>, all_round1_states[i].clone());
                 }
 
                 // Each participant ends Round 1 and begins Round 2
                 for i in 0..total {
                     assert_eq!(all_round1_states[i].total_participants(), total);
-                    let (round2, shares) = all_round1_states[i].clone().finish();
+                    let (round2, shares) = all_round1_states[i].clone().finish().unwrap();
                     all_round2_states.push(round2);
                     all_shares.push(shares);
                 }
+
+                test_serialization!(Round2State<G>, all_round2_states[0].clone());
 
                 // Each participant receives shares and commitments during Round2
                 for i in 0..total {
@@ -344,10 +378,10 @@ pub mod tests {
                             let mut share_with_wrong_id = all_shares[j].0[i].clone();
                             share_with_wrong_id.id = share_with_wrong_id.id + 1;
                             assert!(all_round2_states[i]
-                                .add_received_share::<StdRng>(
+                                .add_received_share(
                                     (j + 1) as ParticipantId,
                                     share_with_wrong_id,
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .is_err());
 
@@ -355,10 +389,10 @@ pub mod tests {
                             share_with_wrong_threshold.threshold =
                                 share_with_wrong_threshold.threshold + 1;
                             assert!(all_round2_states[i]
-                                .add_received_share::<StdRng>(
+                                .add_received_share(
                                     (j + 1) as ParticipantId,
                                     share_with_wrong_threshold,
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .is_err());
 
@@ -366,40 +400,47 @@ pub mod tests {
                             share_with_wrong_value.share =
                                 share_with_wrong_value.share + G::ScalarField::from(10u64);
                             assert!(all_round2_states[i]
-                                .add_received_share::<StdRng>(
+                                .add_received_share(
                                     (j + 1) as ParticipantId,
                                     share_with_wrong_value,
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .is_err());
 
                             // Sender id same as participant
                             assert!(all_round2_states[i]
-                                .add_received_share::<StdRng>(
+                                .add_received_share(
                                     (i + 1) as ParticipantId,
                                     all_shares[j].0[i].clone(),
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .is_err());
 
                             all_round2_states[i]
-                                .add_received_share::<StdRng>(
+                                .add_received_share(
                                     (j + 1) as ParticipantId,
                                     all_shares[j].0[i].clone(),
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .unwrap();
 
                             // Adding duplicate share not allowed
                             assert!(all_round2_states[i]
-                                .add_received_share::<StdRng>(
+                                .add_received_share(
                                     (j + 1) as ParticipantId,
                                     all_shares[j].0[i].clone(),
-                                    comm_key,
+                                    pub_key_base,
                                 )
                                 .is_err());
                         }
                     }
+
+                    // Cannot create the final share when having shares from less than threshold number of participants
+                    if (all_round2_states[i].shares.len() as ShareId) < threshold {
+                        assert!(all_round2_states[i].clone().finish(pub_key_base).is_err());
+                    }
+
+                    test_serialization!(Round2State<G>, all_round2_states[i].clone());
                 }
 
                 // Each participant ends Round2
@@ -407,9 +448,12 @@ pub mod tests {
                 let mut all_pk = vec![];
                 let mut final_shares = vec![];
                 for i in 0..total {
-                    let (share, pk, t_pk) = all_round2_states[i].clone().finish(comm_key).unwrap();
+                    let (share, pk, t_pk) =
+                        all_round2_states[i].clone().finish(pub_key_base).unwrap();
                     assert_eq!(
-                        comm_key.mul_bigint(share.share.into_bigint()).into_affine(),
+                        pub_key_base
+                            .mul_bigint(share.share.into_bigint())
+                            .into_affine(),
                         pk
                     );
                     if tk.is_none() {

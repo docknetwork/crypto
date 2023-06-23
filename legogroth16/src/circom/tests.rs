@@ -106,7 +106,13 @@ pub fn generate_params_prove_and_verify<
     let mut wits_calc = WitnessCalculator::<E>::from_wasm_file(wasm_file_path).unwrap();
     let all_wires = wits_calc.calculate_witnesses::<I>(inputs, true).unwrap();
 
-    assert_eq!(wits_calc.instance.get_input_count().unwrap(), num_inputs);
+    assert_eq!(
+        wits_calc
+            .instance
+            .get_input_count(&mut wits_calc.store)
+            .unwrap(),
+        num_inputs
+    );
 
     circuit.set_wires(all_wires);
     prove_and_verify_circuit(circuit, &params, commit_witness_count)

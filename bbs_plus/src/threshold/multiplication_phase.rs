@@ -2,6 +2,7 @@
 
 use crate::{error::BBSPlusError, threshold::base_ot_phase::BaseOTPhaseOutput};
 use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
     rand::RngCore,
@@ -20,9 +21,9 @@ use oblivious_transfer_protocols::{
 };
 
 /// The participant will acts as
-///     - a receiver in OT extension where its id is less than other participant
-///     - a sender in OT extension where its id is greater than other participant
-#[derive(Clone)]
+///     - a receiver in OT extension, also called Party2 in multiplication protocol, and its id is less than other participant
+///     - a sender in OT extension, also called Party1 in multiplication protocol, and its id is greater than other participant
+#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Phase2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
     pub id: ParticipantId,
     /// Number of threshold signatures being generated in a single batch.
@@ -30,15 +31,25 @@ pub struct Phase2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PA
     /// Transcripts to record protocol interactions with each participant and later used to generate random challenges
     pub transcripts: BTreeMap<ParticipantId, Merlin>,
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
+    /// Map where this participant plays the role of sender, i.e Party1
     pub multiplication_party1:
         BTreeMap<ParticipantId, Party1<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>>,
+    /// Map where this participant plays the role of receiver, i.e Party2
     pub multiplication_party2:
         BTreeMap<ParticipantId, Party2<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>>,
     pub z_A: BTreeMap<ParticipantId, (Vec<F>, Vec<F>)>,
     pub z_B: BTreeMap<ParticipantId, (Vec<F>, Vec<F>)>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+/// Message sent from Party2 to Party1 of multiplication protocol
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct Message1<F: PrimeField>(BitMatrix, KOSRLC, MaskedInputs<F>);
+
+/// Message sent from Party1 to Party2 of multiplication protocol. This message is created after Part1 processes `Message1`
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct Message2<F: PrimeField>(CorrelationTag<F>, RLC<F>, MaskedInputs<F>);
+
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Phase2Output<F: PrimeField> {
     pub z_A: BTreeMap<ParticipantId, (Vec<F>, Vec<F>)>,
     pub z_B: BTreeMap<ParticipantId, (Vec<F>, Vec<F>)>,
@@ -56,13 +67,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         others: BTreeSet<ParticipantId>,
         ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
         gadget_vector: &GadgetVector<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
-    ) -> Result<
-        (
-            Self,
-            BTreeMap<ParticipantId, (BitMatrix, KOSRLC, MaskedInputs<F>)>,
-        ),
-        BBSPlusError,
-    > {
+    ) -> Result<(Self, BTreeMap<ParticipantId, Message1<F>>), BBSPlusError> {
         assert_eq!(masked_signing_key_share.len(), masked_r.len());
         let batch_size = masked_signing_key_share.len();
 
@@ -108,7 +113,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
                         &gadget_vector,
                     )?;
                     multiplication_party2.insert(other, party2);
-                    Us.insert(other, (U, rlc, gamma));
+                    Us.insert(other, Message1(U, rlc, gamma));
                 } else {
                     return Err(BBSPlusError::MissingOTSenderFor(other));
                 }
@@ -130,20 +135,20 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         ))
     }
 
-    pub fn receive_u<D: Default + DynDigest + Clone>(
+    /// Process received message from Party2 of multiplication protocol
+    pub fn receive_message1<D: Default + DynDigest + Clone>(
         &mut self,
         sender_id: ParticipantId,
-        U: BitMatrix,
-        rlc: KOSRLC,
-        gamma: MaskedInputs<F>,
+        message: Message1<F>,
         gadget_vector: &GadgetVector<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
-    ) -> Result<(CorrelationTag<F>, RLC<F>, MaskedInputs<F>), BBSPlusError> {
+    ) -> Result<Message2<F>, BBSPlusError> {
         if self.multiplication_party2.contains_key(&sender_id) {
             return Err(BBSPlusError::NotAMultiplicationParty2(sender_id));
         }
         if !self.multiplication_party1.contains_key(&sender_id) {
             return Err(BBSPlusError::NotAMultiplicationParty1(sender_id));
         }
+        let Message1(U, rlc, gamma) = message;
         let party1 = self.multiplication_party1.remove(&sender_id).unwrap();
         let trans = self.transcripts.get_mut(&sender_id).unwrap();
 
@@ -160,15 +165,14 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             }
         }
         self.z_A.insert(sender_id, (z_A_0, z_A_1));
-        Ok((tau, r, gamma_a))
+        Ok(Message2(tau, r, gamma_a))
     }
 
-    pub fn receive_tau<D: Default + DynDigest + Clone>(
+    /// Process received message from Party1 of multiplication protocol
+    pub fn receive_message2<D: Default + DynDigest + Clone>(
         &mut self,
         sender_id: ParticipantId,
-        tau: CorrelationTag<F>,
-        rlc: RLC<F>,
-        gamma: MaskedInputs<F>,
+        message: Message2<F>,
         gadget_vector: &GadgetVector<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     ) -> Result<(), BBSPlusError> {
         if self.multiplication_party1.contains_key(&sender_id) {
@@ -177,7 +181,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         if !self.multiplication_party2.contains_key(&sender_id) {
             return Err(BBSPlusError::NotAMultiplicationParty2(sender_id));
         }
-
+        let Message2(tau, rlc, gamma) = message;
         let party2 = self.multiplication_party2.remove(&sender_id).unwrap();
         let trans = self.transcripts.get_mut(&sender_id).unwrap();
         let shares = party2.receive::<D>(tau, rlc, gamma, trans, &gadget_vector)?;

@@ -6,9 +6,9 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-bbs_plus = { version = "0.14.0", default-features = false, path = "../bbs_plus" }
-schnorr_pok = { version = "0.11.0", default-features = false, path = "../schnorr_pok" }
-vb_accumulator = { version = "0.14.0", default-features = false, path = "../vb_accumulator" }
+bbs_plus = { version = "0.15.0", default-features = false, path = "../bbs_plus" }
+schnorr_pok = { version = "0.12.0", default-features = false, path = "../schnorr_pok" }
+vb_accumulator = { version = "0.15.0", default-features = false, path = "../vb_accumulator" }
 test_utils = { version = "0.1.0", default-features = false, path = "../test_utils" }
 ark-ff.workspace = true
 ark-ec.workspace = true
@@ -18,8 +18,8 @@ serde.workspace = true
 serde_with.workspace = true
 blake2 = { version = "0.10", default-features = false }
 itertools = "0.10.5"
-coconut-crypto = { version = "0.3.0", default-features = false, path = "../coconut" }
-oblivious_transfer_protocols = { version = "0.1.0", default-features = false, path = "../oblivious_transfer" }
+coconut-crypto = { version = "0.4.0", default-features = false, path = "../coconut" }
+oblivious_transfer_protocols = { version = "0.2.0", default-features = false, path = "../oblivious_transfer" }
 dock_crypto_utils = { default-features = false, path = "../utils" }
 zeroize.workspace = true
 

@@ -4,6 +4,7 @@ use proof_system::proof::Proof;
 
 pub type Fr = <Bls12_381 as Pairing>::ScalarField;
 pub type G1 = <Bls12_381 as Pairing>::G1Affine;
+pub type G2 = <Bls12_381 as Pairing>::G2Affine;
 pub type ProofG1 = Proof<Bls12_381, G1Affine>;
 
 pub mod accumulators;

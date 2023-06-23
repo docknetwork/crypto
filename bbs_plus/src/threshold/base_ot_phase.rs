@@ -3,6 +3,7 @@
 
 use crate::error::BBSPlusError;
 use ark_ec::AffineRepr;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
     rand::RngCore,
@@ -18,10 +19,14 @@ use oblivious_transfer_protocols::{
     },
     Bit, ParticipantId,
 };
+use serde::{Deserialize, Serialize};
 
 /// The participant runs an independent base OT with each participant and stores each OT's state. If
 /// its id is less than other's then it acts as an OT sender else it acts as a receiver
-#[derive(Clone, Debug, PartialEq)]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct BaseOTPhase<G: AffineRepr> {
     pub id: ParticipantId,
     /// Number of base OTs to perform
@@ -36,12 +41,20 @@ pub struct BaseOTPhase<G: AffineRepr> {
     pub receiver_responder: BTreeMap<ParticipantId, VSROTResponder>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct BaseOTPhaseOutput {
     pub id: ParticipantId,
     pub sender_keys: BTreeMap<ParticipantId, OneOfTwoROTSenderKeys>,
     pub receiver: BTreeMap<ParticipantId, (Vec<Bit>, ROTReceiverKeys)>,
 }
+
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct SenderPubKeyAndProof<G: AffineRepr>(SenderPubKey<G>, SecretKnowledgeProof<G>);
 
 impl<G: AffineRepr> BaseOTPhase<G> {
     pub fn init<R: RngCore, D: Digest>(
@@ -50,13 +63,7 @@ impl<G: AffineRepr> BaseOTPhase<G> {
         others: BTreeSet<ParticipantId>,
         num_base_ot: u16,
         B: &G,
-    ) -> Result<
-        (
-            Self,
-            BTreeMap<ParticipantId, (SenderPubKey<G>, SecretKnowledgeProof<G>)>,
-        ),
-        BBSPlusError,
-    > {
+    ) -> Result<(Self, BTreeMap<ParticipantId, SenderPubKeyAndProof<G>>), BBSPlusError> {
         let mut base_ot_sender_setup = BTreeMap::new();
         let mut base_ot_receiver_choices = BTreeMap::new();
         let mut base_ot_s = BTreeMap::new();
@@ -64,7 +71,7 @@ impl<G: AffineRepr> BaseOTPhase<G> {
             if id < other {
                 let (setup, S, proof) =
                     ROTSenderSetup::new_verifiable::<R, D>(rng, num_base_ot, B)?;
-                base_ot_s.insert(other, (S, proof));
+                base_ot_s.insert(other, SenderPubKeyAndProof(S, proof));
                 base_ot_sender_setup.insert(other, setup);
             } else {
                 let base_ot_choices = (0..num_base_ot)
@@ -92,8 +99,7 @@ impl<G: AffineRepr> BaseOTPhase<G> {
         &mut self,
         rng: &mut R,
         sender_id: ParticipantId,
-        S: SenderPubKey<G>,
-        proof: SecretKnowledgeProof<G>,
+        sender_pk_and_proof: SenderPubKeyAndProof<G>,
         B: &G,
     ) -> Result<ReceiverPubKeys<G>, BBSPlusError> {
         if self.id == sender_id {
@@ -108,6 +114,7 @@ impl<G: AffineRepr> BaseOTPhase<G> {
         if self.receiver_keys.contains_key(&sender_id) {
             return Err(BBSPlusError::AlreadyHaveSenderPubkeyFrom(sender_id));
         }
+        let SenderPubKeyAndProof(S, proof) = sender_pk_and_proof;
         let (receiver_keys, pub_key) = ROTReceiverKeys::new_verifiable::<_, _, D, KEY_SIZE>(
             rng,
             self.count,
@@ -276,9 +283,9 @@ pub mod tests {
         }
 
         for (sender_id, pks) in sender_pks {
-            for (id, (pk, proof)) in pks {
+            for (id, pk) in pks {
                 let recv_pk = base_ots[id as usize - 1]
-                    .receive_sender_pubkey::<_, Blake2b512, KEY_SIZE>(rng, sender_id, pk, proof, &B)
+                    .receive_sender_pubkey::<_, Blake2b512, KEY_SIZE>(rng, sender_id, pk, &B)
                     .unwrap();
                 receiver_pks.insert((id, sender_id), recv_pk);
             }

@@ -19,7 +19,6 @@ use ark_std::{
 use digest::DynDigest;
 use oblivious_transfer_protocols::ParticipantId;
 
-// TODO: This should be generic over the size of random committed seeds. Called lambda in the paper
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Party<F: PrimeField, const SALT_SIZE: usize> {
     pub id: ParticipantId,
@@ -124,7 +123,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
             return Err(BBSPlusError::UnexpectedParticipant(*id));
         }
         let protocol = self.cointoss_protocols.get(id).unwrap();
-        Ok(protocol.commitments.contains_key(id))
+        Ok(protocol.other_commitments.contains_key(id))
     }
 
     pub fn has_shares_from(&self, id: &ParticipantId) -> Result<bool, BBSPlusError> {
@@ -133,6 +132,13 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         }
         let protocol = self.cointoss_protocols.get(id).unwrap();
         Ok(protocol.other_shares.contains_key(id))
+    }
+
+    /// Returns true if it has got shares from all other participants that sent commitments.
+    pub fn has_shares_from_all_who_committed(&self) -> bool {
+        self.cointoss_protocols
+            .values()
+            .all(|p| p.has_shares_from_all_who_committed())
     }
 }
 
@@ -201,20 +207,30 @@ pub mod tests {
             let process_commit_time = start.elapsed();
 
             let start = Instant::now();
-            for i in 1..=num_parties {
-                for j in 1..=num_parties {
-                    if i != j {
-                        let share = parties[j as usize - 1] // TODO: Add a function for this.
+            for receiver_id in 1..=num_parties {
+                for sender_id in 1..=num_parties {
+                    if receiver_id != sender_id {
+                        assert!(
+                            !parties[receiver_id as usize - 1].has_shares_from_all_who_committed()
+                        );
+                        let share = parties[sender_id as usize - 1] // TODO: Add a function for this.
                             .cointoss_protocols
-                            .get(&i)
+                            .get(&receiver_id)
                             .unwrap()
                             .own_shares_and_salts
                             .clone();
-                        parties[i as usize - 1].receive_shares(j, share).unwrap();
+                        parties[receiver_id as usize - 1]
+                            .receive_shares(sender_id, share)
+                            .unwrap();
                     }
                 }
+                assert!(parties[receiver_id as usize - 1].has_shares_from_all_who_committed());
             }
             let process_shares_time = start.elapsed();
+
+            for i in 0..num_parties as usize {
+                assert!(parties[i].has_shares_from_all_who_committed());
+            }
 
             let start = Instant::now();
             let mut zero_shares = vec![];

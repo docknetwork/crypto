@@ -8,13 +8,17 @@ use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, collections::BTreeMap, vec, vec::Vec};
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Used by a participant to store received shares and commitment coefficients.
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct SharesAccumulator<G: AffineRepr> {
     pub participant_id: ParticipantId,
     pub threshold: ShareId,
@@ -48,12 +52,12 @@ impl<G: AffineRepr> SharesAccumulator<G> {
     }
 
     /// Called by a participant when it receives a share from another participant
-    pub fn add_received_share(
+    pub fn add_received_share<'a>(
         &mut self,
         sender_id: ParticipantId,
         share: Share<G::ScalarField>,
         commitment_coeffs: CommitmentToCoefficients<G>,
-        ck: &G,
+        ck: impl Into<&'a G>,
     ) -> Result<(), SSError> {
         if sender_id == self.participant_id {
             return Err(SSError::SenderIdSameAsReceiver(
@@ -64,12 +68,15 @@ impl<G: AffineRepr> SharesAccumulator<G> {
         if self.shares.contains_key(&sender_id) {
             return Err(SSError::AlreadyProcessedFromSender(sender_id));
         }
-        self.update(sender_id, share, commitment_coeffs, ck)
+        self.update(sender_id, share, commitment_coeffs, ck.into())
     }
 
     /// Called by a participant when it has received shares from all participants. Computes the final
     /// share of the distributed secret, own public key and the threshold public key
-    pub fn finalize(self, ck: &G) -> Result<(Share<G::ScalarField>, G, G), SSError> {
+    pub fn finalize<'a>(
+        self,
+        ck: impl Into<&'a G> + Clone,
+    ) -> Result<(Share<G::ScalarField>, G, G), SSError> {
         Self::gen_final_share_and_public_key(
             self.participant_id,
             self.threshold,
@@ -81,15 +88,18 @@ impl<G: AffineRepr> SharesAccumulator<G> {
 
     /// Compute the final share after receiving shares from all other participants. Also returns
     /// own public key and the threshold public key
-    pub fn gen_final_share_and_public_key(
+    pub fn gen_final_share_and_public_key<'a>(
         participant_id: ParticipantId,
         threshold: ShareId,
         shares: BTreeMap<ParticipantId, Share<G::ScalarField>>,
         coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
-        ck: &G,
+        ck: impl Into<&'a G> + Clone,
     ) -> Result<(Share<G::ScalarField>, G, G), SSError> {
-        // TODO: Here assuming that all participants submit their share but we should be able to tolerate faults
-        // here and accepts a participant size s with threshold < s <= total
+        // Check early that sufficient shares present
+        let len = shares.len() as ShareId;
+        if threshold > len {
+            return Err(SSError::BelowThreshold(threshold, len));
+        }
 
         let mut final_share = G::ScalarField::zero();
         let mut final_comm_coeffs = vec![G::Group::zero(); threshold as usize];
@@ -106,17 +116,20 @@ impl<G: AffineRepr> SharesAccumulator<G> {
             threshold_pk += comm.commitment_to_secret();
         }
         let comm_coeffs = G::Group::normalize_batch(&final_comm_coeffs).into();
-        let pk = ck.mul_bigint(final_share.into_bigint()).into_affine();
         let final_share = Share {
             id: participant_id,
             threshold,
             share: final_share,
         };
-        final_share.verify(&comm_coeffs, ck)?;
+        final_share.verify(&comm_coeffs, ck.clone())?;
+        let pk = ck
+            .into()
+            .mul_bigint(final_share.share.into_bigint())
+            .into_affine();
         Ok((final_share, pk, threshold_pk.into_affine()))
     }
 
-    /// Update accumulator on share sent by another party. Verifies the share and rejects an invalid share.
+    /// Update accumulator on share sent by another party. If the share verifies, stores it.
     fn update(
         &mut self,
         id: ParticipantId,
@@ -176,18 +189,18 @@ pub fn reconstruct_threshold_public_key<G: AffineRepr>(
 pub mod tests {
     use super::*;
     use crate::{common::Shares, feldman_vss::deal_random_secret};
-    use ark_bls12_381::Bls12_381;
-    use ark_ec::{pairing::Pairing, Group};
+    use ark_ec::Group;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
+    use test_utils::{test_serialization, G1, G2};
 
     #[test]
     fn feldman_distributed_verifiable_secret_sharing() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let g1 = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
-        let g2 = <Bls12_381 as Pairing>::G2Affine::rand(&mut rng);
+        let g1 = G1::rand(&mut rng);
+        let g2 = G2::rand(&mut rng);
 
         fn check<G: AffineRepr>(rng: &mut StdRng, g: &G) {
             for (threshold, total) in vec![
@@ -217,98 +230,107 @@ pub mod tests {
                 let mut final_shares = vec![];
 
                 // Each participant creates a secret and secret-shares it with other participants
-                for i in 1..=total {
+                for sender_id in 1..=total {
                     // Participant creates a secret and its shares
                     let (secret, shares, commitments, _) =
                         deal_random_secret::<_, G>(rng, threshold as ShareId, total as ShareId, g)
                             .unwrap();
                     secrets.push(secret);
                     // The participant sends other participants their respective shares and stores its own share as well
-                    for j in 1..=total {
-                        if i != j {
+                    for receiver_id in 1..=total {
+                        if sender_id != receiver_id {
                             // Participant rejects invalid received shares
-                            let mut share_with_wrong_id = shares.0[j - 1].clone();
+                            let mut share_with_wrong_id = shares.0[receiver_id - 1].clone();
                             share_with_wrong_id.id = share_with_wrong_id.id + 1;
-                            assert!(accumulators[j - 1]
+                            assert!(accumulators[receiver_id - 1]
                                 .add_received_share(
-                                    i as ParticipantId,
+                                    sender_id as ParticipantId,
                                     share_with_wrong_id,
                                     commitments.clone(),
-                                    &g,
+                                    g,
                                 )
                                 .is_err());
 
-                            let mut share_with_wrong_threshold = shares.0[j - 1].clone();
+                            let mut share_with_wrong_threshold = shares.0[receiver_id - 1].clone();
                             share_with_wrong_threshold.threshold =
                                 share_with_wrong_threshold.threshold + 1;
-                            assert!(accumulators[j - 1]
+                            assert!(accumulators[receiver_id - 1]
                                 .add_received_share(
-                                    i as ParticipantId,
+                                    sender_id as ParticipantId,
                                     share_with_wrong_threshold,
                                     commitments.clone(),
-                                    &g,
+                                    g,
                                 )
                                 .is_err());
 
                             let mut wrong_commitments = commitments.clone();
                             wrong_commitments.0.remove(0);
-                            assert!(accumulators[j - 1]
+                            assert!(accumulators[receiver_id - 1]
                                 .add_received_share(
-                                    i as ParticipantId,
-                                    shares.0[j - 1].clone(),
+                                    sender_id as ParticipantId,
+                                    shares.0[receiver_id - 1].clone(),
                                     wrong_commitments,
-                                    &g,
+                                    g,
                                 )
                                 .is_err());
 
                             let mut wrong_commitments = commitments.clone();
                             wrong_commitments.0[0] =
                                 wrong_commitments.0[0].into_group().double().into_affine();
-                            assert!(accumulators[j - 1]
+                            assert!(accumulators[receiver_id - 1]
                                 .add_received_share(
-                                    i as ParticipantId,
-                                    shares.0[j - 1].clone(),
+                                    sender_id as ParticipantId,
+                                    shares.0[receiver_id - 1].clone(),
                                     wrong_commitments,
-                                    &g,
+                                    g,
                                 )
                                 .is_err());
 
                             // Participant processes a received share
-                            accumulators[j - 1]
+                            accumulators[receiver_id - 1]
                                 .add_received_share(
-                                    i as ParticipantId,
-                                    shares.0[j - 1].clone(),
+                                    sender_id as ParticipantId,
+                                    shares.0[receiver_id - 1].clone(),
                                     commitments.clone(),
                                     g,
                                 )
                                 .unwrap();
 
                             // Adding duplicate share not allowed
-                            assert!(accumulators[j - 1]
+                            assert!(accumulators[receiver_id - 1]
                                 .add_received_share(
-                                    i as ParticipantId,
-                                    shares.0[j - 1].clone(),
+                                    sender_id as ParticipantId,
+                                    shares.0[receiver_id - 1].clone(),
                                     commitments.clone(),
-                                    &g,
+                                    g,
                                 )
                                 .is_err());
                         } else {
                             // Participant processes its own share for its created secret
-                            accumulators[j - 1]
-                                .add_self_share(shares.0[j - 1].clone(), commitments.clone());
+                            accumulators[receiver_id - 1].add_self_share(
+                                shares.0[receiver_id - 1].clone(),
+                                commitments.clone(),
+                            );
 
                             // Cannot add share with own id
-                            assert!(accumulators[j - 1]
+                            assert!(accumulators[receiver_id - 1]
                                 .add_received_share(
-                                    i as ParticipantId,
-                                    shares.0[j - 1].clone(),
+                                    sender_id as ParticipantId,
+                                    shares.0[receiver_id - 1].clone(),
                                     commitments.clone(),
-                                    &g,
+                                    g,
                                 )
                                 .is_err());
                         }
+
+                        // Cannot create the final share when having shares from less than threshold number of participants
+                        if (accumulators[receiver_id - 1].shares.len() as ShareId) < threshold {
+                            assert!(accumulators[receiver_id - 1].clone().finalize(g).is_err());
+                        }
                     }
                 }
+
+                test_serialization!(SharesAccumulator<G>, accumulators[0].clone());
 
                 let mut tk = None;
                 let mut all_pk = vec![];

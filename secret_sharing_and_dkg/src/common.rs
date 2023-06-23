@@ -2,7 +2,12 @@ use ark_ec::AffineRepr;
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, vec::Vec};
-
+use digest::Digest;
+use dock_crypto_utils::{
+    hashing_utils::affine_group_elem_from_try_and_incr, serde_utils::ArkObjectBytes,
+};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
@@ -13,46 +18,80 @@ pub type ShareId = u16;
 pub type ParticipantId = u16;
 
 /// Share used in Shamir secret sharing and Feldman verifiable secret sharing
+#[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct Share<F: PrimeField> {
     #[zeroize(skip)]
     pub id: ShareId,
     #[zeroize(skip)]
     pub threshold: ShareId,
+    #[serde_as(as = "ArkObjectBytes")]
     pub share: F,
 }
 
 /// Collection of `Share`s. A sufficient number of `Share`s reconstruct the secret.
 /// Expects unique shares, i.e. each share has a different `ShareId` and each has the same threshold.
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct Shares<F: PrimeField>(pub Vec<Share<F>>);
 
 /// Share used in Pedersen verifiable secret sharing
+#[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct VerifiableShare<F: PrimeField> {
     #[zeroize(skip)]
     pub id: ShareId,
     #[zeroize(skip)]
     pub threshold: ShareId,
+    #[serde_as(as = "ArkObjectBytes")]
     pub secret_share: F,
+    #[serde_as(as = "ArkObjectBytes")]
     pub blinding_share: F,
 }
 
 /// Collection of `VerifiableShares`s. A sufficient number of `VerifiableShares`s reconstruct the secret.
 /// Expects unique shares, i.e. each share has a different `ShareId` and each has the same threshold.
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct VerifiableShares<F: PrimeField>(pub Vec<VerifiableShare<F>>);
 
 /// Commitments to coefficients of the of the polynomial created during secret sharing. Each commitment
 /// in the vector could be a Pedersen commitment or a computationally hiding and computationally binding
 /// commitment (scalar multiplication of the coefficient with a public group element). The former is used
 /// in Pedersen secret sharing and the latter in Feldman
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommitmentToCoefficients<G: AffineRepr>(pub Vec<G>);
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct CommitmentToCoefficients<G: AffineRepr>(
+    #[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G>,
+);
 
 impl<F: PrimeField> From<(ShareId, ShareId, F)> for Share<F> {
     fn from((i, t, s): (ShareId, ShareId, F)) -> Self {
@@ -89,6 +128,19 @@ impl<G: AffineRepr> CommitmentToCoefficients<G> {
 
     pub fn supports_threshold(&self, threshold: ShareId) -> bool {
         threshold as usize - 1 == self.poly_degree()
+    }
+}
+
+/// The elliptic curve base point which is multiplied by the secret key to generate the public key
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct PublicKeyBase<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+
+impl<G: AffineRepr> PublicKeyBase<G> {
+    pub fn new<D: Digest>(label: &[u8]) -> Self {
+        Self(affine_group_elem_from_try_and_incr::<G, D>(label))
     }
 }
 

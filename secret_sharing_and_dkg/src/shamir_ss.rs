@@ -67,9 +67,12 @@ impl<F: PrimeField> Shares<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::common::Share;
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
+    use test_utils::test_serialization;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -111,6 +114,10 @@ pub mod tests {
             }
 
             assert_eq!(shares.reconstruct_secret().unwrap(), secret);
+
+            // Test serialization
+            test_serialization!(Shares<Fr>, shares);
+            test_serialization!(Share<Fr>, shares.0[0]);
         }
     }
 }

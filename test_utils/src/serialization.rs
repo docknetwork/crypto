@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! test_serialization {
-    ($obj_type:ty, $obj: ident, $Instant: ident) => {
+    ($obj_type:ty, $obj: expr, $Instant: ident) => {
         let mut serz = vec![];
         CanonicalSerialize::serialize_compressed(&$obj, &mut serz).unwrap();
         println!("Serialized byte size: {}", serz.len());
@@ -24,7 +24,7 @@ macro_rules! test_serialization {
         let deser = rmp_serde::from_slice::<$obj_type>(&ser).unwrap();
         assert_eq!($obj, deser);
     };
-    ($obj_type:ty, $obj: ident) => {
+    ($obj_type:ty, $obj: expr) => {
         let mut serz = vec![];
         CanonicalSerialize::serialize_compressed(&$obj, &mut serz).unwrap();
         println!("Serialized byte size: {}", serz.len());

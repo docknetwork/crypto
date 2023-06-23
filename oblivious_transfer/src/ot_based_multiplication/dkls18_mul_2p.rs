@@ -6,11 +6,14 @@
 use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec, vec::Vec, UniformRand};
-
 use digest::{Digest, DynDigest};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::{Bit, BitMatrix};
-use dock_crypto_utils::{concat_slices, hashing_utils::field_elem_from_try_and_incr};
+use dock_crypto_utils::{
+    concat_slices, hashing_utils::field_elem_from_try_and_incr, serde_utils::ArkObjectBytes,
+};
 
 use crate::{
     base_ot::simplest_ot::{OneOfTwoROTSenderKeys, ROTReceiverKeys},
@@ -27,21 +30,31 @@ use crate::util::is_multiple_of_8;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-#[derive(Clone, Debug, PartialEq, Copy, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Copy, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct MultiplicationOTEParams<const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {}
 
 /// A public vector of random values used by both multiplication participants. Its important that the
 /// values are random and not influenced by any participant
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct GadgetVector<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>(
     pub MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
-    pub Vec<F>,
+    #[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<F>,
 );
 
 /// Random Linear Combination used for error checking
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct RLC<F: PrimeField> {
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub r: Vec<F>,
+    #[serde_as(as = "ArkObjectBytes")]
     pub u: F,
 }
 
@@ -86,19 +99,28 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 }
 
 /// Acts as sender in OT extension
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct Party1<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
+    #[serde_as(as = "ArkObjectBytes")]
     pub alpha: F,
+    #[serde_as(as = "ArkObjectBytes")]
     pub alpha_hat: F,
     pub base_ot_choices: Vec<Bit>,
     pub base_ot_keys: ROTReceiverKeys,
 }
 
 /// Acts as receiver in OT extension
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct Party2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
+    #[serde_as(as = "ArkObjectBytes")]
     pub beta: F,
     pub encoded_beta: Vec<Bit>,
     pub ote_setup: OTExtensionReceiverSetup,
@@ -311,6 +333,7 @@ pub mod tests {
     };
     use blake2::Blake2b512;
     use dock_crypto_utils::transcript::new_merlin_transcript;
+    use test_utils::test_serialization;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -360,13 +383,25 @@ pub mod tests {
             .unwrap();
 
             let (share_1, tau, rlc) = party1
+                .clone()
                 .receive::<Blake2b512>(U, kos_rlc, &mut party1_transcript, &gadget_vector)
                 .unwrap();
             let share_2 = party2
-                .receive::<Blake2b512>(tau, rlc, &mut party2_transcript, &gadget_vector)
+                .clone()
+                .receive::<Blake2b512>(
+                    tau.clone(),
+                    rlc.clone(),
+                    &mut party2_transcript,
+                    &gadget_vector,
+                )
                 .unwrap();
 
             assert_eq!(share_1 + share_2, alpha * beta);
+
+            test_serialization!(Party1<Fr, KAPPA, SSP>, party1);
+            test_serialization!(Party2<Fr, KAPPA, SSP>, party2);
+            test_serialization!(CorrelationTag<Fr>, tau);
+            test_serialization!(RLC<Fr>, rlc);
         }
 
         const KAPPA: u16 = 256;
@@ -378,6 +413,8 @@ pub mod tests {
         for i in 0..ote_params.num_base_ot() as usize {
             assert_eq!(gadget_vector.1[i], Fr::from(2u64).pow(&[i as u64]));
         }
+        test_serialization!(GadgetVector<Fr, KAPPA, SSP>, gadget_vector);
+
         let alpha = Fr::rand(&mut rng);
         let beta = Fr::rand(&mut rng);
         check::<128, KAPPA, SSP>(&mut rng, alpha, beta, ote_params, &gadget_vector, &B);

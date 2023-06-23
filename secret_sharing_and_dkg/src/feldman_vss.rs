@@ -19,11 +19,11 @@ use crate::{
 /// Generate a random secret with its shares according to Feldman's verifiable secret sharing.
 /// Returns the secret, shares, and commitments to coefficients of the polynomials for
 /// the secret and the polynomial
-pub fn deal_random_secret<R: RngCore, G: AffineRepr>(
+pub fn deal_random_secret<'a, R: RngCore, G: AffineRepr>(
     rng: &mut R,
     threshold: ShareId,
     total: ShareId,
-    ck: &G,
+    ck: impl Into<&'a G>,
 ) -> Result<
     (
         G::ScalarField,
@@ -39,12 +39,12 @@ pub fn deal_random_secret<R: RngCore, G: AffineRepr>(
 }
 
 /// Same as `deal_random_secret` above but accepts the secret to share
-pub fn deal_secret<R: RngCore, G: AffineRepr>(
+pub fn deal_secret<'a, R: RngCore, G: AffineRepr>(
     rng: &mut R,
     secret: G::ScalarField,
     threshold: ShareId,
     total: ShareId,
-    ck: &G,
+    ck: impl Into<&'a G>,
 ) -> Result<
     (
         Shares<G::ScalarField>,
@@ -54,7 +54,7 @@ pub fn deal_secret<R: RngCore, G: AffineRepr>(
     SSError,
 > {
     let (shares, poly) = shamir_ss::deal_secret(rng, secret, threshold, total)?;
-    let coeff_comms = commit_to_poly(&poly, ck);
+    let coeff_comms = commit_to_poly(&poly, ck.into());
     Ok((shares, coeff_comms.into(), poly))
 }
 
@@ -71,10 +71,10 @@ pub(crate) fn commit_to_poly<G: AffineRepr>(
 
 impl<F: PrimeField> Share<F> {
     /// Executed by each participant to verify its share received from the dealer.
-    pub fn verify<G: AffineRepr<ScalarField = F>>(
+    pub fn verify<'a, G: AffineRepr<ScalarField = F>>(
         &self,
         commitment_coeffs: &CommitmentToCoefficients<G>,
-        ck: &G,
+        ck: impl Into<&'a G>,
     ) -> Result<(), SSError> {
         let len = commitment_coeffs.0.len() as ShareId;
         if self.threshold > len {
@@ -85,7 +85,7 @@ impl<F: PrimeField> Share<F> {
             self.threshold as usize,
         );
         if G::Group::msm_unchecked(&commitment_coeffs.0, &powers)
-            != ck.mul_bigint(self.share.into_bigint())
+            != ck.into().mul_bigint(self.share.into_bigint())
         {
             return Err(SSError::InvalidShare);
         }
@@ -99,7 +99,10 @@ pub mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
     use ark_ff::One;
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
+
+    use test_utils::test_serialization;
 
     #[test]
     fn feldman_verifiable_secret_sharing() {
@@ -135,13 +138,15 @@ pub mod tests {
                     // Wrong share fails to verify
                     let mut wrong_share = share.clone();
                     wrong_share.share += G::ScalarField::one();
-                    assert!(wrong_share.verify(&commitments, &g).is_err());
+                    assert!(wrong_share.verify(&commitments, g).is_err());
 
                     // Correct share verifies
                     share.verify(&commitments, g).unwrap();
                 }
 
                 assert_eq!(shares.reconstruct_secret().unwrap(), secret);
+
+                test_serialization!(CommitmentToCoefficients<G>, commitments);
             }
         }
 

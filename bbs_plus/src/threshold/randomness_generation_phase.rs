@@ -18,6 +18,7 @@ pub struct Phase1<F: PrimeField, const SALT_SIZE: usize> {
     pub r: Vec<F>,
     /// Protocols to generate shares of random values used in signature like `e`
     pub commitment_protocol: super::cointoss::Party<F, SALT_SIZE>,
+    /// Protocols to generate shares of 0s.
     pub zero_sharing_protocol: super::zero_sharing::Party<F, SALT_SIZE>,
 }
 
@@ -39,6 +40,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
             .clone()
     }
 
+    /// Process received commitments for joint randomness and zero sharing protocol
     pub fn receive_commitment(
         &mut self,
         sender_id: ParticipantId,
@@ -52,21 +54,21 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         Ok(())
     }
 
+    /// Process received shares for joint randomness and zero
     pub fn receive_shares(
         &mut self,
         sender_id: ParticipantId,
         shares: Vec<(F, [u8; SALT_SIZE])>,
-        comm_zero_shares: Vec<(F, [u8; SALT_SIZE])>,
+        zero_shares: Vec<(F, [u8; SALT_SIZE])>,
     ) -> Result<(), BBSPlusError> {
         self.commitment_protocol.receive_shares(sender_id, shares)?;
         self.zero_sharing_protocol
-            .receive_shares(sender_id, comm_zero_shares)?;
+            .receive_shares(sender_id, zero_shares)?;
         Ok(())
     }
 
-    pub fn compute_joint_randomness_and_masked_arguments_to_multiply<
-        D: Default + DynDigest + Clone,
-    >(
+    /// Computes joint randomness and masked arguments to multiply
+    pub fn compute_randomness_and_arguments_for_multiplication<D: Default + DynDigest + Clone>(
         self,
         signing_key: &F,
     ) -> Result<(Vec<ParticipantId>, Vec<F>, Vec<F>, Vec<F>), BBSPlusError> {
@@ -86,5 +88,12 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
             &others,
         );
         Ok((others, randomness, masked_signing_key_share, masked_r))
+    }
+
+    pub fn ready_to_compute_randomness_and_arguments_for_multiplication(&self) -> bool {
+        self.commitment_protocol.has_shares_from_all_who_committed()
+            && self
+                .zero_sharing_protocol
+                .has_shares_from_all_who_committed()
     }
 }

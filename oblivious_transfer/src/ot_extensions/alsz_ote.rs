@@ -30,8 +30,11 @@ use crate::{configs::OTEConfig, error::OTError, util::is_multiple_of_8};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct ConsistencyCheckHashes(pub BTreeMap<(u16, u16), (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)>);
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
@@ -43,7 +46,9 @@ pub struct OTExtensionReceiverSetup {
     pub T: BitMatrix,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct OTExtensionSenderSetup {
     pub ote_config: OTEConfig,
     /// Choices used in base OT, packed

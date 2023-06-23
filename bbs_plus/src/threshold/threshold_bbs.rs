@@ -51,7 +51,10 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         id: ParticipantId,
         others: BTreeSet<ParticipantId>,
         protocol_id: Vec<u8>,
-    ) -> (Self, Commitments, BTreeMap<ParticipantId, Commitments>) {
+    ) -> Result<(Self, Commitments, BTreeMap<ParticipantId, Commitments>), BBSPlusError> {
+        if others.contains(&id) {
+            return Err(BBSPlusError::ParticipantCannotBePresentInOthers(id));
+        }
         let r = (0..batch_size).map(|_| F::rand(rng)).collect();
         // 1 random values `e` need to be generated per signature
         let (commitment_protocol, comm) =
@@ -59,7 +62,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         // Each signature will have its own zero-sharing of `alpha` and `beta`
         let (zero_sharing_protocol, comm_zero_share) =
             super::zero_sharing::Party::init(rng, id, 2 * batch_size, others, protocol_id);
-        (
+        Ok((
             Self {
                 id,
                 batch_size,
@@ -69,9 +72,10 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
             },
             comm,
             comm_zero_share,
-        )
+        ))
     }
 
+    /// End phase 1 and return the output of this phase
     pub fn finish_for_bbs<D: Default + DynDigest + Clone>(
         self,
         signing_key: &F,
@@ -81,7 +85,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         let batch_size = self.batch_size;
         let r = self.r.clone();
         let (others, randomness, masked_signing_key_share, masked_r) =
-            self.compute_joint_randomness_and_masked_arguments_to_multiply::<D>(signing_key)?;
+            self.compute_randomness_and_arguments_for_multiplication::<D>(signing_key)?;
         debug_assert_eq!(randomness.len(), batch_size);
         let e = randomness;
         Ok(Phase1Output {
@@ -191,7 +195,7 @@ pub mod tests {
         setup::{PublicKeyG2, SecretKey},
         threshold::{
             base_ot_phase::tests::do_base_ot_for_threshold_sig, multiplication_phase::Phase2,
-            threshold_bbs_plus::tests::deal_random_secret,
+            threshold_bbs_plus::tests::trusted_party_keygen,
         },
     };
     use ark_std::{
@@ -221,8 +225,7 @@ pub mod tests {
         let sig_batch_size = 10;
         let num_signers = 5;
         let all_party_set = (1..=num_signers).into_iter().collect::<BTreeSet<_>>();
-        let (sk, sk_shares, _poly) =
-            deal_random_secret::<_, Fr>(&mut rng, num_signers, num_signers);
+        let (sk, sk_shares) = trusted_party_keygen::<_, Fr>(&mut rng, num_signers, num_signers);
 
         let base_ot_outputs = do_base_ot_for_threshold_sig::<BASE_OT_KEY_SIZE>(
             &mut rng,
@@ -256,7 +259,8 @@ pub mod tests {
                 i,
                 others,
                 protocol_id.clone(),
-            );
+            )
+            .unwrap();
             round1s.push(round1);
             commitments.push(comm);
             commitments_zero_share.push(comm_zero);
@@ -306,7 +310,7 @@ pub mod tests {
         }
 
         let mut round2s = vec![];
-        let mut all_u = vec![];
+        let mut all_msg_1s = vec![];
 
         let start = Instant::now();
         for i in 1..=num_signers {
@@ -324,22 +328,22 @@ pub mod tests {
             )
             .unwrap();
             round2s.push(phase);
-            all_u.push((i, U));
+            all_msg_1s.push((i, U));
         }
 
-        let mut all_tau = vec![];
-        for (sender_id, U) in all_u {
-            for (receiver_id, (U_i, rlc, gamma)) in U {
-                let (tau, r, gamma) = round2s[receiver_id as usize - 1]
-                    .receive_u::<Blake2b512>(sender_id, U_i, rlc, gamma, &gadget_vector)
+        let mut all_msg_2s = vec![];
+        for (sender_id, msg_1s) in all_msg_1s {
+            for (receiver_id, m) in msg_1s {
+                let m2 = round2s[receiver_id as usize - 1]
+                    .receive_message1::<Blake2b512>(sender_id, m, &gadget_vector)
                     .unwrap();
-                all_tau.push((receiver_id, sender_id, (tau, r, gamma)));
+                all_msg_2s.push((receiver_id, sender_id, m2));
             }
         }
 
-        for (sender_id, receiver_id, (tau, r, gamma)) in all_tau {
+        for (sender_id, receiver_id, m2) in all_msg_2s {
             round2s[receiver_id as usize - 1]
-                .receive_tau::<Blake2b512>(sender_id, tau, r, gamma, &gadget_vector)
+                .receive_message2::<Blake2b512>(sender_id, m2, &gadget_vector)
                 .unwrap();
         }
 

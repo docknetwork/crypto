@@ -31,43 +31,90 @@ use sha3::{Sha3_256, Shake256};
 impl_proof_of_knowledge_of_discrete_log!(SecretKnowledgeProtocol, SecretKnowledgeProof);
 
 /// Public key created by base OT sender and sent to the receiver
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SenderPubKey<G: AffineRepr>(pub G);
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct SenderPubKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
 
 /// Public key created by the base OT receiver and sent to the sender
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ReceiverPubKeys<G: AffineRepr>(pub Vec<G>);
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct ReceiverPubKeys<G: AffineRepr>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G>);
 
 /// Setup for running multiple 1-of-n OTs
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct ROTSenderSetup<G: AffineRepr> {
     pub ot_config: OTConfig,
+    #[serde_as(as = "ArkObjectBytes")]
     pub y: G::ScalarField,
+    #[serde_as(as = "ArkObjectBytes")]
     pub S: G,
 }
 
 // TODO: Make it use const generic for key size and replace byte vector with slice
 /// Sender's keys for multiple 1-of-n ROTs
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
 pub struct ROTSenderKeys(pub Vec<Vec<Key>>);
 
 // TODO: Make it use const generic for key size and replace byte vector with slice
 /// Receiver's keys for multiple 1-of-n ROTs
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
 pub struct ROTReceiverKeys(pub Vec<Key>);
 
 /// Sender's keys for multiple 1-of-2 ROTs
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
 pub struct OneOfTwoROTSenderKeys(pub Vec<(Key, Key)>);
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct HashedKey(pub Vec<u8>);
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct DoubleHashedKey(pub Vec<u8>);
 
 /// The OT sender acts as a challenger and creates the challenges. Used in Verified Simplest OT
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct VSROTChallenger {
     pub double_hashed_keys_0: Vec<DoubleHashedKey>,
     pub hashed_keys: Vec<(HashedKey, HashedKey)>,
@@ -75,7 +122,9 @@ pub struct VSROTChallenger {
 
 /// The OT receiver receives challenges from the OT sender and verifies the challenges and sends
 /// responses. Used in Verified Simplest OT
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct VSROTResponder {
     pub choices: Vec<Bit>,
     pub hashed_keys: Vec<HashedKey>,
@@ -83,11 +132,15 @@ pub struct VSROTResponder {
 }
 
 /// Sent by the OT sender
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct Challenges(pub Vec<Vec<u8>>);
 
 /// Sent by the OT receiver as response to `Challenges`
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct Responses(pub Vec<Vec<u8>>);
 
 impl<G: AffineRepr> ReceiverPubKeys<G> {
@@ -165,7 +218,7 @@ impl<G: AffineRepr> ROTSenderSetup<G> {
                         } else {
                             (yR[i] - jT[j - 1]).into_affine()
                         };
-                        hash_to_otp::<G, KEY_SIZE>(&self.S, &R.0[i], &jt)
+                        hash_to_otp::<G, KEY_SIZE>(i, &self.S, &R.0[i], &jt)
                     })
                     .collect::<Vec<_>>()
             })
@@ -215,7 +268,7 @@ impl ROTReceiverKeys {
         }
         let keys = cfg_iter!(xS)
             .enumerate()
-            .map(|(i, xs)| hash_to_otp::<G, KEY_SIZE>(&S.0, &R[i], xs))
+            .map(|(i, xs)| hash_to_otp::<G, KEY_SIZE>(i, &S.0, &R[i], xs))
             .collect::<Vec<_>>();
         Ok((Self(keys), ReceiverPubKeys(R)))
     }
@@ -431,11 +484,17 @@ impl OneOfTwoROTSenderKeys {
 }
 
 // TODO: Make it use const generic for key size and generic digest
-pub fn hash_to_otp<G: CanonicalSerialize, const KEY_SIZE: u16>(s: &G, r: &G, input: &G) -> Vec<u8> {
-    let mut bytes = vec![];
+pub fn hash_to_otp<G: CanonicalSerialize, const KEY_SIZE: u16>(
+    index: usize,
+    s: &G,
+    r: &G,
+    input: &G,
+) -> Vec<u8> {
+    let mut bytes = index.to_be_bytes().to_vec();
     s.serialize_compressed(&mut bytes).unwrap();
     r.serialize_compressed(&mut bytes).unwrap();
     input.serialize_compressed(&mut bytes).unwrap();
+    index.serialize_compressed(&mut bytes).unwrap();
     let mut key = vec![0; KEY_SIZE as usize / 8];
     let mut hasher = Shake256::default();
     Update::update(&mut hasher, &bytes);
@@ -462,11 +521,12 @@ pub mod tests {
     };
     use blake2::Blake2b512;
     use std::time::Instant;
+    use test_utils::{test_serialization, G1};
 
     pub fn do_1_of_2_base_ot<const KEY_SIZE: u16>(
         rng: &mut StdRng,
         base_ot_count: u16,
-        B: &<Bls12_381 as Pairing>::G1Affine,
+        B: &G1,
     ) -> (Vec<u16>, OneOfTwoROTSenderKeys, ROTReceiverKeys) {
         let ot_config = OTConfig::new_2_message(base_ot_count).unwrap();
 
@@ -503,14 +563,15 @@ pub mod tests {
     #[test]
     fn simplest_rot() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let B = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
+        let B = G1::rand(&mut rng);
 
         fn check<const KEY_SIZE: u16>(
             rng: &mut StdRng,
             m: u16,
             n: u16,
             choices: Vec<u16>,
-            B: &<Bls12_381 as Pairing>::G1Affine,
+            B: &G1,
+            check_serialization: bool,
         ) {
             let ot_config = OTConfig {
                 num_ot: m,
@@ -519,9 +580,14 @@ pub mod tests {
             let (sender_setup, S) = ROTSenderSetup::new(rng, ot_config, B);
 
             let start = Instant::now();
-            let (receiver_keys, R) =
-                ROTReceiverKeys::new::<_, _, KEY_SIZE>(rng, ot_config, choices.clone(), S, B)
-                    .expect("Error in creating keys for OT receiver");
+            let (receiver_keys, R) = ROTReceiverKeys::new::<_, _, KEY_SIZE>(
+                rng,
+                ot_config,
+                choices.clone(),
+                S.clone(),
+                B,
+            )
+            .expect("Error in creating keys for OT receiver");
             assert_eq!(R.len(), ot_config.num_ot as usize);
 
             let string = format!("{} byte keys for {} 1-of-{}", KEY_SIZE, m, n);
@@ -530,7 +596,7 @@ pub mod tests {
 
             let start = Instant::now();
             let sender_keys = sender_setup
-                .derive_keys::<KEY_SIZE>(R)
+                .derive_keys::<KEY_SIZE>(R.clone())
                 .expect("Error in creating keys for OT sender");
             println!("Sender creates {} ROTs in {:?}", string, start.elapsed());
 
@@ -546,39 +612,47 @@ pub mod tests {
                     }
                 }
             }
+
+            if check_serialization {
+                test_serialization!(ROTSenderSetup<G1>, sender_setup);
+                test_serialization!(SenderPubKey<G1>, S);
+                test_serialization!(ROTReceiverKeys, receiver_keys);
+                test_serialization!(ReceiverPubKeys<G1>, R);
+                test_serialization!(ROTSenderKeys, sender_keys);
+            }
         }
 
-        check::<128>(&mut rng, 1, 2, vec![0], &B);
-        check::<128>(&mut rng, 1, 2, vec![1], &B);
-        check::<128>(&mut rng, 1, 3, vec![0], &B);
-        check::<128>(&mut rng, 1, 3, vec![1], &B);
-        check::<128>(&mut rng, 1, 3, vec![2], &B);
-        check::<128>(&mut rng, 2, 2, vec![0, 0], &B);
-        check::<128>(&mut rng, 2, 2, vec![0, 1], &B);
-        check::<128>(&mut rng, 2, 2, vec![1, 0], &B);
-        check::<128>(&mut rng, 2, 2, vec![1, 1], &B);
-        check::<128>(&mut rng, 3, 2, vec![1, 1, 1], &B);
-        check::<128>(&mut rng, 3, 2, vec![0, 0, 0], &B);
-        check::<128>(&mut rng, 3, 3, vec![0, 1, 2], &B);
-        check::<128>(&mut rng, 3, 3, vec![1, 2, 2], &B);
-        check::<128>(&mut rng, 3, 3, vec![1, 0, 2], &B);
-        check::<128>(&mut rng, 3, 5, vec![4, 0, 1], &B);
-        check::<128>(&mut rng, 4, 2, vec![1, 0, 1, 1], &B);
-        check::<128>(&mut rng, 4, 3, vec![2, 1, 0, 1], &B);
-        check::<128>(&mut rng, 4, 4, vec![3, 2, 1, 0], &B);
-        check::<128>(&mut rng, 4, 8, vec![7, 6, 5, 4], &B);
+        check::<128>(&mut rng, 1, 2, vec![0], &B, true);
+        check::<128>(&mut rng, 1, 2, vec![1], &B, true);
+        check::<128>(&mut rng, 1, 3, vec![0], &B, true);
+        check::<128>(&mut rng, 1, 3, vec![1], &B, true);
+        check::<128>(&mut rng, 1, 3, vec![2], &B, true);
+        check::<128>(&mut rng, 2, 2, vec![0, 0], &B, true);
+        check::<128>(&mut rng, 2, 2, vec![0, 1], &B, true);
+        check::<128>(&mut rng, 2, 2, vec![1, 0], &B, false);
+        check::<128>(&mut rng, 2, 2, vec![1, 1], &B, false);
+        check::<128>(&mut rng, 3, 2, vec![1, 1, 1], &B, false);
+        check::<128>(&mut rng, 3, 2, vec![0, 0, 0], &B, false);
+        check::<128>(&mut rng, 3, 3, vec![0, 1, 2], &B, false);
+        check::<128>(&mut rng, 3, 3, vec![1, 2, 2], &B, false);
+        check::<128>(&mut rng, 3, 3, vec![1, 0, 2], &B, false);
+        check::<128>(&mut rng, 3, 5, vec![4, 0, 1], &B, false);
+        check::<128>(&mut rng, 4, 2, vec![1, 0, 1, 1], &B, false);
+        check::<128>(&mut rng, 4, 3, vec![2, 1, 0, 1], &B, false);
+        check::<128>(&mut rng, 4, 4, vec![3, 2, 1, 0], &B, false);
+        check::<128>(&mut rng, 4, 8, vec![7, 6, 5, 4], &B, false);
 
         let choices = (0..32).map(|_| u16::rand(&mut rng) % 2).collect();
-        check::<128>(&mut rng, 32, 2, choices, &B);
+        check::<128>(&mut rng, 32, 2, choices, &B, false);
 
         let choices = (0..64).map(|_| u16::rand(&mut rng) % 2).collect();
-        check::<128>(&mut rng, 64, 2, choices, &B);
+        check::<128>(&mut rng, 64, 2, choices, &B, false);
 
         let choices = (0..128).map(|_| u16::rand(&mut rng) % 2).collect();
-        check::<128>(&mut rng, 128, 2, choices, &B);
+        check::<128>(&mut rng, 128, 2, choices, &B, false);
 
         let choices = (0..192).map(|_| u16::rand(&mut rng) % 2).collect();
-        check::<128>(&mut rng, 192, 2, choices, &B);
+        check::<128>(&mut rng, 192, 2, choices, &B, false);
     }
 
     #[test]
@@ -590,7 +664,8 @@ pub mod tests {
             rng: &mut StdRng,
             num_base_ot: u16,
             choices: Vec<Bit>,
-            B: &<Bls12_381 as Pairing>::G1Affine,
+            B: &G1,
+            check_serialization: bool,
         ) {
             let start = Instant::now();
             let (sender_setup, S, schnorr_proof) =
@@ -641,7 +716,7 @@ pub mod tests {
 
             let start = Instant::now();
             let (receiver_responder, responses) =
-                VSROTResponder::new(&receiver_keys, choices.clone(), challenges)
+                VSROTResponder::new(&receiver_keys, choices.clone(), challenges.clone())
                     .expect("Error in creating responses");
             println!(
                 "Receiver creates responses for {} 1-of-2 VROTs in {:?}",
@@ -660,7 +735,8 @@ pub mod tests {
 
             let start = Instant::now();
             let hashed_keys = sender_challenger
-                .verify_responses(responses)
+                .clone()
+                .verify_responses(responses.clone())
                 .expect("Error in verifying responses");
             println!(
                 "Sender verifies responses for {} 1-of-2 VROTs in {:?}",
@@ -681,28 +757,37 @@ pub mod tests {
             assert_eq!(sender_keys.len(), num_base_ot as usize);
             assert_eq!(receiver_keys.len(), num_base_ot as usize);
             check_base_ot_keys(&choices, &receiver_keys, &sender_keys);
+
+            if check_serialization {
+                test_serialization!(SecretKnowledgeProof<G1>, schnorr_proof);
+                test_serialization!(OneOfTwoROTSenderKeys, sender_keys);
+                test_serialization!(VSROTChallenger, sender_challenger);
+                test_serialization!(Challenges, challenges);
+                test_serialization!(VSROTResponder, receiver_responder);
+                test_serialization!(Responses, responses);
+            }
         }
 
-        check::<128>(&mut rng, 1, vec![false], &B);
-        check::<128>(&mut rng, 1, vec![false], &B);
-        check::<128>(&mut rng, 2, vec![false, false], &B);
-        check::<128>(&mut rng, 2, vec![false, true], &B);
-        check::<128>(&mut rng, 2, vec![true, false], &B);
-        check::<128>(&mut rng, 2, vec![true, true], &B);
-        check::<128>(&mut rng, 3, vec![true, true, true], &B);
-        check::<128>(&mut rng, 3, vec![false, false, false], &B);
-        check::<128>(&mut rng, 3, vec![true, false, true], &B);
+        check::<128>(&mut rng, 1, vec![false], &B, true);
+        check::<128>(&mut rng, 1, vec![false], &B, true);
+        check::<128>(&mut rng, 2, vec![false, false], &B, true);
+        check::<128>(&mut rng, 2, vec![false, true], &B, true);
+        check::<128>(&mut rng, 2, vec![true, false], &B, false);
+        check::<128>(&mut rng, 2, vec![true, true], &B, false);
+        check::<128>(&mut rng, 3, vec![true, true, true], &B, false);
+        check::<128>(&mut rng, 3, vec![false, false, false], &B, false);
+        check::<128>(&mut rng, 3, vec![true, false, true], &B, true);
 
         let choices = (0..32).map(|_| u16::rand(&mut rng) % 2 != 0).collect();
-        check::<128>(&mut rng, 32, choices, &B);
+        check::<128>(&mut rng, 32, choices, &B, false);
 
         let choices = (0..64).map(|_| u16::rand(&mut rng) % 2 != 0).collect();
-        check::<128>(&mut rng, 64, choices, &B);
+        check::<128>(&mut rng, 64, choices, &B, false);
 
         let choices = (0..128).map(|_| u16::rand(&mut rng) % 2 != 0).collect();
-        check::<128>(&mut rng, 128, choices, &B);
+        check::<128>(&mut rng, 128, choices, &B, false);
 
         let choices = (0..192).map(|_| u16::rand(&mut rng) % 2 != 0).collect();
-        check::<128>(&mut rng, 192, choices, &B);
+        check::<128>(&mut rng, 192, choices, &B, false);
     }
 }

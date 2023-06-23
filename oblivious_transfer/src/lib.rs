@@ -14,13 +14,16 @@ pub mod util;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
+use serde::{Deserialize, Serialize};
 
 pub type Key = Vec<u8>;
 pub type Bit = bool;
 pub type Message = Vec<u8>;
 
 /// A bit matrix stored in row-major order
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct BitMatrix(pub Vec<u8>);
 
 pub type ParticipantId = u16;

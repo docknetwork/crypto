@@ -9,7 +9,10 @@ use ark_ff::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::{DynDigest, ExtendableOutput, Update};
+use dock_crypto_utils::{join, serde_utils::ArkObjectBytes};
 use itertools::MultiUnzip;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use sha3::Shake256;
 
 use crate::{
@@ -20,19 +23,22 @@ use crate::{
 };
 
 use crate::{configs::OTEConfig, error::OTError};
-use dock_crypto_utils::join;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Random Linear Combination used for error checking
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct RLC {
     pub x: Vec<u8>,
     pub t: Vec<u8>,
 }
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct OTExtensionReceiverSetup {
     pub ote_config: OTEConfig,
     /// Choices used in OT extension
@@ -41,7 +47,9 @@ pub struct OTExtensionReceiverSetup {
     pub T: BitMatrix,
 }
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct OTExtensionSenderSetup {
     pub ote_config: OTEConfig,
     /// Choices used in base OT, packed
@@ -50,14 +58,29 @@ pub struct OTExtensionSenderSetup {
     pub Q: BitMatrix,
 }
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CorrelationTag<F: PrimeField>(pub Vec<(F, F)>);
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct CorrelationTag<F: PrimeField>(
+    #[serde_as(as = "Vec<(ArkObjectBytes, ArkObjectBytes)>")] pub Vec<(F, F)>,
+);
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SenderOutput<F: PrimeField>(pub Vec<(F, F)>);
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct SenderOutput<F: PrimeField>(
+    #[serde_as(as = "Vec<(ArkObjectBytes, ArkObjectBytes)>")] pub Vec<(F, F)>,
+);
 
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ReceiverOutput<F: PrimeField>(pub Vec<(F, F)>);
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct ReceiverOutput<F: PrimeField>(
+    #[serde_as(as = "Vec<(ArkObjectBytes, ArkObjectBytes)>")] pub Vec<(F, F)>,
+);
 
 impl OTExtensionReceiverSetup {
     pub fn new<R: RngCore, const STATISTICAL_SECURITY_PARAMETER: u16>(
@@ -360,17 +383,17 @@ pub mod tests {
     use std::time::Instant;
 
     use ark_bls12_381::{Bls12_381, Fr};
-    use ark_ec::pairing::Pairing;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
     use blake2::Blake2b512;
+    use test_utils::{test_serialization, G1};
 
     #[test]
     fn kos() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let B = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
+        let B = G1::rand(&mut rng);
 
         fn check<const KEY_SIZE: u16, const SSP: u16>(
             rng: &mut StdRng,
@@ -378,7 +401,8 @@ pub mod tests {
             extended_ot_count: usize,
             ot_ext_choices: Vec<bool>,
             message_size: usize,
-            B: &<Bls12_381 as Pairing>::G1Affine,
+            B: &G1,
+            check_serialization: bool,
         ) {
             // Perform base OT with roles reversed
             // In practice, do VSOT
@@ -410,8 +434,8 @@ pub mod tests {
                 .collect::<Vec<_>>();
             let ext_sender_setup = OTExtensionSenderSetup::new::<SSP>(
                 ote_config,
-                U,
-                rlc,
+                U.clone(),
+                rlc.clone(),
                 base_ot_choices,
                 base_ot_receiver_keys,
             )
@@ -505,12 +529,14 @@ pub mod tests {
             assert_eq!(t_A.len(), tau.len());
 
             let start = Instant::now();
-            let t_B = ext_receiver_setup.receive::<Fr, Blake2b512>(tau).unwrap();
+            let t_B = ext_receiver_setup
+                .receive::<Fr, Blake2b512>(tau.clone())
+                .unwrap();
             let cot_1_decryption_time = start.elapsed();
 
             assert_eq!(t_A.len(), t_B.len());
-            cfg_into_iter!(t_A.0)
-                .zip(t_B.0)
+            cfg_into_iter!(t_A.clone().0)
+                .zip(t_B.clone().0)
                 .enumerate()
                 .for_each(|(i, (t_A_i, t_B_i))| {
                     if !ext_receiver_setup.ot_extension_choices[i] {
@@ -542,8 +568,19 @@ pub mod tests {
                 "Doing Correlated OT takes {:?} and decryption takes {:?}",
                 cot_1_encryption_time, cot_1_decryption_time
             );
+
+            if check_serialization {
+                test_serialization!(OTExtensionReceiverSetup, ext_receiver_setup);
+                test_serialization!(BitMatrix, U);
+                test_serialization!(RLC, rlc);
+                test_serialization!(OTExtensionSenderSetup, ext_sender_setup);
+                test_serialization!(SenderOutput<Fr>, t_A);
+                test_serialization!(CorrelationTag<Fr>, tau);
+                test_serialization!(ReceiverOutput<Fr>, t_B);
+            }
         }
 
+        let mut checked = false;
         for (base_ot_count, extended_ot_count) in [
             (256, 1024),
             (256, 2048),
@@ -562,7 +599,9 @@ pub mod tests {
                 choices,
                 1024,
                 &B,
+                !checked,
             );
+            checked = true;
         }
     }
 }
