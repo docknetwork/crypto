@@ -17,12 +17,12 @@ ark-relations.workspace = true
 ark-groth16.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
-dock_crypto_utils = { version = "0.13.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.14.0", default-features = false, path = "../utils" }
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
 legogroth16 = { version = "0.9.0", default-features = false, features = ["aggregation"], path = "../legogroth16" }
-merlin = { workspace = true, default-features = false }
+merlin = { package = "dock_merlin", version = "2.0", default-features = false, path = "../merlin" }
 
 [dev-dependencies]
 blake2.workspace = true

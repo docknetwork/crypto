@@ -41,8 +41,6 @@ serde_with = { version = "1.10.0", default-features = false, features = ["macros
 zeroize = { version = "1.6.0", features = ["derive"] }
 blake2 = { version = "0.10", default-features = false }
 ark-bls12-381 = { version = "^0.4.0", default-features = false, features = [ "curve" ] }
-merlin = { package = "dock_merlin", version = "1.0", default-features = false, path = "./merlin" }
-legogroth16 = { version = "0.8.0" , default-features = false }
 
 [profile.release]
 lto = true

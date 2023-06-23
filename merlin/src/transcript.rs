@@ -235,9 +235,9 @@ impl Transcript {
 /// These methods are intended to be chained, passing from a borrowed
 /// [`Transcript`] to an owned [`TranscriptRng`] as follows:
 /// ```
-/// # extern crate merlin;
+/// # extern crate dock_merlin;
 /// # extern crate rand_core;
-/// # use merlin::Transcript;
+/// # use dock_merlin::Transcript;
 /// # fn main() {
 /// # let mut transcript = Transcript::new(b"TranscriptRng doctest");
 /// # let public_data = b"public data";
