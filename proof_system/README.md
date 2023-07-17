@@ -24,7 +24,7 @@ put all such public parameters as [`SetupParams`] in an array and then reference
 while creating an [`Statement`]. This array of [`SetupParams`] is then included in the [`ProofSpec`]
 and used by the prover and verifier during proof creation and verification respectively.
 
-A common requirement is to prove equality of certain [`Witness`]s of certain [`Statement`](s). This
+A common requirement is to prove equality of certain [`Witness`]s of certain [`Statement`]s. This
 is done by using the [`EqualWitnesses`] meta-statement. For each set of [`Witness`]s (from the same or different [`Statement`]s)
 that need to proven equal, a [`EqualWitnesses`] is created which is a set of witness references [`WitnessRef`].
 Each [`WitnessRef`] contains the [`Statement`] index and the [`Witness`] index in that [`Statement`] and
@@ -53,7 +53,7 @@ statement and `Statement::BoundCheckLegoGroth16` statement. Following are some i
                         └─────────────────────────────┘                          └────────────────────────────┘
 ```
 
-```rust
+```
    For proving certain messages from 3 BBS+ signatures are equal. Here there 2 sets of equalities,
    1. message A3 from 1st signature, B2 from 2nd signature and C1 from 3rd signature
    2. message B4 from 2nd signature and C5 from 3rd signature
@@ -81,7 +81,7 @@ statement and `Statement::BoundCheckLegoGroth16` statement. Following are some i
                         └─────────────────────────────┘                          └────────────────────────────┘
 ```
 
-```rust
+```
    For proving certain messages from a BBS+ signature satisfy 2 predicates,
     1) message A3 satisfies bounds specified in statement 2
     2) message A5 has been verifiably encrypted as per statement 3.

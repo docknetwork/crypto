@@ -14,6 +14,7 @@ use ark_std::{rand::RngCore, string::String, vec::Vec};
 
 use crate::circom::WitnessCalculator;
 
+/// Represents a Circom circuit, i.e. a collection of all the wires of the circuit.
 #[derive(Clone, Debug)]
 pub struct CircomCircuit<E: Pairing> {
     pub r1cs: R1CS<E>,
@@ -40,6 +41,8 @@ impl<E: Pairing> CircomCircuit<E> {
         Ok(Self::setup(r1cs_file.into()))
     }
 
+    /// Does the zk-SNARK setup and returns the proving key. `commit_witness_count` is the number of private inputs
+    /// wires that should be committed in the Pedersen commitment included in the proof.  
     pub fn generate_proving_key<R: RngCore>(
         self,
         commit_witness_count: usize,

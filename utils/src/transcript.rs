@@ -12,7 +12,7 @@ pub fn new_merlin_transcript(label: &'static [u8]) -> impl Transcript {
 /// Transcript is the application level transcript to derive the challenges
 /// needed for Fiat Shamir during aggregation. It is given to the
 /// prover/verifier so that the transcript can be fed with any other data first.
-/// Taken from https://github.com/nikkolasg/snarkpack
+/// Taken from <https://github.com/nikkolasg/snarkpack>
 pub trait Transcript {
     fn append<S: CanonicalSerialize>(&mut self, label: &'static [u8], point: &S);
     fn append_message(&mut self, label: &'static [u8], bytes: &[u8]);

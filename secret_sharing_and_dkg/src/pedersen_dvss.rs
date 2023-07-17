@@ -1,5 +1,5 @@
 //! Pedersen Distributed Verifiable secret sharing. Based on the paper "Non-interactive and information-theoretic
-//! secure verifiable secret sharing", section 5. https://www.cs.cornell.edu/courses/cs754/2001fa/129.PDF
+//! secure verifiable secret sharing", section 5. <https://www.cs.cornell.edu/courses/cs754/2001fa/129.PDF>
 //! Does not involve a trusted third party but assumes that all participants (and not just threshold) participate till the end.
 //! Even if one participant aborts, the protocol needs to be restarted. A workaround is for each participant to ignore the
 //! faulty participant's share essentially making it such that the faulty participant was never there.

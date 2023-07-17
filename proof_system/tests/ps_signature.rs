@@ -16,7 +16,9 @@ use rayon::prelude::*;
 use coconut_crypto::{
     BlindSignature, CommitmentOrMessage, MessageCommitment, MultiMessageCommitment, Signature,
 };
-use dock_crypto_utils::{misc::*, owned_pairs::*, pairs::*};
+use dock_crypto_utils::{
+    hashing_utils::affine_group_elem_from_try_and_incr, misc::*, owned_pairs::*, pairs::*,
+};
 use std::time::Instant;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 
@@ -38,7 +40,7 @@ use proof_system::{
     },
     witness::{Membership as MembershipWit, NonMembership as NonMembershipWit, PoKPSSignature},
 };
-use test_utils::{accumulators::*, test_serialization, Fr, ProofG1, G1};
+use test_utils::{accumulators::*, test_serialization, Fr, ProofG1};
 
 #[test]
 fn pok_of_3_ps_sig_and_message_equality() {
@@ -948,13 +950,20 @@ fn requesting_partially_blind_ps_sig() {
         .zip(commit_msgs.iter().cloned())
         .collect();
 
-    let h = G1::rand(&mut rng);
-    let commitments: Vec<_> =
-        MessageCommitment::new_iter(blinding_m_pairs.as_ref(), &h, &sig_params).collect();
-
     let h_m_pairs = Pairs::new_truncate_to_min(&sig_params.h, &commit_msgs);
+    // Commitment to all hidden messages
     let multi_message_commitment =
         MultiMessageCommitment::<Bls12_381>::new(h_m_pairs, &sig_params.g, &blinding);
+
+    // Generate `h` by hashing the commitment to all hidden messages
+    let mut comm_bytes = vec![];
+    multi_message_commitment
+        .serialize_compressed(&mut comm_bytes)
+        .unwrap();
+    let h = affine_group_elem_from_try_and_incr::<_, Blake2b512>(&comm_bytes);
+
+    let commitments: Vec<_> =
+        MessageCommitment::new_iter(blinding_m_pairs.as_ref(), &h, &sig_params).collect();
 
     // Requester proves knowledge of committed messages
     let mut statements = Statements::new();

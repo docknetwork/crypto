@@ -106,10 +106,10 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
 }
 
 impl<E: Pairing> BBSPlusSignatureShare<E> {
-    /// `index_in_output` is the index of this signature in the Phase1 and Phase2 outputs
+    /// `sig_index_in_batch` is the index of this signature in batch and also in the Phase1 and Phase2 outputs
     pub fn new(
         messages: &[E::ScalarField],
-        index_in_output: usize,
+        sig_index_in_batch: usize,
         phase1: &Phase1Output<E::ScalarField>,
         phase2: &Phase2Output<E::ScalarField>,
         sig_params: &SignatureParamsG1<E>,
@@ -129,37 +129,37 @@ impl<E: Pairing> BBSPlusSignatureShare<E> {
         Self::new_with_committed_messages(
             &E::G1Affine::zero(),
             msg_map,
-            index_in_output,
+            sig_index_in_batch,
             phase1,
             phase2,
             sig_params,
         )
     }
 
-    /// `index_in_output` is the index of this signature in the Phase1 and Phase2 outputs
+    /// `sig_index_in_batch` is the index of this signature in batch and also in the Phase1 and Phase2 outputs
     pub fn new_with_committed_messages(
         commitment: &E::G1Affine,
         uncommitted_messages: BTreeMap<usize, &E::ScalarField>,
-        index_in_output: usize,
+        sig_index_in_batch: usize,
         phase1: &Phase1Output<E::ScalarField>,
         phase2: &Phase2Output<E::ScalarField>,
         sig_params: &SignatureParamsG1<E>,
     ) -> Result<Self, BBSPlusError> {
-        let b = sig_params.b(uncommitted_messages, &phase1.s[index_in_output])?;
+        let b = sig_params.b(uncommitted_messages, &phase1.s[sig_index_in_batch])?;
         let commitment_plus_b = b + commitment;
         let (R, u) = compute_R_and_u(
             commitment_plus_b,
-            &phase1.r[index_in_output],
-            &phase1.e[index_in_output],
-            &phase1.masked_rs[index_in_output],
-            &phase1.masked_signing_key_shares[index_in_output],
-            index_in_output,
+            &phase1.r[sig_index_in_batch],
+            &phase1.e[sig_index_in_batch],
+            &phase1.masked_rs[sig_index_in_batch],
+            &phase1.masked_signing_key_shares[sig_index_in_batch],
+            sig_index_in_batch,
             phase2,
         );
         Ok(Self {
             id: phase1.id,
-            e: phase1.e[index_in_output],
-            s: phase1.s[index_in_output],
+            e: phase1.e[sig_index_in_batch],
+            s: phase1.s[sig_index_in_batch],
             u,
             R,
         })
@@ -201,7 +201,6 @@ pub mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
     use ark_ff::Zero;
-    use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
     use std::time::{Duration, Instant};
 
     use crate::{
@@ -215,13 +214,11 @@ pub mod tests {
     };
 
     use ark_std::{
-        cfg_into_iter,
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
     use blake2::Blake2b512;
 
-    use rayon::prelude::*;
     use secret_sharing_and_dkg::shamir_ss::deal_random_secret;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
@@ -249,29 +246,32 @@ pub mod tests {
         fn check(
             rng: &mut StdRng,
             ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
-            num_signers: u16,
+            threshold_signers: u16,
+            total_signers: u16,
             sig_batch_size: usize,
             message_count: usize,
             gadget_vector: &GadgetVector<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
         ) {
             let protocol_id = b"test".to_vec();
 
-            let all_party_set = (1..=num_signers).into_iter().collect::<BTreeSet<_>>();
-            let (sk, sk_shares) = trusted_party_keygen::<_, Fr>(rng, num_signers, num_signers);
+            let total_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
+            let threshold_party_set = (1..=threshold_signers).into_iter().collect::<BTreeSet<_>>();
+            let (sk, sk_shares) =
+                trusted_party_keygen::<_, Fr>(rng, threshold_signers, total_signers);
             let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, message_count);
             let public_key = PublicKeyG2::generate_using_secret_key(&SecretKey(sk), &params);
 
             println!(
                 "For a batch size of {} BBS+ signatures on messages of size {} and {} signers",
-                sig_batch_size, message_count, num_signers
+                sig_batch_size, message_count, threshold_signers
             );
 
             let start = Instant::now();
             let base_ot_outputs = do_base_ot_for_threshold_sig::<BASE_OT_KEY_SIZE>(
                 rng,
                 ote_params.num_base_ot(),
-                num_signers,
-                all_party_set.clone(),
+                total_signers,
+                total_party_set.clone(),
             );
             println!("Base OT phase took {:?}", start.elapsed());
 
@@ -279,10 +279,13 @@ pub mod tests {
             let mut commitments = vec![];
             let mut commitments_zero_share = vec![];
             let mut round1outs = vec![];
+            let total_phase1_time;
+            let mut phase1_times = BTreeMap::new();
 
             let start = Instant::now();
-            for i in 1..=num_signers {
-                let mut others = all_party_set.clone();
+            for i in 1..=threshold_signers {
+                let start = Instant::now();
+                let mut others = threshold_party_set.clone();
                 others.remove(&i);
                 let (round1, comm, comm_zero) = Phase1::<Fr, 256>::init_for_bbs_plus(
                     rng,
@@ -292,14 +295,16 @@ pub mod tests {
                     protocol_id.clone(),
                 )
                 .unwrap();
+                phase1_times.insert(i, start.elapsed());
                 round1s.push(round1);
                 commitments.push(comm);
                 commitments_zero_share.push(comm_zero);
             }
 
-            for i in 1..=num_signers {
-                for j in 1..=num_signers {
+            for i in 1..=threshold_signers {
+                for j in 1..=threshold_signers {
                     if i != j {
+                        let start = Instant::now();
                         round1s[i as usize - 1]
                             .receive_commitment(
                                 j,
@@ -310,45 +315,57 @@ pub mod tests {
                                     .clone(),
                             )
                             .unwrap();
+                        phase1_times.insert(i, *phase1_times.get(&i).unwrap() + start.elapsed());
                     }
                 }
             }
 
-            for i in 1..=num_signers {
-                for j in 1..=num_signers {
+            for i in 1..=threshold_signers {
+                for j in 1..=threshold_signers {
                     if i != j {
+                        let start = Instant::now();
                         let share = round1s[j as usize - 1].get_comm_shares_and_salts();
                         let zero_share = round1s[j as usize - 1]
                             .get_comm_shares_and_salts_for_zero_sharing_protocol_with_other(&i);
+                        phase1_times.insert(j, *phase1_times.get(&j).unwrap() + start.elapsed());
+                        let start = Instant::now();
                         round1s[i as usize - 1]
                             .receive_shares(j, share, zero_share)
                             .unwrap();
+                        phase1_times.insert(i, *phase1_times.get(&i).unwrap() + start.elapsed());
                     }
                 }
             }
 
             let mut expected_sk = Fr::zero();
             for (i, round1) in round1s.into_iter().enumerate() {
+                let id = round1.id;
+                let start = Instant::now();
                 let out = round1
                     .finish_for_bbs_plus::<Blake2b512>(&sk_shares[i])
                     .unwrap();
+                phase1_times.insert(id, *phase1_times.get(&id).unwrap() + start.elapsed());
                 expected_sk += out.masked_signing_key_shares.iter().sum::<Fr>();
                 round1outs.push(out);
             }
-            println!("Phase 1 took {:?}", start.elapsed());
+            total_phase1_time = start.elapsed();
+            println!("Phase 1 took {:?}", total_phase1_time);
 
             assert_eq!(expected_sk, sk * Fr::from(sig_batch_size as u64));
-            for i in 1..num_signers {
+            for i in 1..threshold_signers {
                 assert_eq!(round1outs[0].e, round1outs[i as usize].e);
                 assert_eq!(round1outs[0].s, round1outs[i as usize].s);
             }
 
             let mut round2s = vec![];
             let mut all_msg_1s = vec![];
+            let total_phase2_time;
+            let mut phase2_times = BTreeMap::new();
 
             let start = Instant::now();
-            for i in 1..=num_signers {
-                let mut others = all_party_set.clone();
+            for i in 1..=threshold_signers {
+                let start = Instant::now();
+                let mut others = threshold_party_set.clone();
                 others.remove(&i);
                 let (phase, U) = Phase2::init(
                     rng,
@@ -361,6 +378,7 @@ pub mod tests {
                     &gadget_vector,
                 )
                 .unwrap();
+                phase2_times.insert(i, start.elapsed());
                 round2s.push(phase);
                 all_msg_1s.push((i, U));
             }
@@ -368,23 +386,43 @@ pub mod tests {
             let mut all_msg_2s = vec![];
             for (sender_id, msg_1s) in all_msg_1s {
                 for (receiver_id, m) in msg_1s {
+                    let start = Instant::now();
                     let m2 = round2s[receiver_id as usize - 1]
                         .receive_message1::<Blake2b512>(sender_id, m, &gadget_vector)
                         .unwrap();
+                    phase2_times.insert(
+                        receiver_id,
+                        *phase2_times.get(&receiver_id).unwrap() + start.elapsed(),
+                    );
                     all_msg_2s.push((receiver_id, sender_id, m2));
                 }
             }
 
             for (sender_id, receiver_id, m2) in all_msg_2s {
+                let start = Instant::now();
                 round2s[receiver_id as usize - 1]
                     .receive_message2::<Blake2b512>(sender_id, m2, &gadget_vector)
                     .unwrap();
+                phase2_times.insert(
+                    receiver_id,
+                    *phase2_times.get(&receiver_id).unwrap() + start.elapsed(),
+                );
             }
 
-            let round2_outputs = round2s.into_iter().map(|p| p.finish()).collect::<Vec<_>>();
-            println!("Phase 2 took {:?}", start.elapsed());
+            let round2_outputs = round2s
+                .into_iter()
+                .map(|p| {
+                    let start = Instant::now();
+                    let i = p.id;
+                    let o = p.finish();
+                    phase2_times.insert(i, *phase2_times.get(&i).unwrap() + start.elapsed());
+                    o
+                })
+                .collect::<Vec<_>>();
+            total_phase2_time = start.elapsed();
+            println!("Phase 2 took {:?}", total_phase2_time);
 
-            for i in 1..=num_signers {
+            for i in 1..=threshold_signers {
                 for (j, z_A) in &round2_outputs[i as usize - 1].z_A {
                     let z_B = round2_outputs[*j as usize - 1].z_B.get(&i).unwrap();
                     for k in 0..sig_batch_size {
@@ -402,8 +440,10 @@ pub mod tests {
                 }
             }
 
-            let mut sig_shares_time = Duration::default();
-            let mut sig_aggr_time = Duration::default();
+            let mut total_sig_shares_time = Duration::default();
+            let mut total_sig_aggr_time = Duration::default();
+            let mut share_gen_times = BTreeMap::new();
+
             for k in 0..sig_batch_size {
                 let messages = (0..message_count)
                     .into_iter()
@@ -412,7 +452,9 @@ pub mod tests {
 
                 let mut shares = vec![];
                 let start = Instant::now();
-                for i in 0..num_signers as usize {
+                for i in 0..threshold_signers as usize {
+                    let id = round1outs[i].id;
+                    let start = Instant::now();
                     let share = BBSPlusSignatureShare::new(
                         &messages,
                         k,
@@ -421,25 +463,51 @@ pub mod tests {
                         &params,
                     )
                     .unwrap();
+                    share_gen_times.insert(id, start.elapsed());
                     shares.push(share);
                 }
-                sig_shares_time += start.elapsed();
+                total_sig_shares_time += start.elapsed();
 
                 let start = Instant::now();
                 let sig = BBSPlusSignatureShare::aggregate(shares).unwrap();
-                sig_aggr_time += start.elapsed();
+                total_sig_aggr_time += start.elapsed();
                 sig.verify(&messages, public_key.clone(), params.clone())
                     .unwrap();
             }
 
-            println!("Generating signature shares took {:?}", sig_shares_time);
-            println!("Aggregating signature shares took {:?}", sig_aggr_time);
+            println!(
+                "Generating signature shares took {:?}",
+                total_sig_shares_time
+            );
+            println!(
+                "Aggregating signature shares took {:?}",
+                total_sig_aggr_time
+            );
+            println!(
+                "Total time taken excluding one time setup is {:?}",
+                total_phase1_time + total_phase2_time + total_sig_shares_time
+            );
+            println!("Time taken by signers during Phase 1 is {:?}", phase1_times);
+            println!("Time taken by signers during Phase 2 is {:?}", phase2_times);
+            println!(
+                "Time taken by signers during sig share generation is {:?}",
+                share_gen_times
+            );
+            for i in 1..=threshold_signers {
+                println!(
+                    "Total time taken by signer id {} excluding one time setup is {:?}",
+                    i,
+                    *phase1_times.get(&i).unwrap()
+                        + *phase2_times.get(&i).unwrap()
+                        + *share_gen_times.get(&i).unwrap()
+                );
+            }
         }
 
-        check(&mut rng, ote_params, 5, 10, 3, &gadget_vector);
-        check(&mut rng, ote_params, 5, 20, 3, &gadget_vector);
-        check(&mut rng, ote_params, 5, 30, 3, &gadget_vector);
-        check(&mut rng, ote_params, 10, 10, 3, &gadget_vector);
-        check(&mut rng, ote_params, 20, 10, 3, &gadget_vector);
+        check(&mut rng, ote_params, 5, 8, 10, 3, &gadget_vector);
+        check(&mut rng, ote_params, 5, 8, 20, 3, &gadget_vector);
+        check(&mut rng, ote_params, 5, 8, 30, 3, &gadget_vector);
+        check(&mut rng, ote_params, 10, 20, 10, 3, &gadget_vector);
+        check(&mut rng, ote_params, 20, 30, 10, 3, &gadget_vector);
     }
 }

@@ -21,26 +21,27 @@ pub(crate) mod r1cs_to_qap;
 /// Data structures used by the prover, verifier, and generator.
 pub mod data_structures;
 
-/// Generate public parameters for the Groth16 zkSNARK construction.
+/// Generate public parameters for the LegoGroth16 zkSNARK construction.
 pub mod generator;
 
-/// Create proofs for the Groth16 zkSNARK construction.
+/// Create proofs for the LegoGroth16 zkSNARK construction.
 pub mod prover;
 
-/// Verify proofs for the Groth16 zkSNARK construction.
+/// Verify proofs for the LegoGroth16 zkSNARK construction.
 pub mod verifier;
 
 pub mod link;
 
 pub mod error;
 
+/// Create and verify proofs for Circom programs
 #[cfg(feature = "circom")]
 pub mod circom;
 
 #[cfg(feature = "aggregation")]
 pub mod aggregation;
 
-/// Constraints for the Groth16 verifier.
+/// Constraints for the LegoGroth16 verifier.
 // Cannot yet create a LegoGroth16 gadget (for recursive proof) so commenting it out.
 // #[cfg(feature = "r1cs")]
 // pub mod constraints;

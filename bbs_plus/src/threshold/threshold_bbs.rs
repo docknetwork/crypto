@@ -101,10 +101,10 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
 }
 
 impl<E: Pairing> BBSSignatureShare<E> {
-    /// `index_in_output` is the index of this signature in the Phase1 and Phase2 outputs
+    /// `sig_index_in_batch` is the index of this signature in batch and also in the Phase1 and Phase2 outputs
     pub fn new(
         messages: &[E::ScalarField],
-        index_in_output: usize,
+        sig_index_in_batch: usize,
         phase1: &Phase1Output<E::ScalarField>,
         phase2: &Phase2Output<E::ScalarField>,
         sig_params: &SignatureParams23G1<E>,
@@ -124,18 +124,18 @@ impl<E: Pairing> BBSSignatureShare<E> {
         Self::new_with_committed_messages(
             &E::G1Affine::zero(),
             msg_map,
-            index_in_output,
+            sig_index_in_batch,
             phase1,
             phase2,
             sig_params,
         )
     }
 
-    /// `index_in_output` is the index of this signature in the Phase1 and Phase2 outputs
+    /// `sig_index_in_batch` is the index of this signature in batch and also in the Phase1 and Phase2 outputs
     pub fn new_with_committed_messages(
         commitment: &E::G1Affine,
         uncommitted_messages: BTreeMap<usize, &E::ScalarField>,
-        index_in_output: usize,
+        sig_index_in_batch: usize,
         phase1: &Phase1Output<E::ScalarField>,
         phase2: &Phase2Output<E::ScalarField>,
         sig_params: &SignatureParams23G1<E>,
@@ -144,16 +144,16 @@ impl<E: Pairing> BBSSignatureShare<E> {
         let commitment_plus_b = b + commitment;
         let (R, u) = compute_R_and_u(
             commitment_plus_b,
-            &phase1.r[index_in_output],
-            &phase1.e[index_in_output],
-            &phase1.masked_rs[index_in_output],
-            &phase1.masked_signing_key_shares[index_in_output],
-            index_in_output,
+            &phase1.r[sig_index_in_batch],
+            &phase1.e[sig_index_in_batch],
+            &phase1.masked_rs[sig_index_in_batch],
+            &phase1.masked_signing_key_shares[sig_index_in_batch],
+            sig_index_in_batch,
             phase2,
         );
         Ok(Self {
             id: phase1.id,
-            e: phase1.e[index_in_output],
+            e: phase1.e[sig_index_in_batch],
             u,
             R,
         })
@@ -222,26 +222,29 @@ pub mod tests {
 
         let protocol_id = b"test".to_vec();
 
-        let sig_batch_size = 10;
-        let num_signers = 5;
-        let all_party_set = (1..=num_signers).into_iter().collect::<BTreeSet<_>>();
-        let (sk, sk_shares) = trusted_party_keygen::<_, Fr>(&mut rng, num_signers, num_signers);
+        let sig_batch_size = 3;
+        let threshold_signers = 5;
+        let total_signers = 8;
+        let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
+        let threshold_party_set = (1..=threshold_signers).into_iter().collect::<BTreeSet<_>>();
+        let (sk, sk_shares) =
+            trusted_party_keygen::<_, Fr>(&mut rng, threshold_signers, total_signers);
 
         let base_ot_outputs = do_base_ot_for_threshold_sig::<BASE_OT_KEY_SIZE>(
             &mut rng,
             ote_params.num_base_ot(),
-            num_signers,
+            total_signers,
             all_party_set.clone(),
         );
 
-        let message_count = 3;
+        let message_count = 5;
         let params = SignatureParams23G1::<Bls12_381>::generate_using_rng(&mut rng, message_count);
         let public_key =
             PublicKeyG2::generate_using_secret_key_and_bbs23_params(&SecretKey(sk), &params);
 
         println!(
             "For a batch size of {} BBS signatures and {} signers",
-            sig_batch_size, num_signers
+            sig_batch_size, threshold_signers
         );
 
         let mut round1s = vec![];
@@ -250,8 +253,8 @@ pub mod tests {
         let mut round1outs = vec![];
 
         let start = Instant::now();
-        for i in 1..=num_signers {
-            let mut others = all_party_set.clone();
+        for i in 1..=threshold_signers {
+            let mut others = threshold_party_set.clone();
             others.remove(&i);
             let (round1, comm, comm_zero) = Phase1::<Fr, 256>::init_for_bbs(
                 &mut rng,
@@ -266,8 +269,8 @@ pub mod tests {
             commitments_zero_share.push(comm_zero);
         }
 
-        for i in 1..=num_signers {
-            for j in 1..=num_signers {
+        for i in 1..=threshold_signers {
+            for j in 1..=threshold_signers {
                 if i != j {
                     round1s[i as usize - 1]
                         .receive_commitment(
@@ -283,8 +286,8 @@ pub mod tests {
             }
         }
 
-        for i in 1..=num_signers {
-            for j in 1..=num_signers {
+        for i in 1..=threshold_signers {
+            for j in 1..=threshold_signers {
                 if i != j {
                     let share = round1s[j as usize - 1].get_comm_shares_and_salts();
                     let zero_share = round1s[j as usize - 1]
@@ -305,7 +308,7 @@ pub mod tests {
         println!("Phase 1 took {:?}", start.elapsed());
 
         assert_eq!(expected_sk, sk * Fr::from(sig_batch_size as u64));
-        for i in 1..num_signers {
+        for i in 1..threshold_signers {
             assert_eq!(round1outs[0].e, round1outs[i as usize].e);
         }
 
@@ -313,8 +316,8 @@ pub mod tests {
         let mut all_msg_1s = vec![];
 
         let start = Instant::now();
-        for i in 1..=num_signers {
-            let mut others = all_party_set.clone();
+        for i in 1..=threshold_signers {
+            let mut others = threshold_party_set.clone();
             others.remove(&i);
             let (phase, U) = Phase2::init(
                 &mut rng,
@@ -350,7 +353,7 @@ pub mod tests {
         let round2_outputs = round2s.into_iter().map(|p| p.finish()).collect::<Vec<_>>();
         println!("Phase 2 took {:?}", start.elapsed());
 
-        for i in 1..=num_signers {
+        for i in 1..=threshold_signers {
             for (j, z_A) in &round2_outputs[i as usize - 1].z_A {
                 let z_B = round2_outputs[*j as usize - 1].z_B.get(&i).unwrap();
                 for k in 0..sig_batch_size {
@@ -378,7 +381,7 @@ pub mod tests {
 
             let mut shares = vec![];
             let start = Instant::now();
-            for i in 0..num_signers as usize {
+            for i in 0..threshold_signers as usize {
                 let share = BBSSignatureShare::new(
                     &messages,
                     k,

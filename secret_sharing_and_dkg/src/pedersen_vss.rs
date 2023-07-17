@@ -1,4 +1,4 @@
-//! Pedersen Verifiable secret sharing. Based on the paper "Non-interactive and information-theoretic secure verifiable secret sharing", section 4. https://www.cs.cornell.edu/courses/cs754/2001fa/129.PDF.
+//! Pedersen Verifiable secret sharing. Based on the paper "Non-interactive and information-theoretic secure verifiable secret sharing", section 4. <https://www.cs.cornell.edu/courses/cs754/2001fa/129.PDF>.
 //! The basic idea is the following
 //! - Dealer wants to share a secret `s` in `k-of-n` manner with `n` participants
 //! - Dealer commits to secret `s` with randomness t so `C_0 = C(s, t) = g*s + h*t`

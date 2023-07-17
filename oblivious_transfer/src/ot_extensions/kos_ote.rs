@@ -1,4 +1,4 @@
-//! OT extension based on the paper [https://eprint.iacr.org/2015/546](Actively Secure OT Extension with Optimal Overhead)
+//! OT extension based on the paper [Actively Secure OT Extension with Optimal Overhead](https://eprint.iacr.org/2015/546)
 //! Implements protocol in Fig. 7.
 //! The `transfer` and `receive` are taken from the protocol 9 of the paper [Secure Two-party Threshold ECDSA from ECDSA Assumptions](https://eprint.iacr.org/2018/499)
 

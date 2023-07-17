@@ -1,4 +1,4 @@
-//! Copied from https://github.com/tf-encrypted/aes-prng/blob/main/src/lib.rs and modified a bit to support no_std
+//! Copied from <https://github.com/tf-encrypted/aes-prng/blob/main/src/lib.rs> and modified a bit to support no_std
 //!
 //! Pure Rust implementation of a PRNG based on Advanced Encryption Standard
 //!
