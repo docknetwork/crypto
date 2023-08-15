@@ -256,7 +256,7 @@ macro_rules! impl_sig_params {
                 let mut h = cfg_into_iter!((0..=message_count))
                     .map(|i| {
                         projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
-                            &concat_slices![label, b" : h_", (i as u64).to_le_bytes()],
+                            &concat_slices![label, b" : h_", (i as u32).to_le_bytes()],
                         )
                     })
                     .collect::<Vec<E::$group_projective>>();
@@ -529,7 +529,7 @@ impl<E: Pairing> SignatureParams23G1<E> {
                 projective_group_elem_from_try_and_incr::<E::G1Affine, D>(&concat_slices![
                     label,
                     b" : h_",
-                    (i as u64).to_le_bytes()
+                    (i as u32).to_le_bytes()
                 ])
             })
             .collect::<Vec<E::G1>>();
