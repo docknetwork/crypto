@@ -15,7 +15,8 @@ members = [
     "secret_sharing_and_dkg",
     "legogroth16",
     "oblivious_transfer",
-    "merlin"
+    "merlin",
+    "kvac"
 ]
 resolver = "2"
 
