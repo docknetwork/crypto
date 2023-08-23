@@ -47,8 +47,11 @@
 //!     3. Verify 2nd Schnorr response by passing bases mentioned above, `C` and challenge
 //!     4. For 3rd Schnorr response, create bases as above and for argument `y` of `SchnorrResponse::is_valid`, pass `E - h - \sum_i{g_i * m_i}` for all `m_i` that are revealed
 //! - Add a function called `Proof::verify_schnorr_proofs` which is same as `Proof::verify` except it does not do check 1.
-//! - Add a function called `Proof::verify_except_schnorr_proofs` which does check 1 from `Proof::verify`
-//! - The purpose of above 2 functions is to split the signer's/verifier's task into 2 parts where `Proof::verify_schnorr_proofs`
-//!   can be done by an untrusted helper who does not know secret key `y` but `Proof::verify_except_schnorr_proofs` requires knowing
-//!   secret key
-//! - Add a function `get_resp_for_message` to get Schnorr responses for the hidden messages
+//! - Add a function called `Proof::to_delegated_proof` to output `DelegatedProof` which contains only `C` and `B_0`
+//! - In `DelegatedProof::verify`, do check 1 from `Proof::verify`
+//! - The purpose of above is to split the signer's/verifier's task into 2 parts where `Proof::verify_schnorr_proofs`
+//!   can be done by an "untrusted helper" who does not know secret key `y` but `DelegatedProof::verify` requires knowing
+//!   secret key. This lets us build for use-cases where the signer, acting as the credential issuer, would not want the credential to be used without
+//!   its permission, like when he wants to be paid by the verifier who acts as the "untrusted helper" which verifies the Schnorr proofs
+//!   and learns the revealed messages (credential attributes) but these are not learnt by the signer thus maintaining the user's privacy.
+//! - Add a function `Proof::get_resp_for_message` to get Schnorr responses for the hidden messages
