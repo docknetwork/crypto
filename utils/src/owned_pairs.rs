@@ -7,7 +7,7 @@ use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::*;
 
-use serde::{de::Error, Deserializer, Serializer};
+use serde::{de::Error, Deserialize, Deserializer, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 use zeroize::Zeroize;
 
@@ -262,6 +262,21 @@ where
         S: Serializer,
     {
         <(&[Left], &[Right])>::serialize_as(&(&pairs.left, &pairs.right), serializer)
+    }
+}
+
+impl<'de, Left, Right> Deserialize<'de> for OwnedPairs<Left, Right>
+where
+    Left: Deserialize<'de>,
+    Right: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (left, right) = <(Vec<Left>, Vec<Right>)>::deserialize(deserializer)?;
+
+        Self::new(left, right).ok_or(serde::de::Error::custom("Pair lengths are not equal"))
     }
 }
 
