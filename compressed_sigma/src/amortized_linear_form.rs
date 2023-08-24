@@ -43,7 +43,7 @@ where
         linear_form: &L,
         blindings: Option<Vec<G::ScalarField>>,
     ) -> Result<Self, CompSigmaError> {
-        if (g.len()) < max_size {
+        if g.len() < max_size {
             return Err(CompSigmaError::VectorTooShort);
         }
         let r = if let Some(blindings) = blindings {
@@ -105,7 +105,7 @@ where
         t: &G::ScalarField,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        if (g.len()) < max_size {
+        if g.len() < max_size {
             return Err(CompSigmaError::VectorTooShort);
         }
         if commitments.len() != y.len() {

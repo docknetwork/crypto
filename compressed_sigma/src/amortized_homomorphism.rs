@@ -98,7 +98,7 @@ where
         t: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        if (g.len()) < max_size {
+        if g.len() < max_size {
             return Err(CompSigmaError::VectorTooShort);
         }
         if P.len() != y.len() {
