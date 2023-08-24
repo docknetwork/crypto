@@ -34,14 +34,14 @@ pub fn pad_linear_forms_to_have_same_size<F: PrimeField, L: LinearForm<F>>(fs: &
 
 /// Return the response of an amortized sigma protocol
 pub fn amortized_response<F: PrimeField>(
-    max_size: u64,
+    max_size: usize,
     c_powers: &[F],
     r: &[F],
     x: Vec<&[F]>,
 ) -> Vec<F> {
     let s = x.len();
     let mut z = vec![];
-    for i in 0..max_size as usize {
+    for i in 0..max_size {
         // z_i = r_i + \sum_{j in 1..s}({x_j}_i * {c_powers}_j)
         let mut z_i = r[i];
         for j in 0..s {
