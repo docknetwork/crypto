@@ -177,7 +177,10 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         let batch_size = self.batch_size() as u64;
         let overhead = self.ote_params.overhead();
         if gamma_b.len() as u64 != batch_size {
-            return Err(OTError::IncorrectBatchSize(batch_size as usize, gamma_b.len()));
+            return Err(OTError::IncorrectBatchSize(
+                batch_size as usize,
+                gamma_b.len(),
+            ));
         }
         add_to_transcript(transcript, &U, &rlc);
         let ote_config = OTEConfig::new(self.ote_params.num_base_ot(), batch_size * overhead)?;

@@ -683,7 +683,7 @@ fn hash_to_otp(index: usize, q: &[u8], pad_size: usize) -> Vec<u8> {
 }
 
 fn get_matrix_byte_size(ote_config: &OTEConfig) -> usize {
-    divide_by_8(ote_config.num_ot_extensions * ote_config.num_base_ot as u64)  as usize
+    divide_by_8(ote_config.num_ot_extensions * ote_config.num_base_ot as u64) as usize
 }
 
 fn get_matrix_byte_size_for_random(ote_config: &OTEConfig) -> usize {
@@ -700,7 +700,11 @@ fn get_matrix_and_column_byte_size_for_actively_secure<
     let column_size = divide_by_8(column_size_in_bits);
     let matrix_byte_size = divide_by_8(column_size_in_bits * ote_config.num_base_ot as u64);
 
-    (matrix_byte_size as usize, column_size_in_bits as usize, column_size as usize)
+    (
+        matrix_byte_size as usize,
+        column_size_in_bits as usize,
+        column_size as usize,
+    )
 }
 
 fn get_column_byte_size(ote_config: &OTEConfig) -> usize {

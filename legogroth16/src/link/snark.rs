@@ -36,7 +36,12 @@ impl<
     > PP<G1, G2>
 {
     pub fn new(l: usize, t: usize, g1: G1, g2: G2) -> PP<G1, G2> {
-        PP { l: l as u64, t: t as u64, g1, g2 }
+        PP {
+            l: l as u64,
+            t: t as u64,
+            g1,
+            g2,
+        }
     }
 }
 
@@ -139,7 +144,10 @@ impl<PE: Pairing> SubspaceSnark for PESubspaceSnark<PE> {
         pi: &Self::Proof,
     ) -> Result<(), LinkError> {
         if pp.l != x.len() as u64 {
-            return Err(LinkError::VectorWithUnexpectedLength(x.len(), pp.l as usize));
+            return Err(LinkError::VectorWithUnexpectedLength(
+                x.len(),
+                pp.l as usize,
+            ));
         }
         if vk.c.len() < x.len() {
             return Err(LinkError::VectorLongerThanExpected(x.len(), vk.c.len()));

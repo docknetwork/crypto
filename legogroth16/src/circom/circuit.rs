@@ -170,7 +170,10 @@ pub mod tests {
             params.vk.gamma_abc_g1.len(),
             cs.num_instance_variables() + commit_witness_count
         );
-        assert_eq!(params.vk.num_public_inputs() as u64, circuit.r1cs.num_public);
+        assert_eq!(
+            params.vk.num_public_inputs() as u64,
+            circuit.r1cs.num_public
+        );
         assert_eq!(params.vk.num_committed_witnesses(), commit_witness_count);
 
         if wires.is_some() {
