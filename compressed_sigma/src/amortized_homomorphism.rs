@@ -78,7 +78,12 @@ where
         let challenge_powers = get_n_powers(challenge.clone(), count_commitments);
 
         // z_tilde_i = r_i + \sum_{j in count_commitments}(witnesses_j_i * challenge^j)
-        let z_tilde = amortized_response(self.max_size, &challenge_powers, &self.r, witnesses);
+        let z_tilde = amortized_response(
+            self.max_size as usize,
+            &challenge_powers,
+            &self.r,
+            witnesses,
+        );
         Response { z_tilde }
     }
 }
