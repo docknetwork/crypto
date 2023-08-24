@@ -192,7 +192,9 @@ impl<E: Pairing> UpdateKey<E> {
         Self {
             start_index: start as u64,
             max_attributes_per_commitment: self.max_attributes_per_commitment,
-            keys: self.keys[(start - self.start_index as usize)..(end - self.start_index as usize + 1)].to_vec(),
+            keys: self.keys
+                [(start - self.start_index as usize)..(end - self.start_index as usize + 1)]
+                .to_vec(),
         }
     }
 

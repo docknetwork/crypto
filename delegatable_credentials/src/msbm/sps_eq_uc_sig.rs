@@ -293,7 +293,7 @@ impl<E: Pairing> Signature<E> {
 
         let mut uk = None;
         if let Some(l) = new_update_key_index {
-            if (l > update_key.end_index()) || ((l as u64)< update_key.start_index) {
+            if (l > update_key.end_index()) || ((l as u64) < update_key.start_index) {
                 return Err(DelegationError::UnsupportedIndexInUpdateKey(
                     l,
                     update_key.start_index as usize,
