@@ -253,7 +253,6 @@ impl<G: AffineRepr> Round2State<G> {
 pub mod tests {
     use super::*;
     use ark_std::{
-        iterable::Iterable,
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };

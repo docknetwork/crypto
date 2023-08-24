@@ -293,8 +293,8 @@ where
         .map(|s| s.into_bigint())
         .collect::<Vec<_>>();
 
-    let committed_witnesses = &aux_assignment[..vk.commit_witness_count];
-    let uncommitted_witnesses = &aux_assignment[vk.commit_witness_count..];
+    let committed_witnesses = &aux_assignment[..vk.commit_witness_count as usize];
+    let uncommitted_witnesses = &aux_assignment[vk.commit_witness_count as usize..];
 
     let l_aux_acc = E::G1::msm_bigint(&pk_common.l_query, uncommitted_witnesses);
 
@@ -368,7 +368,7 @@ where
     g_d += &v_eta_gamma_inv;
     end_timer!(d_acc_time);
 
-    let committed_witnesses = witness_assignment[..vk.commit_witness_count].to_vec();
+    let committed_witnesses = witness_assignment[..vk.commit_witness_count as usize].to_vec();
     drop(aux_assignment);
 
     Ok((

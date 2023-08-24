@@ -21,7 +21,7 @@ use rayon::prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineRepr> {
     /// Maximum size of the witness vectors
-    pub max_size: usize,
+    pub max_size: u64,
     /// Random vector from Z_q^n
     pub r: Vec<G::ScalarField>,
     /// A = \vec{g}^{\vec{r}}
@@ -61,7 +61,7 @@ where
         let t = f.eval(&r).unwrap();
         let A = G::Group::msm_unchecked(g, &r);
         Ok(Self {
-            max_size,
+            max_size: max_size as u64,
             r,
             A: A.into_affine(),
             t,
@@ -98,7 +98,7 @@ where
         t: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        if g.len() < max_size {
+        if (g.len()) < max_size {
             return Err(CompSigmaError::VectorTooShort);
         }
         if P.len() != y.len() {

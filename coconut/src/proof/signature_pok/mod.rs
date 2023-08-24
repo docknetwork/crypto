@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
 
-pub mod error;
+mod error;
 mod k;
 pub mod proof;
 pub mod randomized_signature;

@@ -24,7 +24,7 @@ use crate::{
 };
 use utils::pairs;
 
-pub mod error;
+mod error;
 pub mod multi_message_commitment;
 mod proof;
 mod witnesses;

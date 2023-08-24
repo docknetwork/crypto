@@ -82,7 +82,7 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
             comm_key,
             witness,
             blindings,
-            proving_key.vk.commit_witness_count,
+            proving_key.vk.commit_witness_count as usize,
             v,
             snark_proof,
         )
@@ -121,7 +121,7 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
             comm_key,
             witness,
             blindings,
-            proving_key.vk.commit_witness_count,
+            proving_key.vk.commit_witness_count as usize,
             v,
             snark_proof,
         )

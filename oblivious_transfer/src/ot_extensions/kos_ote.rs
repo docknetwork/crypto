@@ -89,7 +89,7 @@ impl OTExtensionReceiverSetup {
         mut choices: Vec<Bit>,
         base_ot_keys: OneOfTwoROTSenderKeys,
     ) -> Result<(Self, BitMatrix, RLC), OTError> {
-        if !is_multiple_of_8(STATISTICAL_SECURITY_PARAMETER as usize) {
+        if !is_multiple_of_8(STATISTICAL_SECURITY_PARAMETER) {
             return Err(OTError::SecurityParameterShouldBeMultipleOf8(
                 STATISTICAL_SECURITY_PARAMETER,
             ));
@@ -98,13 +98,13 @@ impl OTExtensionReceiverSetup {
             (0..ote_config.num_base_ot + STATISTICAL_SECURITY_PARAMETER).map(|_| bool::rand(rng)),
         );
         let l_prime = choices.len();
-        let new_ote_config = OTEConfig::new(ote_config.num_base_ot, l_prime)?;
+        let new_ote_config = OTEConfig::new(ote_config.num_base_ot, l_prime as u64)?;
         let (setup, U) =
             alsz_ote::OTExtensionReceiverSetup::new(new_ote_config, choices, base_ot_keys)?;
         let row_byte_size = alsz_ote::get_row_byte_size(&ote_config);
         debug_assert_eq!(U.0.len(), l_prime * row_byte_size);
         let chi = gen_randomness(
-            setup.ote_config.num_base_ot as usize,
+            setup.ote_config.num_base_ot as u64,
             setup.ote_config.num_ot_extensions,
             &U,
             row_byte_size * l_prime,
@@ -182,9 +182,9 @@ impl OTExtensionReceiverSetup {
         &self,
         tau: CorrelationTag<F>,
     ) -> Result<ReceiverOutput<F>, OTError> {
-        if tau.len() != self.ote_config.num_ot_extensions {
+        if tau.len() != self.ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfCorrelations(
-                self.ote_config.num_ot_extensions,
+                self.ote_config.num_ot_extensions as usize,
                 tau.len(),
             ));
         }
@@ -237,15 +237,15 @@ impl OTExtensionSenderSetup {
             ));
         }
         let l_prime = ote_config.num_ot_extensions
-            + ote_config.num_base_ot as usize
-            + STATISTICAL_SECURITY_PARAMETER as usize;
+            + ote_config.num_base_ot as u64
+            + STATISTICAL_SECURITY_PARAMETER as u64;
         let new_ote_config = OTEConfig::new(ote_config.num_base_ot, l_prime)?;
 
         let chi = gen_randomness(
-            ote_config.num_base_ot as usize,
+            ote_config.num_base_ot as u64,
             l_prime,
             &U,
-            row_byte_size * l_prime,
+            row_byte_size * l_prime as usize,
         );
         let setup = alsz_ote::OTExtensionSenderSetup::new(
             new_ote_config,
@@ -253,10 +253,10 @@ impl OTExtensionSenderSetup {
             base_ot_choices,
             base_ot_keys,
         )?;
-        debug_assert_eq!(setup.Q.0.len(), l_prime * row_byte_size);
+        debug_assert_eq!(setup.Q.0.len(), l_prime as usize * row_byte_size);
         debug_assert_eq!(setup.base_ot_choices.len(), row_byte_size);
         let mut q = vec![0; row_byte_size];
-        for i in 0..l_prime {
+        for i in 0..l_prime as usize {
             let chi_i = &chi[i * row_byte_size..(i + 1) * row_byte_size];
             xor_in_place(
                 &mut q,
@@ -310,9 +310,9 @@ impl OTExtensionSenderSetup {
         &self,
         alpha: Vec<(F, F)>,
     ) -> Result<(SenderOutput<F>, CorrelationTag<F>), OTError> {
-        if alpha.len() != self.ote_config.num_ot_extensions {
+        if alpha.len() != self.ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfCorrelations(
-                self.ote_config.num_ot_extensions,
+                self.ote_config.num_ot_extensions as usize,
                 alpha.len(),
             ));
         }
@@ -352,7 +352,7 @@ impl<F: PrimeField> CorrelationTag<F> {
     }
 }
 
-fn gen_randomness(a: usize, b: usize, U: &BitMatrix, output_size: usize) -> Vec<u8> {
+fn gen_randomness(a: u64, b: u64, U: &BitMatrix, output_size: usize) -> Vec<u8> {
     let mut bytes = a.to_be_bytes().to_vec();
     bytes.extend(&b.to_be_bytes());
     bytes.extend_from_slice(&U.0);
@@ -409,7 +409,7 @@ pub mod tests {
             let (base_ot_choices, base_ot_sender_keys, base_ot_receiver_keys) =
                 do_1_of_2_base_ot::<KEY_SIZE>(rng, base_ot_count, B);
 
-            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count).unwrap();
+            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u64).unwrap();
 
             let start = Instant::now();
             // Perform OT extension

@@ -51,7 +51,7 @@ pub struct GenericSRS<E: Pairing> {
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProverSRS<E: Pairing> {
     /// number of proofs to aggregate
-    pub n: usize,
+    pub n: u64,
     /// $\{g^a^i\}_{i=0}^{2n-1}$ where n is the number of proofs to be aggregated
     /// We take all powers instead of only ones from n -> 2n-1 (w commitment key
     /// is formed from these powers) since the prover will create a shifted
@@ -73,7 +73,7 @@ pub struct ProverSRS<E: Pairing> {
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PreparedProverSRS<E: Pairing> {
     /// number of proofs to aggregate
-    pub n: usize,
+    pub n: u64,
     /// $\{g^a^i\}_{i=0}^{2n-1}$ where n is the number of proofs to be aggregated
     /// We take all powers instead of only ones from n -> 2n-1 (w commitment key
     /// is formed from these powers) since the prover will create a shifted
@@ -98,7 +98,7 @@ pub struct PreparedProverSRS<E: Pairing> {
 /// the number of proofs being aggregated.
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifierSRS<E: Pairing> {
-    pub n: usize,
+    pub n: u64,
     pub g: E::G1Affine,
     pub h: E::G2Affine,
     pub g_alpha: E::G1Affine,
@@ -109,7 +109,7 @@ pub struct VerifierSRS<E: Pairing> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct VerifierSRSProjective<E: Pairing> {
-    pub n: usize,
+    pub n: u64,
     pub g: E::G1,
     pub h: E::G2,
     pub g_alpha: E::G1,
@@ -144,7 +144,7 @@ impl<E: Pairing> ProverSRS<E> {
 impl<E: Pairing> VerifierSRS<E> {
     pub fn to_projective(&self) -> VerifierSRSProjective<E> {
         VerifierSRSProjective {
-            n: self.n,
+            n: self.n as u64,
             g: self.g.into_group(),
             h: self.h.into_group(),
             g_alpha: self.g_alpha.into_group(),
@@ -252,10 +252,10 @@ impl<E: Pairing> GenericSRS<E> {
             h_beta_powers_table,
             vkey,
             wkey,
-            n,
+            n: n as u64,
         };
         let vk = VerifierSRS::<E> {
-            n,
+            n: n as u64,
             g: self.g_alpha_powers[0],
             h: self.h_alpha_powers[0],
             g_alpha: self.g_alpha_powers[1],

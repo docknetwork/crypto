@@ -18,7 +18,7 @@ use rayon::prelude::*;
 
 /// Combines two vectors together if they have equal length.
 /// Allows to iterate over the given pairs.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct OwnedPairs<Left, Right> {
     left: Vec<Left>,
     right: Vec<Right>,

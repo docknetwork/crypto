@@ -58,7 +58,7 @@ impl<'a, E: Pairing> CircomCircuit<E> {
     pub fn get_public_inputs(&self) -> Option<Vec<E::ScalarField>> {
         match &self.wires {
             None => None,
-            Some(w) => Some(w[1..self.r1cs.num_public].to_vec()),
+            Some(w) => Some(w[1..self.r1cs.num_public as usize].to_vec()),
         }
     }
 
@@ -91,7 +91,7 @@ impl<E: Pairing> ConstraintSynthesizer<E::ScalarField> for CircomCircuit<E> {
         let dummy = E::ScalarField::from(0u32);
 
         // Start from 1 because Arkworks implicitly allocates One for the first input
-        for i in 1..self.r1cs.num_public {
+        for i in 1..self.r1cs.num_public as usize {
             cs.new_input_variable(|| {
                 Ok(match wires {
                     None => dummy,
@@ -100,20 +100,20 @@ impl<E: Pairing> ConstraintSynthesizer<E::ScalarField> for CircomCircuit<E> {
             })?;
         }
 
-        for i in 0..self.r1cs.num_private {
+        for i in 0..self.r1cs.num_private as usize {
             cs.new_witness_variable(|| {
                 Ok(match wires {
                     None => dummy,
-                    Some(w) => w[i + self.r1cs.num_public],
+                    Some(w) => w[i + self.r1cs.num_public as usize],
                 })
             })?;
         }
 
         let make_index = |index| {
-            if index < self.r1cs.num_public {
+            if (index as u64) < self.r1cs.num_public {
                 Variable::Instance(index)
             } else {
-                Variable::Witness(index - self.r1cs.num_public)
+                Variable::Witness(index - self.r1cs.num_public as usize)
             }
         };
         let make_lc = |lc_data: &LC<E>| {
@@ -160,8 +160,8 @@ pub mod tests {
         let cs = ConstraintSystem::<E::ScalarField>::new_ref();
         circuit.clone().generate_constraints(cs.clone()).unwrap();
 
-        assert_eq!(cs.num_instance_variables(), circuit.r1cs.num_public);
-        assert_eq!(cs.num_witness_variables(), circuit.r1cs.num_private);
+        assert_eq!(cs.num_instance_variables() as u64, circuit.r1cs.num_public);
+        assert_eq!(cs.num_witness_variables() as u64, circuit.r1cs.num_private);
         assert_eq!(cs.num_constraints(), circuit.r1cs.constraints.len());
 
         let (_, params) = gen_params::<E>(commit_witness_count, circuit.clone());
@@ -170,7 +170,7 @@ pub mod tests {
             params.vk.gamma_abc_g1.len(),
             cs.num_instance_variables() + commit_witness_count
         );
-        assert_eq!(params.vk.num_public_inputs(), circuit.r1cs.num_public);
+        assert_eq!(params.vk.num_public_inputs() as u64, circuit.r1cs.num_public);
         assert_eq!(params.vk.num_committed_witnesses(), commit_witness_count);
 
         if wires.is_some() {

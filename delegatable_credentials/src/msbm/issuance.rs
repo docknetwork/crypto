@@ -18,7 +18,7 @@ use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 /// of attributes
 #[derive(Clone, Debug)]
 pub struct Credential<E: Pairing> {
-    pub max_attributes_per_commitment: usize,
+    pub max_attributes_per_commitment: u64,
     pub attributes: Vec<Vec<E::ScalarField>>,
     pub commitments: Vec<SetCommitment<E>>,
     pub openings: Vec<SetCommitmentOpening<E>>,
@@ -29,7 +29,7 @@ pub struct Credential<E: Pairing> {
 /// of attributes
 #[derive(Clone, Debug)]
 pub struct CredentialWithoutOpenings<E: Pairing> {
-    pub max_attributes_per_commitment: usize,
+    pub max_attributes_per_commitment: u64,
     pub attributes: Vec<Vec<E::ScalarField>>,
     pub commitments: Vec<SetCommitment<E>>,
     pub signature: Signature<E>,
@@ -65,7 +65,7 @@ impl<E: Pairing> Credential<E> {
         )?;
         Ok((
             Self {
-                max_attributes_per_commitment,
+                max_attributes_per_commitment: max_attributes_per_commitment as u64,
                 attributes,
                 commitments,
                 openings,
@@ -117,7 +117,7 @@ impl<E: Pairing> Credential<E> {
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
         let mut new_uk = None;
         if let Some(l) = new_update_key_index {
-            assert!(l <= (update_key.start_index + update_key.keys.len()));
+            assert!(l as u64 <= (update_key.start_index + update_key.keys.len() as u64));
             new_uk = Some(update_key.trim_key(self.attributes.len(), l));
         }
         self.signature = self.signature.to_orphan(user_secret_key, X_0);
@@ -197,7 +197,7 @@ impl<E: Pairing> Credential<E> {
             mu,
             &psi,
             &chi,
-            self.max_attributes_per_commitment,
+            self.max_attributes_per_commitment as usize,
             set_comm_srs,
         )?;
         Ok((
@@ -265,7 +265,7 @@ impl<E: Pairing> Credential<E> {
             uk.verify(
                 &self.signature,
                 issuer_public_key,
-                self.max_attributes_per_commitment,
+                self.max_attributes_per_commitment as usize,
                 set_comm_srs,
             )?;
         }
@@ -467,7 +467,7 @@ impl<E: Pairing> CredentialWithoutOpenings<E> {
         )?;
         Ok((
             Self {
-                max_attributes_per_commitment,
+                max_attributes_per_commitment: max_attributes_per_commitment as u64,
                 attributes,
                 commitments,
                 signature,

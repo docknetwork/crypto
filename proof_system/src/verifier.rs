@@ -439,7 +439,7 @@ where
                     match proof {
                         StatementProof::R1CSLegoGroth16(p) => {
                             for i in 0..witness_equalities.len() {
-                                for j in 0..verifying_key.commit_witness_count {
+                                for j in 0..verifying_key.commit_witness_count as usize {
                                     if witness_equalities[i].contains(&(s_idx, j)) {
                                         let resp = p.get_schnorr_response_for_message(j)?;
                                         Self::check_response_for_equality(
@@ -461,7 +461,7 @@ where
                         }
                         StatementProof::R1CSLegoGroth16WithAggregation(p) => {
                             for i in 0..witness_equalities.len() {
-                                for j in 0..verifying_key.commit_witness_count {
+                                for j in 0..verifying_key.commit_witness_count as usize {
                                     if witness_equalities[i].contains(&(s_idx, j)) {
                                         let resp = p.get_schnorr_response_for_message(j)?;
                                         Self::check_response_for_equality(

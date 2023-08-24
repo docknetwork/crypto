@@ -96,11 +96,11 @@ pub struct OTEConfig {
     /// Number of base OTs
     pub num_base_ot: u16,
     /// Number of OT extensions
-    pub num_ot_extensions: usize,
+    pub num_ot_extensions: u64,
 }
 
 impl OTEConfig {
-    pub fn new(num_base_ot: u16, num_ot_extensions: usize) -> Result<Self, OTError> {
+    pub fn new(num_base_ot: u16, num_ot_extensions: u64) -> Result<Self, OTError> {
         if !util::is_multiple_of_8(num_base_ot as usize)
             || !util::is_multiple_of_8(num_ot_extensions)
         {

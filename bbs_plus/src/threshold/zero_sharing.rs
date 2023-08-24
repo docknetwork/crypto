@@ -23,7 +23,7 @@ use oblivious_transfer_protocols::ParticipantId;
 pub struct Party<F: PrimeField, const SALT_SIZE: usize> {
     pub id: ParticipantId,
     pub protocol_id: Vec<u8>,
-    pub batch_size: usize,
+    pub batch_size: u64,
     /// Commit-and-release coin tossing protocols run with each party
     pub cointoss_protocols: BTreeMap<ParticipantId, CommitmentParty<F, SALT_SIZE>>,
 }
@@ -52,7 +52,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
             Self {
                 id,
                 protocol_id,
-                batch_size,
+                batch_size: batch_size as u64,
                 cointoss_protocols,
             },
             commitments,
@@ -93,7 +93,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         self,
     ) -> Result<Vec<F>, BBSPlusError> {
         let mut randoness = BTreeMap::<ParticipantId, Vec<F>>::new();
-        let mut shares = vec![F::zero(); self.batch_size];
+        let mut shares = vec![F::zero(); self.batch_size as usize];
         for (id, protocol) in self.cointoss_protocols {
             if !protocol.has_shares_from(&id) {
                 return Err(BBSPlusError::MissingSharesFromParticipant(id));
@@ -240,7 +240,7 @@ pub mod tests {
             let compute_zero_shares_time = start.elapsed();
 
             assert_eq!(zero_shares.len(), num_parties as usize);
-            for i in 0..batch_size {
+            for i in 0..batch_size as usize {
                 let mut sum = Fr::zero();
                 for j in 0..num_parties {
                     sum += zero_shares[j as usize][i];

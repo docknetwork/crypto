@@ -368,7 +368,7 @@ where
                     Witness::R1CSLegoGroth16(w) => {
                         let proving_key = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
                         let mut blindings_map = BTreeMap::new();
-                        for i in 0..proving_key.vk.commit_witness_count {
+                        for i in 0..proving_key.vk.commit_witness_count as usize {
                             match blindings.remove(&(s_idx, i)) {
                                 Some(b) => blindings_map.insert(i, b),
                                 None => None,

@@ -80,7 +80,7 @@ impl OTExtensionReceiverSetup {
         let T = transpose(
             &T,
             ote_config.num_base_ot as usize,
-            ote_config.num_ot_extensions,
+            ote_config.num_ot_extensions as usize,
         );
         Ok((
             Self {
@@ -194,7 +194,7 @@ impl OTExtensionReceiverSetup {
         let T = transpose(
             &T,
             ote_config.num_base_ot as usize,
-            ote_config.num_ot_extensions,
+            ote_config.num_ot_extensions as usize,
         );
         Ok((
             Self {
@@ -236,7 +236,7 @@ impl OTExtensionReceiverSetup {
 
     pub fn decrypt_random(&self, message_size: usize) -> Vec<Message> {
         let row_byte_size = get_row_byte_size(&self.ote_config);
-        cfg_into_iter!(0..self.ote_config.num_ot_extensions)
+        cfg_into_iter!(0..self.ote_config.num_ot_extensions as usize)
             .map(|i| {
                 let t = &self.T.0[i * row_byte_size..(i + 1) * row_byte_size];
                 hash_to_otp(i, &t, message_size)
@@ -251,9 +251,9 @@ impl OTExtensionReceiverSetup {
         encryptions: Vec<(Message, Message)>,
         message_size: usize,
     ) -> Result<Vec<Message>, OTError> {
-        if encryptions.len() != ote_config.num_ot_extensions {
+        if encryptions.len() != ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfEncryptionsToDecrypt(
-                ote_config.num_ot_extensions,
+                ote_config.num_ot_extensions as usize,
                 encryptions.len(),
             ));
         }
@@ -277,9 +277,9 @@ impl OTExtensionReceiverSetup {
         encryptions: Vec<Message>,
         message_size: usize,
     ) -> Result<Vec<Message>, OTError> {
-        if encryptions.len() != ote_config.num_ot_extensions {
+        if encryptions.len() != ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfEncryptionsToDecrypt(
-                ote_config.num_ot_extensions,
+                ote_config.num_ot_extensions as usize,
                 encryptions.len(),
             ));
         }
@@ -324,9 +324,9 @@ impl OTExtensionReceiverSetup {
         ot_ext_choices: &[Bit],
         ote_config: &OTEConfig,
     ) -> Result<(), OTError> {
-        if ote_config.num_ot_extensions != ot_ext_choices.len() {
+        if ote_config.num_ot_extensions as usize != ot_ext_choices.len() {
             return Err(OTError::IncorrectNumberOfOTExtensionChoices(
-                ote_config.num_ot_extensions,
+                ote_config.num_ot_extensions as usize,
                 ot_ext_choices.len(),
             ));
         }
@@ -371,7 +371,7 @@ impl OTExtensionSenderSetup {
         let Q = transpose(
             &Q,
             ote_config.num_base_ot as usize,
-            ote_config.num_ot_extensions,
+            ote_config.num_ot_extensions as usize,
         );
         let base_ot_choices = boolvec_to_u8vec(&base_ot_choices);
         Ok(Self {
@@ -496,7 +496,7 @@ impl OTExtensionSenderSetup {
         let Q = transpose(
             &Q,
             ote_config.num_base_ot as usize,
-            ote_config.num_ot_extensions,
+            ote_config.num_ot_extensions as usize,
         );
         let base_ot_choices = boolvec_to_u8vec(&base_ot_choices);
         Ok(Self {
@@ -538,7 +538,7 @@ impl OTExtensionSenderSetup {
     /// For Sender Random OT
     pub fn encrypt_random(&self, message_size: usize) -> Vec<(Message, Message)> {
         let row_byte_size = get_row_byte_size(&self.ote_config);
-        cfg_into_iter!(0..self.ote_config.num_ot_extensions)
+        cfg_into_iter!(0..self.ote_config.num_ot_extensions as usize)
             .map(|i| {
                 let q = &self.Q.0[i * row_byte_size..(i + 1) * row_byte_size];
                 let x1 = hash_to_otp(i, &q, message_size);
@@ -555,9 +555,9 @@ impl OTExtensionSenderSetup {
         messages: Vec<(Message, Message)>,
         message_size: usize,
     ) -> Result<Vec<(Message, Message)>, OTError> {
-        if messages.len() != ote_config.num_ot_extensions {
+        if messages.len() != ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfMessagesToEncrypt(
-                ote_config.num_ot_extensions,
+                ote_config.num_ot_extensions as usize,
                 messages.len(),
             ));
         }
@@ -583,9 +583,9 @@ impl OTExtensionSenderSetup {
         deltas: Vec<F>,
         message_size: usize,
     ) -> Result<(Vec<(Message, Message)>, Vec<Message>), OTError> {
-        if deltas.len() != ote_config.num_ot_extensions {
+        if deltas.len() != ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfCorrelations(
-                ote_config.num_ot_extensions,
+                ote_config.num_ot_extensions as usize,
                 deltas.len(),
             ));
         }
@@ -683,11 +683,11 @@ fn hash_to_otp(index: usize, q: &[u8], pad_size: usize) -> Vec<u8> {
 }
 
 fn get_matrix_byte_size(ote_config: &OTEConfig) -> usize {
-    divide_by_8(ote_config.num_ot_extensions * ote_config.num_base_ot as usize)
+    divide_by_8(ote_config.num_ot_extensions * ote_config.num_base_ot as u64)  as usize
 }
 
 fn get_matrix_byte_size_for_random(ote_config: &OTEConfig) -> usize {
-    divide_by_8(ote_config.num_ot_extensions * (ote_config.num_base_ot - 1) as usize)
+    divide_by_8(ote_config.num_ot_extensions * (ote_config.num_base_ot - 1) as u64) as usize
 }
 
 fn get_matrix_and_column_byte_size_for_actively_secure<
@@ -696,18 +696,19 @@ fn get_matrix_and_column_byte_size_for_actively_secure<
     ote_config: &OTEConfig,
 ) -> (usize, usize, usize) {
     let column_size_in_bits =
-        ote_config.num_ot_extensions + STATISTICAL_SECURITY_PARAMETER as usize * 8;
+        ote_config.num_ot_extensions + STATISTICAL_SECURITY_PARAMETER as u64 * 8;
     let column_size = divide_by_8(column_size_in_bits);
-    let matrix_byte_size = divide_by_8(column_size_in_bits * ote_config.num_base_ot as usize);
-    (matrix_byte_size, column_size_in_bits, column_size)
+    let matrix_byte_size = divide_by_8(column_size_in_bits * ote_config.num_base_ot as u64);
+
+    (matrix_byte_size as usize, column_size_in_bits as usize, column_size as usize)
 }
 
 fn get_column_byte_size(ote_config: &OTEConfig) -> usize {
-    divide_by_8(ote_config.num_ot_extensions)
+    divide_by_8(ote_config.num_ot_extensions) as usize
 }
 
 pub(crate) fn get_row_byte_size(ote_config: &OTEConfig) -> usize {
-    divide_by_8(ote_config.num_base_ot as usize)
+    divide_by_8(ote_config.num_base_ot) as usize
 }
 
 #[cfg(test)]
@@ -738,7 +739,7 @@ pub mod tests {
             let (base_ot_choices, base_ot_sender_keys, base_ot_receiver_keys) =
                 do_1_of_2_base_ot::<KEY_SIZE>(rng, base_ot_count, B);
 
-            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count).unwrap();
+            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u64).unwrap();
 
             // Perform OT extension
             let (ext_receiver_setup, U) = OTExtensionReceiverSetup::new(
@@ -869,7 +870,7 @@ pub mod tests {
             let (base_ot_choices, base_ot_sender_keys, base_ot_receiver_keys) =
                 do_1_of_2_base_ot::<KEY_SIZE>(rng, base_ot_count, B);
 
-            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count).unwrap();
+            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u64).unwrap();
 
             // Perform Receiver Random OT extension
             let (ext_receiver_setup, U) =
@@ -961,7 +962,7 @@ pub mod tests {
             let (base_ot_choices, base_ot_sender_keys, base_ot_receiver_keys) =
                 do_1_of_2_base_ot::<KEY_SIZE>(rng, base_ot_count, B);
 
-            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count).unwrap();
+            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u64).unwrap();
 
             // Perform OT extension
             let (ext_receiver_setup, U, hashes) =

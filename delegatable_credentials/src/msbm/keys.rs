@@ -56,9 +56,9 @@ pub struct UserPublicKey<E: Pairing>(pub E::G1Affine);
 pub struct UpdateKey<E: Pairing> {
     /// 0-based commitment index in the credential from which this key can add commitments
     #[zeroize(skip)]
-    pub start_index: usize,
+    pub start_index: u64,
     #[zeroize(skip)]
-    pub max_attributes_per_commitment: usize,
+    pub max_attributes_per_commitment: u64,
     /// One key for each commitment index in the signature
     pub keys: Vec<Vec<E::G1Affine>>,
 }
@@ -173,26 +173,26 @@ impl<E: Pairing> UpdateKey<E> {
         let public_key = public_key.into();
         self._verify(
             sig,
-            public_key.X.0[self.start_index..=self.end_index()].to_vec(),
+            public_key.X.0[self.start_index as usize..=self.end_index() as usize].to_vec(),
             t,
             srs,
         )
     }
 
     pub fn get_key_for_index(&self, index: usize) -> &[E::G1Affine] {
-        &self.keys[index - self.start_index]
+        &self.keys[index - self.start_index as usize]
     }
 
     /// Largest 0-based index supported by this update key
     pub fn end_index(&self) -> usize {
-        self.start_index + self.keys.len() - 1
+        self.start_index as usize + self.keys.len() - 1
     }
 
     pub fn trim_key(&self, start: usize, end: usize) -> Self {
         Self {
-            start_index: start,
+            start_index: start as u64,
             max_attributes_per_commitment: self.max_attributes_per_commitment,
-            keys: self.keys[(start - self.start_index)..(end - self.start_index + 1)].to_vec(),
+            keys: self.keys[(start - self.start_index as usize)..(end - self.start_index as usize + 1)].to_vec(),
         }
     }
 

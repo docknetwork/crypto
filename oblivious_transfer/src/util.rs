@@ -1,5 +1,6 @@
 use ark_ec::Group;
 use ark_std::{cfg_into_iter, vec, vec::Vec};
+use core::ops::{BitAnd, Shl, Shr};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -39,23 +40,23 @@ pub fn multiples_of_g<G: Group>(g: G, n: usize) -> Vec<G> {
 }
 
 #[inline]
-pub fn divide_by_8(n: usize) -> usize {
-    n >> 3
+pub fn divide_by_8<T: Shr<Output = T> + From<u8>>(n: T) -> T {
+    n >> 3.into()
 }
 
 #[inline]
-pub fn multiply_by_8(n: usize) -> usize {
-    n << 3
+pub fn multiply_by_8<T: Shl<Output = T> + From<u8>>(n: T) -> T {
+    n << 3.into()
 }
 
 #[inline]
-pub fn modulo_8(n: usize) -> usize {
-    n & 7
+pub fn modulo_8<T: BitAnd<Output = T> + From<u8>>(n: T) -> T {
+    n & 7u8.into()
 }
 
 #[inline]
-pub fn is_multiple_of_8(n: usize) -> bool {
-    modulo_8(n) == 0
+pub fn is_multiple_of_8<T: BitAnd<Output = T> + From<u8> + Eq>(n: T) -> bool {
+    modulo_8(n) == 0u8.into()
 }
 
 /// Transpose an 8x8 bit matrix given as a u64. The code is taken from the book Hacker's Delight's figure 7.6 after
@@ -275,8 +276,8 @@ mod tests {
         );
 
         let start = Instant::now();
-        let m3 = transpose_using_sse(&m, nrows, ncols);
-        let m4 = transpose_using_sse(&m3, ncols, nrows);
+        let m3 = transpose(&m, nrows, ncols);
+        let m4 = transpose(&m3, ncols, nrows);
         let end = start.elapsed();
         assert_eq!(m, m4);
         assert_ne!(m, m3);
