@@ -264,17 +264,17 @@ impl<E: Pairing> Signature<E> {
         ),
         DelegationError,
     > {
-        if update_key.start_index > insert_at_index {
+        if update_key.start_index as usize > insert_at_index {
             return Err(DelegationError::UnsupportedIndexInUpdateKey(
                 insert_at_index,
-                update_key.start_index,
+                update_key.start_index as usize,
                 update_key.end_index(),
             ));
         }
-        if update_key.max_attributes_per_commitment < messages.len() {
+        if (update_key.max_attributes_per_commitment as usize) < messages.len() {
             return Err(DelegationError::UnsupportedNoOfAttributesInUpdateKey(
                 messages.len(),
-                update_key.max_attributes_per_commitment,
+                update_key.max_attributes_per_commitment as usize,
             ));
         }
 
@@ -293,10 +293,10 @@ impl<E: Pairing> Signature<E> {
 
         let mut uk = None;
         if let Some(l) = new_update_key_index {
-            if (l > update_key.end_index()) || (l < update_key.start_index) {
+            if (l > update_key.end_index()) || ((l as u64)< update_key.start_index) {
                 return Err(DelegationError::UnsupportedIndexInUpdateKey(
                     l,
-                    update_key.start_index,
+                    update_key.start_index as usize,
                     update_key.end_index(),
                 ));
             }
@@ -517,7 +517,7 @@ impl<E: Pairing> Signature<E> {
         let mut uk = None;
         if let Some(k_prime) = update_key_index {
             if k_prime < k {
-                return Err(DelegationError::InvalidUpdateKeyIndex(k_prime, k));
+                return Err(DelegationError::InvalidUpdateKeyIndex(k_prime, k as usize));
             }
             if k_prime >= sk_merc.len() {
                 return Err(
@@ -527,8 +527,8 @@ impl<E: Pairing> Signature<E> {
                     ),
                 );
             }
-            let powers = &srs.P1[0..max_attributes_per_commitment];
-            let key = cfg_into_iter!(k..=k_prime)
+            let powers = &srs.P1[0..max_attributes_per_commitment as usize];
+            let key: Vec<Vec<<E as Pairing>::G1Affine>> = cfg_into_iter!(k as usize..=k_prime)
                 .map(|i| {
                     let p = cfg_iter!(powers)
                         .map(|p| p.mul(sk_merc[i] * y_inv))
@@ -537,8 +537,8 @@ impl<E: Pairing> Signature<E> {
                 })
                 .collect::<Vec<_>>();
             uk = Some(UpdateKey {
-                start_index: k,
-                max_attributes_per_commitment,
+                start_index: k as u64,
+                max_attributes_per_commitment: max_attributes_per_commitment as u64,
                 keys: key,
             })
         }

@@ -25,7 +25,7 @@ use super::{multiplication_phase::Phase2Output, utils::compute_R_and_u};
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Phase1Output<F: PrimeField> {
     pub id: ParticipantId,
-    pub batch_size: usize,
+    pub batch_size: u64,
     pub r: Vec<F>,
     pub e: Vec<F>,
     pub s: Vec<F>,
@@ -68,7 +68,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         Ok((
             Self {
                 id,
-                batch_size,
+                batch_size: batch_size as u64,
                 r,
                 commitment_protocol,
                 zero_sharing_protocol,
@@ -89,8 +89,8 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         let r = self.r.clone();
         let (others, mut randomness, masked_signing_key_shares, masked_rs) =
             self.compute_randomness_and_arguments_for_multiplication::<D>(signing_key)?;
-        debug_assert_eq!(randomness.len(), 2 * batch_size);
-        let e = randomness.drain(0..batch_size).collect();
+        debug_assert_eq!(randomness.len() as u64, 2 * batch_size);
+        let e = randomness.drain(0..batch_size as usize).collect();
         let s = randomness;
         Ok(Phase1Output {
             id,
@@ -425,7 +425,7 @@ pub mod tests {
             for i in 1..=threshold_signers {
                 for (j, z_A) in &round2_outputs[i as usize - 1].z_A {
                     let z_B = round2_outputs[*j as usize - 1].z_B.get(&i).unwrap();
-                    for k in 0..sig_batch_size {
+                    for k in 0..sig_batch_size as usize {
                         assert_eq!(
                             z_A.0[k] + z_B.0[k],
                             round1outs[i as usize - 1].masked_signing_key_shares[k]
@@ -444,7 +444,7 @@ pub mod tests {
             let mut total_sig_aggr_time = Duration::default();
             let mut share_gen_times = BTreeMap::new();
 
-            for k in 0..sig_batch_size {
+            for k in 0..sig_batch_size as usize {
                 let messages = (0..message_count)
                     .into_iter()
                     .map(|_| Fr::rand(rng))

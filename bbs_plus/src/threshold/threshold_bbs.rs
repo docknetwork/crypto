@@ -24,7 +24,7 @@ use oblivious_transfer_protocols::ParticipantId;
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Phase1Output<F: PrimeField> {
     pub id: ParticipantId,
-    pub batch_size: usize,
+    pub batch_size: u64,
     pub r: Vec<F>,
     pub e: Vec<F>,
     /// Additive shares of the signing key masked by a random `alpha`
@@ -65,7 +65,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         Ok((
             Self {
                 id,
-                batch_size,
+                batch_size: batch_size as u64,
                 r,
                 commitment_protocol,
                 zero_sharing_protocol,
@@ -86,7 +86,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         let r = self.r.clone();
         let (others, randomness, masked_signing_key_share, masked_r) =
             self.compute_randomness_and_arguments_for_multiplication::<D>(signing_key)?;
-        debug_assert_eq!(randomness.len(), batch_size);
+        debug_assert_eq!(randomness.len() as u64, batch_size);
         let e = randomness;
         Ok(Phase1Output {
             id,
@@ -356,7 +356,7 @@ pub mod tests {
         for i in 1..=threshold_signers {
             for (j, z_A) in &round2_outputs[i as usize - 1].z_A {
                 let z_B = round2_outputs[*j as usize - 1].z_B.get(&i).unwrap();
-                for k in 0..sig_batch_size {
+                for k in 0..sig_batch_size as usize {
                     assert_eq!(
                         z_A.0[k] + z_B.0[k],
                         round1outs[i as usize - 1].masked_signing_key_shares[k]
@@ -373,7 +373,7 @@ pub mod tests {
 
         let mut sig_shares_time = Duration::default();
         let mut sig_aggr_time = Duration::default();
-        for k in 0..sig_batch_size {
+        for k in 0..sig_batch_size as usize {
             let messages = (0..message_count)
                 .into_iter()
                 .map(|_| Fr::rand(&mut rng))

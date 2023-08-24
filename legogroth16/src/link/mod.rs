@@ -151,7 +151,7 @@ mod test {
         .map(|p| p.into_affine())
         .collect::<Vec<_>>();
 
-        let mut m = SparseMatrix::new(l, t);
+        let mut m = SparseMatrix::new(l as usize, t as usize);
         m.insert_row_slice(0, 0, bases1.clone()).unwrap();
         m.insert_row_slice(1, 0, bases2[0..2].to_vec()).unwrap();
         m.insert_row_slice(1, 3, bases2[2..].to_vec()).unwrap();

@@ -24,8 +24,8 @@ pub struct PP<
     G1: Clone + Default + CanonicalSerialize + CanonicalDeserialize,
     G2: Clone + Default + CanonicalSerialize + CanonicalDeserialize,
 > {
-    pub l: usize, // # of rows
-    pub t: usize, // # of cols
+    pub l: u64, // # of rows
+    pub t: u64, // # of cols
     pub g1: G1,
     pub g2: G2,
 }
@@ -36,7 +36,7 @@ impl<
     > PP<G1, G2>
 {
     pub fn new(l: usize, t: usize, g1: G1, g2: G2) -> PP<G1, G2> {
-        PP { l, t, g1, g2 }
+        PP { l: l as u64, t: t as u64, g1, g2 }
     }
 }
 
@@ -107,7 +107,7 @@ impl<PE: Pairing> SubspaceSnark for PESubspaceSnark<PE> {
         m: &Self::KMtx,
     ) -> Result<(Self::EK, Self::VK), LinkError> {
         // `k` is the trapdoor
-        let mut k: Vec<PE::ScalarField> = Vec::with_capacity(pp.l);
+        let mut k: Vec<PE::ScalarField> = Vec::with_capacity(pp.l as usize);
         for _ in 0..pp.l {
             k.push(PE::ScalarField::rand(rng));
         }
@@ -126,8 +126,8 @@ impl<PE: Pairing> SubspaceSnark for PESubspaceSnark<PE> {
     }
 
     fn prove(pp: &Self::PP, ek: &Self::EK, w: &[Self::InVec]) -> Result<Self::Proof, LinkError> {
-        if pp.t < w.len() {
-            return Err(LinkError::VectorLongerThanExpected(w.len(), pp.t));
+        if pp.t < w.len() as u64 {
+            return Err(LinkError::VectorLongerThanExpected(w.len(), pp.t as usize));
         }
         Ok(inner_product::<PE>(w, &ek.p))
     }
@@ -138,8 +138,8 @@ impl<PE: Pairing> SubspaceSnark for PESubspaceSnark<PE> {
         x: &[Self::OutVec],
         pi: &Self::Proof,
     ) -> Result<(), LinkError> {
-        if pp.l != x.len() {
-            return Err(LinkError::VectorWithUnexpectedLength(x.len(), pp.l));
+        if pp.l != x.len() as u64 {
+            return Err(LinkError::VectorWithUnexpectedLength(x.len(), pp.l as usize));
         }
         if vk.c.len() < x.len() {
             return Err(LinkError::VectorLongerThanExpected(x.len(), vk.c.len()));

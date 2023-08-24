@@ -18,7 +18,7 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineRepr> {
     /// Maximum size of the witness vectors
-    pub max_size: usize,
+    pub max_size: u64,
     pub r: Vec<G::ScalarField>,
     pub rho: G::ScalarField,
     pub A: G,
@@ -43,7 +43,7 @@ where
         linear_form: &L,
         blindings: Option<Vec<G::ScalarField>>,
     ) -> Result<Self, CompSigmaError> {
-        if g.len() < max_size {
+        if (g.len()) < max_size {
             return Err(CompSigmaError::VectorTooShort);
         }
         let r = if let Some(blindings) = blindings {
@@ -59,7 +59,7 @@ where
         // h * rho is done separately to avoid copying g
         let A = G::Group::msm_unchecked(g, &r).add(&h.mul_bigint(rho.into_bigint()));
         Ok(Self {
-            max_size,
+            max_size: max_size as u64,
             r,
             rho,
             A: A.into_affine(),
@@ -105,7 +105,7 @@ where
         t: &G::ScalarField,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        if g.len() < max_size {
+        if (g.len()) < max_size {
             return Err(CompSigmaError::VectorTooShort);
         }
         if commitments.len() != y.len() {

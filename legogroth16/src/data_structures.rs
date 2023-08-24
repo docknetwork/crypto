@@ -66,7 +66,7 @@ pub struct VerifyingKey<E: Pairing> {
     /// The element `eta*gamma^-1 * G` in `E::G1`.
     pub eta_gamma_inv_g1: E::G1Affine,
     /// No of witness to commit
-    pub commit_witness_count: usize,
+    pub commit_witness_count: u64,
 }
 
 /// A verification key in the Groth16 SNARK with CP_link verification parameters
@@ -195,18 +195,18 @@ pub struct LinkPublicGenerators<E: Pairing> {
 
 impl<E: Pairing> VerifyingKey<E> {
     pub fn num_public_inputs(&self) -> usize {
-        self.gamma_abc_g1.len() - self.commit_witness_count
+        self.gamma_abc_g1.len() - self.commit_witness_count as usize
     }
 
     pub fn num_committed_witnesses(&self) -> usize {
-        self.commit_witness_count
+        self.commit_witness_count as usize
     }
 
     /// Get the commitment key used for the Pedersen commitment to witnesses in the proof
     pub fn get_commitment_key_for_witnesses(&self) -> Vec<E::G1Affine> {
         let start = self.num_public_inputs();
-        let end = start + self.commit_witness_count;
-        let mut key = Vec::with_capacity(self.commit_witness_count + 1);
+        let end = start + self.commit_witness_count as usize;
+        let mut key = Vec::with_capacity(self.commit_witness_count as usize + 1);
         key.extend_from_slice(&self.gamma_abc_g1[start..end]);
         key.push(self.eta_gamma_inv_g1);
         key

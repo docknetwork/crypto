@@ -20,7 +20,7 @@ pub enum OTError {
     InvalidHashedKeyAtIndex(u16),
     IncorrectMessageBatchSize(u16, u16),
     IncorrectNoOfMessages(u16),
-    IncorrectOTExtensionConfig(u16, usize),
+    IncorrectOTExtensionConfig(u16, u64),
     IncorrectNumberOfBaseOTKeys(u16, u16),
     IncorrectNumberOfOTExtensionChoices(usize, usize),
     IncorrectSizeForU(usize, usize),
