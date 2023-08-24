@@ -20,7 +20,6 @@ impl<'left, 'right, Left, Right> Clone for Pairs<'left, 'right, Left, Right> {
     }
 }
 
-#[allow(dead_code)]
 impl<'left, 'right, Left, Right> Pairs<'left, 'right, Left, Right> {
     /// Combines two slices together if they have equal length.
     pub fn new(left: &'left [Left], right: &'right [Right]) -> Option<Self> {
@@ -150,7 +149,6 @@ impl<'left, 'right, G: AffineRepr> Pairs<'left, 'right, G, G::ScalarField> {
 }
 
 /// Extension for `OwnedPairs` for cases when left is an `AffineRepr` implementer, and right is a `ScalarField::BigInt` implementer.
-#[allow(dead_code)]
 impl<G: AffineRepr> Pairs<'_, '_, G, <G::ScalarField as PrimeField>::BigInt> {
     /// `G::Group::msm_bigint(left, right)`
     pub fn msm_bigint(&self) -> G::Group {
