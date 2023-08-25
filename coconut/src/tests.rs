@@ -33,7 +33,7 @@ fn construction_pac_workflow() {
                 test_setup::<Bls12_381, Blake2b512, _>(&mut rng, message_count);
 
             // https://eprint.iacr.org/2022/011.pdf 7.2
-            let (blind_msgs, reveal_msgs) = msgs.split_at(blind_message_count);
+            let (blind_msgs, reveal_msgs) = msgs.split_at(blind_message_count as usize);
             let comms = blind_msgs
                 .iter()
                 .copied()

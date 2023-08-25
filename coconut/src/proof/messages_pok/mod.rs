@@ -318,7 +318,7 @@ mod tests {
             MessagesPoKError::MessageInputError(MessageUnpackingError::MessageIndexIsOutOfBounds(
                 IndexIsOutOfBounds {
                     index: 10,
-                    length: message_count
+                    length: message_count as usize
                 }
             ))
         );

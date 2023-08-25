@@ -256,7 +256,7 @@ mod tests {
             SignaturePoKError::MessageInputError(MessageUnpackingError::MessageIndexIsOutOfBounds(
                 IndexIsOutOfBounds {
                     index: 10,
-                    length: message_count
+                    length: message_count as usize
                 }
             ))
         );
@@ -396,7 +396,7 @@ mod tests {
             let (sk, pk, params, msgs) =
                 test_setup::<Bls12_381, Blake2b512, _>(&mut rng, message_count);
 
-            let (reveal_msgs, blind_msgs) = msgs.split_at(message_count / 2);
+            let (reveal_msgs, blind_msgs) = msgs.split_at(message_count as usize / 2);
             let comms = reveal_msgs
                 .iter()
                 .map(|_| CommitMessage::RevealMessage)
@@ -407,7 +407,7 @@ mod tests {
                         .map(CommitMessage::BlindMessageRandomly),
                 );
             let reveal_indices = 0..reveal_msgs.len();
-            let committed_msg_indices = message_count / 2..msgs.len();
+            let committed_msg_indices = message_count as usize / 2..msgs.len();
 
             let sig = Signature::new(&mut rng, msgs.as_slice(), &sk, &params).unwrap();
 
@@ -430,7 +430,7 @@ mod tests {
                         .k
                         .response
                         .0
-                        .get(idx.max(message_count / 2) - (message_count / 2))
+                        .get(idx.max(message_count as usize / 2) - (message_count as usize / 2))
                         .unwrap()
                 );
                 assert_eq!(
@@ -442,7 +442,7 @@ mod tests {
                         .k
                         .response
                         .0
-                        .get(idx.max(message_count / 2) - (message_count / 2))
+                        .get(idx.max(message_count as usize / 2) - (message_count as usize / 2))
                         .unwrap()
                 );
 

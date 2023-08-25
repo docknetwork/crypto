@@ -43,15 +43,15 @@ impl<F: PrimeField> SecretKey<F> {
     pub const Y_SALT: &[u8] = b"PS-SIG-Y-KEYGEN-SALT";
 
     /// Generates random secret key compatible with `message_count` messages.
-    pub fn rand<R: RngCore>(rng: &mut R, message_count: usize) -> Self {
+    pub fn rand<R: RngCore>(rng: &mut R, message_count: u32) -> Self {
         let x = rand(rng);
-        let y = n_rand(rng, message_count).collect();
+        let y = n_rand(rng, message_count as usize).collect();
 
         Self { x, y }
     }
 
     /// Generates secret key compatible with `message_count` messages from supplied seed.
-    pub fn from_seed<D>(seed: &[u8], message_count: usize) -> Self
+    pub fn from_seed<D>(seed: &[u8], message_count: u32) -> Self
     where
         D: FullDigest + SyncIfParallel,
     {
@@ -66,7 +66,7 @@ impl<F: PrimeField> SecretKey<F> {
                 let hasher = new_hasher(Self::Y_SALT);
 
                 cfg_into_iter!(0..message_count)
-                    .map(usize::to_le_bytes)
+                    .map(u32::to_le_bytes)
                     .map(|i| concat_slices!(seed, i))
                     .map(|seed| hasher.hash_to_field(&seed, 1).pop().unwrap())
                     .collect()
