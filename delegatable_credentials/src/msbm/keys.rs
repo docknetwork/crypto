@@ -179,13 +179,13 @@ impl<E: Pairing> UpdateKey<E> {
         )
     }
 
-    pub fn get_key_for_index(&self, index: usize) -> &[E::G1Affine] {
-        &self.keys[index - self.start_index as usize]
+    pub fn get_key_for_index(&self, index: u32) -> &[E::G1Affine] {
+        &self.keys[index as usize - self.start_index as usize]
     }
 
     /// Largest 0-based index supported by this update key
-    pub fn end_index(&self) -> usize {
-        self.start_index as usize + self.keys.len() - 1
+    pub fn end_index(&self) -> u32 {
+        self.start_index + self.keys.len() as u32 - 1
     }
 
     pub fn trim_key(&self, start_index: u32, end_index: u32) -> Self {
