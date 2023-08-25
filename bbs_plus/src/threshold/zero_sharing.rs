@@ -23,7 +23,7 @@ use oblivious_transfer_protocols::ParticipantId;
 pub struct Party<F: PrimeField, const SALT_SIZE: usize> {
     pub id: ParticipantId,
     pub protocol_id: Vec<u8>,
-    pub batch_size: u64,
+    pub batch_size: u32,
     /// Commit-and-release coin tossing protocols run with each party
     pub cointoss_protocols: BTreeMap<ParticipantId, CommitmentParty<F, SALT_SIZE>>,
 }
@@ -36,7 +36,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
     pub fn init<R: RngCore>(
         rng: &mut R,
         id: ParticipantId,
-        batch_size: usize,
+        batch_size: u32,
         others: BTreeSet<ParticipantId>,
         protocol_id: Vec<u8>,
     ) -> (Self, BTreeMap<ParticipantId, Commitments>) {
@@ -52,7 +52,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
             Self {
                 id,
                 protocol_id,
-                batch_size: batch_size as u64,
+                batch_size: batch_size,
                 cointoss_protocols,
             },
             commitments,
@@ -174,7 +174,7 @@ pub mod tests {
     fn zero_sharing() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        fn check(rng: &mut StdRng, batch_size: usize, num_parties: u16) {
+        fn check(rng: &mut StdRng, batch_size: u32, num_parties: u16) {
             let protocol_id = b"test".to_vec();
             let all_party_set = (1..=num_parties).into_iter().collect::<BTreeSet<_>>();
             let mut parties = vec![];

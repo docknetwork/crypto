@@ -42,7 +42,7 @@ type ProofG1 = Proof<Bls12_381, G1Affine>;
 
 fn sig_setup<R: RngCore>(
     rng: &mut R,
-    message_count: usize,
+    message_count: u32,
 ) -> (
     Vec<Fr>,
     SignatureParamsG1<Bls12_381>,

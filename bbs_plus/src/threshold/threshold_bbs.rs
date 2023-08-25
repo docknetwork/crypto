@@ -24,7 +24,7 @@ use oblivious_transfer_protocols::ParticipantId;
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Phase1Output<F: PrimeField> {
     pub id: ParticipantId,
-    pub batch_size: u64,
+    pub batch_size: u32,
     pub r: Vec<F>,
     pub e: Vec<F>,
     /// Additive shares of the signing key masked by a random `alpha`
@@ -47,7 +47,7 @@ pub struct BBSSignatureShare<E: Pairing> {
 impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
     pub fn init_for_bbs<R: RngCore>(
         rng: &mut R,
-        batch_size: usize,
+        batch_size: u32,
         id: ParticipantId,
         others: BTreeSet<ParticipantId>,
         protocol_id: Vec<u8>,
@@ -65,7 +65,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         Ok((
             Self {
                 id,
-                batch_size: batch_size as u64,
+                batch_size: batch_size,
                 r,
                 commitment_protocol,
                 zero_sharing_protocol,
@@ -86,7 +86,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         let r = self.r.clone();
         let (others, randomness, masked_signing_key_share, masked_r) =
             self.compute_randomness_and_arguments_for_multiplication::<D>(signing_key)?;
-        debug_assert_eq!(randomness.len() as u64, batch_size);
+        debug_assert_eq!(randomness.len() as u32, batch_size);
         let e = randomness;
         Ok(Phase1Output {
             id,
@@ -307,7 +307,7 @@ pub mod tests {
         }
         println!("Phase 1 took {:?}", start.elapsed());
 
-        assert_eq!(expected_sk, sk * Fr::from(sig_batch_size as u64));
+        assert_eq!(expected_sk, sk * Fr::from(sig_batch_size));
         for i in 1..threshold_signers {
             assert_eq!(round1outs[0].e, round1outs[i as usize].e);
         }

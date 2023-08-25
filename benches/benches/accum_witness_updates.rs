@@ -15,7 +15,7 @@ use vb_accumulator::{
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 
-fn get_member_counts(batch_size: usize) -> HashSet<usize> {
+fn get_member_counts(batch_size: u32) -> HashSet<u32> {
     let mut member_counts = HashSet::new();
     member_counts.insert(5);
     member_counts.insert(10);

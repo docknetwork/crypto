@@ -226,7 +226,7 @@ mod tests {
     use ark_ec::pairing::Pairing;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
-        UniformRand, Zero,
+        UniformRand,
     };
     use blake2::Blake2b512;
     use std::time::Instant;

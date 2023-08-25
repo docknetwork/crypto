@@ -90,7 +90,7 @@ pub struct MaskedInputs<F: PrimeField>(#[serde_as(as = "Vec<ArkObjectBytes>")] p
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct Party1<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
-    pub batch_size: u64,
+    pub batch_size: u32,
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     /// Vector of values to multiply
     #[serde_as(as = "Vec<ArkObjectBytes>")]
@@ -109,7 +109,7 @@ pub struct Party1<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PA
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct Party2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
-    pub batch_size: u64,
+    pub batch_size: u32,
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     /// Vector of values to multiply
     #[serde_as(as = "Vec<ArkObjectBytes>")]
@@ -152,7 +152,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
                 STATISTICAL_SECURITY_PARAMETER,
             ));
         }
-        let batch_size = a.len() as u64;
+        let batch_size = a.len() as u32;
         let a_hat = (0..batch_size).map(|_| F::rand(rng)).collect::<Vec<_>>();
         let a_tilde = (0..batch_size).map(|_| F::rand(rng)).collect::<Vec<_>>();
         Ok(Self {
@@ -174,9 +174,9 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         transcript: &mut impl Transcript,
         gadget_vector: &GadgetVector<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     ) -> Result<(Party1Shares<F>, CorrelationTag<F>, RLC<F>, MaskedInputs<F>), OTError> {
-        let batch_size = self.batch_size() as u64;
+        let batch_size = self.batch_size() as u32;
         let overhead = self.ote_params.overhead();
-        if gamma_b.len() as u64 != batch_size {
+        if gamma_b.len() as u32 != batch_size {
             return Err(OTError::IncorrectBatchSize(
                 batch_size as usize,
                 gamma_b.len(),
@@ -302,7 +302,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             ));
         }
         assert_eq!(ote_params, gadget_vector.0);
-        let batch_size = b.len() as u64;
+        let batch_size = b.len() as u32;
         let overhead = ote_params.overhead() as usize;
         let extended_ot_count = batch_size * ote_params.overhead();
         let ote_config = OTEConfig::new(ote_params.num_base_ot(), extended_ot_count)?;

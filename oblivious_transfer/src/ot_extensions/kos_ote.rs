@@ -97,24 +97,27 @@ impl OTExtensionReceiverSetup {
         choices.extend(
             (0..ote_config.num_base_ot + STATISTICAL_SECURITY_PARAMETER).map(|_| bool::rand(rng)),
         );
-        let l_prime = choices.len();
-        let new_ote_config = OTEConfig::new(ote_config.num_base_ot, l_prime as u64)?;
+        let l_prime = choices
+            .len()
+            .try_into()
+            .map_err(|_| OTError::TooManyChoices(choices.len()))?;
+        let new_ote_config = OTEConfig::new(ote_config.num_base_ot, l_prime)?;
         let (setup, U) =
             alsz_ote::OTExtensionReceiverSetup::new(new_ote_config, choices, base_ot_keys)?;
-        let row_byte_size = alsz_ote::get_row_byte_size(&ote_config);
-        debug_assert_eq!(U.0.len(), l_prime * row_byte_size);
+        let row_byte_size = ote_config.row_byte_size();
+        debug_assert_eq!(U.0.len(), l_prime as usize * row_byte_size);
         let chi = gen_randomness(
-            setup.ote_config.num_base_ot as u64,
+            setup.ote_config.num_base_ot as u32,
             setup.ote_config.num_ot_extensions,
             &U,
-            row_byte_size * l_prime,
+            row_byte_size as u32 * l_prime,
         );
         let mut x = vec![0; row_byte_size];
         let mut t = vec![0; row_byte_size];
         // `ones` is equivalent to a bit vector with all 1s
         let ones = vec![255; row_byte_size];
         let zeroes = vec![0; row_byte_size];
-        for i in 0..l_prime {
+        for i in 0..l_prime as usize {
             let chi_i = &chi[i * row_byte_size..(i + 1) * row_byte_size];
             join!(
                 xor_in_place(
@@ -151,7 +154,7 @@ impl OTExtensionReceiverSetup {
     pub fn decrypt(
         &self,
         encryptions: Vec<(Message, Message)>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
         alsz_ote::OTExtensionReceiverSetup::decrypt_(
             self.ote_config,
@@ -165,7 +168,7 @@ impl OTExtensionReceiverSetup {
     pub fn decrypt_correlated(
         &self,
         encryptions: Vec<Message>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
         alsz_ote::OTExtensionReceiverSetup::decrypt_correlated_(
             self.ote_config,
@@ -188,7 +191,7 @@ impl OTExtensionReceiverSetup {
                 tau.len(),
             ));
         }
-        let row_byte_size = alsz_ote::get_row_byte_size(&self.ote_config);
+        let row_byte_size = self.ote_config.row_byte_size();
         Ok(ReceiverOutput(
             cfg_into_iter!(tau.0)
                 .enumerate()
@@ -223,7 +226,7 @@ impl OTExtensionSenderSetup {
                 STATISTICAL_SECURITY_PARAMETER,
             ));
         }
-        let row_byte_size = alsz_ote::get_row_byte_size(&ote_config);
+        let row_byte_size = ote_config.row_byte_size();
         if rlc.t.len() != row_byte_size {
             return Err(OTError::RandomLinearCombinationCheckSizeIncorrect(
                 row_byte_size as u16,
@@ -237,15 +240,15 @@ impl OTExtensionSenderSetup {
             ));
         }
         let l_prime = ote_config.num_ot_extensions
-            + ote_config.num_base_ot as u64
-            + STATISTICAL_SECURITY_PARAMETER as u64;
+            + ote_config.num_base_ot as u32
+            + STATISTICAL_SECURITY_PARAMETER as u32;
         let new_ote_config = OTEConfig::new(ote_config.num_base_ot, l_prime)?;
 
         let chi = gen_randomness(
-            ote_config.num_base_ot as u64,
+            ote_config.num_base_ot as u32,
             l_prime,
             &U,
-            row_byte_size * l_prime as usize,
+            row_byte_size as u32 * l_prime as u32,
         );
         let setup = alsz_ote::OTExtensionSenderSetup::new(
             new_ote_config,
@@ -279,7 +282,7 @@ impl OTExtensionSenderSetup {
     pub fn encrypt(
         &self,
         messages: Vec<(Message, Message)>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<(Message, Message)>, OTError> {
         alsz_ote::OTExtensionSenderSetup::encrypt_(
             self.ote_config,
@@ -293,7 +296,7 @@ impl OTExtensionSenderSetup {
     pub fn encrypt_correlated<F: Sync + Sized + Fn(&Message) -> Message>(
         &self,
         deltas: Vec<F>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<(Vec<(Message, Message)>, Vec<Message>), OTError> {
         alsz_ote::OTExtensionSenderSetup::encrypt_correlated_(
             self.ote_config,
@@ -316,7 +319,7 @@ impl OTExtensionSenderSetup {
                 alpha.len(),
             ));
         }
-        let row_byte_size = alsz_ote::get_row_byte_size(&self.ote_config);
+        let row_byte_size = self.ote_config.row_byte_size();
         let (t_A, tau) = cfg_into_iter!(alpha)
             .enumerate()
             .map(|(i, alpha_i)| {
@@ -352,11 +355,11 @@ impl<F: PrimeField> CorrelationTag<F> {
     }
 }
 
-fn gen_randomness(a: u64, b: u64, U: &BitMatrix, output_size: usize) -> Vec<u8> {
+fn gen_randomness(a: u32, b: u32, U: &BitMatrix, output_size: u32) -> Vec<u8> {
     let mut bytes = a.to_be_bytes().to_vec();
     bytes.extend(&b.to_be_bytes());
     bytes.extend_from_slice(&U.0);
-    let mut randomness = vec![0; output_size];
+    let mut randomness = vec![0; output_size as usize];
     let mut hasher = Shake256::default();
     hasher.update(&bytes);
     hasher.finalize_xof_into(&mut randomness);
@@ -382,7 +385,7 @@ pub mod tests {
     use crate::base_ot::simplest_ot::tests::do_1_of_2_base_ot;
     use std::time::Instant;
 
-    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_bls12_381::Fr;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -400,16 +403,17 @@ pub mod tests {
             base_ot_count: u16,
             extended_ot_count: usize,
             ot_ext_choices: Vec<bool>,
-            message_size: usize,
+            message_size: u32,
             B: &G1,
             check_serialization: bool,
         ) {
+            let message_size = message_size as usize;
             // Perform base OT with roles reversed
             // In practice, do VSOT
             let (base_ot_choices, base_ot_sender_keys, base_ot_receiver_keys) =
                 do_1_of_2_base_ot::<KEY_SIZE>(rng, base_ot_count, B);
 
-            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u64).unwrap();
+            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u32).unwrap();
 
             let start = Instant::now();
             // Perform OT extension
@@ -461,13 +465,13 @@ pub mod tests {
 
             let start = Instant::now();
             let encryptions = ext_sender_setup
-                .encrypt(messages.clone(), message_size)
+                .encrypt(messages.clone(), message_size as u32)
                 .unwrap();
             let encryption_time = start.elapsed();
 
             let start = Instant::now();
             let decryptions = ext_receiver_setup
-                .decrypt(encryptions, message_size)
+                .decrypt(encryptions, message_size as u32)
                 .unwrap();
             let decryption_time = start.elapsed();
 
@@ -493,13 +497,13 @@ pub mod tests {
                 })
                 .collect::<Vec<_>>();
             let (messages, encryptions) = ext_sender_setup
-                .encrypt_correlated(deltas.clone(), message_size)
+                .encrypt_correlated(deltas.clone(), message_size as u32)
                 .unwrap();
             let cot_encryption_time = start.elapsed();
 
             let start = Instant::now();
             let decryptions = ext_receiver_setup
-                .decrypt_correlated(encryptions, message_size)
+                .decrypt_correlated(encryptions, message_size as u32)
                 .unwrap();
             let cot_decryption_time = start.elapsed();
 

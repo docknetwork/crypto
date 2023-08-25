@@ -8,7 +8,7 @@ macro_rules! concat_slices {
 
 /// Concatenates provided byte slices and hashes result to a point on the curve. Returns as Affine coordinates. 
 #[macro_export]
-macro_rules! byte_slices_to_affine {
+macro_rules! affine_group_from_slices {
     ($($arg: expr),+) => {
         $crate::hashing_utils::affine_group_elem_from_try_and_incr::<_, D>(&$crate::concat_slices!($($arg),+))
     };

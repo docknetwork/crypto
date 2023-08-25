@@ -106,20 +106,20 @@ fn kos_ote(c: &mut Criterion) {
             b.iter(|| {
                 ext_sender_setup
                     .clone()
-                    .encrypt(black_box(messages.clone()), black_box(message_size))
+                    .encrypt(black_box(messages.clone()), black_box(message_size as u32))
                     .unwrap()
             })
         });
 
         let encryptions = ext_sender_setup
-            .encrypt(messages.clone(), message_size)
+            .encrypt(messages.clone(), message_size as u32)
             .unwrap();
 
         c.bench_function(format!("Decrypt chosen messages {}", otc).as_str(), |b| {
             b.iter(|| {
                 ext_receiver_setup
                     .clone()
-                    .decrypt(black_box(encryptions.clone()), black_box(message_size))
+                    .decrypt(black_box(encryptions.clone()), black_box(message_size as u32))
                     .unwrap()
             })
         });

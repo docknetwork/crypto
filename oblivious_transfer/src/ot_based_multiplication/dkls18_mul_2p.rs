@@ -65,12 +65,12 @@ impl<const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         KAPPA
     }
 
-    pub const fn num_extensions(&self) -> u64 {
-        2 * (KAPPA as u64 + STATISTICAL_SECURITY_PARAMETER as u64)
+    pub const fn num_extensions(&self) -> u32 {
+        2 * (KAPPA as u32 + STATISTICAL_SECURITY_PARAMETER as u32)
     }
 
-    pub const fn overhead(&self) -> u64 {
-        KAPPA as u64 + 2 * STATISTICAL_SECURITY_PARAMETER as u64
+    pub const fn overhead(&self) -> u32 {
+        KAPPA as u32 + 2 * STATISTICAL_SECURITY_PARAMETER as u32
     }
 }
 
@@ -409,7 +409,7 @@ pub mod tests {
         let ote_params = MultiplicationOTEParams::<KAPPA, SSP> {};
         let gadget_vector =
             GadgetVector::<Fr, KAPPA, SSP>::new::<Blake2b512>(ote_params, b"test-gadget-vector");
-        assert_eq!(gadget_vector.1.len() as u64, ote_params.num_extensions());
+        assert_eq!(gadget_vector.1.len() as u32, ote_params.num_extensions());
         for i in 0..ote_params.num_base_ot() as usize {
             assert_eq!(gadget_vector.1[i], Fr::from(2u64).pow(&[i as u64]));
         }

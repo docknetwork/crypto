@@ -66,7 +66,7 @@ fn pok_sig_benchmark(c: &mut Criterion) {
         for j in k.iter() {
             let mut ids = BTreeSet::new();
             let mut msgs = BTreeMap::new();
-            for l in 0..=*j {
+            for l in 0..=*j as usize {
                 ids.insert(l);
                 msgs.insert(l, messages[l]);
             }

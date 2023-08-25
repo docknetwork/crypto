@@ -1,4 +1,7 @@
-use crate::{error::OTError, util};
+use crate::{
+    error::OTError,
+    util::{self, divide_by_8},
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use serde::{Deserialize, Serialize};
@@ -96,11 +99,11 @@ pub struct OTEConfig {
     /// Number of base OTs
     pub num_base_ot: u16,
     /// Number of OT extensions
-    pub num_ot_extensions: u64,
+    pub num_ot_extensions: u32,
 }
 
 impl OTEConfig {
-    pub fn new(num_base_ot: u16, num_ot_extensions: u64) -> Result<Self, OTError> {
+    pub fn new(num_base_ot: u16, num_ot_extensions: u32) -> Result<Self, OTError> {
         if !util::is_multiple_of_8(num_base_ot as usize)
             || !util::is_multiple_of_8(num_ot_extensions)
         {
@@ -113,5 +116,31 @@ impl OTEConfig {
             num_base_ot,
             num_ot_extensions,
         })
+    }
+
+    pub fn matrix_byte_size(&self) -> Result<usize, OTError> {
+        let value = divide_by_8(self.num_ot_extensions as u64 * self.num_base_ot as u64);
+
+        value
+            .try_into()
+            .map_err(|_| OTError::MatrixSizeIsTooBig(value))
+            .map(|value: u32| value as usize)
+    }
+
+    pub fn matrix_byte_size_for_random(&self) -> Result<usize, OTError> {
+        let value = divide_by_8(self.num_ot_extensions as u64 * (self.num_base_ot as u64 - 1));
+
+        value
+            .try_into()
+            .map_err(|_| OTError::MatrixSizeIsTooBig(value))
+            .map(|value: u32| value as usize)
+    }
+
+    pub fn column_byte_size(&self) -> usize {
+        divide_by_8(self.num_ot_extensions) as usize
+    }
+
+    pub fn row_byte_size(&self) -> usize {
+        divide_by_8(self.num_base_ot) as usize
     }
 }

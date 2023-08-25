@@ -68,10 +68,10 @@ impl OTExtensionReceiverSetup {
         Self::check_ote_choices_count(&ot_ext_choices, &ote_config)?;
         Self::check_base_ot_keys_count(&base_ot_keys, &ote_config)?;
         // TODO: Check base ot key size is kappa
-        let column_size = get_column_byte_size(&ote_config);
+        let column_size = ote_config.column_byte_size();
         let packed_choices = boolvec_to_u8vec(&ot_ext_choices);
         // Following matrices T and U will be treated as `base_ot_count x extended_ot_count` matrices where each row of size m bits will be used
-        let matrix_byte_size = get_matrix_byte_size(&ote_config);
+        let matrix_byte_size = ote_config.matrix_byte_size()?;
         let mut T = vec![0; matrix_byte_size];
         let mut U = vec![0; matrix_byte_size];
         for (i, (k0, k1)) in base_ot_keys.0.into_iter().enumerate() {
@@ -166,11 +166,11 @@ impl OTExtensionReceiverSetup {
         base_ot_keys: OneOfTwoROTSenderKeys,
     ) -> Result<(Self, BitMatrix), OTError> {
         Self::check_base_ot_keys_count(&base_ot_keys, &ote_config)?;
-        let column_size = get_column_byte_size(&ote_config);
+        let column_size = ote_config.column_byte_size();
 
         let mut packed_choices = vec![0; column_size];
-        let mut T = vec![0; get_matrix_byte_size(&ote_config)];
-        let mut U = vec![0; get_matrix_byte_size_for_random(&ote_config)];
+        let mut T = vec![0; ote_config.matrix_byte_size()?];
+        let mut U = vec![0; ote_config.matrix_byte_size_for_random()?];
         for (i, (k0, k1)) in base_ot_keys.0.into_iter().enumerate() {
             if i == 0 {
                 let t_i = &mut T[0..column_size];
@@ -209,7 +209,7 @@ impl OTExtensionReceiverSetup {
     pub fn decrypt(
         &self,
         encryptions: Vec<(Message, Message)>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
         Self::decrypt_(
             self.ote_config,
@@ -223,7 +223,7 @@ impl OTExtensionReceiverSetup {
     pub fn decrypt_correlated(
         &self,
         encryptions: Vec<Message>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
         Self::decrypt_correlated_(
             self.ote_config,
@@ -234,11 +234,11 @@ impl OTExtensionReceiverSetup {
         )
     }
 
-    pub fn decrypt_random(&self, message_size: usize) -> Vec<Message> {
-        let row_byte_size = get_row_byte_size(&self.ote_config);
+    pub fn decrypt_random(&self, message_size: u32) -> Vec<Message> {
+        let row_byte_size = self.ote_config.row_byte_size();
         cfg_into_iter!(0..self.ote_config.num_ot_extensions as usize)
             .map(|i| {
-                let t = &self.T.0[i * row_byte_size..(i + 1) * row_byte_size];
+                let t = &self.T.0[i * row_byte_size..(i + 1) * row_byte_size as usize];
                 hash_to_otp(i, &t, message_size)
             })
             .collect()
@@ -249,7 +249,7 @@ impl OTExtensionReceiverSetup {
         T: &BitMatrix,
         ot_extension_choices: &[Bit],
         encryptions: Vec<(Message, Message)>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
         if encryptions.len() != ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfEncryptionsToDecrypt(
@@ -257,7 +257,7 @@ impl OTExtensionReceiverSetup {
                 encryptions.len(),
             ));
         }
-        let row_byte_size = get_row_byte_size(&ote_config);
+        let row_byte_size = ote_config.row_byte_size();
         Ok(cfg_into_iter!(encryptions)
             .enumerate()
             .map(|(i, (e1, e2))| {
@@ -275,7 +275,7 @@ impl OTExtensionReceiverSetup {
         T: &BitMatrix,
         ot_extension_choices: &[Bit],
         encryptions: Vec<Message>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
         if encryptions.len() != ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfEncryptionsToDecrypt(
@@ -283,8 +283,8 @@ impl OTExtensionReceiverSetup {
                 encryptions.len(),
             ));
         }
-        let row_byte_size = get_row_byte_size(&ote_config);
-        let zero = vec![0; message_size];
+        let row_byte_size = ote_config.row_byte_size();
+        let zero = vec![0; message_size as usize];
         Ok(cfg_into_iter!(encryptions)
             .enumerate()
             .map(|(i, e)| {
@@ -357,16 +357,16 @@ impl OTExtensionSenderSetup {
     ) -> Result<Self, OTError> {
         // TODO: This can be improved by passing s as `packed`
         Self::check_base_ot_choices_and_keys(&base_ot_choices, &base_ot_keys, &ote_config)?;
-        let matrix_byte_size = get_matrix_byte_size(&ote_config);
+        let matrix_byte_size = ote_config.matrix_byte_size()?;
         if matrix_byte_size != U.0.len() {
             return Err(OTError::IncorrectSizeForU(matrix_byte_size, U.0.len()));
         }
         // TODO: Check base ot key size is kappa
-        let column_size = get_column_byte_size(&ote_config);
+        let column_size = ote_config.column_byte_size();
         let mut Q = vec![0; matrix_byte_size];
         let zero = vec![0; column_size];
         for (i, k) in base_ot_keys.0.into_iter().enumerate() {
-            Self::fill_q_matrix(&mut Q, &U.0, &k, &base_ot_choices, &zero, i, i, column_size);
+            Self::fill_q_matrix(&mut Q, &U.0, &k, &base_ot_choices, &zero, i, i, column_size as u32);
         }
         let Q = transpose(
             &Q,
@@ -408,7 +408,7 @@ impl OTExtensionSenderSetup {
         let mut prgs = Vec::with_capacity(ote_config.num_base_ot as usize);
         for (i, k) in base_ot_keys.0.into_iter().enumerate() {
             let k =
-                Self::fill_q_matrix(&mut Q, &U.0, &k, &base_ot_choices, &zero, i, i, column_size);
+                Self::fill_q_matrix(&mut Q, &U.0, &k, &base_ot_choices, &zero, i, i, column_size as u32);
             prgs.push(k);
         }
         for i in 0..ote_config.num_base_ot {
@@ -469,12 +469,12 @@ impl OTExtensionSenderSetup {
     ) -> Result<Self, OTError> {
         // TODO: This can be improved by passing s as `packed`
         Self::check_base_ot_choices_and_keys(&base_ot_choices, &base_ot_keys, &ote_config)?;
-        let matrix_byte_size = get_matrix_byte_size_for_random(&ote_config);
+        let matrix_byte_size = ote_config.matrix_byte_size_for_random()?;
         if matrix_byte_size != U.0.len() {
             return Err(OTError::IncorrectSizeForU(matrix_byte_size, U.0.len()));
         }
-        let column_size = get_column_byte_size(&ote_config);
-        let mut Q = vec![0; get_matrix_byte_size(&ote_config)];
+        let column_size = ote_config.column_byte_size();
+        let mut Q = vec![0; ote_config.matrix_byte_size()?];
         let zero = vec![0; column_size];
         for (i, k) in base_ot_keys.0.into_iter().enumerate() {
             if i == 0 {
@@ -489,7 +489,7 @@ impl OTExtensionSenderSetup {
                     &zero,
                     i,
                     i - 1,
-                    column_size,
+                    column_size as u32,
                 );
             }
         }
@@ -509,7 +509,7 @@ impl OTExtensionSenderSetup {
     pub fn encrypt(
         &self,
         messages: Vec<(Message, Message)>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<(Message, Message)>, OTError> {
         Self::encrypt_(
             self.ote_config,
@@ -524,7 +524,7 @@ impl OTExtensionSenderSetup {
     pub fn encrypt_correlated<F: Sync + Sized + Fn(&Message) -> Message>(
         &self,
         deltas: Vec<F>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<(Vec<(Message, Message)>, Vec<Message>), OTError> {
         Self::encrypt_correlated_(
             self.ote_config,
@@ -536,8 +536,8 @@ impl OTExtensionSenderSetup {
     }
 
     /// For Sender Random OT
-    pub fn encrypt_random(&self, message_size: usize) -> Vec<(Message, Message)> {
-        let row_byte_size = get_row_byte_size(&self.ote_config);
+    pub fn encrypt_random(&self, message_size: u32) -> Vec<(Message, Message)> {
+        let row_byte_size = self.ote_config.row_byte_size();
         cfg_into_iter!(0..self.ote_config.num_ot_extensions as usize)
             .map(|i| {
                 let q = &self.Q.0[i * row_byte_size..(i + 1) * row_byte_size];
@@ -553,7 +553,7 @@ impl OTExtensionSenderSetup {
         Q: &BitMatrix,
         base_ot_choices: &[u8],
         messages: Vec<(Message, Message)>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<(Message, Message)>, OTError> {
         if messages.len() != ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfMessagesToEncrypt(
@@ -561,7 +561,7 @@ impl OTExtensionSenderSetup {
                 messages.len(),
             ));
         }
-        let row_byte_size = get_row_byte_size(&ote_config);
+        let row_byte_size = ote_config.row_byte_size();
         Ok(cfg_into_iter!(messages)
             .enumerate()
             .map(|(i, (m1, m2))| {
@@ -581,7 +581,7 @@ impl OTExtensionSenderSetup {
         Q: &BitMatrix,
         s: &[u8],
         deltas: Vec<F>,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<(Vec<(Message, Message)>, Vec<Message>), OTError> {
         if deltas.len() != ote_config.num_ot_extensions as usize {
             return Err(OTError::IncorrectNoOfCorrelations(
@@ -589,7 +589,7 @@ impl OTExtensionSenderSetup {
                 deltas.len(),
             ));
         }
-        let row_byte_size = get_row_byte_size(&ote_config);
+        let row_byte_size = ote_config.row_byte_size();
         Ok(cfg_into_iter!(deltas)
             .enumerate()
             .map(|(i, delta)| {
@@ -612,13 +612,13 @@ impl OTExtensionSenderSetup {
         zero: &[u8],
         q_row_index: usize,
         u_row_index: usize,
-        column_size: usize,
+        column_size: u32,
     ) -> Vec<u8> {
-        let q_i = &mut Q[q_row_index * column_size..(q_row_index + 1) * column_size];
+        let q_i = &mut Q[q_row_index * column_size as usize..(q_row_index + 1) * column_size as usize];
         key_to_aes_rng(k).fill_bytes(q_i);
         let k = q_i.to_vec();
-        let start = u_row_index * column_size;
-        let end = start + column_size;
+        let start = u_row_index * column_size as usize;
+        let end = start + column_size as usize;
         // Constant time
         if s[q_row_index] {
             xor_in_place(q_i, &U[start..end]);
@@ -672,22 +672,14 @@ fn key_to_aes_rng(key: &Key) -> AesRng {
 }
 
 /// Create a one time pad of required size
-fn hash_to_otp(index: usize, q: &[u8], pad_size: usize) -> Vec<u8> {
+fn hash_to_otp(index: usize, q: &[u8], pad_size: u32) -> Vec<u8> {
     let mut bytes = index.to_be_bytes().to_vec();
     bytes.extend_from_slice(q);
-    let mut pad = vec![0; pad_size];
+    let mut pad = vec![0; pad_size as usize];
     let mut hasher = Shake256::default();
     hasher.update(&bytes);
     hasher.finalize_xof_into(&mut pad);
     pad
-}
-
-fn get_matrix_byte_size(ote_config: &OTEConfig) -> usize {
-    divide_by_8(ote_config.num_ot_extensions * ote_config.num_base_ot as u64) as usize
-}
-
-fn get_matrix_byte_size_for_random(ote_config: &OTEConfig) -> usize {
-    divide_by_8(ote_config.num_ot_extensions * (ote_config.num_base_ot - 1) as u64) as usize
 }
 
 fn get_matrix_and_column_byte_size_for_actively_secure<
@@ -696,23 +688,15 @@ fn get_matrix_and_column_byte_size_for_actively_secure<
     ote_config: &OTEConfig,
 ) -> (usize, usize, usize) {
     let column_size_in_bits =
-        ote_config.num_ot_extensions + STATISTICAL_SECURITY_PARAMETER as u64 * 8;
+        ote_config.num_ot_extensions + STATISTICAL_SECURITY_PARAMETER as u32 * 8;
     let column_size = divide_by_8(column_size_in_bits);
-    let matrix_byte_size = divide_by_8(column_size_in_bits * ote_config.num_base_ot as u64);
+    let matrix_byte_size = divide_by_8(column_size_in_bits * ote_config.num_base_ot as u32);
 
     (
         matrix_byte_size as usize,
         column_size_in_bits as usize,
         column_size as usize,
     )
-}
-
-fn get_column_byte_size(ote_config: &OTEConfig) -> usize {
-    divide_by_8(ote_config.num_ot_extensions) as usize
-}
-
-pub(crate) fn get_row_byte_size(ote_config: &OTEConfig) -> usize {
-    divide_by_8(ote_config.num_base_ot) as usize
 }
 
 #[cfg(test)]
@@ -736,14 +720,15 @@ pub mod tests {
             base_ot_count: u16,
             extended_ot_count: usize,
             ot_ext_choices: Vec<bool>,
-            message_size: usize,
+            message_size: u32,
             B: &<Bls12_381 as Pairing>::G1Affine,
         ) {
+            let message_size = message_size as usize;
             // Perform base OT with roles reversed
             let (base_ot_choices, base_ot_sender_keys, base_ot_receiver_keys) =
                 do_1_of_2_base_ot::<KEY_SIZE>(rng, base_ot_count, B);
 
-            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u64).unwrap();
+            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u32).unwrap();
 
             // Perform OT extension
             let (ext_receiver_setup, U) = OTExtensionReceiverSetup::new(
@@ -780,10 +765,10 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let encryptions = ext_sender_setup
-                .encrypt(messages.clone(), message_size)
+                .encrypt(messages.clone(), message_size as u32)
                 .unwrap();
             let decryptions = ext_receiver_setup
-                .decrypt(encryptions, message_size)
+                .decrypt(encryptions, message_size as u32)
                 .unwrap();
             assert_eq!(decryptions.len(), extended_ot_count);
             cfg_into_iter!(decryptions)
@@ -807,10 +792,10 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let (messages, encryptions) = ext_sender_setup
-                .encrypt_correlated(deltas.clone(), message_size)
+                .encrypt_correlated(deltas.clone(), message_size as u32)
                 .unwrap();
             let decryptions = ext_receiver_setup
-                .decrypt_correlated(encryptions, message_size)
+                .decrypt_correlated(encryptions, message_size as u32)
                 .unwrap();
             assert_eq!(messages.len(), extended_ot_count);
             assert_eq!(decryptions.len(), extended_ot_count);
@@ -827,8 +812,8 @@ pub mod tests {
                 });
 
             // Perform Sender Random OT extension
-            let messages = ext_sender_setup.encrypt_random(message_size);
-            let decryptions = ext_receiver_setup.decrypt_random(message_size);
+            let messages = ext_sender_setup.encrypt_random(message_size as u32);
+            let decryptions = ext_receiver_setup.decrypt_random(message_size as u32);
             cfg_into_iter!(decryptions)
                 .enumerate()
                 .for_each(|(i, dec)| {
@@ -867,14 +852,15 @@ pub mod tests {
             rng: &mut StdRng,
             base_ot_count: u16,
             extended_ot_count: usize,
-            message_size: usize,
+            message_size: u32,
             B: &<Bls12_381 as Pairing>::G1Affine,
         ) {
+            let message_size = message_size as usize;
             // Perform base OT with roles reversed
             let (base_ot_choices, base_ot_sender_keys, base_ot_receiver_keys) =
                 do_1_of_2_base_ot::<KEY_SIZE>(rng, base_ot_count, B);
 
-            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u64).unwrap();
+            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u32).unwrap();
 
             // Perform Receiver Random OT extension
             let (ext_receiver_setup, U) =
@@ -911,10 +897,10 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let encryptions = ext_sender_setup
-                .encrypt(messages.clone(), message_size)
+                .encrypt(messages.clone(), message_size as u32)
                 .unwrap();
             let decryptions = ext_receiver_setup
-                .decrypt(encryptions, message_size)
+                .decrypt(encryptions, message_size as u32)
                 .unwrap();
             assert_eq!(decryptions.len(), extended_ot_count);
             cfg_into_iter!(decryptions)
@@ -929,8 +915,8 @@ pub mod tests {
                 });
 
             // Perform Random OT extension
-            let messages = ext_sender_setup.encrypt_random(message_size);
-            let decryptions = ext_receiver_setup.decrypt_random(message_size);
+            let messages = ext_sender_setup.encrypt_random(message_size as u32);
+            let decryptions = ext_receiver_setup.decrypt_random(message_size as u32);
             cfg_into_iter!(decryptions)
                 .enumerate()
                 .for_each(|(i, dec)| {
@@ -959,14 +945,15 @@ pub mod tests {
             base_ot_count: u16,
             extended_ot_count: usize,
             ot_ext_choices: Vec<bool>,
-            message_size: usize,
+            message_size: u32,
             B: &<Bls12_381 as Pairing>::G1Affine,
         ) {
+            let message_size = message_size as usize;
             // Perform base OT with roles reversed
             let (base_ot_choices, base_ot_sender_keys, base_ot_receiver_keys) =
                 do_1_of_2_base_ot::<KEY_SIZE>(rng, base_ot_count, B);
 
-            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u64).unwrap();
+            let ote_config = OTEConfig::new(base_ot_count, extended_ot_count as u32).unwrap();
 
             // Perform OT extension
             let (ext_receiver_setup, U, hashes) =
@@ -1013,10 +1000,10 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let encryptions = ext_sender_setup
-                .encrypt(messages.clone(), message_size)
+                .encrypt(messages.clone(), message_size as u32)
                 .unwrap();
             let decryptions = ext_receiver_setup
-                .decrypt(encryptions, message_size)
+                .decrypt(encryptions, message_size as u32)
                 .unwrap();
             assert_eq!(decryptions.len(), extended_ot_count);
             cfg_into_iter!(decryptions)

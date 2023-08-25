@@ -40,7 +40,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
     pub fn commit<R: RngCore>(
         rng: &mut R,
         id: ParticipantId,
-        batch_size: usize,
+        batch_size: u32,
         protocol_id: Vec<u8>,
     ) -> (Self, Commitments) {
         let shares_and_salts = (0..batch_size)
@@ -186,7 +186,7 @@ pub mod tests {
     fn cointoss() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        fn check<const SALT_SIZE: usize>(rng: &mut StdRng, batch_size: usize, num_parties: u16) {
+        fn check<const SALT_SIZE: usize>(rng: &mut StdRng, batch_size: u32, num_parties: u16) {
             let label = b"test".to_vec();
             let mut parties = vec![];
             let mut commitments = vec![];

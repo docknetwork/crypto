@@ -8,7 +8,7 @@ use crate::Fr;
 
 pub fn bbs_plus_sig_setup<R: RngCore>(
     rng: &mut R,
-    message_count: usize,
+    message_count: u32,
 ) -> (
     Vec<Fr>,
     SignatureParamsG1<Bls12_381>,
@@ -28,7 +28,7 @@ pub fn bbs_plus_sig_setup_given_messages<R: RngCore>(
     KeypairG2<Bls12_381>,
     SignatureG1<Bls12_381>,
 ) {
-    let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, messages.len());
+    let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, messages.len() as u32);
     let keypair = KeypairG2::<Bls12_381>::generate_using_rng(rng, &params);
     let sig = SignatureG1::<Bls12_381>::new(rng, messages, &keypair.secret_key, &params).unwrap();
     sig.verify(messages, keypair.public_key.clone(), params.clone())
@@ -38,7 +38,7 @@ pub fn bbs_plus_sig_setup_given_messages<R: RngCore>(
 
 pub fn bbs_sig_setup<R: RngCore>(
     rng: &mut R,
-    message_count: usize,
+    message_count: u32,
 ) -> (
     Vec<Fr>,
     SignatureParams23G1<Bls12_381>,
@@ -58,7 +58,7 @@ pub fn bbs_sig_setup_given_messages<R: RngCore>(
     KeypairG2<Bls12_381>,
     Signature23G1<Bls12_381>,
 ) {
-    let params = SignatureParams23G1::<Bls12_381>::generate_using_rng(rng, messages.len());
+    let params = SignatureParams23G1::<Bls12_381>::generate_using_rng(rng, messages.len() as u32);
     let keypair = KeypairG2::<Bls12_381>::generate_using_rng_and_bbs23_params(rng, &params);
     let sig = Signature23G1::<Bls12_381>::new(rng, messages, &keypair.secret_key, &params).unwrap();
     sig.verify(messages, keypair.public_key.clone(), params.clone())
