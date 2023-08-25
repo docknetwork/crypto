@@ -810,7 +810,7 @@ pub(crate) mod tests {
 
     pub fn gen_messages<R: RngCore>(
         rng: &mut R,
-        count: usize,
+        count: u32,
         chunk_bit_size: u8,
     ) -> Vec<CHUNK_TYPE> {
         (0..count)
@@ -822,7 +822,7 @@ pub(crate) mod tests {
     fn encrypt_decrypt() {
         fn check(chunk_bit_size: u8) {
             let mut rng = StdRng::seed_from_u64(0u64);
-            let n = chunks_count::<Fr>(chunk_bit_size) as usize;
+            let n = chunks_count::<Fr>(chunk_bit_size) as u32;
             // Get random numbers that are of chunk_bit_size at most
             let m = gen_messages(&mut rng, n, chunk_bit_size);
             let (gens, g_i, sk, ek, dk) = enc_setup(chunk_bit_size, &mut rng);

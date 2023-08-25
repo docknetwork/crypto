@@ -334,20 +334,19 @@ impl<E: Pairing> R1CSCircomWitness<E> {
         &self,
         n: u32,
     ) -> Result<Vec<E::ScalarField>, ProofSystemError> {
-        let n = n as usize;
-        if self.private_count < n {
+        if self.private_count < n as usize {
             return Err(ProofSystemError::R1CSInsufficientPrivateInputs(
-                self.private_count,
-                n,
+                self.private_count as usize,
+                n as usize,
             ));
         }
-        let mut inputs = Vec::with_capacity(n);
+        let mut inputs = Vec::with_capacity(n as usize);
         for name in self.private.iter() {
-            if n == inputs.len() {
+            if n as usize == inputs.len() {
                 break;
             }
             let vals = self.inputs.get(name).unwrap();
-            let m = cmp::min(n - inputs.len(), vals.len());
+            let m = cmp::min(n as usize - inputs.len(), vals.len());
             inputs.extend_from_slice(&vals[0..m]);
         }
         Ok(inputs)
@@ -419,7 +418,7 @@ mod tests {
 
     #[test]
     fn witness_serialization_deserialization() {
-        let mut rng = StdRng::seed_from_u64(0u64);
+        let mut rng = StdRng::seed_from_u64(0);
         let (msgs, _, _, sig) = bbs_plus_sig_setup(&mut rng, 5);
         let (msgs_23, _, _, sig_23) = bbs_sig_setup(&mut rng, 5);
 

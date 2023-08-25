@@ -218,7 +218,7 @@ impl<G: AffineRepr> ROTSenderSetup<G> {
                         } else {
                             (yR[i] - jT[j - 1]).into_affine()
                         };
-                        hash_to_otp::<G, KEY_SIZE>(i, &self.S, &R.0[i], &jt)
+                        hash_to_otp::<G, KEY_SIZE>(i as u32, &self.S, &R.0[i], &jt)
                     })
                     .collect::<Vec<_>>()
             })
@@ -268,7 +268,7 @@ impl ROTReceiverKeys {
         }
         let keys = cfg_iter!(xS)
             .enumerate()
-            .map(|(i, xs)| hash_to_otp::<G, KEY_SIZE>(i, &S.0, &R[i], xs))
+            .map(|(i, xs)| hash_to_otp::<G, KEY_SIZE>(i as u32, &S.0, &R[i], xs))
             .collect::<Vec<_>>();
         Ok((Self(keys), ReceiverPubKeys(R)))
     }
@@ -485,7 +485,7 @@ impl OneOfTwoROTSenderKeys {
 
 // TODO: Make it use const generic for key size and generic digest
 pub fn hash_to_otp<G: CanonicalSerialize, const KEY_SIZE: u16>(
-    index: usize,
+    index: u32,
     s: &G,
     r: &G,
     input: &G,

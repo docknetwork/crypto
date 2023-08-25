@@ -253,7 +253,7 @@ impl OTExtensionReceiverSetup {
         cfg_into_iter!(0..self.ote_config.num_ot_extensions as usize)
             .map(|i| {
                 let t = &self.T.0[i * row_byte_size..(i + 1) * row_byte_size as usize];
-                hash_to_otp(i, &t, message_size)
+                hash_to_otp(i as u32, &t, message_size)
             })
             .collect()
     }
@@ -278,7 +278,7 @@ impl OTExtensionReceiverSetup {
                 let t = &T.0[i * row_byte_size..(i + 1) * row_byte_size];
                 xor(
                     if !ot_extension_choices[i] { &e1 } else { &e2 },
-                    &hash_to_otp(i, &t, message_size),
+                    &hash_to_otp(i as u32, &t, message_size),
                 )
             })
             .collect())
@@ -305,7 +305,7 @@ impl OTExtensionReceiverSetup {
                 let t = &T.0[i * row_byte_size..(i + 1) * row_byte_size];
                 xor(
                     if !ot_extension_choices[i] { &zero } else { &e },
-                    &hash_to_otp(i, &t, message_size),
+                    &hash_to_otp(i as u32, &t, message_size),
                 )
             })
             .collect())
@@ -574,8 +574,8 @@ impl OTExtensionSenderSetup {
         cfg_into_iter!(0..self.ote_config.num_ot_extensions as usize)
             .map(|i| {
                 let q = &self.Q.0[i * row_byte_size..(i + 1) * row_byte_size];
-                let x1 = hash_to_otp(i, &q, message_size);
-                let x2 = hash_to_otp(i, &xor(&q, &self.base_ot_choices), message_size);
+                let x1 = hash_to_otp(i as u32, &q, message_size);
+                let x2 = hash_to_otp(i as u32, &xor(&q, &self.base_ot_choices), message_size);
                 (x1, x2)
             })
             .collect()
@@ -599,10 +599,10 @@ impl OTExtensionSenderSetup {
             .enumerate()
             .map(|(i, (m1, m2))| {
                 let q = &Q.0[i * row_byte_size..(i + 1) * row_byte_size];
-                let e1 = xor(&m1, &hash_to_otp(i, &q, message_size));
+                let e1 = xor(&m1, &hash_to_otp(i as u32, &q, message_size));
                 let e2 = xor(
                     &m2,
-                    &hash_to_otp(i, &xor(&q, base_ot_choices), message_size),
+                    &hash_to_otp(i as u32, &xor(&q, base_ot_choices), message_size),
                 );
                 (e1, e2)
             })
@@ -627,9 +627,9 @@ impl OTExtensionSenderSetup {
             .enumerate()
             .map(|(i, delta)| {
                 let q = &Q.0[i * row_byte_size..(i + 1) * row_byte_size];
-                let x1 = hash_to_otp(i, &q, message_size);
+                let x1 = hash_to_otp(i as u32, &q, message_size);
                 let x2 = delta(&x1);
-                let e = xor(&x2, &hash_to_otp(i, &xor(&q, &s), message_size));
+                let e = xor(&x2, &hash_to_otp(i as u32, &xor(&q, &s), message_size));
                 ((x1, x2), e)
             })
             .collect::<Vec<_>>()
@@ -706,7 +706,7 @@ fn key_to_aes_rng(key: &Key) -> AesRng {
 }
 
 /// Create a one time pad of required size
-fn hash_to_otp(index: usize, q: &[u8], pad_size: u32) -> Vec<u8> {
+fn hash_to_otp(index: u32, q: &[u8], pad_size: u32) -> Vec<u8> {
     let mut bytes = index.to_be_bytes().to_vec();
     bytes.extend_from_slice(q);
     let mut pad = vec![0; pad_size as usize];
