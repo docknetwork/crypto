@@ -8,9 +8,7 @@ use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::*;
 use ark_std::cfg_into_iter;
 use serde_with::serde_as;
-use utils::{
-    affine_group_from_slices, serde_utils::ArkObjectBytes,
-};
+use utils::{affine_group_from_slices, serde_utils::ArkObjectBytes};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

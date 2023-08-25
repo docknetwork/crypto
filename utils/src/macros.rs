@@ -6,7 +6,7 @@ macro_rules! concat_slices {
     }
 }
 
-/// Concatenates provided byte slices and hashes result to a point on the curve. Returns as Affine coordinates. 
+/// Concatenates provided byte slices and hashes result to a point on the curve. Returns as Affine coordinates.
 #[macro_export]
 macro_rules! affine_group_from_slices {
     ($($arg: expr),+) => {

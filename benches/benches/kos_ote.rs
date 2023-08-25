@@ -119,7 +119,10 @@ fn kos_ote(c: &mut Criterion) {
             b.iter(|| {
                 ext_receiver_setup
                     .clone()
-                    .decrypt(black_box(encryptions.clone()), black_box(message_size as u32))
+                    .decrypt(
+                        black_box(encryptions.clone()),
+                        black_box(message_size as u32),
+                    )
                     .unwrap()
             })
         });
