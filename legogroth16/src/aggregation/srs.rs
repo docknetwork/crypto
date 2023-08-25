@@ -372,10 +372,10 @@ pub fn setup_fake_srs<E: Pairing, R: Rng>(rng: &mut R, size: u32) -> GenericSRS<
 
     #[cfg(not(feature = "parallel"))]
     {
-        g_alpha_powers = structured_generators_scalar_power(2 * size, &g, &alpha);
-        g_beta_powers = structured_generators_scalar_power(2 * size, &g, &beta);
-        h_alpha_powers = structured_generators_scalar_power(2 * size, &h, &alpha);
-        h_beta_powers = structured_generators_scalar_power(2 * size, &h, &beta);
+        g_alpha_powers = structured_generators_scalar_power(2 * size as usize, &g, &alpha);
+        g_beta_powers = structured_generators_scalar_power(2 * size as usize, &g, &beta);
+        h_alpha_powers = structured_generators_scalar_power(2 * size as usize, &h, &alpha);
+        h_beta_powers = structured_generators_scalar_power(2 * size as usize, &h, &beta);
     }
 
     debug_assert!(h_alpha_powers[0] == E::G2Affine::generator());

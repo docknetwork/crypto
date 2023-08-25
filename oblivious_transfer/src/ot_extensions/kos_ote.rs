@@ -204,7 +204,7 @@ impl OTExtensionReceiverSetup {
                         F::zero()
                     };
                     let tau_i = (tau_i.0 * m, tau_i.1 * m);
-                    let mut t_B_i = hash_to_field(i, &t, &hasher);
+                    let mut t_B_i = hash_to_field(i as u32, &t, &hasher);
                     t_B_i = (tau_i.0 - t_B_i.0, tau_i.1 - t_B_i.1);
                     t_B_i
                 })
@@ -325,8 +325,8 @@ impl OTExtensionSenderSetup {
             .map(|(i, alpha_i)| {
                 let hasher = <DefaultFieldHasher<D> as HashToField<F>>::new(b"KOS-OTE");
                 let q = &self.Q.0[i * row_byte_size..(i + 1) * row_byte_size];
-                let t_A_i = hash_to_field(i, &q, &hasher);
-                let mut tau_i = hash_to_field(i, &xor(&q, &self.base_ot_choices), &hasher);
+                let t_A_i = hash_to_field(i as u32, &q, &hasher);
+                let mut tau_i = hash_to_field(i as u32, &xor(&q, &self.base_ot_choices), &hasher);
                 tau_i = (tau_i.0 - t_A_i.0 + alpha_i.0, tau_i.1 - t_A_i.1 + alpha_i.1);
                 (t_A_i, tau_i)
             })
@@ -367,7 +367,7 @@ fn gen_randomness(a: u32, b: u32, U: &BitMatrix, output_size: u32) -> Vec<u8> {
 }
 
 pub fn hash_to_field<F: PrimeField, D: Default + DynDigest + Clone>(
-    index: usize,
+    index: u32,
     q: &[u8],
     hasher: &DefaultFieldHasher<D>,
 ) -> (F, F) {

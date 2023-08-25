@@ -148,7 +148,7 @@ impl<E: Pairing> BBSSignatureShare<E> {
             &phase1.e[sig_index_in_batch],
             &phase1.masked_rs[sig_index_in_batch],
             &phase1.masked_signing_key_shares[sig_index_in_batch],
-            sig_index_in_batch,
+            sig_index_in_batch as u32,
             phase2,
         );
         Ok(Self {

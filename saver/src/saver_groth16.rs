@@ -297,7 +297,7 @@ mod tests {
             let gens = EncryptionGens::<Bls12_381>::new_using_rng(&mut rng);
             let n = chunks_count::<Fr>(chunk_bit_size);
             // Get random numbers that are of chunk_bit_size at most
-            let msgs = gen_messages(&mut rng, n as usize, chunk_bit_size);
+            let msgs = gen_messages(&mut rng, n as u32, chunk_bit_size);
             let msgs_as_field_elems = msgs.iter().map(|m| Fr::from(*m as u64)).collect::<Vec<_>>();
 
             let circuit = BitsizeCheckCircuit::new(chunk_bit_size, Some(n), None, true);
