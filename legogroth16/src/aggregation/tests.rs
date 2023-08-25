@@ -144,7 +144,7 @@ fn legogroth16_aggregation() {
     let all_inputs = (0..nproofs).map(|_| inputs.clone()).collect::<Vec<_>>();
 
     let start = Instant::now();
-    for i in 0..nproofs {
+    for i in 0..nproofs as usize {
         verify_proof(&pvk, &proofs[i], &inputs).unwrap();
     }
     println!(
@@ -295,7 +295,7 @@ fn legogroth16_aggregation_multiply() {
 
     // verify one by one
     let start = Instant::now();
-    for i in 0..nproofs {
+    for i in 0..nproofs as usize {
         verify_proof(&pvk, &proofs[i], &all_inputs[i]).unwrap();
     }
     println!(
@@ -432,7 +432,7 @@ fn groth16_aggregation() {
     let all_inputs = (0..nproofs).map(|_| inputs.clone()).collect::<Vec<_>>();
 
     let start = Instant::now();
-    for i in 0..nproofs {
+    for i in 0..nproofs as usize {
         ark_groth16::Groth16::<Bls12_381>::verify_proof(&pvk, &proofs[i], &inputs).unwrap();
     }
     println!(
@@ -516,7 +516,7 @@ fn groth16_aggregation_multiply() {
 
     // verify one by one
     let start = Instant::now();
-    for i in 0..nproofs {
+    for i in 0..nproofs as usize {
         ark_groth16::Groth16::<Bls12_381>::verify_proof(&pvk, &proofs[i], &all_inputs[i]).unwrap();
     }
     println!(

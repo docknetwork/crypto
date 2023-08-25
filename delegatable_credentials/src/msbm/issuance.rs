@@ -18,7 +18,7 @@ use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 /// of attributes
 #[derive(Clone, Debug)]
 pub struct Credential<E: Pairing> {
-    pub max_attributes_per_commitment: u64,
+    pub max_attributes_per_commitment: u32,
     pub attributes: Vec<Vec<E::ScalarField>>,
     pub commitments: Vec<SetCommitment<E>>,
     pub openings: Vec<SetCommitmentOpening<E>>,
@@ -29,7 +29,7 @@ pub struct Credential<E: Pairing> {
 /// of attributes
 #[derive(Clone, Debug)]
 pub struct CredentialWithoutOpenings<E: Pairing> {
-    pub max_attributes_per_commitment: u64,
+    pub max_attributes_per_commitment: u32,
     pub attributes: Vec<Vec<E::ScalarField>>,
     pub commitments: Vec<SetCommitment<E>>,
     pub signature: Signature<E>,
@@ -49,9 +49,9 @@ impl<E: Pairing> Credential<E> {
         rng: &mut R,
         attributes: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,
-        update_key_index: Option<usize>,
+        update_key_index: Option<u32>,
         secret_key: &RootIssuerSecretKey<E>,
-        max_attributes_per_commitment: usize,
+        max_attributes_per_commitment: u32,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
         let (signature, commitments, openings, uk) = Signature::new(
@@ -65,7 +65,7 @@ impl<E: Pairing> Credential<E> {
         )?;
         Ok((
             Self {
-                max_attributes_per_commitment: max_attributes_per_commitment as u64,
+                max_attributes_per_commitment,
                 attributes,
                 commitments,
                 openings,
@@ -86,7 +86,7 @@ impl<E: Pairing> Credential<E> {
         attributes: Vec<E::ScalarField>,
         user_secret_key: &UserSecretKey<E>,
         X_0: &E::G1Affine,
-        new_update_key_index: Option<usize>,
+        new_update_key_index: Option<u32>,
         update_key: &UpdateKey<E>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
@@ -112,13 +112,21 @@ impl<E: Pairing> Credential<E> {
         mut self,
         user_secret_key: &UserSecretKey<E>,
         X_0: &E::G1Affine,
-        new_update_key_index: Option<usize>,
+        new_update_key_index: Option<u32>,
         update_key: &UpdateKey<E>,
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
         let mut new_uk = None;
         if let Some(l) = new_update_key_index {
-            assert!(l as u64 <= (update_key.start_index + update_key.keys.len() as u64));
-            new_uk = Some(update_key.trim_key(self.attributes.len(), l));
+            assert!(l < update_key.end_index() as u32);
+            new_uk = Some(
+                update_key.trim_key(
+                    self.attributes
+                        .len()
+                        .try_into()
+                        .map_err(|_| DelegationError::TooManyAttributes(self.attributes.len()))?,
+                    l,
+                ),
+            );
         }
         self.signature = self.signature.to_orphan(user_secret_key, X_0);
         Ok((self, new_uk))
@@ -197,7 +205,7 @@ impl<E: Pairing> Credential<E> {
             mu,
             &psi,
             &chi,
-            self.max_attributes_per_commitment as usize,
+            self.max_attributes_per_commitment,
             set_comm_srs,
         )?;
         Ok((
@@ -265,7 +273,7 @@ impl<E: Pairing> Credential<E> {
             uk.verify(
                 &self.signature,
                 issuer_public_key,
-                self.max_attributes_per_commitment as usize,
+                self.max_attributes_per_commitment,
                 set_comm_srs,
             )?;
         }
@@ -447,9 +455,9 @@ impl<E: Pairing> CredentialWithoutOpenings<E> {
         challenge: &E::ScalarField,
         attributes: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,
-        update_key_index: Option<usize>,
+        update_key_index: Option<u32>,
         secret_key: &RootIssuerSecretKey<E>,
-        max_attributes_per_commitment: usize,
+        max_attributes_per_commitment: u32,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
         let (signature, commitments, uk) = Signature::new_with_given_commitment_to_randomness(
@@ -467,7 +475,7 @@ impl<E: Pairing> CredentialWithoutOpenings<E> {
         )?;
         Ok((
             Self {
-                max_attributes_per_commitment: max_attributes_per_commitment as u64,
+                max_attributes_per_commitment: max_attributes_per_commitment,
                 attributes,
                 commitments,
                 signature,
@@ -506,7 +514,7 @@ pub mod tests {
 
     pub fn setup(
         rng: &mut StdRng,
-        max_attributes: usize,
+        max_attributes: u32,
     ) -> (
         SetCommitmentSRS<Bls12_381>,
         Fr,

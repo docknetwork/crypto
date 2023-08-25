@@ -67,9 +67,9 @@ impl<E: Pairing> Signature<E> {
         rng: &mut R,
         messages: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,
-        update_key_index: Option<usize>,
+        update_key_index: Option<u32>,
         secret_key: &RootIssuerSecretKey<E>,
-        max_attributes_per_commitment: usize,
+        max_attributes_per_commitment: u32,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<
         (
@@ -82,9 +82,9 @@ impl<E: Pairing> Signature<E> {
     > {
         let k = messages.len();
         assert!(k > 0);
-        if set_comm_srs.size() < max_attributes_per_commitment {
+        if set_comm_srs.size() < max_attributes_per_commitment as usize {
             return Err(DelegationError::InsufficientSetCommitmentSRSSize(
-                max_attributes_per_commitment,
+                max_attributes_per_commitment as usize,
                 set_comm_srs.size(),
             ));
         }
@@ -134,9 +134,9 @@ impl<E: Pairing> Signature<E> {
         challenge: &E::ScalarField,
         messages: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,
-        update_key_index: Option<usize>,
+        update_key_index: Option<u32>,
         secret_key: &RootIssuerSecretKey<E>,
-        max_attributes_per_commitment: usize,
+        max_attributes_per_commitment: u32,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Vec<SetCommitment<E>>, Option<UpdateKey<E>>), DelegationError> {
         let k = messages.len();
@@ -208,7 +208,7 @@ impl<E: Pairing> Signature<E> {
         mu: &E::ScalarField,
         psi: &E::ScalarField,
         chi: &E::ScalarField,
-        max_attributes_per_credential: usize,
+        max_attributes_per_credential: u32,
         srs: &SetCommitmentSRS<E>,
     ) -> Result<
         (
@@ -251,7 +251,7 @@ impl<E: Pairing> Signature<E> {
         &self,
         messages: Vec<E::ScalarField>,
         insert_at_index: usize,
-        new_update_key_index: Option<usize>,
+        new_update_key_index: Option<u32>,
         update_key: &UpdateKey<E>,
         rho: E::ScalarField,
         srs: &SetCommitmentSRS<E>,
@@ -293,14 +293,14 @@ impl<E: Pairing> Signature<E> {
 
         let mut uk = None;
         if let Some(l) = new_update_key_index {
-            if (l > update_key.end_index()) || ((l as u64) < update_key.start_index) {
+            if (l > update_key.end_index() as u32) || (l < update_key.start_index) {
                 return Err(DelegationError::UnsupportedIndexInUpdateKey(
-                    l,
+                    l as usize,
                     update_key.start_index as usize,
                     update_key.end_index(),
                 ));
             }
-            uk = Some(update_key.trim_key(insert_at_index + 1, l));
+            uk = Some(update_key.trim_key(insert_at_index as u32 + 1, l));
         }
         Ok((new_sig, com, o, uk))
     }
@@ -489,12 +489,15 @@ impl<E: Pairing> Signature<E> {
         rng: &mut R,
         commitments: &[SetCommitment<E>],
         user_public_key: &UserPublicKey<E>,
-        update_key_index: Option<usize>,
+        update_key_index: Option<u32>,
         secret_key: &RootIssuerSecretKey<E>,
-        max_attributes_per_commitment: usize,
+        max_attributes_per_commitment: u32,
         srs: &SetCommitmentSRS<E>,
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
-        let k = commitments.len();
+        let k = commitments
+            .len()
+            .try_into()
+            .map_err(|_| DelegationError::TooManyCommitments(commitments.len()))?;
 
         let y = E::ScalarField::rand(rng);
         let y_inv = y.inverse().unwrap();
@@ -517,28 +520,31 @@ impl<E: Pairing> Signature<E> {
         let mut uk = None;
         if let Some(k_prime) = update_key_index {
             if k_prime < k {
-                return Err(DelegationError::InvalidUpdateKeyIndex(k_prime, k as usize));
+                return Err(DelegationError::InvalidUpdateKeyIndex(
+                    k_prime as usize,
+                    k as usize,
+                ));
             }
-            if k_prime >= sk_merc.len() {
+            if k_prime as usize >= sk_merc.len() {
                 return Err(
                     DelegationError::CannotCreateUpdateKeyOfRequiredSizeFromSecretKey(
-                        k_prime,
+                        k_prime as usize,
                         sk_merc.len(),
                     ),
                 );
             }
             let powers = &srs.P1[0..max_attributes_per_commitment as usize];
-            let key: Vec<Vec<<E as Pairing>::G1Affine>> = cfg_into_iter!(k as usize..=k_prime)
+            let key: Vec<Vec<<E as Pairing>::G1Affine>> = cfg_into_iter!(k..=k_prime)
                 .map(|i| {
                     let p = cfg_iter!(powers)
-                        .map(|p| p.mul(sk_merc[i] * y_inv))
+                        .map(|p| p.mul(sk_merc[i as usize] * y_inv))
                         .collect::<Vec<_>>();
                     E::G1::normalize_batch(&p)
                 })
                 .collect::<Vec<_>>();
             uk = Some(UpdateKey {
-                start_index: k as u64,
-                max_attributes_per_commitment: max_attributes_per_commitment as u64,
+                start_index: k as u32,
+                max_attributes_per_commitment: max_attributes_per_commitment,
                 keys: key,
             })
         }
@@ -684,7 +690,7 @@ pub mod tests {
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 1);
-            assert_eq!(uk.keys.len(), j);
+            assert_eq!(uk.keys.len(), j as usize);
             uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
 
             let (sig, comms, opns, uk, new_upk) = sig
@@ -712,7 +718,7 @@ pub mod tests {
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 1);
-            assert_eq!(uk.keys.len(), j - 1 + 1);
+            assert_eq!(uk.keys.len(), (j - 1 + 1) as usize);
             uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
         }
 
@@ -784,7 +790,7 @@ pub mod tests {
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 2);
-            assert_eq!(uk.keys.len(), j - 2 + 1);
+            assert_eq!(uk.keys.len(), (j - 2 + 1) as usize);
             uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
 
             let (sig, comms, opns, uk, new_upk) = sig
@@ -812,7 +818,7 @@ pub mod tests {
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 2);
-            assert_eq!(uk.keys.len(), j - 2 + 1);
+            assert_eq!(uk.keys.len(), (j - 2 + 1) as usize);
             uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
         }
 
@@ -859,7 +865,7 @@ pub mod tests {
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 3);
-            assert_eq!(uk.keys.len(), j - 3 + 1);
+            assert_eq!(uk.keys.len(), (j - 3 + 1) as usize);
             uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
         }
 
@@ -926,7 +932,7 @@ pub mod tests {
             .unwrap();
             let uk = uk.unwrap();
             assert_eq!(uk.start_index, 4);
-            assert_eq!(uk.keys.len(), j - 4 + 1);
+            assert_eq!(uk.keys.len(), (j - 4 + 1) as usize);
             uk.verify(&sig, prep_ipk.clone(), t, &set_comm_srs).unwrap();
         }
     }

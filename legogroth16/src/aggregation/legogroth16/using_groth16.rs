@@ -89,9 +89,13 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng, T: Transcript>(
 
     let mut source1 = Vec::with_capacity(3);
     let mut source2 = Vec::with_capacity(3);
+    let public_inputs_len = public_inputs
+        .len()
+        .try_into()
+        .map_err(|_| AggregationError::PublicInputsTooLarge(public_inputs.len()))?;
 
-    let r_powers = powers(&r, public_inputs.len());
-    let r_sum = sum_of_powers::<E::ScalarField>(&r, public_inputs.len());
+    let r_powers = powers(&r, public_inputs_len);
+    let r_sum = sum_of_powers::<E::ScalarField>(&r, public_inputs_len);
 
     // Check aggregate pairing product equation
 

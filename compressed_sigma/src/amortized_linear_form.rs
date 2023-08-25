@@ -18,7 +18,7 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomCommitment<G: AffineRepr> {
     /// Maximum size of the witness vectors
-    pub max_size: u64,
+    pub max_size: u32,
     pub r: Vec<G::ScalarField>,
     pub rho: G::ScalarField,
     pub A: G,
@@ -39,15 +39,15 @@ where
         rng: &mut R,
         g: &[G],
         h: &G,
-        max_size: usize,
+        max_size: u32,
         linear_form: &L,
         blindings: Option<Vec<G::ScalarField>>,
     ) -> Result<Self, CompSigmaError> {
-        if g.len() < max_size {
+        if g.len() < max_size as usize {
             return Err(CompSigmaError::VectorTooShort);
         }
         let r = if let Some(blindings) = blindings {
-            if blindings.len() != max_size {
+            if blindings.len() != max_size as usize {
                 return Err(CompSigmaError::VectorLenMismatch);
             }
             blindings
@@ -59,7 +59,7 @@ where
         // h * rho is done separately to avoid copying g
         let A = G::Group::msm_unchecked(g, &r).add(&h.mul_bigint(rho.into_bigint()));
         Ok(Self {
-            max_size: max_size as u64,
+            max_size: max_size,
             r,
             rho,
             A: A.into_affine(),
@@ -81,12 +81,7 @@ where
         let challenge_powers = get_n_powers(challenge.clone(), count_commitments);
 
         // z_tilde_i = r_i + \sum_{j in count_commitments}(witnesses_j_i * challenge^j)
-        let z_tilde = amortized_response(
-            self.max_size as usize,
-            &challenge_powers,
-            &self.r,
-            witnesses,
-        );
+        let z_tilde = amortized_response(self.max_size, &challenge_powers, &self.r, witnesses);
 
         // phi = rho + \sum_{j}(gamma_j * c^j)
         let phi = self.rho + inner_product(&challenge_powers, gammas);
@@ -102,7 +97,7 @@ where
         &self,
         g: &[G],
         h: &G,
-        max_size: usize,
+        max_size: u32,
         commitments: &[G],
         y: &[G::ScalarField],
         linear_form: &L,
@@ -110,13 +105,13 @@ where
         t: &G::ScalarField,
         challenge: &G::ScalarField,
     ) -> Result<(), CompSigmaError> {
-        if g.len() < max_size {
+        if g.len() < max_size as usize {
             return Err(CompSigmaError::VectorTooShort);
         }
         if commitments.len() != y.len() {
             return Err(CompSigmaError::VectorLenMismatch);
         }
-        if self.z_tilde.len() != max_size {
+        if self.z_tilde.len() != max_size as usize {
             return Err(CompSigmaError::VectorLenMismatch);
         }
 
@@ -283,7 +278,7 @@ mod tests {
             unimplemented!()
         }
 
-        fn pad(&self, _new_size: usize) -> Self {
+        fn pad(&self, _new_size: u32) -> Self {
             unimplemented!()
         }
     }
@@ -297,7 +292,7 @@ mod tests {
 
     #[test]
     fn amortization() {
-        fn check(max_size: usize) {
+        fn check(max_size: u32) {
             let mut rng = StdRng::seed_from_u64(0u64);
             let linear_form_1 = TestLinearForm1 {};
             let linear_form_2 = TestLinearForm2 {
@@ -344,12 +339,12 @@ mod tests {
 
             let rand_comm =
                 RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form_1, None).unwrap();
-            assert_eq!(rand_comm.r.len(), max_size);
+            assert_eq!(rand_comm.r.len(), max_size as usize);
             let challenge = Fr::rand(&mut rng);
             let response = rand_comm
                 .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
                 .unwrap();
-            assert_eq!(response.z_tilde.len(), max_size);
+            assert_eq!(response.z_tilde.len(), max_size as usize);
             response
                 .is_valid(
                     &g,
@@ -366,12 +361,12 @@ mod tests {
 
             let rand_comm =
                 RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form_2, None).unwrap();
-            assert_eq!(rand_comm.r.len(), max_size);
+            assert_eq!(rand_comm.r.len(), max_size as usize);
             let challenge = Fr::rand(&mut rng);
             let response = rand_comm
                 .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &challenge)
                 .unwrap();
-            assert_eq!(response.z_tilde.len(), max_size);
+            assert_eq!(response.z_tilde.len(), max_size as usize);
             response
                 .is_valid(
                     &g,
@@ -442,12 +437,12 @@ mod tests {
         let evals = [eval1, eval2, eval3];
         let rand_comm =
             RandomCommitment::new(&mut rng, &g, &h, max_size, &linear_form, None).unwrap();
-        assert_eq!(rand_comm.r.len(), max_size);
+        assert_eq!(rand_comm.r.len(), max_size as usize);
         let c_0 = Fr::rand(&mut rng);
         let response = rand_comm
             .response(vec![&x1, &x2, &x3], &[gamma1, gamma2, gamma3], &c_0)
             .unwrap();
-        assert_eq!(response.z_tilde.len(), max_size);
+        assert_eq!(response.z_tilde.len(), max_size as usize);
         response
             .is_valid(
                 &g,

@@ -57,7 +57,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
     let wasm_bytes = std::fs::read(abs_path(wasm_file_path)).unwrap();
 
     let srs = srs::setup_fake_srs::<Bls12_381, _>(&mut rng, 100);
-    let (prover_srs, ver_srs) = srs.specialize(member_idxs.len() + non_member_idxs.len());
+    let (prover_srs, ver_srs) = srs.specialize((member_idxs.len() + non_member_idxs.len()) as u32);
 
     let mut prover_setup_params = vec![];
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk.clone()));

@@ -223,7 +223,7 @@ mod tests {
 
         fn check(
             rng: &mut StdRng,
-            size: usize,
+            size: u32,
             count_decoys: usize,
             P1: &<Bls12_381 as Pairing>::G1Affine,
             srs: &OneOfNSrs<Bls12_381>,

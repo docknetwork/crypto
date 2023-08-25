@@ -332,8 +332,9 @@ impl<E: Pairing> R1CSCircomWitness<E> {
     /// `Self::set_private` was called.
     pub fn get_first_n_private_inputs(
         &self,
-        n: usize,
+        n: u32,
     ) -> Result<Vec<E::ScalarField>, ProofSystemError> {
+        let n = n as usize;
         if self.private_count < n {
             return Err(ProofSystemError::R1CSInsufficientPrivateInputs(
                 self.private_count,

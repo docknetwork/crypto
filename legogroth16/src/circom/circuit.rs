@@ -45,7 +45,7 @@ impl<E: Pairing> CircomCircuit<E> {
     /// wires that should be committed in the Pedersen commitment included in the proof.  
     pub fn generate_proving_key<R: RngCore>(
         self,
-        commit_witness_count: usize,
+        commit_witness_count: u32,
         rng: &mut R,
     ) -> Result<ProvingKey<E>, Error> {
         generate_random_parameters(self, commit_witness_count, rng)
@@ -152,7 +152,7 @@ pub mod tests {
 
     pub fn generate_params_and_test_circuit<E: Pairing>(
         r1cs_file_path: &str,
-        commit_witness_count: usize,
+        commit_witness_count: u32,
         wires: Option<Vec<E::ScalarField>>,
     ) -> ConstraintSystemRef<E::ScalarField> {
         let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
@@ -168,13 +168,16 @@ pub mod tests {
 
         assert_eq!(
             params.vk.gamma_abc_g1.len(),
-            cs.num_instance_variables() + commit_witness_count
+            cs.num_instance_variables() + commit_witness_count as usize
         );
         assert_eq!(
             params.vk.num_public_inputs() as u64,
             circuit.r1cs.num_public
         );
-        assert_eq!(params.vk.num_committed_witnesses(), commit_witness_count);
+        assert_eq!(
+            params.vk.num_committed_witnesses(),
+            commit_witness_count as usize
+        );
 
         if wires.is_some() {
             circuit.set_wires(wires.unwrap());
@@ -201,7 +204,7 @@ pub mod tests {
     fn multiply2() {
         fn check<E: Pairing>(
             r1cs_file_path: &str,
-            commit_witness_count: usize,
+            commit_witness_count: u32,
             wits: Option<Vec<E::ScalarField>>,
         ) {
             let cs =
@@ -235,7 +238,7 @@ pub mod tests {
     fn test_1() {
         fn check<E: Pairing>(
             r1cs_file_path: &str,
-            commit_witness_count: usize,
+            commit_witness_count: u32,
             wits: Option<Vec<E::ScalarField>>,
         ) {
             let cs =
@@ -268,7 +271,7 @@ pub mod tests {
     fn test_2() {
         fn check<E: Pairing>(
             r1cs_file_path: &str,
-            commit_witness_count: usize,
+            commit_witness_count: u32,
             wits: Option<Vec<E::ScalarField>>,
         ) {
             let cs =
@@ -302,7 +305,7 @@ pub mod tests {
     fn test_3() {
         fn check<E: Pairing>(
             r1cs_file_path: &str,
-            commit_witness_count: usize,
+            commit_witness_count: u32,
             wits: Option<Vec<E::ScalarField>>,
         ) {
             let cs =
@@ -328,7 +331,7 @@ pub mod tests {
     fn test_4() {
         fn check<E: Pairing>(
             r1cs_file_path: &str,
-            commit_witness_count: usize,
+            commit_witness_count: u32,
             wits: Option<Vec<E::ScalarField>>,
         ) {
             let cs =

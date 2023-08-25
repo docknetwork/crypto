@@ -105,7 +105,7 @@ pub struct SignatureG2<E: Pairing> {
 }
 
 impl<E: Pairing> SecretKey<E> {
-    pub fn new<R: RngCore>(rng: &mut R, size: usize) -> Result<Self, DelegationError> {
+    pub fn new<R: RngCore>(rng: &mut R, size: u32) -> Result<Self, DelegationError> {
         if size == 0 {
             return Err(DelegationError::NeedNonZeroSize);
         }
@@ -116,7 +116,7 @@ impl<E: Pairing> SecretKey<E> {
         ))
     }
 
-    pub fn generate_using_seed<D>(seed: &[u8], size: usize) -> Result<Self, DelegationError>
+    pub fn generate_using_seed<D>(seed: &[u8], size: u32) -> Result<Self, DelegationError>
     where
         D: DynDigest + Default + Clone,
     {
@@ -126,7 +126,7 @@ impl<E: Pairing> SecretKey<E> {
         let hasher = <DefaultFieldHasher<D> as HashToField<E::ScalarField>>::new(
             b"MERCURIAL-SIG-KEYGEN-SALT",
         );
-        Ok(Self(hasher.hash_to_field(seed, size)))
+        Ok(Self(hasher.hash_to_field(seed, size as usize)))
     }
 
     /// ConvertSK from the paper.
@@ -435,7 +435,9 @@ mod tests {
         let sk = SecretKey::new(&mut rng, count).unwrap();
         let pk = PublicKey::<Bls12_381>::new(&sk, &P2);
         let prep_pk = PreparedPublicKey::from(pk.clone());
-        assert!(count == sk.size() && sk.size() == pk.size() && pk.size() == prep_pk.size());
+        assert!(
+            count as usize == sk.size() && sk.size() == pk.size() && pk.size() == prep_pk.size()
+        );
 
         let msgs = (0..count)
             .map(|_| <Bls12_381 as Pairing>::G1Affine::rand(&mut rng))

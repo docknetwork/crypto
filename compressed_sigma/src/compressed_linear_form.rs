@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn compression() {
-        fn check_compression(size: usize) {
+        fn check_compression(size: u32) {
             let mut rng = StdRng::seed_from_u64(0u64);
             let mut linear_form = TestLinearForm {
                 constants: (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>(),

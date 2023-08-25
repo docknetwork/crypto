@@ -148,7 +148,7 @@ impl<E: Pairing> WitnessCalculator<E> {
 
             let mut seen_signals = 0;
             for (i, value) in values.into_iter().enumerate() {
-                let f_arr = to_array32::<E>(&value, field_element_size as usize);
+                let f_arr = to_array32::<E>(&value, field_element_size);
                 for j in 0..field_element_size {
                     self.instance.write_shared_rw_memory(
                         &mut self.store,
@@ -244,7 +244,7 @@ fn from_array32<E: Pairing>(arr: Vec<u32>) -> E::ScalarField {
 
 /// Will return a little endian representation where each element of the array represent a 32-bit
 /// chunk of the input
-fn to_array32<E: Pairing>(s: &E::ScalarField, size: usize) -> Vec<u32> {
+fn to_array32<E: Pairing>(s: &E::ScalarField, size: u32) -> Vec<u32> {
     let mut res = vec![0; size as usize];
     let bytes = s.into_bigint().to_bytes_le();
     let l = bytes.len();

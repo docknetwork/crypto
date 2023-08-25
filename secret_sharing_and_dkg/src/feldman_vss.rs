@@ -80,10 +80,7 @@ impl<F: PrimeField> Share<F> {
         if self.threshold > len {
             return Err(SSError::BelowThreshold(self.threshold, len));
         }
-        let powers = powers(
-            &G::ScalarField::from(self.id as u64),
-            self.threshold as usize,
-        );
+        let powers = powers(&G::ScalarField::from(self.id as u64), self.threshold as u32);
         if G::Group::msm_unchecked(&commitment_coeffs.0, &powers)
             != ck.into().mul_bigint(self.share.into_bigint())
         {

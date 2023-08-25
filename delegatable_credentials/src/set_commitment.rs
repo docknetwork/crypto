@@ -95,7 +95,7 @@ impl<E: Pairing> SetCommitmentSRS<E> {
     /// Generate a trapdoor and then create the SRS and return both
     pub fn generate_with_random_trapdoor<R: RngCore, D: Digest>(
         rng: &mut R,
-        max_size: usize,
+        max_size: u32,
         setup_params_label: Option<&[u8]>,
     ) -> (Self, E::ScalarField) {
         let td = E::ScalarField::rand(rng);
@@ -106,7 +106,7 @@ impl<E: Pairing> SetCommitmentSRS<E> {
     /// Generates the trapdoor deterministically from the given seed and then generate SRS from it.
     pub fn generate_with_trapdoor_seed<R: RngCore, D>(
         rng: &mut R,
-        max_size: usize,
+        max_size: u32,
         trapdoor_seed: &[u8],
         setup_params_label: Option<&[u8]>,
     ) -> (Self, E::ScalarField)
@@ -124,7 +124,7 @@ impl<E: Pairing> SetCommitmentSRS<E> {
     pub fn generate_with_trapdoor<R: RngCore, D: Digest>(
         rng: &mut R,
         td: &E::ScalarField,
-        max_size: usize,
+        max_size: u32,
         setup_params_label: Option<&[u8]>,
     ) -> Self {
         let (P1, P2) = match setup_params_label {
@@ -132,8 +132,8 @@ impl<E: Pairing> SetCommitmentSRS<E> {
             None => generator_pair::<E, R>(rng),
         };
         let powers = powers(td, max_size + 1);
-        let P1_table = WindowTable::new(max_size + 1, P1.into_group());
-        let P2_table = WindowTable::new(max_size + 1, P2.into_group());
+        let P1_table = WindowTable::new(max_size as usize + 1, P1.into_group());
+        let P2_table = WindowTable::new(max_size as usize + 1, P2.into_group());
         Self {
             P1: E::G1::normalize_batch(&P1_table.multiply_many(&powers)),
             P2: E::G2::normalize_batch(&P2_table.multiply_many(&powers)),
@@ -715,7 +715,7 @@ mod tests {
 
         fn check<R: RngCore>(
             rng: &mut R,
-            set_size: usize,
+            set_size: u32,
             pp: &SetCommitmentSRS<Bls12_381>,
             trapdoor: &Fr,
         ) {
@@ -898,7 +898,7 @@ mod tests {
         let mut subsets = vec![];
         let mut witnesses = vec![];
         let mut time_to_verify_witnesses_individually = std::time::Duration::new(0, 0);
-        for i in 0..count {
+        for i in 0..count as usize {
             let (comm, o) = SetCommitment::new(&mut rng, sets[i].clone(), &srs).unwrap();
             let mut iter = sets[i].iter().cloned();
             let mut subset = BTreeSet::new();
@@ -1077,7 +1077,7 @@ mod tests {
         let step = 10;
         let mut set = BTreeSet::new();
 
-        for _ in (step..max_size).step_by(step) {
+        for _ in (step..max_size).step_by(step as usize) {
             let new_elems = (0..step)
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<BTreeSet<_>>();

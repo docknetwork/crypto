@@ -143,10 +143,7 @@ impl<F: PrimeField> VerifiableShare<F> {
         // Check commitment_coeffs[0] + commitment_coeffs[1]*id + commitment_coeffs[2]*{id^2} + ... commitment_coeffs[threshold-1]*{id^threshold-1} == g*share.s + h*share.t
         // => commitment_coeffs[0] + commitment_coeffs[1]*id + commitment_coeffs[2]*{id^2} + ... commitment_coeffs[threshold-1]*{id^threshold-1} * {g*share.s + h*share.t}*-1 == 1
 
-        let powers = powers(
-            &G::ScalarField::from(self.id as u64),
-            self.threshold as usize,
-        );
+        let powers = powers(&G::ScalarField::from(self.id as u64), self.threshold as u32);
         if G::Group::msm_unchecked(&commitment_coeffs.0, &powers)
             != comm_key.commit(&self.secret_share, &self.blinding_share)
         {

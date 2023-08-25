@@ -88,7 +88,13 @@ pub fn aggregate_proofs<E: Pairing, T: Transcript>(
     let r = transcript.challenge_scalar::<E::ScalarField>(b"r-random-fiatshamir");
 
     // 1,r, r^2, r^3, r^4 ...
-    let r_vec: Vec<E::ScalarField> = powers(&r, proofs.len());
+    let r_vec: Vec<E::ScalarField> = powers(
+        &r,
+        proofs
+            .len()
+            .try_into()
+            .map_err(|_| AggregationError::TooManyProofs(proofs.len()))?,
+    );
     // 1,r^-1, r^-2, r^-3
     let mut r_inv = r_vec.clone();
     batch_inversion(&mut r_inv);

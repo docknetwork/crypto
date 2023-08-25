@@ -110,11 +110,11 @@ macro_rules! impl_homomorphism {
                 self.0.len()
             }
 
-            fn pad(&self, new_size: usize) -> Self {
+            fn pad(&self, new_size: u32) -> Self {
                 let size = self.size();
                 let mut f = self.0.clone();
-                if new_size > size {
-                    f.append(&mut vec![$G::zero(); new_size - size]);
+                if new_size as usize > size {
+                    f.append(&mut vec![$G::zero(); new_size as usize - size]);
                 }
                 Self(f)
             }

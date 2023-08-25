@@ -215,7 +215,8 @@ impl<E: Pairing> GenericSRS<E> {
     /// proofs to aggregate. The number of proofs MUST BE a power of two, it
     /// panics otherwise. The number of proofs must be inferior to half of the
     /// size of the generic srs otherwise it panics.
-    pub fn specialize(&self, num_proofs: usize) -> (ProverSRS<E>, VerifierSRS<E>) {
+    pub fn specialize(&self, num_proofs: u32) -> (ProverSRS<E>, VerifierSRS<E>) {
+        let num_proofs = num_proofs as usize;
         assert!(num_proofs.is_power_of_two());
         let tn = 2 * num_proofs; // size of the CRS we need
         assert!(self.g_alpha_powers.len() >= tn);
@@ -332,7 +333,7 @@ impl<E: Pairing> GenericSRS<E> {
 
 /// Generates a SRS of the given size. It must NOT be used in production, only
 /// in testing, as this is insecure given we know the secret exponent of the SRS.
-pub fn setup_fake_srs<E: Pairing, R: Rng>(rng: &mut R, size: usize) -> GenericSRS<E> {
+pub fn setup_fake_srs<E: Pairing, R: Rng>(rng: &mut R, size: u32) -> GenericSRS<E> {
     let alpha = E::ScalarField::rand(rng);
     let beta = E::ScalarField::rand(rng);
     let g = E::G1::generator();
@@ -351,21 +352,21 @@ pub fn setup_fake_srs<E: Pairing, R: Rng>(rng: &mut R, size: usize) -> GenericSR
         let beta = &beta;
         let g_alpha_powers = &mut g_alpha_powers;
         s.spawn(move |_| {
-            *g_alpha_powers = structured_generators_scalar_power(2 * size, g, alpha);
+            *g_alpha_powers = structured_generators_scalar_power(2 * size as usize, g, alpha);
         });
         let g_beta_powers = &mut g_beta_powers;
         s.spawn(move |_| {
-            *g_beta_powers = structured_generators_scalar_power(2 * size, g, beta);
+            *g_beta_powers = structured_generators_scalar_power(2 * size as usize, g, beta);
         });
 
         let h_alpha_powers = &mut h_alpha_powers;
         s.spawn(move |_| {
-            *h_alpha_powers = structured_generators_scalar_power(2 * size, h, alpha);
+            *h_alpha_powers = structured_generators_scalar_power(2 * size as usize, h, alpha);
         });
 
         let h_beta_powers = &mut h_beta_powers;
         s.spawn(move |_| {
-            *h_beta_powers = structured_generators_scalar_power(2 * size, h, beta);
+            *h_beta_powers = structured_generators_scalar_power(2 * size as usize, h, beta);
         });
     });
 

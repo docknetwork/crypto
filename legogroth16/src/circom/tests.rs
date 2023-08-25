@@ -30,7 +30,7 @@ pub fn abs_path(relative_path: &str) -> String {
 }
 
 pub fn gen_params<E: Pairing>(
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     circuit: CircomCircuit<E>,
 ) -> (ProvingKeyWithLink<E>, ProvingKey<E>) {
     let mut rng = StdRng::seed_from_u64(0);
@@ -52,7 +52,7 @@ pub fn gen_params<E: Pairing>(
 pub fn prove_and_verify_circuit<E: Pairing>(
     circuit: CircomCircuit<E>,
     params: &ProvingKey<E>,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
 ) -> Vec<E::ScalarField> {
     let cs = ConstraintSystem::<E::ScalarField>::new_ref();
     circuit.clone().generate_constraints(cs.clone()).unwrap();
@@ -65,7 +65,7 @@ pub fn prove_and_verify_circuit<E: Pairing>(
         .unwrap()
         .into_iter()
         .skip(1 + public_inputs.len())
-        .take(commit_witness_count)
+        .take(commit_witness_count as usize)
         .collect::<Vec<_>>();
     // Randomness for the committed witness in proof.d
     let mut rng = StdRng::seed_from_u64(300u64);
@@ -94,7 +94,7 @@ pub fn generate_params_prove_and_verify<
 >(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     inputs: I,
     num_inputs: u32,
 ) -> Vec<E::ScalarField> {
@@ -231,7 +231,7 @@ fn nconstraints<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
     input: E::ScalarField,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     num_constraints: u64,
 ) {
     let mut inputs = HashMap::new();
@@ -255,8 +255,8 @@ fn nconstraints<E: Pairing>(
 fn multiply_n<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
-    input_arr_size: usize,
+    commit_witness_count: u32,
+    input_arr_size: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(100u64);
     let mut inputs = HashMap::new();
@@ -281,7 +281,7 @@ fn multiply_n<E: Pairing>(
 fn multiply_2_bounded<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(100u64);
     let mut inputs = HashMap::new();
@@ -308,8 +308,8 @@ fn multiply_2_bounded<E: Pairing>(
 fn mimc<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
-    input_arr_size: usize,
+    commit_witness_count: u32,
+    input_arr_size: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(100u64);
     let mut inputs = HashMap::new();
@@ -331,9 +331,9 @@ fn mimc<E: Pairing>(
 fn mimcsponge<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
-    input_arr_size: usize,
-    output_arr_size: usize,
+    commit_witness_count: u32,
+    input_arr_size: u32,
+    output_arr_size: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(100u64);
     let mut inputs = HashMap::new();
@@ -349,14 +349,14 @@ fn mimcsponge<E: Pairing>(
         inputs.into_iter(),
         input_arr_size as u32 + 1,
     );
-    assert_eq!(public.len(), output_arr_size);
+    assert_eq!(public.len(), output_arr_size as usize);
 }
 
 fn poseidon<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
-    input_arr_size: usize,
+    commit_witness_count: u32,
+    input_arr_size: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(100u64);
     let mut inputs = HashMap::new();
@@ -377,7 +377,7 @@ fn poseidon<E: Pairing>(
 fn less_than_32_bits<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
 ) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 
@@ -423,7 +423,7 @@ fn less_than_32_bits<E: Pairing>(
 fn all_different_10<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
 ) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 
@@ -468,7 +468,7 @@ fn all_different_10<E: Pairing>(
 fn not_equal_public<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
 ) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 
@@ -506,7 +506,7 @@ fn not_equal_public<E: Pairing>(
 fn less_than_public_64_bits<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
 ) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 
@@ -547,10 +547,10 @@ fn less_than_public_64_bits<E: Pairing>(
     }
 }
 
-fn average_n<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, n: u64) {
+fn average_n<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, n: u32) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 
-    let (_, params) = gen_params::<E>(n as usize, circuit.clone());
+    let (_, params) = gen_params::<E>(n, circuit.clone());
 
     let mut rng = StdRng::seed_from_u64(100);
 
@@ -566,16 +566,16 @@ fn average_n<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, n: u64) {
     inputs.insert("in".to_string(), inp);
 
     set_circuit_wires(&mut circuit, wasm_file_path, inputs.clone());
-    let public = prove_and_verify_circuit(circuit.clone(), &params, n as usize);
+    let public = prove_and_verify_circuit(circuit.clone(), &params, n);
 
     assert_eq!(public.len(), 1);
     assert_eq!(public[0], E::ScalarField::from(sum / n as u128));
 }
 
-fn average_n_less_than_public<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, n: u64) {
+fn average_n_less_than_public<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, n: u32) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 
-    let (_, params) = gen_params::<E>(n as usize, circuit.clone());
+    let (_, params) = gen_params::<E>(n, circuit.clone());
 
     let mut rng = StdRng::seed_from_u64(100);
 
@@ -600,7 +600,7 @@ fn average_n_less_than_public<E: Pairing>(r1cs_file_path: &str, wasm_file_path: 
         println!("{:?}", w.into_bigint());
     }
 
-    let public = prove_and_verify_circuit(circuit.clone(), &params, n as usize);
+    let public = prove_and_verify_circuit(circuit.clone(), &params, n);
 
     assert_eq!(public.len(), 2);
     assert_eq!(public[0], E::ScalarField::from(1u64));
@@ -626,10 +626,10 @@ fn average_n_less_than_public<E: Pairing>(r1cs_file_path: &str, wasm_file_path: 
     assert!(!cs.is_satisfied().unwrap());
 }
 
-fn sum_n_less_than_public<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, n: u64) {
+fn sum_n_less_than_public<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, n: u32) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 
-    let (_, params) = gen_params::<E>(n as usize, circuit.clone());
+    let (_, params) = gen_params::<E>(n, circuit.clone());
 
     let mut rng = StdRng::seed_from_u64(100);
 
@@ -647,7 +647,7 @@ fn sum_n_less_than_public<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str
     inputs.insert("max".to_string(), vec![E::ScalarField::from(max)]);
 
     set_circuit_wires(&mut circuit, wasm_file_path, inputs.clone());
-    let public = prove_and_verify_circuit(circuit.clone(), &params, n as usize);
+    let public = prove_and_verify_circuit(circuit.clone(), &params, n);
 
     assert_eq!(public.len(), 2);
     assert_eq!(public[0], E::ScalarField::from(1u64));
@@ -728,7 +728,7 @@ fn difference_of_array_sum<E: Pairing>(
 ) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 
-    let commit_witness_count = (arr1_size + arr2_size) as usize;
+    let commit_witness_count = (arr1_size + arr2_size) as u32;
     let (_, params) = gen_params::<E>(commit_witness_count, circuit.clone());
 
     let mut rng = StdRng::seed_from_u64(0);

@@ -82,7 +82,7 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
             comm_key,
             witness,
             blindings,
-            proving_key.vk.commit_witness_count as usize,
+            proving_key.vk.commit_witness_count,
             v,
             snark_proof,
         )
@@ -121,7 +121,7 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
             comm_key,
             witness,
             blindings,
-            proving_key.vk.commit_witness_count as usize,
+            proving_key.vk.commit_witness_count,
             v,
             snark_proof,
         )
@@ -236,7 +236,7 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
         comm_key: &'a [E::G1Affine],
         witness: crate::witness::R1CSCircomWitness<E>,
         blindings: BTreeMap<usize, E::ScalarField>,
-        commit_witness_count: usize,
+        commit_witness_count: u32,
         v: E::ScalarField,
         snark_proof: Proof<E>,
     ) -> Result<(), ProofSystemError> {

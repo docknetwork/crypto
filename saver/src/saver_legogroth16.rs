@@ -54,7 +54,7 @@ pub fn generate_srs<E: Pairing, R: RngCore, C: ConstraintSynthesizer<E::ScalarFi
         eta,
         g1_generator,
         gens.H.into_group(),
-        bit_blocks_count as usize,
+        bit_blocks_count as u32,
         rng,
     )?;
 

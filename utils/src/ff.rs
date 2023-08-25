@@ -30,10 +30,10 @@ pub fn non_zero_random<F: PrimeField, R: Rng>(rng: &mut R) -> F {
 }
 
 /// Powers of a finite field as `[1, s, s^2, .. s^{num-1}]`
-pub fn powers<F: PrimeField>(s: &F, num: usize) -> Vec<F> {
+pub fn powers<F: PrimeField>(s: &F, num: u32) -> Vec<F> {
     let mut powers = vec![F::one()];
     for i in 1..num {
-        powers.push(powers[i - 1] * s);
+        powers.push(powers[i as usize - 1] * s);
     }
     powers
 }
@@ -41,6 +41,6 @@ pub fn powers<F: PrimeField>(s: &F, num: usize) -> Vec<F> {
 /// SUM of a geometric progression
 /// SUM a^i = (1 - a^n) / (1 - a) = -(1-a^n)/-(1-a)
 /// = (a^n - 1) / (a - 1)
-pub fn sum_of_powers<F: PrimeField>(r: &F, num: usize) -> F {
+pub fn sum_of_powers<F: PrimeField>(r: &F, num: u32) -> F {
     (r.pow([num as u64]) - &F::one()) * (*r - F::one()).inverse().unwrap()
 }
