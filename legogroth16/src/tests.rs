@@ -131,7 +131,7 @@ impl<ConstraintF: Field> ConstraintSynthesizer<ConstraintF> for MyLessSillyCircu
 
 pub fn get_link_public_gens<R: RngCore, E: Pairing>(
     rng: &mut R,
-    count: usize,
+    count: u32,
 ) -> LinkPublicGenerators<E> {
     let pedersen_gens = (0..count)
         .map(|_| E::G1::rand(rng).into_affine())
@@ -149,7 +149,7 @@ fn test_prove_and_verify<E>(n_iters: usize)
 where
     E: Pairing,
 {
-    fn run<E: Pairing>(n_iters: usize, commit_witness_count: usize) {
+    fn run<E: Pairing>(n_iters: usize, commit_witness_count: u32) {
         let mut rng = StdRng::seed_from_u64(0u64);
         let circuit = MySillyCircuit { a: None, b: None };
 

@@ -488,7 +488,7 @@ pub mod tests {
 
     pub fn setup(
         rng: &mut StdRng,
-        max_attributes: usize,
+        max_attributes: u32,
         auditable: bool,
         supports_revocation: bool,
     ) -> (
@@ -512,7 +512,7 @@ pub mod tests {
 
     pub fn issuance(
         rng: &mut StdRng,
-        max_attributes: usize,
+        max_attributes: u32,
         attributes: Vec<Fr>,
         auditable: bool,
         Q: Option<&G1Affine>,

@@ -321,7 +321,13 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
         let r = E::ScalarField::rand(rng);
-        let r_powers = powers(&r, ciphertexts.len());
+        let r_powers = powers(
+            &r,
+            ciphertexts
+                .len()
+                .try_into()
+                .map_err(|_| ProofSystemError::TooManyCifertexts(ciphertexts.len()))?,
+        );
         let pek = pek.into();
         let pgens = pgens.into();
         match pairing_checker {

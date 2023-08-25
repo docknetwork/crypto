@@ -30,6 +30,8 @@ pub enum DelegationError {
     IncompatiblePublicKey,
     UnequalSizeOfSequence(usize, usize),
     InvalidOneOfNProof,
+    TooManyAttributes(usize),
+    TooManyCommitments(usize),
     NeedSameNoOfCommitmentsAndSubsets(usize, usize),
     CannotCreateUpdateKeyOfRequiredSizeFromSecretKey(usize, usize),
     InvalidUpdateKeyIndex(usize, usize),

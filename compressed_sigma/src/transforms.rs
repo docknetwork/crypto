@@ -14,7 +14,7 @@ pub trait LinearForm<F: Field>: Sized {
 
     fn size(&self) -> usize;
 
-    fn pad(&self, new_size: usize) -> Self;
+    fn pad(&self, new_size: u32) -> Self;
 }
 
 /// For a group homomorphism, i.e. for a function `f` and vectors `x` and `y`, `f(x+y) = f(x)*f(y)`
@@ -31,5 +31,5 @@ pub trait Homomorphism<F: Field>: Sized {
 
     fn size(&self) -> usize;
 
-    fn pad(&self, new_size: usize) -> Self;
+    fn pad(&self, new_size: u32) -> Self;
 }

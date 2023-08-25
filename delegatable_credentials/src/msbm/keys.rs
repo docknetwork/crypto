@@ -56,20 +56,20 @@ pub struct UserPublicKey<E: Pairing>(pub E::G1Affine);
 pub struct UpdateKey<E: Pairing> {
     /// 0-based commitment index in the credential from which this key can add commitments
     #[zeroize(skip)]
-    pub start_index: u64,
+    pub start_index: u32,
     #[zeroize(skip)]
-    pub max_attributes_per_commitment: u64,
+    pub max_attributes_per_commitment: u32,
     /// One key for each commitment index in the signature
     pub keys: Vec<Vec<E::G1Affine>>,
 }
 
 impl<E: Pairing> RootIssuerSecretKey<E> {
-    pub fn new<R: RngCore>(rng: &mut R, size: usize) -> Result<Self, DelegationError> {
+    pub fn new<R: RngCore>(rng: &mut R, size: u32) -> Result<Self, DelegationError> {
         let m_sk = SecretKey::new(rng, size)?;
         Ok(Self(E::ScalarField::rand(rng), m_sk))
     }
 
-    pub fn generate_using_seed<D>(seed: &[u8], size: usize) -> Result<Self, DelegationError>
+    pub fn generate_using_seed<D>(seed: &[u8], size: u32) -> Result<Self, DelegationError>
     where
         D: DynDigest + Default + Clone,
     {
@@ -167,7 +167,7 @@ impl<E: Pairing> UpdateKey<E> {
         &self,
         sig: &Signature<E>,
         public_key: impl Into<PreparedRootIssuerPublicKey<E>>,
-        t: usize,
+        t: u32,
         srs: &SetCommitmentSRS<E>,
     ) -> Result<(), DelegationError> {
         let public_key = public_key.into();
@@ -188,12 +188,12 @@ impl<E: Pairing> UpdateKey<E> {
         self.start_index as usize + self.keys.len() - 1
     }
 
-    pub fn trim_key(&self, start: usize, end: usize) -> Self {
+    pub fn trim_key(&self, start_index: u32, end_index: u32) -> Self {
         Self {
-            start_index: start as u64,
+            start_index,
             max_attributes_per_commitment: self.max_attributes_per_commitment,
-            keys: self.keys
-                [(start - self.start_index as usize)..(end - self.start_index as usize + 1)]
+            keys: self.keys[(start_index - self.start_index) as usize
+                ..(end_index - self.start_index + 1) as usize]
                 .to_vec(),
         }
     }
@@ -202,10 +202,12 @@ impl<E: Pairing> UpdateKey<E> {
         &self,
         sig: &Signature<E>,
         x_prep: Vec<E::G2Prepared>,
-        t: usize,
+        t: u32,
         srs: &SetCommitmentSRS<E>,
     ) -> Result<(), DelegationError> {
-        let sum = cfg_iter!(srs.P1[0..t]).sum::<E::G1>().into_affine();
+        let sum = cfg_iter!(srs.P1[0..t as usize])
+            .sum::<E::G1>()
+            .into_affine();
         let mut a = vec![sum; x_prep.len()];
         let mut b = x_prep;
         a.push(

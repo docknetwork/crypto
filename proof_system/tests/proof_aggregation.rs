@@ -62,7 +62,8 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
         .collect::<Vec<_>>();
 
     let srs = srs::setup_fake_srs::<Bls12_381, _>(&mut rng, 100);
-    let (prover_srs, ver_srs) = srs.specialize(enc_msg_indices_1.len() + enc_msg_indices_2.len());
+    let (prover_srs, ver_srs) =
+        srs.specialize((enc_msg_indices_1.len() + enc_msg_indices_2.len()) as u32);
 
     let mut prover_setup_params = vec![];
 
@@ -268,7 +269,7 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
 
     let srs = srs::setup_fake_srs::<Bls12_381, _>(&mut rng, 100);
     let (prover_srs, ver_srs) =
-        srs.specialize(bounded_msg_indices_1.len() + bounded_msg_indices_2.len());
+        srs.specialize((bounded_msg_indices_1.len() + bounded_msg_indices_2.len()) as u32);
 
     let mut prover_setup_params = vec![];
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk.clone()));

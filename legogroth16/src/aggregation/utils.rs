@@ -209,8 +209,12 @@ pub(crate) fn final_verification_check<E: Pairing>(
     gamma_abc_g1: &[E::G1Affine],
     checker: &mut RandomizedPairingChecker<E>,
 ) -> Result<(), AggregationError> {
-    let r_powers = powers(r, public_inputs.len());
-    let r_sum = sum_of_powers::<E::ScalarField>(r, public_inputs.len());
+    let public_inputs_len = public_inputs
+        .len()
+        .try_into()
+        .map_err(|_| AggregationError::PublicInputsTooLarge(public_inputs.len()))?;
+    let r_powers = powers(r, public_inputs_len);
+    let r_sum = sum_of_powers::<E::ScalarField>(r, public_inputs_len);
 
     // Check aggregate pairing product equation
 

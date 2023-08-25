@@ -26,7 +26,7 @@ use rayon::prelude::*;
 pub fn generate_random_parameters_incl_cp_link<E, C, R>(
     circuit: C,
     link_gens: LinkPublicGenerators<E>,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     rng: &mut R,
 ) -> crate::Result<ProvingKeyWithLink<E>>
 where
@@ -47,7 +47,7 @@ where
 /// `commit_witness_count` is the number of witnesses committed in proof
 pub fn generate_random_parameters<E, C, R>(
     circuit: C,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     rng: &mut R,
 ) -> crate::Result<ProvingKey<E>>
 where
@@ -68,7 +68,7 @@ where
 #[inline]
 pub fn generate_random_parameters_with_reduction<E, C, R, QAP>(
     circuit: C,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     rng: &mut R,
 ) -> crate::Result<ProvingKey<E>>
 where
@@ -101,7 +101,7 @@ where
 pub fn generate_random_parameters_incl_cp_link_with_reduction<E, C, R, QAP>(
     circuit: C,
     link_gens: LinkPublicGenerators<E>,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     rng: &mut R,
 ) -> crate::Result<ProvingKeyWithLink<E>>
 where
@@ -140,7 +140,7 @@ pub fn generate_parameters_incl_cp_link_with_qap<E, C, R, QAP>(
     g1_generator: E::G1,
     g2_generator: E::G2,
     link_gens: LinkPublicGenerators<E>,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     rng: &mut R,
 ) -> crate::Result<ProvingKeyWithLink<E>>
 where
@@ -179,12 +179,12 @@ where
         1,
         0,
         groth16_pk.vk.gamma_abc_g1
-            [num_instance_variables..num_instance_variables + commit_witness_count]
+            [num_instance_variables..num_instance_variables + commit_witness_count as usize]
             .to_vec(),
     )?;
     link_m.insert_row_slice(
         1,
-        commit_witness_count + 1,
+        commit_witness_count as usize + 1,
         vec![groth16_pk.vk.eta_gamma_inv_g1],
     )?;
 
@@ -215,7 +215,7 @@ pub fn generate_parameters_with_qap<E, C, R, QAP>(
     eta: E::ScalarField,
     g1_generator: E::G1,
     g2_generator: E::G2,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     rng: &mut R,
 ) -> crate::Result<ProvingKey<E>>
 where
@@ -251,7 +251,7 @@ fn generate_parameters_and_extra_info_with_qap<E, C, R, QAP>(
     eta: E::ScalarField,
     g1_generator: E::G1,
     g2_generator: E::G2,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     rng: &mut R,
 ) -> crate::Result<(ProvingKey<E>, usize)>
 where
@@ -287,14 +287,14 @@ where
     ///////////////////////////////////////////////////////////////////////////
 
     let num_instance_variables = cs.num_instance_variables();
-    if cs.num_witness_variables() < commit_witness_count {
+    if cs.num_witness_variables() < commit_witness_count as usize {
         return Err(crate::error::Error::InsufficientWitnessesForCommitment(
             cs.num_witness_variables(),
-            commit_witness_count,
+            commit_witness_count as usize,
         ));
     }
 
-    let n = num_instance_variables + commit_witness_count;
+    let n = num_instance_variables + commit_witness_count as usize;
 
     let reduction_time = start_timer!(|| "R1CS to QAP Instance Map with Evaluation");
     let (a, b, c, zt, qap_num_variables, m_raw) = LibsnarkReduction::instance_map_with_evaluation::<
@@ -414,7 +414,7 @@ where
         delta_g2: delta_g2.into_affine(),
         gamma_abc_g1: gamma_abc_g1_affine,
         eta_gamma_inv_g1: eta_gamma_inv_g1_affine,
-        commit_witness_count: commit_witness_count as u64,
+        commit_witness_count: commit_witness_count,
     };
 
     let batch_normalization_time = start_timer!(|| "Convert proving key elements to affine");

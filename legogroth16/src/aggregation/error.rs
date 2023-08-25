@@ -4,6 +4,8 @@ use ark_std::string::{String, ToString};
 #[derive(Debug, Clone, PartialEq)]
 pub enum AggregationError {
     InsufficientKeyLength(usize),
+    PublicInputsTooLarge(usize),
+    TooManyProofs(usize),
     InvalidKeyLength,
     InvalidProof(String),
     MalformedVerifyingKey,

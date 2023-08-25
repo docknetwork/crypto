@@ -91,7 +91,7 @@ pub fn init_accum(
 
 pub fn show(
     rng: &mut StdRng,
-    max_attributes: usize,
+    max_attributes: u32,
     attributes: Vec<Fr>,
     disclosed_attrs: Vec<Fr>,
     auditable: bool,
@@ -344,7 +344,8 @@ pub fn show(
         }
         // When credential signer (public key) is hidden using policy
         2 => {
-            let policy_sk = DelegationPolicySecretKey::new(rng, ipk.public_key.size()).unwrap();
+            let policy_sk =
+                DelegationPolicySecretKey::new(rng, ipk.public_key.size() as u32).unwrap();
             let policy_pk = DelegationPolicyPublicKey::new(&policy_sk, set_comm_srs.get_P1());
             let policy_sig = policy_sk
                 .sign_public_key(rng, &ipk, set_comm_srs.get_P1(), set_comm_srs.get_P2())

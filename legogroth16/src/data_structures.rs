@@ -66,7 +66,7 @@ pub struct VerifyingKey<E: Pairing> {
     /// The element `eta*gamma^-1 * G` in `E::G1`.
     pub eta_gamma_inv_g1: E::G1Affine,
     /// No of witness to commit
-    pub commit_witness_count: u64,
+    pub commit_witness_count: u32,
 }
 
 /// A verification key in the Groth16 SNARK with CP_link verification parameters

@@ -203,8 +203,8 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng, T: Transcript>(
 ) -> Result<(), SaverError> {
     use legogroth16::aggregation::{error::AggregationError, groth16::verifier::verify_tipp_mipp};
 
-    let n = proof.tmipp.gipa.nproofs as usize;
-    assert_eq!(ciphertexts.len(), n);
+    let n = proof.tmipp.gipa.nproofs;
+    assert_eq!(ciphertexts.len(), n as usize);
 
     if ciphertexts.len() != proof.tmipp.gipa.nproofs as usize {
         return Err(SaverError::LegoGroth16Error(
@@ -494,7 +494,7 @@ mod tests {
 
         let mut cts = vec![];
         let mut proofs = vec![];
-        for i in 0..msg_count {
+        for i in 0..msg_count as usize {
             let (ct, _, proof) =
                 Encryption::encrypt_with_proof(&mut rng, &msgs[i], &ek, &snark_srs, chunk_bit_size)
                     .unwrap();

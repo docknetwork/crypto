@@ -23,7 +23,7 @@ pub fn abs_path(relative_path: &str) -> String {
 pub fn get_r1cs_and_wasm_bytes<R: RngCore>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    commit_witness_count: usize,
+    commit_witness_count: u32,
     rng: &mut R,
 ) -> (ProvingKey<Bls12_381>, R1CS<Bls12_381>, Vec<u8>) {
     let circuit = CircomCircuit::<Bls12_381>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();

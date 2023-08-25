@@ -31,6 +31,7 @@ pub enum ProofSystemError {
     SubProtocolAlreadyInitialized(usize),
     SubProtocolNotReadyToGenerateProof(usize),
     InvalidSetupParamsIndex(usize),
+    TooManyCifertexts(usize),
     NeitherParamsNorRefGiven(usize),
     IncompatibleBBSPlusSetupParamAtIndex(usize),
     IncompatiblePSSetupParamAtIndex(usize),

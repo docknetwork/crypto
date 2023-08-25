@@ -47,7 +47,10 @@ impl<E: Pairing> IssuerSecretKey<E> {
         supports_audit: bool,
     ) -> Result<Self, DelegationError> {
         Ok(Self {
-            secret_key: SecretKey::new(rng, Self::get_size(supports_revocation, supports_audit))?,
+            secret_key: SecretKey::new(
+                rng,
+                Self::get_size(supports_revocation, supports_audit) as u32,
+            )?,
             supports_revocation,
             supports_audit,
         })
@@ -64,7 +67,7 @@ impl<E: Pairing> IssuerSecretKey<E> {
         Ok(Self {
             secret_key: SecretKey::generate_using_seed::<D>(
                 seed,
-                Self::get_size(supports_revocation, supports_audit),
+                Self::get_size(supports_revocation, supports_audit) as u32,
             )?,
             supports_revocation,
             supports_audit,

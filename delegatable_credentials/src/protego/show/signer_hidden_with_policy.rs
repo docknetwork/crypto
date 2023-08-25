@@ -40,10 +40,7 @@ pub struct CredentialShowProtocolWithDelegationPolicy<E: Pairing> {
 }
 
 impl<E: Pairing> DelegationPolicySecretKey<E> {
-    pub fn new<R: RngCore>(
-        rng: &mut R,
-        max_public_key_size: usize,
-    ) -> Result<Self, DelegationError> {
+    pub fn new<R: RngCore>(rng: &mut R, max_public_key_size: u32) -> Result<Self, DelegationError> {
         let sk = SecretKey::new(rng, max_public_key_size)?;
         Ok(Self(sk))
     }

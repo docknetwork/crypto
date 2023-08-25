@@ -68,14 +68,23 @@ impl OTExtensionReceiverSetup {
         Self::check_ote_choices_count(&ot_ext_choices, &ote_config)?;
         Self::check_base_ot_keys_count(&base_ot_keys, &ote_config)?;
         // TODO: Check base ot key size is kappa
-        let column_size = ote_config.column_byte_size();
+        let column_size = ote_config.column_byte_size() as u32;
         let packed_choices = boolvec_to_u8vec(&ot_ext_choices);
         // Following matrices T and U will be treated as `base_ot_count x extended_ot_count` matrices where each row of size m bits will be used
         let matrix_byte_size = ote_config.matrix_byte_size()?;
         let mut T = vec![0; matrix_byte_size];
         let mut U = vec![0; matrix_byte_size];
         for (i, (k0, k1)) in base_ot_keys.0.into_iter().enumerate() {
-            Self::fill_t_u_matrices(&mut T, &mut U, &k0, &k1, &packed_choices, i, i, column_size);
+            Self::fill_t_u_matrices(
+                &mut T,
+                &mut U,
+                &k0,
+                &k1,
+                &packed_choices,
+                i,
+                i,
+                column_size as u32,
+            );
         }
         let T = transpose(
             &T,
@@ -129,7 +138,7 @@ impl OTExtensionReceiverSetup {
                 &packed_choices,
                 i,
                 i,
-                column_size,
+                column_size as u32,
             );
             prgs.push((k_0, k_1));
         }
@@ -138,11 +147,16 @@ impl OTExtensionReceiverSetup {
             for j in i + 1..ote_config.num_base_ot {
                 let prg_i = &prgs[i as usize];
                 let prg_j = &prgs[j as usize];
+                let packed_choices_len = packed_choices
+                    .len()
+                    .try_into()
+                    .map_err(|_| OTError::TooManyChoices(packed_choices.len()))?;
+
                 let (i_0, i_1, i_2, i_3) = join!(
-                    hash_prg(i, j, &xor(&prg_i.0, &prg_j.0), packed_choices.len()),
-                    hash_prg(i, j, &xor(&prg_i.0, &prg_j.1), packed_choices.len()),
-                    hash_prg(i, j, &xor(&prg_i.1, &prg_j.0), packed_choices.len()),
-                    hash_prg(i, j, &xor(&prg_i.1, &prg_j.1), packed_choices.len())
+                    hash_prg(i, j, &xor(&prg_i.0, &prg_j.0), packed_choices_len),
+                    hash_prg(i, j, &xor(&prg_i.0, &prg_j.1), packed_choices_len),
+                    hash_prg(i, j, &xor(&prg_i.1, &prg_j.0), packed_choices_len),
+                    hash_prg(i, j, &xor(&prg_i.1, &prg_j.1), packed_choices_len)
                 );
                 hashes.insert((i, j), (i_0, i_1, i_2, i_3));
             }
@@ -187,7 +201,7 @@ impl OTExtensionReceiverSetup {
                     &packed_choices,
                     i,
                     i - 1,
-                    column_size,
+                    column_size as u32,
                 );
             }
         }
@@ -305,10 +319,12 @@ impl OTExtensionReceiverSetup {
         packed_choices: &[u8],
         t_row_index: usize,
         u_row_index: usize,
-        column_size: usize,
+        column_size: u32,
     ) -> (Vec<u8>, Vec<u8>) {
-        let t_i = &mut T[t_row_index * column_size..(t_row_index + 1) * column_size];
-        let u_i = &mut U[u_row_index * column_size..(u_row_index + 1) * column_size];
+        let t_i =
+            &mut T[t_row_index * column_size as usize..(t_row_index + 1) * column_size as usize];
+        let u_i =
+            &mut U[u_row_index * column_size as usize..(u_row_index + 1) * column_size as usize];
         join!(
             key_to_aes_rng(k0).fill_bytes(t_i),
             key_to_aes_rng(k1).fill_bytes(u_i)
@@ -445,7 +461,7 @@ impl OTExtensionSenderSetup {
                     };
 
                     let xor_a_b = xor(&prgs[i as usize], &prgs[j as usize]);
-                    if h != &hash_prg(i, j, &xor_a_b, column_size) {
+                    if h != &hash_prg(i, j, &xor_a_b, column_size as u32) {
                         return Err(OTError::ConsistencyCheckFailed(i, j));
                     }
                     let start_i = i as usize * column_size;
@@ -456,7 +472,7 @@ impl OTExtensionSenderSetup {
                     let u_j = &U.0[start_j..end_j];
                     let mut xor_a_b_u = xor(&xor_a_b, u_i);
                     xor_in_place(&mut xor_a_b_u, u_j);
-                    if h_inv != &hash_prg(i, j, &xor_a_b_u, column_size) {
+                    if h_inv != &hash_prg(i, j, &xor_a_b_u, column_size as u32) {
                         return Err(OTError::ConsistencyCheckFailed(i, j));
                     }
                     if u_i == u_j {
@@ -667,11 +683,11 @@ impl OTExtensionSenderSetup {
     }
 }
 
-fn hash_prg(i: u16, j: u16, input: &[u8], output_size: usize) -> Vec<u8> {
+fn hash_prg(i: u16, j: u16, input: &[u8], output_size: u32) -> Vec<u8> {
     let mut bytes = i.to_le_bytes().to_vec();
     bytes.extend_from_slice(&j.to_le_bytes());
     bytes.extend_from_slice(input);
-    let mut out = vec![0; output_size];
+    let mut out = vec![0; output_size as usize];
     let mut hasher = Shake256::default();
     hasher.update(&bytes);
     hasher.finalize_xof_into(&mut out);

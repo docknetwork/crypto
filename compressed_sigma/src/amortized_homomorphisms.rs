@@ -240,7 +240,7 @@ mod tests {
     }
 
     impl TestHom<G1> {
-        fn new<R: RngCore>(rng: &mut R, size: usize) -> Self {
+        fn new<R: RngCore>(rng: &mut R, size: u32) -> Self {
             Self {
                 constants: (0..size)
                     .map(|_| <Bls12_381 as Pairing>::G1::rand(rng).into_affine())

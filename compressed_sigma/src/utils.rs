@@ -14,8 +14,8 @@ pub fn pad_homomorphisms_to_have_same_size<
 ) -> Vec<F> {
     let mut max_size = 0;
     for f in fs {
-        if f.size() > max_size {
-            max_size = f.size();
+        if f.size() > max_size as usize {
+            max_size = f.size() as u32;
         }
     }
     fs.iter().map(|f| f.pad(max_size)).collect()
@@ -25,8 +25,8 @@ pub fn pad_homomorphisms_to_have_same_size<
 pub fn pad_linear_forms_to_have_same_size<F: PrimeField, L: LinearForm<F>>(fs: &[L]) -> Vec<L> {
     let mut max_size = 0;
     for f in fs {
-        if f.size() > max_size {
-            max_size = f.size();
+        if f.size() > max_size as usize {
+            max_size = f.size() as u32;
         }
     }
     fs.iter().map(|f| f.pad(max_size)).collect()
@@ -34,14 +34,14 @@ pub fn pad_linear_forms_to_have_same_size<F: PrimeField, L: LinearForm<F>>(fs: &
 
 /// Return the response of an amortized sigma protocol
 pub fn amortized_response<F: PrimeField>(
-    max_size: usize,
+    max_size: u32,
     c_powers: &[F],
     r: &[F],
     x: Vec<&[F]>,
 ) -> Vec<F> {
     let s = x.len();
     let mut z = vec![];
-    for i in 0..max_size {
+    for i in 0..max_size as usize {
         // z_i = r_i + \sum_{j in 1..s}({x_j}_i * {c_powers}_j)
         let mut z_i = r[i];
         for j in 0..s {
@@ -172,10 +172,10 @@ macro_rules! impl_simple_linear_form {
                 self.constants.len()
             }
 
-            fn pad(&self, new_size: usize) -> Self {
+            fn pad(&self, new_size: u32) -> Self {
                 let mut new_consts = self.constants.clone();
-                if self.constants.len() < new_size {
-                    for _ in 0..new_size - self.constants.len() {
+                if self.constants.len() < new_size as usize {
+                    for _ in 0..new_size as usize - self.constants.len() {
                         new_consts.push(<$type>::zero())
                     }
                     Self {
@@ -240,10 +240,10 @@ macro_rules! impl_simple_homomorphism {
                 self.constants.len()
             }
 
-            fn pad(&self, new_size: usize) -> Self {
-                if self.constants.len() < new_size {
+            fn pad(&self, new_size: u32) -> Self {
+                if self.constants.len() < new_size as usize {
                     let mut new_consts = self.constants.clone();
-                    for _ in 0..new_size - self.constants.len() {
+                    for _ in 0..new_size as usize - self.constants.len() {
                         new_consts.push(<$image_type>::zero())
                     }
                     Self {
