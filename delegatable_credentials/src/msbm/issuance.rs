@@ -93,7 +93,10 @@ impl<E: Pairing> Credential<E> {
         let rho = E::ScalarField::rand(rng);
         let (new_sig, comm, o, new_uk) = self.signature.change_rel(
             attributes.clone(),
-            self.attributes.len(),
+            self.attributes
+                .len()
+                .try_into()
+                .map_err(|_| DelegationError::TooManyAttributes(self.attributes.len()))?,
             new_update_key_index,
             update_key,
             rho,

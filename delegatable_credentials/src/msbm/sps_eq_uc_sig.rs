@@ -250,7 +250,7 @@ impl<E: Pairing> Signature<E> {
     pub fn change_rel(
         &self,
         messages: Vec<E::ScalarField>,
-        insert_at_index: usize,
+        insert_at_index: u32,
         new_update_key_index: Option<u32>,
         update_key: &UpdateKey<E>,
         rho: E::ScalarField,
@@ -264,11 +264,11 @@ impl<E: Pairing> Signature<E> {
         ),
         DelegationError,
     > {
-        if update_key.start_index as usize > insert_at_index {
+        if update_key.start_index > insert_at_index {
             return Err(DelegationError::UnsupportedIndexInUpdateKey(
-                insert_at_index,
+                insert_at_index as usize,
                 update_key.start_index as usize,
-                update_key.end_index(),
+                update_key.end_index() as usize,
             ));
         }
         if (update_key.max_attributes_per_commitment as usize) < messages.len() {
@@ -297,7 +297,7 @@ impl<E: Pairing> Signature<E> {
                 return Err(DelegationError::UnsupportedIndexInUpdateKey(
                     l as usize,
                     update_key.start_index as usize,
-                    update_key.end_index(),
+                    update_key.end_index() as usize,
                 ));
             }
             uk = Some(update_key.trim_key(insert_at_index as u32 + 1, l));
