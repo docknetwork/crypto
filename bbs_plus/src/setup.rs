@@ -63,9 +63,9 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use core::iter::once;
 use dock_crypto_utils::{
-    affine_group_from_slices,
-    concat_slices, hashing_utils::projective_group_elem_from_try_and_incr, iter::*,
-    misc::seq_pairs_satisfy, serde_utils::*, try_iter::CheckLeft,
+    affine_group_from_slices, concat_slices,
+    hashing_utils::projective_group_elem_from_try_and_incr, iter::*, misc::seq_pairs_satisfy,
+    serde_utils::*, try_iter::CheckLeft,
 };
 use itertools::process_results;
 

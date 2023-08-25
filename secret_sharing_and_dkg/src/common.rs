@@ -3,7 +3,7 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, vec::Vec};
 use digest::Digest;
-use dock_crypto_utils::{serde_utils::ArkObjectBytes, affine_group_from_slices};
+use dock_crypto_utils::{affine_group_from_slices, serde_utils::ArkObjectBytes};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};

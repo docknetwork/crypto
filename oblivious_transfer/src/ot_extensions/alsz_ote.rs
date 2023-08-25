@@ -366,7 +366,16 @@ impl OTExtensionSenderSetup {
         let mut Q = vec![0; matrix_byte_size];
         let zero = vec![0; column_size];
         for (i, k) in base_ot_keys.0.into_iter().enumerate() {
-            Self::fill_q_matrix(&mut Q, &U.0, &k, &base_ot_choices, &zero, i, i, column_size as u32);
+            Self::fill_q_matrix(
+                &mut Q,
+                &U.0,
+                &k,
+                &base_ot_choices,
+                &zero,
+                i,
+                i,
+                column_size as u32,
+            );
         }
         let Q = transpose(
             &Q,
@@ -407,8 +416,16 @@ impl OTExtensionSenderSetup {
         let zero = vec![0; column_size];
         let mut prgs = Vec::with_capacity(ote_config.num_base_ot as usize);
         for (i, k) in base_ot_keys.0.into_iter().enumerate() {
-            let k =
-                Self::fill_q_matrix(&mut Q, &U.0, &k, &base_ot_choices, &zero, i, i, column_size as u32);
+            let k = Self::fill_q_matrix(
+                &mut Q,
+                &U.0,
+                &k,
+                &base_ot_choices,
+                &zero,
+                i,
+                i,
+                column_size as u32,
+            );
             prgs.push(k);
         }
         for i in 0..ote_config.num_base_ot {
@@ -614,7 +631,8 @@ impl OTExtensionSenderSetup {
         u_row_index: usize,
         column_size: u32,
     ) -> Vec<u8> {
-        let q_i = &mut Q[q_row_index * column_size as usize..(q_row_index + 1) * column_size as usize];
+        let q_i =
+            &mut Q[q_row_index * column_size as usize..(q_row_index + 1) * column_size as usize];
         key_to_aes_rng(k).fill_bytes(q_i);
         let k = q_i.to_vec();
         let start = u_row_index * column_size as usize;
