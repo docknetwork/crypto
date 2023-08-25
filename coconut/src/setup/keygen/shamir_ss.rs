@@ -92,7 +92,7 @@ mod shamir_ss_tests {
                         Threshold::new(1.max(authority_count / 2), authority_count).unwrap();
 
                     let (threshold_sk, sks) =
-                        super::deal(&mut rng, message_count, threshold).unwrap();
+                        super::deal(&mut rng, message_count as u32, threshold).unwrap();
 
                     let vk = PublicKey::new(&threshold_sk, &params);
 

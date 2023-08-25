@@ -549,7 +549,7 @@ mod tests {
 
     fn sig_setup<R: RngCore>(
         rng: &mut R,
-        message_count: usize,
+        message_count: u32,
     ) -> (
         Vec<Fr>,
         SignatureParamsG1<Bls12_381>,
@@ -976,7 +976,7 @@ mod tests {
         )
         .unwrap();
         let proof_1 = pok_1.gen_proof(&challenge).unwrap();
-        for i in 0..message_count {
+        for i in 0..message_count as usize {
             assert_eq!(
                 *proof_1
                     .get_resp_for_message(i, &revealed_indices_1)
@@ -1089,7 +1089,7 @@ mod tests {
         );
 
         // Reveal one message only
-        for i in 0..message_count {
+        for i in 0..message_count as usize {
             let mut revealed_indices = BTreeSet::new();
             revealed_indices.insert(i);
             let pok = PoKOfSignatureG1Protocol::init(
@@ -1106,7 +1106,7 @@ mod tests {
             )
             .unwrap();
             let proof = pok.gen_proof(&challenge).unwrap();
-            for j in 0..message_count {
+            for j in 0..message_count as usize {
                 if i == j {
                     assert!(proof.get_resp_for_message(j, &revealed_indices).is_err());
                 } else if i < j {

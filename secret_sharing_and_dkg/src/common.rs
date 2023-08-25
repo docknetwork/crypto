@@ -3,9 +3,7 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, vec::Vec};
 use digest::Digest;
-use dock_crypto_utils::{
-    hashing_utils::affine_group_elem_from_try_and_incr, serde_utils::ArkObjectBytes, byte_slices_to_affine,
-};
+use dock_crypto_utils::{serde_utils::ArkObjectBytes, affine_group_from_slices};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -140,7 +138,7 @@ pub struct PublicKeyBase<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G
 
 impl<G: AffineRepr> PublicKeyBase<G> {
     pub fn new<D: Digest>(label: &[u8]) -> Self {
-        Self(byte_slices_to_affine!(label))
+        Self(affine_group_from_slices!(label))
     }
 }
 

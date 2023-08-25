@@ -27,7 +27,7 @@ use oblivious_transfer_protocols::{
 pub struct Phase2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
     pub id: ParticipantId,
     /// Number of threshold signatures being generated in a single batch.
-    pub batch_size: u64,
+    pub batch_size: u32,
     /// Transcripts to record protocol interactions with each participant and later used to generate random challenges
     pub transcripts: BTreeMap<ParticipantId, Merlin>,
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
@@ -69,7 +69,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         gadget_vector: &GadgetVector<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     ) -> Result<(Self, BTreeMap<ParticipantId, Message1<F>>), BBSPlusError> {
         assert_eq!(masked_signing_key_share.len(), masked_r.len());
-        let batch_size = masked_signing_key_share.len() as u64;
+        let batch_size = masked_signing_key_share.len() as u32;
 
         let mut transcripts = BTreeMap::<ParticipantId, Merlin>::new();
         let mut multiplication_party1 =
@@ -154,7 +154,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 
         let (shares, tau, r, gamma_a) =
             party1.receive::<D>(U, rlc, gamma, trans, &gadget_vector)?;
-        debug_assert_eq!(shares.len() as u64, 2 * self.batch_size);
+        debug_assert_eq!(shares.len() as u32, 2 * self.batch_size);
         let mut z_A_0 = Vec::with_capacity(self.batch_size as usize);
         let mut z_A_1 = Vec::with_capacity(self.batch_size as usize);
         for (i, share) in shares.0.into_iter().enumerate() {
@@ -185,7 +185,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         let party2 = self.multiplication_party2.remove(&sender_id).unwrap();
         let trans = self.transcripts.get_mut(&sender_id).unwrap();
         let shares = party2.receive::<D>(tau, rlc, gamma, trans, &gadget_vector)?;
-        debug_assert_eq!(shares.len() as u64, 2 * self.batch_size);
+        debug_assert_eq!(shares.len() as u32, 2 * self.batch_size);
         let mut z_B_0 = Vec::with_capacity(self.batch_size as usize);
         let mut z_B_1 = Vec::with_capacity(self.batch_size as usize);
         for (i, share) in shares.0.into_iter().enumerate() {

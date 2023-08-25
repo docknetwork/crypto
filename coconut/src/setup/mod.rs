@@ -16,7 +16,7 @@ pub use signature_params::*;
 #[allow(clippy::type_complexity)]
 pub fn test_setup<E, D, R>(
     rng: &mut R,
-    message_count: u32,
+    message_count: usize,
 ) -> (
     SecretKey<E::ScalarField>,
     PublicKey<E>,
@@ -30,8 +30,8 @@ where
 {
     use crate::helpers::n_rand;
 
-    let params = SignatureParams::new::<D>(b"test", message_count);
-    let secret = SecretKey::rand(rng, message_count);
+    let params = SignatureParams::new::<D>(b"test", message_count as u32);
+    let secret = SecretKey::rand(rng, message_count as u32);
     let public = PublicKey::new(&secret, &params);
     let messages = n_rand(rng, message_count).collect();
 

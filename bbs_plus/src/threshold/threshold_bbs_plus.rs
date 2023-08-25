@@ -25,7 +25,7 @@ use super::{multiplication_phase::Phase2Output, utils::compute_R_and_u};
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Phase1Output<F: PrimeField> {
     pub id: ParticipantId,
-    pub batch_size: u64,
+    pub batch_size: u32,
     pub r: Vec<F>,
     pub e: Vec<F>,
     pub s: Vec<F>,
@@ -50,7 +50,7 @@ pub struct BBSPlusSignatureShare<E: Pairing> {
 impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
     pub fn init_for_bbs_plus<R: RngCore>(
         rng: &mut R,
-        batch_size: usize,
+        batch_size: u32,
         id: ParticipantId,
         others: BTreeSet<ParticipantId>,
         protocol_id: Vec<u8>,
@@ -68,7 +68,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         Ok((
             Self {
                 id,
-                batch_size: batch_size as u64,
+                batch_size: batch_size,
                 r,
                 commitment_protocol,
                 zero_sharing_protocol,
@@ -89,7 +89,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         let r = self.r.clone();
         let (others, mut randomness, masked_signing_key_shares, masked_rs) =
             self.compute_randomness_and_arguments_for_multiplication::<D>(signing_key)?;
-        debug_assert_eq!(randomness.len() as u64, 2 * batch_size);
+        debug_assert_eq!(randomness.len() as u32, 2 * batch_size);
         let e = randomness.drain(0..batch_size as usize).collect();
         let s = randomness;
         Ok(Phase1Output {
@@ -248,8 +248,8 @@ pub mod tests {
             ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
             threshold_signers: u16,
             total_signers: u16,
-            sig_batch_size: usize,
-            message_count: usize,
+            sig_batch_size: u32,
+            message_count: u32,
             gadget_vector: &GadgetVector<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
         ) {
             let protocol_id = b"test".to_vec();
@@ -351,7 +351,7 @@ pub mod tests {
             total_phase1_time = start.elapsed();
             println!("Phase 1 took {:?}", total_phase1_time);
 
-            assert_eq!(expected_sk, sk * Fr::from(sig_batch_size as u64));
+            assert_eq!(expected_sk, sk * Fr::from(sig_batch_size));
             for i in 1..threshold_signers {
                 assert_eq!(round1outs[0].e, round1outs[i as usize].e);
                 assert_eq!(round1outs[0].s, round1outs[i as usize].s);

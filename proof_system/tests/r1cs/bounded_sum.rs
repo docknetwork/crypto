@@ -50,7 +50,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     // Generate 12 message-sets, each set will be signed
     for i in 0..12 {
         msgs.push(vec![]);
-        for j in 0..msg_per_sig {
+        for j in 0..msg_per_sig as usize {
             msgs[i].push(Fr::from(u64::rand(&mut rng)));
             if j == msg_idx {
                 sum += msgs[i][j];

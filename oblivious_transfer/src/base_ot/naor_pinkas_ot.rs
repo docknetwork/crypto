@@ -105,7 +105,7 @@ impl<G: AffineRepr> OTSenderSetup<G> {
             .map(|c| c.into_group())
             .collect::<Vec<_>>();
         let r_repr = self.r.into_bigint();
-        let enc = cfg_into_iter!(R)
+        let enc: Vec<_> = cfg_into_iter!(R)
             .enumerate()
             .map(|(i, R)| {
                 let pk_not_i = pk_not.0[i].mul_bigint(r_repr);
@@ -113,16 +113,25 @@ impl<G: AffineRepr> OTSenderSetup<G> {
                     .map(|j| C_r[j] - pk_not_i)
                     .collect::<Vec<_>>();
                 pk_i.insert(0, pk_not_i);
-                let enc = cfg_iter!(messages[i])
+                let enc: Vec<_> = cfg_iter!(messages[i])
                     .enumerate()
                     .map(|(j, m)| {
-                        let pad = hash_to_otp(j as u16, &pk_i[j], &R, m.len());
-                        xor(&pad, m)
+                        let pad = hash_to_otp(
+                            j as u16,
+                            &pk_i[j],
+                            &R,
+                            m.len()
+                                .try_into()
+                                .map_err(|_| OTError::MessageIsTooLong(m.len()))?,
+                        );
+
+                        Ok(xor(&pad, m))
                     })
-                    .collect::<Vec<_>>();
-                (enc, R)
+                    .collect::<Result<_, OTError>>()?;
+
+                Ok((enc, R))
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, OTError>>()?;
         Ok(SenderEncryptions(enc))
     }
 }
@@ -183,7 +192,7 @@ impl<G: AffineRepr> OTReceiver<G> {
     pub fn decrypt(
         &self,
         sender_encryptions: SenderEncryptions,
-        message_size: usize,
+        message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
         if sender_encryptions.0.len() != self.ot_config.num_ot as usize {
             return Err(OTError::IncorrectMessageBatchSize(
@@ -210,11 +219,11 @@ impl<G: AffineRepr> OTReceiver<G> {
 }
 
 /// Create a one time pad of required size
-fn hash_to_otp<G: CanonicalSerialize>(index: u16, pk: &G, R: &[u8], pad_size: usize) -> Vec<u8> {
+fn hash_to_otp<G: CanonicalSerialize>(index: u16, pk: &G, R: &[u8], pad_size: u32) -> Vec<u8> {
     let mut bytes = index.to_be_bytes().to_vec();
     pk.serialize_compressed(&mut bytes).unwrap();
     bytes.extend_from_slice(R);
-    let mut pad = vec![0; pad_size];
+    let mut pad = vec![0; pad_size as usize];
     let mut hasher = Shake256::default();
     hasher.update(&bytes);
     hasher.finalize_xof_into(&mut pad);
@@ -290,7 +299,7 @@ pub mod tests {
             );
 
             let start = Instant::now();
-            let decryptions = receiver.decrypt(encryptions, message_size).unwrap();
+            let decryptions = receiver.decrypt(encryptions, message_size as u32).unwrap();
             println!(
                 "Receiver decrypts messages for {} 1-of-{} OTs in {:?}",
                 m,

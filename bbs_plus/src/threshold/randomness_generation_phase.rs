@@ -14,7 +14,7 @@ use oblivious_transfer_protocols::ParticipantId;
 pub struct Phase1<F: PrimeField, const SALT_SIZE: usize> {
     pub id: ParticipantId,
     /// Number of threshold signatures being generated in a single batch.
-    pub batch_size: u64,
+    pub batch_size: u32,
     pub r: Vec<F>,
     /// Protocols to generate shares of random values used in signature like `e`
     pub commitment_protocol: super::cointoss::Party<F, SALT_SIZE>,

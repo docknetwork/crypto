@@ -63,6 +63,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use core::iter::once;
 use dock_crypto_utils::{
+    affine_group_from_slices,
     concat_slices, hashing_utils::projective_group_elem_from_try_and_incr, iter::*,
     misc::seq_pairs_satisfy, serde_utils::*, try_iter::CheckLeft,
 };
@@ -244,21 +245,19 @@ macro_rules! impl_sig_params {
             /// Generate params by hashing a known string. The hash function is vulnerable to timing
             /// attack but since all this is public knowledge, it is fine.
             /// This is useful if people need to be convinced that the discrete log of group elements wrt each other is not known.
-            pub fn new<D: Digest>(label: &[u8], message_count: usize) -> Self {
+            pub fn new<D: Digest>(label: &[u8], message_count: u32) -> Self {
                 assert_ne!(message_count, 0);
                 // Need message_count+2 elements of signature group and 1 element of other group
-                let mut sig_group_elems = Vec::with_capacity(message_count + 2);
+                let mut sig_group_elems = Vec::with_capacity(message_count as usize + 2);
                 // Group element by hashing `label`||`g1` as string.
                 let g1 = projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
                     &concat_slices![label, b" : g1"],
                 );
                 // h_0 and h[i] for i in 1 to message_count
                 let mut h = cfg_into_iter!((0..=message_count))
-                    .map(|i| {
-                        projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
-                            &concat_slices![label, b" : h_", (i as u32).to_le_bytes()],
-                        )
-                    })
+                    .map(u32::to_le_bytes)
+                    .map(|i| affine_group_from_slices!(label, b" : h_", i))
+                    .map(E::$group_affine::into)
                     .collect::<Vec<E::$group_projective>>();
                 sig_group_elems.push(g1);
                 sig_group_elems.append(&mut h);
@@ -268,10 +267,8 @@ macro_rules! impl_sig_params {
                 let g1 = sig_group_elems.remove(0);
                 let h_0 = sig_group_elems.remove(0);
 
-                let g2 = projective_group_elem_from_try_and_incr::<E::$other_group_affine, D>(
-                    &concat_slices![label, b" : g2"],
-                )
-                .into_affine();
+                let g2: E::$other_group_affine = affine_group_from_slices!(label, b" : g2");
+
                 Self {
                     g1,
                     g2,
@@ -281,7 +278,7 @@ macro_rules! impl_sig_params {
             }
 
             /// Generate params using a random number generator
-            pub fn generate_using_rng<R>(rng: &mut R, message_count: usize) -> Self
+            pub fn generate_using_rng<R>(rng: &mut R, message_count: u32) -> Self
             where
                 R: RngCore,
             {
@@ -516,7 +513,7 @@ impl<E: Pairing> SignatureParams23G1<E> {
     /// Generate params by hashing a known string. The hash function is vulnerable to timing
     /// attack but since all this is public knowledge, it is fine.
     /// This is useful if people need to be convinced that the discrete log of group elements wrt each other is not known.
-    pub fn new<D: Digest>(label: &[u8], message_count: usize) -> Self {
+    pub fn new<D: Digest>(label: &[u8], message_count: u32) -> Self {
         assert_ne!(message_count, 0);
         // Group element by hashing `label`||`g1` as string.
         let g1 = projective_group_elem_from_try_and_incr::<E::G1Affine, D>(&concat_slices![
@@ -545,7 +542,7 @@ impl<E: Pairing> SignatureParams23G1<E> {
     }
 
     /// Generate params using a random number generator
-    pub fn generate_using_rng<R>(rng: &mut R, message_count: usize) -> Self
+    pub fn generate_using_rng<R>(rng: &mut R, message_count: u32) -> Self
     where
         R: RngCore,
     {
@@ -636,7 +633,7 @@ mod tests {
             let label_1 = "test1".as_bytes();
             let params_1 = $params::<Bls12_381>::new::<Blake2b512>(&label_1, $message_count);
             assert!(params_1.is_valid());
-            assert_eq!(params_1.h.len(), $message_count);
+            assert_eq!(params_1.h.len(), $message_count as usize);
 
             // Same label should generate same params
             let params_1_again = $params::<Bls12_381>::new::<Blake2b512>(&label_1, $message_count);

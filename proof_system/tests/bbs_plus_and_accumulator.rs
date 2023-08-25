@@ -42,15 +42,15 @@ macro_rules! gen_tests {
 
             // 1st BBS+ sig
             let msg_count_1 = 6;
-            let (msgs_1, params_1, keypair_1, sig_1) = $setup_fn_name(&mut rng, msg_count_1);
+            let (msgs_1, params_1, keypair_1, sig_1) = $setup_fn_name(&mut rng, msg_count_1 as u32);
 
             // 2nd BBS+ sig
             let msg_count_2 = 10;
-            let (mut msgs_2, params_2, keypair_2, _) = $setup_fn_name(&mut rng, msg_count_2);
+            let (mut msgs_2, params_2, keypair_2, _) = $setup_fn_name(&mut rng, msg_count_2 as u32);
 
             // 3rd BBS+ sig
             let msg_count_3 = 12;
-            let (mut msgs_3, params_3, keypair_3, _) = $setup_fn_name(&mut rng, msg_count_3);
+            let (mut msgs_3, params_3, keypair_3, _) = $setup_fn_name(&mut rng, msg_count_3 as u32);
 
             // Make 3 messages same
             msgs_2[9] = msgs_1[5];
@@ -272,7 +272,7 @@ macro_rules! gen_tests {
             let mut rng = StdRng::seed_from_u64(0u64);
 
             let msg_count = 6;
-            let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count);
+            let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count as u32);
 
             let max = 10;
             let (pos_accum_params, pos_accum_keypair, mut pos_accumulator, mut pos_state) =
@@ -817,7 +817,7 @@ macro_rules! gen_tests {
             let mut rng = StdRng::seed_from_u64(0u64);
 
             let msg_count = 6;
-            let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count);
+            let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count as u32);
 
             let bases = (0..5)
                 .map(|_| G1Projective::rand(&mut rng).into_affine())
@@ -933,7 +933,7 @@ macro_rules! gen_tests {
 
             // Prover got the signature
             let msg_count = 5;
-            let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count);
+            let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count as u32);
 
             // Verifier 1 wants a commitment to prover message at index 1. Eg, index 1 is the SSN of a citizen
             // Prover creates commitment for verifier 1 using group generators `gens_1`
@@ -1132,8 +1132,8 @@ macro_rules! gen_tests {
             let mut rng = StdRng::seed_from_u64(0u64);
 
             let msg_count = 5;
-            let (msgs_1, params_1, keypair_1, sig_1) = $setup_fn_name(&mut rng, msg_count);
-            let (msgs_2, params_2, keypair_2, sig_2) = $setup_fn_name(&mut rng, msg_count);
+            let (msgs_1, params_1, keypair_1, sig_1) = $setup_fn_name(&mut rng, msg_count as u32);
+            let (msgs_2, params_2, keypair_2, sig_2) = $setup_fn_name(&mut rng, msg_count as u32);
 
             let msgs_3: Vec<Fr> = (0..msg_count).map(|_| Fr::rand(&mut rng)).collect();
             let sig_3 =
@@ -1289,7 +1289,7 @@ fn requesting_partially_blind_bbs_plus_sig() {
     let total_msg_count = 10;
 
     // Setup params and messages
-    let (msgs, sig_params, sig_keypair, _) = bbs_plus_sig_setup(&mut rng, total_msg_count);
+    let (msgs, sig_params, sig_keypair, _) = bbs_plus_sig_setup(&mut rng, total_msg_count as u32);
 
     // Message indices hidden from signer. Here signer does not know msgs[0], msgs[4] and msgs[6]
     let committed_indices = vec![0, 4, 6].into_iter().collect::<BTreeSet<usize>>();
@@ -1380,7 +1380,7 @@ fn requesting_partially_blind_bbs_sig() {
     let total_msg_count = 10;
 
     // Setup params and messages
-    let (msgs, sig_params, sig_keypair, _) = bbs_sig_setup(&mut rng, total_msg_count);
+    let (msgs, sig_params, sig_keypair, _) = bbs_sig_setup(&mut rng, total_msg_count as u32);
 
     // Message indices hidden from signer. Here signer does not know msgs[0], msgs[4] and msgs[6]
     let committed_indices = vec![0, 4, 6].into_iter().collect::<BTreeSet<usize>>();
