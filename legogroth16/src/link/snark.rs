@@ -131,7 +131,7 @@ impl<PE: Pairing> SubspaceSnark for PESubspaceSnark<PE> {
     }
 
     fn prove(pp: &Self::PP, ek: &Self::EK, w: &[Self::InVec]) -> Result<Self::Proof, LinkError> {
-        if pp.t < w.len() as u64 {
+        if (pp.t as usize) < w.len() {
             return Err(LinkError::VectorLongerThanExpected(w.len(), pp.t as usize));
         }
         Ok(inner_product::<PE>(w, &ek.p))
@@ -143,7 +143,7 @@ impl<PE: Pairing> SubspaceSnark for PESubspaceSnark<PE> {
         x: &[Self::OutVec],
         pi: &Self::Proof,
     ) -> Result<(), LinkError> {
-        if pp.l != x.len() as u64 {
+        if (pp.l as usize) != x.len() {
             return Err(LinkError::VectorWithUnexpectedLength(
                 x.len(),
                 pp.l as usize,
