@@ -120,7 +120,7 @@ impl<E: Pairing> Credential<E> {
     ) -> Result<(Self, Option<UpdateKey<E>>), DelegationError> {
         let mut new_uk = None;
         if let Some(l) = new_update_key_index {
-            assert!(l < update_key.end_index() as u32);
+            assert!(l <= update_key.end_index() + 1);
             new_uk = Some(
                 update_key.trim_key(
                     self.attributes
