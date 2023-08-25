@@ -13,7 +13,7 @@ use crate::setup::SecretKey;
 /// Produces threshold secret key and individual secret keys supporting `message_count` messages for all participants.
 pub fn deal<R: RngCore, F: PrimeField>(
     rng: &mut R,
-    message_count: usize,
+    message_count: u32,
     Threshold(threshold, total): Threshold,
 ) -> Result<(SecretKey<F>, Vec<SecretKey<F>>), SSError> {
     let sk = SecretKey::rand(rng, message_count);
@@ -70,7 +70,7 @@ mod shamir_ss_tests {
                     let (_, _, params, msgs) =
                         test_setup::<Bls12_381, Blake2b512, _>(&mut rng, message_count);
 
-                    let (blind_msgs, reveal_msgs) = msgs.split_at(blind_message_count);
+                    let (blind_msgs, reveal_msgs) = msgs.split_at(blind_message_count as usize);
                     let blind_indices = 0..blind_msgs.len();
 
                     let blindings: Vec<_> = n_rand(&mut rng, blind_msgs.len()).collect();

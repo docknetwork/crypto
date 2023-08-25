@@ -16,7 +16,7 @@ pub use signature_params::*;
 #[allow(clippy::type_complexity)]
 pub fn test_setup<E, D, R>(
     rng: &mut R,
-    message_count: usize,
+    message_count: u32,
 ) -> (
     SecretKey<E::ScalarField>,
     PublicKey<E>,

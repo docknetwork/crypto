@@ -1,3 +1,5 @@
+use core::ops::Range;
+
 use crate::{
     aliases::DoubleEndedExactSizeIterator,
     msm::multiply_field_elems_with_same_group_elem,
@@ -29,15 +31,18 @@ where
 }
 
 /// Produces a function which will check for each item to be equal previous plus `n` starting from the supplied value.
-pub fn seq_inc_by_n_from(
-    n: usize,
-    mut from: usize,
-) -> impl FnMut(&usize) -> Option<InvalidPairOrSingle<usize>> + Clone {
+pub fn seq_inc_by_n_from<N>(
+    n: N,
+    mut from: N,
+) -> impl FnMut(&N) -> Option<InvalidPairOrSingle<N>> + Clone
+where
+    N: num::CheckedAdd + Eq + Copy,
+{
     let mut init = false;
 
-    move |&item: &usize| {
+    move |&item: &N| {
         if init {
-            let next = from.checked_add(n);
+            let next = from.checked_add(&n);
             let res =
                 (next != Some(item)).then_some(InvalidPairOrSingle::Pair(InvalidPair(from, item)));
             from = item;
@@ -52,11 +57,14 @@ pub fn seq_inc_by_n_from(
 }
 
 /// Generates an iterator of randoms producing `count` elements using the supplied `rng`.
-pub fn n_rand<T: UniformRand, R: RngCore>(
-    rng: &'_ mut R,
-    count: usize,
-) -> impl DoubleEndedExactSizeIterator<Item = T> + '_ {
-    (0..count).map(move |_| rand(rng))
+pub fn n_rand<'a, T: UniformRand, R: RngCore, N: From<u8> + 'a>(
+    rng: &'a mut R,
+    count: N,
+) -> impl DoubleEndedExactSizeIterator<Item = T> + 'a
+where
+    Range<N>: DoubleEndedExactSizeIterator,
+{
+    (0.into()..count).map(move |_| rand(rng))
 }
 
 /// Generates a random using given `rng`.

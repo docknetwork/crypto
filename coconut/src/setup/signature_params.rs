@@ -8,7 +8,9 @@ use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::*;
 use ark_std::cfg_into_iter;
 use serde_with::serde_as;
-use utils::{hashing_utils::affine_group_elem_from_try_and_incr, serde_utils::ArkObjectBytes};
+use utils::{
+    byte_slices_to_affine, hashing_utils::affine_group_elem_from_try_and_incr, serde_utils::ArkObjectBytes,
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -32,14 +34,13 @@ pub struct SignatureParams<E: Pairing> {
 
 impl<E: Pairing> SignatureParams<E> {
     /// Generates `g`, `g_tilde` and `h`. These params are shared between signer and all users.
-    pub fn new<D: digest::Digest>(label: &[u8], message_count: usize) -> Self {
+    pub fn new<D: digest::Digest>(label: &[u8], message_count: u32) -> Self {
         let (g, g_tilde, h) = join!(
-            affine_group_elem_from_try_and_incr::<_, D>(&concat_slices!(label, b" : g")),
-            affine_group_elem_from_try_and_incr::<_, D>(&concat_slices!(label, b" : g_tilde")),
+            byte_slices_to_affine!(label, b" : g"),
+            byte_slices_to_affine!(label, b" : g_tilde"),
             cfg_into_iter!(0..message_count)
-                .map(usize::to_le_bytes)
-                .map(|i| concat_slices!(label, b" : h_", i))
-                .map(|bytes| affine_group_elem_from_try_and_incr::<_, D>(&bytes))
+                .map(u32::to_le_bytes)
+                .map(|i| byte_slices_to_affine!(label, b" : h_", i))
                 .collect()
         );
 

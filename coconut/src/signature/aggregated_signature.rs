@@ -95,7 +95,7 @@ mod aggregated_signature_tests {
                         test_setup::<Bls12_381, Blake2b512, _>(&mut rng, message_count);
 
                     // https://eprint.iacr.org/2022/011.pdf 7.2
-                    let (blind_msgs, reveal_msgs) = msgs.split_at(blind_message_count);
+                    let (blind_msgs, reveal_msgs) = msgs.split_at(blind_message_count as usize);
                     let blind_indices = 0..blind_msgs.len();
 
                     let blindings: Vec<_> = n_rand(&mut rng, blind_msgs.len()).collect();
