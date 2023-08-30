@@ -1,7 +1,7 @@
 use ark_ec::pairing::Pairing;
 use ark_std::{rand::RngCore, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{concat_slices, hashing_utils::projective_group_elem_from_try_and_incr};
+use dock_crypto_utils::{affine_group_element_from_byte_slices, join};
 
 pub type GeneratorPair<E> = (<E as Pairing>::G1Affine, <E as Pairing>::G2Affine);
 
@@ -10,11 +10,8 @@ pub fn generator_pair<E: Pairing, R: RngCore>(rng: &mut R) -> GeneratorPair<E> {
 }
 
 pub fn generator_pair_deterministic<E: Pairing, D: Digest>(label: &[u8]) -> GeneratorPair<E> {
-    let g1 =
-        projective_group_elem_from_try_and_incr::<E::G1Affine, D>(&concat_slices![label, b" : G1"])
-            .into();
-    let g2 =
-        projective_group_elem_from_try_and_incr::<E::G2Affine, D>(&concat_slices![label, b" : G2"])
-            .into();
-    (g1, g2)
+    join!(
+        affine_group_element_from_byte_slices!(label, b" : G1"),
+        affine_group_element_from_byte_slices!(label, b" : G2")
+    )
 }

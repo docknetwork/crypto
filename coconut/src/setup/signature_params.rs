@@ -6,9 +6,11 @@ use alloc::vec::Vec;
 
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::*;
-use ark_std::cfg_into_iter;
 use serde_with::serde_as;
-use utils::{affine_group_from_slices, serde_utils::ArkObjectBytes};
+use utils::{
+    affine_group_element_from_byte_slices, concat_slices, misc::n_affine_group_elements,
+    serde_utils::ArkObjectBytes,
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -34,11 +36,9 @@ impl<E: Pairing> SignatureParams<E> {
     /// Generates `g`, `g_tilde` and `h`. These params are shared between signer and all users.
     pub fn new<D: digest::Digest>(label: &[u8], message_count: u32) -> Self {
         let (g, g_tilde, h) = join!(
-            affine_group_from_slices!(label, b" : g"),
-            affine_group_from_slices!(label, b" : g_tilde"),
-            cfg_into_iter!(0..message_count)
-                .map(u32::to_le_bytes)
-                .map(|i| affine_group_from_slices!(label, b" : h_", i))
+            affine_group_element_from_byte_slices!(label, b" : g"),
+            affine_group_element_from_byte_slices!(label, b" : g_tilde"),
+            n_affine_group_elements::<_, D, _>(message_count, concat_slices!(label, b" : h_"))
                 .collect()
         );
 

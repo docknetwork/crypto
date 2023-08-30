@@ -10,7 +10,7 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use dock_crypto_utils::{affine_group_from_slices, serde_utils::*};
+use dock_crypto_utils::{affine_group_element_from_byte_slices, serde_utils::*};
 
 /// Create "G" and "H" from the paper.
 #[serde_as]
@@ -38,8 +38,8 @@ pub struct PreparedEncryptionGens<E: Pairing> {
 
 impl<E: Pairing> EncryptionGens<E> {
     pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let G = affine_group_from_slices!(label, b" : G");
-        let H = affine_group_from_slices!(label, b" : H");
+        let G = affine_group_element_from_byte_slices!(label, b" : G");
+        let H = affine_group_element_from_byte_slices!(label, b" : H");
         Self { G, H }
     }
 
@@ -73,8 +73,8 @@ pub struct ChunkedCommitmentGens<G: AffineRepr> {
 
 impl<G: AffineRepr> ChunkedCommitmentGens<G> {
     pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let G = affine_group_from_slices!(label, b" : G");
-        let H = affine_group_from_slices!(label, b" : H");
+        let G = affine_group_element_from_byte_slices!(label, b" : G");
+        let H = affine_group_element_from_byte_slices!(label, b" : H");
         Self { G, H }
     }
 

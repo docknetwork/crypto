@@ -32,6 +32,7 @@ pub enum DelegationError {
     InvalidOneOfNProof,
     TooManyAttributes(usize),
     TooManyCommitments(usize),
+    TooManyWitnesses(usize),
     NeedSameNoOfCommitmentsAndSubsets(usize, usize),
     CannotCreateUpdateKeyOfRequiredSizeFromSecretKey(usize, usize),
     InvalidUpdateKeyIndex(usize, usize),

@@ -105,7 +105,10 @@ use ark_ff::{Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{hashing_utils::projective_group_elem_from_try_and_incr, serde_utils::*};
+use dock_crypto_utils::{
+    affine_group_element_from_byte_slices, hashing_utils::projective_group_elem_from_try_and_incr,
+    serde_utils::*,
+};
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -175,12 +178,9 @@ where
     fn generate_proving_key_using_hash<D: Digest>(label: &[u8]) -> ProvingKey<G> {
         // 3 G1 elements
         ProvingKey {
-            X: projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : X"])
-                .into(),
-            Y: projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : Y"])
-                .into(),
-            Z: projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : Z"])
-                .into(),
+            X: affine_group_element_from_byte_slices![label, b" : X"],
+            Y: affine_group_element_from_byte_slices![label, b" : Y"],
+            Z: affine_group_element_from_byte_slices![label, b" : Z"],
         }
     }
 }

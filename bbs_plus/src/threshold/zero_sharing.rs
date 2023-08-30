@@ -52,7 +52,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
             Self {
                 id,
                 protocol_id,
-                batch_size: batch_size,
+                batch_size,
                 cointoss_protocols,
             },
             commitments,

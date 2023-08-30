@@ -15,8 +15,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, ops::Add, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::{
-    concat_slices, ff::powers, hashing_utils::projective_group_elem_from_try_and_incr,
-    serde_utils::ArkObjectBytes,
+    affine_group_element_from_byte_slices, ff::powers, join, serde_utils::ArkObjectBytes,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -43,10 +42,11 @@ pub struct CommitmentKey<G: AffineRepr> {
 
 impl<G: AffineRepr> CommitmentKey<G> {
     pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let g =
-            projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : g"]).into();
-        let h =
-            projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : h"]).into();
+        let (g, h) = join!(
+            affine_group_element_from_byte_slices!(label, b" : g"),
+            affine_group_element_from_byte_slices!(label, b" : h")
+        );
+
         Self { g, h }
     }
 
