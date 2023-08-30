@@ -165,7 +165,7 @@ where
 
     // Setup public params for the Subspace Snark
     let link_rows = 2; // we're comparing two commitments, proof.d and proof.link_d
-    let link_cols = commit_witness_count as u64 + 2; // we have `commit_witness_count` witnesses and 1 hiding factor per row
+    let link_cols = commit_witness_count as u32 + 2; // we have `commit_witness_count` witnesses and 1 hiding factor per row
     let link_pp = PP::<E::G1Affine, E::G2Affine> {
         l: link_rows,
         t: link_cols,
@@ -414,7 +414,7 @@ where
         delta_g2: delta_g2.into_affine(),
         gamma_abc_g1: gamma_abc_g1_affine,
         eta_gamma_inv_g1: eta_gamma_inv_g1_affine,
-        commit_witness_count: commit_witness_count as usize,
+        commit_witness_count,
     };
 
     let batch_normalization_time = start_timer!(|| "Convert proving key elements to affine");
