@@ -40,9 +40,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use digest::{Digest, DynDigest};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 
-use dock_crypto_utils::{
-    concat_slices, hashing_utils::projective_group_elem_from_try_and_incr, serde_utils::*,
-};
+use dock_crypto_utils::{affine_group_element_from_byte_slices, join, serde_utils::*};
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -128,15 +126,11 @@ where
     /// attack but since all this is public knowledge, it is fine.
     /// This is useful if people need to be convinced that the discrete log of group elements wrt each other is not known.
     pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let P = projective_group_elem_from_try_and_incr::<E::G1Affine, D>(&concat_slices![
-            label, b" : P"
-        ])
-        .into();
-        let P_tilde = projective_group_elem_from_try_and_incr::<E::G2Affine, D>(&concat_slices![
-            label,
-            b" : P_tilde"
-        ])
-        .into();
+        let (P, P_tilde) = join!(
+            affine_group_element_from_byte_slices!(label, b" : P"),
+            affine_group_element_from_byte_slices!(label, b" : P_tilde")
+        );
+
         Self { P, P_tilde }
     }
 

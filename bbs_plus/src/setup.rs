@@ -54,23 +54,27 @@ use ark_ff::{
     PrimeField,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{
-    cfg_into_iter, cfg_iter, fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand,
-};
+use ark_std::{cfg_iter, fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use digest::{Digest, DynDigest};
 use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use core::iter::once;
 use dock_crypto_utils::{
-    affine_group_from_slices, concat_slices,
-    hashing_utils::projective_group_elem_from_try_and_incr, iter::*, misc::seq_pairs_satisfy,
-    serde_utils::*, try_iter::CheckLeft,
+    affine_group_element_from_byte_slices,
+    aliases::*,
+    concat_slices,
+    hashing_utils::projective_group_elem_from_try_and_incr,
+    iter::*,
+    join,
+    misc::{n_projective_group_elements, seq_pairs_satisfy},
+    serde_utils::*,
+    try_iter::CheckLeft,
 };
 use itertools::process_results;
 
 #[cfg(feature = "parallel")]
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -247,34 +251,32 @@ macro_rules! impl_sig_params {
             /// This is useful if people need to be convinced that the discrete log of group elements wrt each other is not known.
             pub fn new<D: Digest>(label: &[u8], message_count: u32) -> Self {
                 assert_ne!(message_count, 0);
-                // Need message_count+2 elements of signature group and 1 element of other group
-                let mut sig_group_elems = Vec::with_capacity(message_count as usize + 2);
-                // Group element by hashing `label`||`g1` as string.
-                let g1 = projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
-                    &concat_slices![label, b" : g1"],
+
+                let ((h, [g1, h_0]), g2) = join!(
+                    {
+                        let g1 = projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
+                            &concat_slices!(label, b" : g1"),
+                        );
+                        // h_0 and h[i] for i in 1 to message_count
+                        let h = n_projective_group_elements::<E::$group_affine, D, _>(
+                            1 + message_count,
+                            concat_slices!(label, b" : h_"),
+                        );
+                        let g1_and_h: Vec<_> = iter::once(g1).chain(h).collect();
+
+                        // Convert all to affine
+                        let mut normalized_g1_and_h =
+                            E::$group_projective::normalize_batch(&g1_and_h);
+
+                        (
+                            normalized_g1_and_h.split_off(2),
+                            <[_; 2]>::try_from(normalized_g1_and_h).unwrap(),
+                        )
+                    },
+                    affine_group_element_from_byte_slices!(label, b" : g2")
                 );
-                // h_0 and h[i] for i in 1 to message_count
-                let mut h = cfg_into_iter!((0..=message_count))
-                    .map(u32::to_le_bytes)
-                    .map(|i| affine_group_from_slices!(label, b" : h_", i))
-                    .map(E::$group_affine::into)
-                    .collect::<Vec<E::$group_projective>>();
-                sig_group_elems.push(g1);
-                sig_group_elems.append(&mut h);
-                // Convert all to affine
-                let mut sig_group_elems =
-                    E::$group_projective::normalize_batch(sig_group_elems.as_mut_slice());
-                let g1 = sig_group_elems.remove(0);
-                let h_0 = sig_group_elems.remove(0);
 
-                let g2: E::$other_group_affine = affine_group_from_slices!(label, b" : g2");
-
-                Self {
-                    g1,
-                    g2,
-                    h_0,
-                    h: sig_group_elems,
-                }
+                Self { g1, g2, h_0, h }
             }
 
             /// Generate params using a random number generator
@@ -516,29 +518,21 @@ impl<E: Pairing> SignatureParams23G1<E> {
     pub fn new<D: Digest>(label: &[u8], message_count: u32) -> Self {
         assert_ne!(message_count, 0);
         // Group element by hashing `label`||`g1` as string.
-        let g1 = projective_group_elem_from_try_and_incr::<E::G1Affine, D>(&concat_slices![
-            label, b" : g1"
-        ])
-        .into_affine();
-        // h[i] for i in 1 to message_count
-        let h = cfg_into_iter!((1..=message_count))
-            .map(|i| {
-                projective_group_elem_from_try_and_incr::<E::G1Affine, D>(&concat_slices![
-                    label,
-                    b" : h_",
-                    (i as u32).to_le_bytes()
-                ])
-            })
-            .collect::<Vec<E::G1>>();
-        let g2 = projective_group_elem_from_try_and_incr::<E::G2Affine, D>(&concat_slices![
-            label, b" : g2"
-        ])
-        .into_affine();
-        Self {
-            g1,
-            g2,
-            h: E::G1::normalize_batch(&h),
-        }
+        let (g1, g2, h) = join!(
+            affine_group_element_from_byte_slices!(label, b" : g1"),
+            affine_group_element_from_byte_slices!(label, b" : g2"),
+            {
+                let h: Vec<_> = n_projective_group_elements::<E::G1Affine, D, _>(
+                    message_count,
+                    concat_slices!(label, b" : h_"),
+                )
+                .collect();
+
+                E::G1::normalize_batch(&h)
+            }
+        );
+
+        Self { g1, g2, h }
     }
 
     /// Generate params using a random number generator

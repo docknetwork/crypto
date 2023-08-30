@@ -1,13 +1,20 @@
 use core::ops::Range;
 
 use crate::{
-    aliases::DoubleEndedExactSizeIterator,
+    aliases::{DoubleEndedExactSizeIterator, SendIfParallel, SyncIfParallel},
+    concat_slices,
+    hashing_utils::projective_group_elem_from_try_and_incr,
+    impl_indexed_iter,
     msm::multiply_field_elems_with_same_group_elem,
     try_iter::{InvalidPair, InvalidPairOrSingle},
 };
 use alloc::vec::Vec;
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_std::{rand::RngCore, UniformRand};
+use ark_std::{cfg_into_iter, rand::RngCore, UniformRand};
+
+use digest::Digest;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Ensures that each sequence pair satisfy provided predicate.
 pub fn seq_pairs_satisfy<I, F>(mut validate: F) -> impl FnMut(&I) -> Option<InvalidPair<I>>
@@ -65,6 +72,36 @@ where
     Range<N>: DoubleEndedExactSizeIterator,
 {
     (0.into()..count).map(move |_| rand(rng))
+}
+
+/// Produces an iterator emitting `n` items `u32::to_le_bytes` of the counter starting from zero.
+pub fn n_bytes_iter(n: u32) -> impl_indexed_iter!(<Item = [u8; 4]>) {
+    cfg_into_iter!(0..n).map(u32::to_le_bytes)
+}
+
+/// Produces `n` projective group elements by combining the supplied bytes with the `u32::to_le_bytes` counter bytes.
+pub fn n_projective_group_elements<G, D, B>(
+    n: u32,
+    bytes: B,
+) -> impl_indexed_iter!(<Item = G::Group>)
+where
+    G: AffineRepr + SendIfParallel,
+    D: Digest,
+    B: AsRef<[u8]> + SendIfParallel + SyncIfParallel,
+{
+    n_bytes_iter(n).map(move |ctr_bytes| -> G::Group {
+        projective_group_elem_from_try_and_incr::<G, D>(&concat_slices!(bytes.as_ref(), ctr_bytes))
+    })
+}
+
+/// Produces `n` affine group elements by combining the supplied bytes with the `u32::to_le_bytes` counter bytes.
+pub fn n_affine_group_elements<G, D, B>(n: u32, bytes: B) -> impl_indexed_iter!(<Item = G>)
+where
+    G: AffineRepr + SendIfParallel,
+    D: Digest,
+    B: AsRef<[u8]> + SendIfParallel + SyncIfParallel,
+{
+    n_projective_group_elements::<G, D, B>(n, bytes).map(CurveGroup::into_affine)
 }
 
 /// Generates a random using given `rng`.

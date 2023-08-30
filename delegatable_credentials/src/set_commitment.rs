@@ -12,6 +12,7 @@ use ark_ff::{
 use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Valid};
 use ark_std::{
+    cfg_iter,
     collections::BTreeSet,
     io::{Read, Write},
     ops::{Div, Mul, Neg},
@@ -29,9 +30,12 @@ use crate::{
     util::{generator_pair, generator_pair_deterministic},
 };
 use dock_crypto_utils::{
-    ff::powers, hashing_utils::field_elem_from_try_and_incr, msm::WindowTable,
+    ff::powers, hashing_utils::field_elem_from_try_and_incr, misc::n_bytes_iter, msm::WindowTable,
     poly::poly_from_roots, serde_utils::*,
 };
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 // TODO: Makes sense to split this into P1 and P2 as prover does not need P2 vector and verifier does not need P1 vector
 /// KZG polynomial commitment SRS (Structured Reference String) used by the set commitment scheme
@@ -439,7 +443,14 @@ impl<E: Pairing> AggregateSubsetWitness<E> {
         if witnesses.len() != n {
             return Err(UnequalSizeOfSequence(witnesses.len(), n));
         }
-        let t = Self::challenges::<D>(witnesses.len(), &commitments, &subsets);
+        let t = Self::challenges::<D>(
+            witnesses
+                .len()
+                .try_into()
+                .map_err(|_| DelegationError::TooManyWitnesses(witnesses.len()))?,
+            &commitments,
+            &subsets,
+        );
         Ok(Self(
             E::G1::msm_unchecked(&witnesses.iter().map(|w| w.0).collect::<Vec<_>>(), &t)
                 .into_affine(),
@@ -464,7 +475,14 @@ impl<E: Pairing> AggregateSubsetWitness<E> {
                 subsets.len(),
             ));
         }
-        let t = Self::challenges::<D>(commitments.len(), &commitments, &subsets);
+        let t = Self::challenges::<D>(
+            commitments
+                .len()
+                .try_into()
+                .map_err(|_| DelegationError::TooManyCommitments(commitments.len()))?,
+            &commitments,
+            &subsets,
+        );
 
         // Union of all subsets
         let mut union = BTreeSet::new();
@@ -520,7 +538,14 @@ impl<E: Pairing> AggregateSubsetWitness<E> {
                 subsets.len(),
             ));
         }
-        let t = Self::challenges::<D>(commitments.len(), &commitments, &subsets);
+        let t = Self::challenges::<D>(
+            commitments
+                .len()
+                .try_into()
+                .map_err(|_| DelegationError::TooManyCommitments(commitments.len()))?,
+            &commitments,
+            &subsets,
+        );
         let mut union = BTreeSet::new();
         for s in &subsets {
             union.append(&mut s.clone());
@@ -568,22 +593,21 @@ impl<E: Pairing> AggregateSubsetWitness<E> {
     }
 
     fn challenges<D: Digest>(
-        n: usize,
+        n: u32,
         commitments: &[SetCommitment<E>],
         subsets: &[BTreeSet<E::ScalarField>],
     ) -> Vec<E::ScalarField> {
-        (0..n)
-            .zip(commitments.iter().zip(subsets.iter()))
-            .map(|(i, (c, s))| {
-                field_elem_from_try_and_incr::<E::ScalarField, D>(&{
-                    let mut bytes = vec![];
-                    bytes.extend_from_slice(&i.to_le_bytes());
-                    c.serialize_compressed(&mut bytes).unwrap();
-                    for j in s {
-                        j.serialize_compressed(&mut bytes).unwrap()
-                    }
-                    bytes
-                })
+        n_bytes_iter(n)
+            .zip(cfg_iter!(commitments).zip(subsets))
+            .map(|(ctr_bytes, (c, s))| {
+                let mut bytes = vec![];
+                bytes.extend_from_slice(&ctr_bytes);
+                c.serialize_compressed(&mut bytes).unwrap();
+                for j in s {
+                    j.serialize_compressed(&mut bytes).unwrap()
+                }
+
+                field_elem_from_try_and_incr::<E::ScalarField, D>(&bytes)
             })
             .collect::<Vec<_>>()
     }

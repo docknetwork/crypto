@@ -65,7 +65,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         Ok((
             Self {
                 id,
-                batch_size: batch_size,
+                batch_size,
                 r,
                 commitment_protocol,
                 zero_sharing_protocol,
