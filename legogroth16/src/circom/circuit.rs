@@ -110,7 +110,7 @@ impl<E: Pairing> ConstraintSynthesizer<E::ScalarField> for CircomCircuit<E> {
         }
 
         let make_index = |index| {
-            if (index as u64) < self.r1cs.num_public {
+            if index < self.r1cs.num_public as usize {
                 Variable::Instance(index)
             } else {
                 Variable::Witness(index - self.r1cs.num_public as usize)
@@ -160,8 +160,14 @@ pub mod tests {
         let cs = ConstraintSystem::<E::ScalarField>::new_ref();
         circuit.clone().generate_constraints(cs.clone()).unwrap();
 
-        assert_eq!(cs.num_instance_variables() as u64, circuit.r1cs.num_public);
-        assert_eq!(cs.num_witness_variables() as u64, circuit.r1cs.num_private);
+        assert_eq!(
+            cs.num_instance_variables(),
+            circuit.r1cs.num_public as usize
+        );
+        assert_eq!(
+            cs.num_witness_variables(),
+            circuit.r1cs.num_private as usize
+        );
         assert_eq!(cs.num_constraints(), circuit.r1cs.constraints.len());
 
         let (_, params) = gen_params::<E>(commit_witness_count, circuit.clone());
@@ -170,14 +176,8 @@ pub mod tests {
             params.vk.gamma_abc_g1.len(),
             cs.num_instance_variables() + commit_witness_count as usize
         );
-        assert_eq!(
-            params.vk.num_public_inputs() as u64,
-            circuit.r1cs.num_public
-        );
-        assert_eq!(
-            params.vk.num_committed_witnesses(),
-            commit_witness_count as usize
-        );
+        assert_eq!(params.vk.num_public_inputs(), circuit.r1cs.num_public);
+        assert_eq!(params.vk.num_committed_witnesses(), commit_witness_count);
 
         if wires.is_some() {
             circuit.set_wires(wires.unwrap());

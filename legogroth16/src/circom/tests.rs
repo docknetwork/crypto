@@ -232,7 +232,7 @@ fn nconstraints<E: Pairing>(
     wasm_file_path: &str,
     input: E::ScalarField,
     commit_witness_count: u32,
-    num_constraints: u64,
+    num_constraints: u32,
 ) {
     let mut inputs = HashMap::new();
     inputs.insert("in".to_string(), vec![input.clone()]);
@@ -671,7 +671,7 @@ fn sum_n_less_than_public<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str
     assert!(!cs.is_satisfied().unwrap());
 }
 
-fn set_membership<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, set_size: u64) {
+fn set_membership<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, set_size: u32) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 
     let (_, params) = gen_params::<E>(1, circuit.clone());
@@ -723,8 +723,8 @@ fn set_membership<E: Pairing>(r1cs_file_path: &str, wasm_file_path: &str, set_si
 fn difference_of_array_sum<E: Pairing>(
     r1cs_file_path: &str,
     wasm_file_path: &str,
-    arr1_size: u64,
-    arr2_size: u64,
+    arr1_size: u32,
+    arr2_size: u32,
 ) {
     let mut circuit = CircomCircuit::<E>::from_r1cs_file(abs_path(r1cs_file_path)).unwrap();
 

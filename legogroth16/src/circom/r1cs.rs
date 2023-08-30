@@ -49,10 +49,10 @@ pub struct R1CS<E: Pairing> {
     pub curve: Curve,
     /// Total number of public values in the circuit. Includes public inputs and outputs and the always
     /// present input "1".
-    pub num_public: u64,
+    pub num_public: u32,
     /// Total number of private values in the circuit. Includes the private input as well as the intermediate
     /// wires.
-    pub num_private: u64,
+    pub num_private: u32,
     pub constraints: Vec<Constraint<E>>,
     /// The indices of the vector specify the wire index and the value specifies the label index
     pub wire_to_label_mapping: Vec<usize>,
@@ -87,13 +87,13 @@ pub struct Header<E: Pairing> {
 
 impl<E: Pairing> From<R1CSFile<E>> for R1CS<E> {
     fn from(file: R1CSFile<E>) -> Self {
-        let num_inputs = (1 + file.header.n_pub_in + file.header.n_pub_out) as usize;
-        let num_variables = file.header.n_wires as usize;
+        let num_inputs = 1 + file.header.n_pub_in + file.header.n_pub_out;
+        let num_variables = file.header.n_wires;
         let num_aux = num_variables - num_inputs;
         R1CS {
             curve: file.header.curve,
-            num_private: num_aux as u64,
-            num_public: num_inputs as u64,
+            num_private: num_aux,
+            num_public: num_inputs,
             constraints: file.constraints,
             wire_to_label_mapping: file.wire_mapping.iter().map(|e| *e as usize).collect(),
         }

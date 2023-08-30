@@ -51,7 +51,7 @@ pub struct GenericSRS<E: Pairing> {
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProverSRS<E: Pairing> {
     /// number of proofs to aggregate
-    pub n: u64,
+    pub n: u32,
     /// $\{g^a^i\}_{i=0}^{2n-1}$ where n is the number of proofs to be aggregated
     /// We take all powers instead of only ones from n -> 2n-1 (w commitment key
     /// is formed from these powers) since the prover will create a shifted
@@ -73,7 +73,7 @@ pub struct ProverSRS<E: Pairing> {
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PreparedProverSRS<E: Pairing> {
     /// number of proofs to aggregate
-    pub n: u64,
+    pub n: u32,
     /// $\{g^a^i\}_{i=0}^{2n-1}$ where n is the number of proofs to be aggregated
     /// We take all powers instead of only ones from n -> 2n-1 (w commitment key
     /// is formed from these powers) since the prover will create a shifted
@@ -98,7 +98,7 @@ pub struct PreparedProverSRS<E: Pairing> {
 /// the number of proofs being aggregated.
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifierSRS<E: Pairing> {
-    pub n: u64,
+    pub n: u32,
     pub g: E::G1Affine,
     pub h: E::G2Affine,
     pub g_alpha: E::G1Affine,
@@ -109,7 +109,7 @@ pub struct VerifierSRS<E: Pairing> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct VerifierSRSProjective<E: Pairing> {
-    pub n: u64,
+    pub n: u32,
     pub g: E::G1,
     pub h: E::G2,
     pub g_alpha: E::G1,
@@ -144,7 +144,7 @@ impl<E: Pairing> ProverSRS<E> {
 impl<E: Pairing> VerifierSRS<E> {
     pub fn to_projective(&self) -> VerifierSRSProjective<E> {
         VerifierSRSProjective {
-            n: self.n as u64,
+            n: self.n,
             g: self.g.into_group(),
             h: self.h.into_group(),
             g_alpha: self.g_alpha.into_group(),
@@ -216,14 +216,15 @@ impl<E: Pairing> GenericSRS<E> {
     /// panics otherwise. The number of proofs must be inferior to half of the
     /// size of the generic srs otherwise it panics.
     pub fn specialize(&self, num_proofs: u32) -> (ProverSRS<E>, VerifierSRS<E>) {
-        let num_proofs = num_proofs as usize;
         assert!(num_proofs.is_power_of_two());
-        let tn = 2 * num_proofs; // size of the CRS we need
+        let n = num_proofs as usize;
+
+        let tn = 2 * n as usize; // size of the CRS we need
         assert!(self.g_alpha_powers.len() >= tn);
         assert!(self.h_alpha_powers.len() >= tn);
         assert!(self.g_beta_powers.len() >= tn);
         assert!(self.h_beta_powers.len() >= tn);
-        let n = num_proofs;
+
         // when doing the KZG opening we need _all_ coefficients from 0
         // to 2n-1 because the polynomial is of degree 2n-1.
         let g_low = 0;
@@ -253,10 +254,10 @@ impl<E: Pairing> GenericSRS<E> {
             h_beta_powers_table,
             vkey,
             wkey,
-            n: n as u64,
+            n: num_proofs,
         };
         let vk = VerifierSRS::<E> {
-            n: n as u64,
+            n: num_proofs,
             g: self.g_alpha_powers[0],
             h: self.h_alpha_powers[0],
             g_alpha: self.g_alpha_powers[1],

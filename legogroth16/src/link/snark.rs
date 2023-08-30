@@ -24,8 +24,8 @@ pub struct PP<
     G1: Clone + Default + CanonicalSerialize + CanonicalDeserialize,
     G2: Clone + Default + CanonicalSerialize + CanonicalDeserialize,
 > {
-    pub l: u64, // # of rows
-    pub t: u64, // # of cols
+    pub l: u32, // # of rows
+    pub t: u32, // # of cols
     pub g1: G1,
     pub g2: G2,
 }
@@ -35,13 +35,8 @@ impl<
         G2: Clone + Default + CanonicalSerialize + CanonicalDeserialize,
     > PP<G1, G2>
 {
-    pub fn new(l: usize, t: usize, g1: G1, g2: G2) -> PP<G1, G2> {
-        PP {
-            l: l as u64,
-            t: t as u64,
-            g1,
-            g2,
-        }
+    pub fn new(l: u32, t: u32, g1: G1, g2: G2) -> PP<G1, G2> {
+        PP { l, t, g1, g2 }
     }
 }
 
