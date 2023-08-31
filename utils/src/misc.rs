@@ -1,7 +1,7 @@
 use core::ops::Range;
 
 use crate::{
-    aliases::{DoubleEndedExactSizeIterator, SendIfParallel, SyncIfParallel},
+    aliases::{DoubleEndedExactSizeIterator, SendIfParallel},
     concat_slices,
     hashing_utils::projective_group_elem_from_try_and_incr,
     impl_indexed_iter,
@@ -75,33 +75,34 @@ where
 }
 
 /// Produces an iterator emitting `n` items `u32::to_le_bytes` of the counter starting from zero.
-pub fn n_bytes_iter(n: u32) -> impl_indexed_iter!(<Item = [u8; 4]>) {
+pub fn le_bytes_iter(n: u32) -> impl_indexed_iter!(<Item = [u8; 4]>) {
     cfg_into_iter!(0..n).map(u32::to_le_bytes)
 }
 
 /// Produces `n` projective group elements by combining the supplied bytes with the `u32::to_le_bytes` counter bytes.
-pub fn n_projective_group_elements<G, D, B>(
+pub fn n_projective_group_elements<'iter, G, D>(
     n: u32,
-    bytes: B,
-) -> impl_indexed_iter!(<Item = G::Group>)
+    bytes: &'iter [u8],
+) -> impl_indexed_iter!(<Item = G::Group> + 'iter)
 where
     G: AffineRepr + SendIfParallel,
     D: Digest,
-    B: AsRef<[u8]> + SendIfParallel + SyncIfParallel,
 {
-    n_bytes_iter(n).map(move |ctr_bytes| -> G::Group {
+    le_bytes_iter(n).map(move |ctr_bytes| -> G::Group {
         projective_group_elem_from_try_and_incr::<G, D>(&concat_slices!(bytes.as_ref(), ctr_bytes))
     })
 }
 
 /// Produces `n` affine group elements by combining the supplied bytes with the `u32::to_le_bytes` counter bytes.
-pub fn n_affine_group_elements<G, D, B>(n: u32, bytes: B) -> impl_indexed_iter!(<Item = G>)
+pub fn n_affine_group_elements<'iter, G, D>(
+    n: u32,
+    bytes: &'iter [u8],
+) -> impl_indexed_iter!(<Item = G> + 'iter)
 where
     G: AffineRepr + SendIfParallel,
     D: Digest,
-    B: AsRef<[u8]> + SendIfParallel + SyncIfParallel,
 {
-    n_projective_group_elements::<G, D, B>(n, bytes).map(CurveGroup::into_affine)
+    n_projective_group_elements::<G, D>(n, bytes).map(CurveGroup::into_affine)
 }
 
 /// Generates a random using given `rng`.

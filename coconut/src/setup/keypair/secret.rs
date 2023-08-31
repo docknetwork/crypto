@@ -8,7 +8,7 @@ use ark_serialize::*;
 use ark_std::rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use utils::{misc::n_bytes_iter, serde_utils::ArkObjectBytes};
+use utils::{misc::le_bytes_iter, serde_utils::ArkObjectBytes};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
@@ -65,7 +65,7 @@ impl<F: PrimeField> SecretKey<F> {
             {
                 let hasher = new_hasher(Self::Y_SALT);
 
-                n_bytes_iter(message_count)
+                le_bytes_iter(message_count)
                     .map(|ctr| concat_slices!(seed, ctr))
                     .map(|seed| hasher.hash_to_field(&seed, 1).pop().unwrap())
                     .collect()

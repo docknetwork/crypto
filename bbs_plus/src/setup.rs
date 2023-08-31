@@ -257,10 +257,11 @@ macro_rules! impl_sig_params {
                         let g1 = projective_group_elem_from_try_and_incr::<E::$group_affine, D>(
                             &concat_slices!(label, b" : g1"),
                         );
+                        let h_bytes = concat_slices!(label, b" : h_");
                         // h_0 and h[i] for i in 1 to message_count
-                        let h = n_projective_group_elements::<E::$group_affine, D, _>(
+                        let h = n_projective_group_elements::<E::$group_affine, D>(
                             1 + message_count,
-                            concat_slices!(label, b" : h_"),
+                            &h_bytes,
                         );
                         let g1_and_h: Vec<_> = iter::once(g1).chain(h).collect();
 
@@ -522,9 +523,9 @@ impl<E: Pairing> SignatureParams23G1<E> {
             affine_group_element_from_byte_slices!(label, b" : g1"),
             affine_group_element_from_byte_slices!(label, b" : g2"),
             {
-                let h: Vec<_> = n_projective_group_elements::<E::G1Affine, D, _>(
+                let h: Vec<_> = n_projective_group_elements::<E::G1Affine, D>(
                     message_count,
-                    concat_slices!(label, b" : h_"),
+                    &concat_slices!(label, b" : h_"),
                 )
                 .collect();
 
