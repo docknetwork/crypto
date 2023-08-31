@@ -29,7 +29,7 @@ use crate::{
     util::{generator_pair, generator_pair_deterministic},
 };
 use dock_crypto_utils::{
-    ff::powers, hashing_utils::field_elem_from_try_and_incr, misc::n_bytes_iter, msm::WindowTable,
+    ff::powers, hashing_utils::field_elem_from_try_and_incr, misc::le_bytes_iter, msm::WindowTable,
     poly::poly_from_roots, serde_utils::*,
 };
 
@@ -596,7 +596,7 @@ impl<E: Pairing> AggregateSubsetWitness<E> {
         commitments: &[SetCommitment<E>],
         subsets: &[BTreeSet<E::ScalarField>],
     ) -> Vec<E::ScalarField> {
-        n_bytes_iter(n)
+        le_bytes_iter(n)
             .zip(commitments)
             .zip(subsets)
             .map(|((ctr_bytes, c), s)| {
