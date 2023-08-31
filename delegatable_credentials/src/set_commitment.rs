@@ -12,7 +12,6 @@ use ark_ff::{
 use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Valid};
 use ark_std::{
-    cfg_iter,
     collections::BTreeSet,
     io::{Read, Write},
     ops::{Div, Mul, Neg},
@@ -598,8 +597,9 @@ impl<E: Pairing> AggregateSubsetWitness<E> {
         subsets: &[BTreeSet<E::ScalarField>],
     ) -> Vec<E::ScalarField> {
         n_bytes_iter(n)
-            .zip(cfg_iter!(commitments).zip(subsets))
-            .map(|(ctr_bytes, (c, s))| {
+            .zip(commitments)
+            .zip(subsets)
+            .map(|((ctr_bytes, c), s)| {
                 let mut bytes = vec![];
                 bytes.extend_from_slice(&ctr_bytes);
                 c.serialize_compressed(&mut bytes).unwrap();
@@ -607,9 +607,9 @@ impl<E: Pairing> AggregateSubsetWitness<E> {
                     j.serialize_compressed(&mut bytes).unwrap()
                 }
 
-                field_elem_from_try_and_incr::<E::ScalarField, D>(&bytes)
+                field_elem_from_try_and_incr::<_, D>(&bytes)
             })
-            .collect::<Vec<_>>()
+            .collect()
     }
 }
 
