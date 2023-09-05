@@ -92,7 +92,7 @@ impl MetaStatements {
 
     /// Given multiple `MetaStatement::WitnessEquality` which might have common witness references,
     /// return a list of `EqualWitnesses` with no common references. The objective is the same as
-    /// when given a collection of sets; return a new collection of sets such that all sets in the new
+    /// when given a collection of sets, return a new collection of sets such that all sets in the new
     /// collection are pairwise distinct.
     pub fn disjoint_witness_equalities(&self) -> Vec<EqualWitnesses> {
         let mut equalities = vec![];
@@ -106,12 +106,23 @@ impl MetaStatements {
         }
         while !equalities.is_empty() {
             // Traverse `equalities` in reverse as that doesn't change index on removal
-            let mut current = equalities.pop().unwrap().0.clone();
+            let mut current_set = equalities.pop().unwrap().0.clone();
             if !equalities.is_empty() {
                 let mut i = equalities.len() - 1;
                 loop {
-                    if !current.is_disjoint(&equalities[i].0) {
-                        current = current.union(&equalities.remove(i).0).cloned().collect();
+                    if !current_set.is_disjoint(&equalities[i].0) {
+                        current_set = current_set
+                            .union(&equalities.remove(i).0)
+                            .cloned()
+                            .collect();
+                        // Found new members for the current set so traverse previously traversed sets
+                        // as well to find any sets that overlap with the newly found set
+                        if !equalities.is_empty() {
+                            i = equalities.len() - 1;
+                        } else {
+                            break;
+                        }
+                        continue;
                     }
                     if i == 0 {
                         break;
@@ -119,7 +130,7 @@ impl MetaStatements {
                     i -= 1;
                 }
             }
-            disjoints.push(EqualWitnesses(current));
+            disjoints.push(EqualWitnesses(current_set));
         }
         disjoints
     }
@@ -272,6 +283,21 @@ mod tests {
                 vec![(0, 3), (1, 4), (2, 0), (5, 0)],
                 vec![(3, 0), (6, 0)],
                 vec![(4, 0), (7, 0)],
+            ]
+        );
+
+        check!(
+            vec![
+                vec![(0, 1), (2, 0)],
+                vec![(0, 5), (1, 2)],
+                vec![(0, 5), (3, 0)],
+                vec![(1, 3), (5, 0)],
+                vec![(1, 2), (4, 0)],
+            ],
+            vec![
+                vec![(0, 1), (2, 0)],
+                vec![(0, 5), (1, 2), (3, 0), (4, 0)],
+                vec![(1, 3), (5, 0)]
             ]
         );
     }
