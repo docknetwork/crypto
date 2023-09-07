@@ -37,6 +37,6 @@ ark-poly.workspace = true
 
 [features]
 default = [ "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "oblivious_transfer_protocols/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "oblivious_transfer_protocols/std", "secret_sharing_and_dkg/std"]
 print-trace = [ "ark-std/print-trace", "schnorr_pok/print-trace", "dock_crypto_utils/print-trace" ]
-parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "dock_crypto_utils/parallel", "oblivious_transfer_protocols/parallel"]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "dock_crypto_utils/parallel", "oblivious_transfer_protocols/parallel", "secret_sharing_and_dkg/parallel"]
