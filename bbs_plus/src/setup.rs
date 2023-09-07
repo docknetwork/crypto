@@ -518,7 +518,7 @@ impl<E: Pairing> SignatureParams23G1<E> {
     /// This is useful if people need to be convinced that the discrete log of group elements wrt each other is not known.
     pub fn new<D: Digest>(label: &[u8], message_count: u32) -> Self {
         assert_ne!(message_count, 0);
-        // Group element by hashing `label`||`g1` as string.
+        // Group element by hashing `label`||`g1`, `label`||`g2` and `label`||`h_i` for i in 1 to message_count.
         let (g1, g2, h) = join!(
             affine_group_element_from_byte_slices!(label, b" : g1"),
             affine_group_element_from_byte_slices!(label, b" : g2"),
