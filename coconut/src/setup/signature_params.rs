@@ -38,7 +38,7 @@ impl<E: Pairing> SignatureParams<E> {
         let (g, g_tilde, h) = join!(
             affine_group_element_from_byte_slices!(label, b" : g"),
             affine_group_element_from_byte_slices!(label, b" : g_tilde"),
-            n_affine_group_elements::<_, D>(message_count, &concat_slices!(label, b" : h_"))
+            n_affine_group_elements::<_, D>(0..message_count, &concat_slices!(label, b" : h_"))
                 .collect()
         );
 

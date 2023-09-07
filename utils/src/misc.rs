@@ -79,23 +79,30 @@ pub fn le_bytes_iter(n: u32) -> impl_indexed_iter!(<Item = [u8; 4]>) {
     cfg_into_iter!(0..n).map(u32::to_le_bytes)
 }
 
-/// Produces `n` projective group elements by combining the supplied bytes with the `u32::to_le_bytes` counter bytes.
+/// Produces an iterator of little endian bytes of each element contained in the range `counter_range`
+pub fn le_bytes_iter_from_given_range(
+    counter_range: Range<u32>,
+) -> impl_indexed_iter!(<Item = [u8; 4]>) {
+    cfg_into_iter!(counter_range).map(u32::to_le_bytes)
+}
+
+/// Produces an iterator of projective group elements created by hashing a label and a counter in the range `counter_range`
 pub fn n_projective_group_elements<'iter, G, D>(
-    n: u32,
+    counter_range: Range<u32>,
     bytes: &'iter [u8],
 ) -> impl_indexed_iter!(<Item = G::Group> + 'iter)
 where
     G: AffineRepr + SendIfParallel,
     D: Digest,
 {
-    le_bytes_iter(n).map(move |ctr_bytes| -> G::Group {
+    le_bytes_iter_from_given_range(counter_range).map(move |ctr_bytes| -> G::Group {
         projective_group_elem_from_try_and_incr::<G, D>(&concat_slices!(bytes.as_ref(), ctr_bytes))
     })
 }
 
-/// Produces `n` affine group elements by combining the supplied bytes with the `u32::to_le_bytes` counter bytes.
+/// Produces an iterator affine group elements created by hashing a label and a counter in the range `counter_range`
 pub fn n_affine_group_elements<'iter, G, D>(
-    n: u32,
+    n: Range<u32>,
     bytes: &'iter [u8],
 ) -> impl_indexed_iter!(<Item = G> + 'iter)
 where
