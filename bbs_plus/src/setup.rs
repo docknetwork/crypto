@@ -524,7 +524,7 @@ impl<E: Pairing> SignatureParams23G1<E> {
             affine_group_element_from_byte_slices!(label, b" : g2"),
             {
                 let mut h: Vec<_> = n_projective_group_elements::<E::G1Affine, D>(
-                    1+message_count,
+                    1 + message_count,
                     &concat_slices!(label, b" : h_"),
                 )
                 .collect();
