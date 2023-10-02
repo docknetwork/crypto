@@ -17,7 +17,7 @@ use proof_system::{
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
         bound_check_smc::BoundCheckSmc as BoundCheckStmt,
     },
-    sub_protocols::{bound_check_smc::BoundCheckSmcProtocol, should_use_cls},
+    sub_protocols::should_use_cls,
     witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
 
@@ -216,7 +216,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
     sig.verify(&msgs, sig_keypair.public_key.clone(), sig_params.clone())
         .unwrap();
 
-    let is_cls = BoundCheckSmcProtocol::<Bls12_381>::should_use_cls(min, max);
+    let is_cls = should_use_cls(min, max);
     assert!(!is_cls);
 
     // Check for message that is signed and satisfies the bounds
