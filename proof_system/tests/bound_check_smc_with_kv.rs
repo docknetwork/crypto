@@ -38,10 +38,8 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
     let sig_params = SignatureParamsG1::<Bls12_381>::generate_using_rng(&mut rng, msg_count);
     let sig_keypair = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &sig_params);
 
-    let (smc_setup_params, sk) = SmcParamsAndCommitmentKey::new::<_, Blake2b512>(
-        &mut rng, b"test",
-        2,
-    );
+    let (smc_setup_params, sk) =
+        SmcParamsAndCommitmentKey::new::<_, Blake2b512>(&mut rng, b"test", 2);
     smc_setup_params.verify().unwrap();
     let smc_setup_params_with_sk = SmcParamsAndCommitmentKeyAndSecretKey {
         params_and_comm_key: smc_setup_params.clone(),
