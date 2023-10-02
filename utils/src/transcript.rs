@@ -5,7 +5,7 @@ use ark_std::{vec, vec::Vec};
 pub use merlin::Transcript as Merlin;
 
 /// must be specific to the application.
-pub fn new_merlin_transcript(label: &'static [u8]) -> impl Transcript {
+pub fn new_merlin_transcript(label: &'static [u8]) -> impl Transcript + Clone {
     Merlin::new(label)
 }
 

@@ -36,7 +36,7 @@ macro_rules! gen_tests {
     ($test1_name: ident, $test2_name: ident, $setup_fn_name: ident, $stmt: ident, $wit: ident) => {
         #[test]
         fn $test1_name() {
-            // Prove knowledge of BBS+ signature and a specific message satisfies some bounds i.e. min <= message <= max.
+            // Prove knowledge of BBS+ signature and a specific message satisfies some bounds i.e. min <= message < max.
             let mut rng = StdRng::seed_from_u64(0u64);
 
             let min = 100;
@@ -107,7 +107,7 @@ macro_rules! gen_tests {
             )
             .unwrap();
             println!(
-                "Time taken to create proof of bound check of 1 message in signature over {} messages {:?}",
+                "Time taken to create proof of LegoGroth16 bound check of 1 message in signature over {} messages {:?}",
                 msg_count,
                 start.elapsed()
             );
@@ -146,7 +146,7 @@ macro_rules! gen_tests {
                 )
                 .unwrap();
             println!(
-                "Time taken to verify proof of bound check of 1 message in signature over {} messages {:?}",
+                "Time taken to verify proof of LegoGroth16 bound check of 1 message in signature over {} messages {:?}",
                 msg_count,
                 start.elapsed()
             );
@@ -571,8 +571,8 @@ gen_tests!(
 
 #[test]
 fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
-    // Prove knowledge of BBS+ signature and a specific message satisfies some bounds i.e. min <= message <= max.
-    // Here message set as min and them max
+    // Prove knowledge of BBS+ signature and a specific message satisfies some bounds i.e. min <= message < max.
+    // Here message set as min
     let mut rng = StdRng::seed_from_u64(0u64);
 
     let min = 100;
@@ -649,78 +649,6 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
             msg.into_bigint().as_ref()[0],
             max,
             snark_pk.vk.clone(),
-        )
-        .unwrap(),
-    );
-    let proof_spec_verifier = ProofSpec::new(
-        verifier_statements.clone(),
-        meta_statements.clone(),
-        vec![],
-        None,
-    );
-    proof_spec_verifier.validate().unwrap();
-    proof
-        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_verifier, None, Default::default())
-        .unwrap();
-
-    // Message same as maximum
-    let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params.clone(),
-        sig_keypair.public_key.clone(),
-        BTreeMap::new(),
-    ));
-    prover_statements.add(
-        BoundCheckProverStmt::new_statement_from_params(
-            min,
-            msg.into_bigint().as_ref()[0],
-            snark_pk.clone(),
-        )
-        .unwrap(),
-    );
-
-    let mut meta_statements = MetaStatements::new();
-    meta_statements.add_witness_equality(EqualWitnesses(
-        vec![(0, msg_idx), (1, 0)]
-            .into_iter()
-            .collect::<BTreeSet<WitnessRef>>(),
-    ));
-    let proof_spec_prover = ProofSpec::new(
-        prover_statements.clone(),
-        meta_statements.clone(),
-        vec![],
-        None,
-    );
-    proof_spec_prover.validate().unwrap();
-
-    let mut witnesses = Witnesses::new();
-    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
-        sig,
-        msgs.clone().into_iter().enumerate().collect(),
-    ));
-    witnesses.add(Witness::BoundCheckLegoGroth16(msg));
-
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
-        &mut rng,
-        proof_spec_prover,
-        witnesses.clone(),
-        None,
-        Default::default(),
-    )
-    .unwrap()
-    .0;
-
-    let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        sig_params,
-        sig_keypair.public_key.clone(),
-        BTreeMap::new(),
-    ));
-    verifier_statements.add(
-        BoundCheckVerifierStmt::new_statement_from_params(
-            min,
-            msg.into_bigint().as_ref()[0],
-            snark_pk.vk,
         )
         .unwrap(),
     );

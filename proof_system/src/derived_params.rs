@@ -1,8 +1,11 @@
 //! Parameters derived from other parameters during proof generation and verification. Used to prevent repeatedly
 //! creating these parameters.
 
-use crate::sub_protocols::saver::SaverProtocol;
-use ark_ec::pairing::Pairing;
+use crate::{
+    statement::bound_check_smc::{SmcParamsAndCommitmentKey, SmcParamsWithPairingAndCommitmentKey},
+    sub_protocols::saver::SaverProtocol,
+};
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::{collections::BTreeMap, marker::PhantomData, vec, vec::Vec};
 use bbs_plus::setup::{
     PreparedPublicKeyG2 as PreparedBBSPlusPk,
@@ -26,6 +29,7 @@ use saver::{
         PreparedVerifyingKey as SaverPreparedVerifyingKey, VerifyingKey as SaverVerifyingKey,
     },
 };
+use smc_range_proof::prelude::MemberCommitmentKey;
 use vb_accumulator::setup::{
     PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,
     PublicKey as AccumPk, SetupParams as AccumParams,
@@ -138,6 +142,23 @@ impl<'a, E: Pairing>
     }
 }
 
+/// To derive commitment key from a Pedersen commitment. Used with generators for Bulletproofs++
+impl<'a, E: Pairing, G: AffineRepr> DerivedParams<'a, (G, G), [G; 2]>
+    for DerivedParamsTracker<'a, (G, G), [G; 2], E>
+{
+    fn new_derived(ck: &(G, G)) -> [G; 2] {
+        [ck.0, ck.1]
+    }
+}
+
+impl<'a, E: Pairing> DerivedParams<'a, MemberCommitmentKey<E::G1Affine>, [E::G1Affine; 2]>
+    for DerivedParamsTracker<'a, MemberCommitmentKey<E::G1Affine>, [E::G1Affine; 2], E>
+{
+    fn new_derived(ck: &MemberCommitmentKey<E::G1Affine>) -> [E::G1Affine; 2] {
+        [ck.g, ck.h]
+    }
+}
+
 macro_rules! impl_derived_for_prepared_ref {
     ($(#[$doc:meta])*
     $unprepared: ident, $prepared: ident) => {
@@ -218,3 +239,9 @@ impl_derived_for_prepared_ref!(
 impl_derived_for_prepared_ref!(AccumParams, PreparedAccumParams);
 
 impl_derived_for_prepared_ref!(AccumPk, PreparedAccumPk);
+
+impl_derived_for_prepared_ref!(
+    /// To derive params with prepared G2 and pairing from `SetMembershipCheckParams`
+    SmcParamsAndCommitmentKey,
+    SmcParamsWithPairingAndCommitmentKey
+);

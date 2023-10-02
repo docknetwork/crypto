@@ -8,7 +8,10 @@ use crate::{
         accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol},
         bbs_23::PoKBBSSigG1SubProtocol as PoKBBSSig23G1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol,
-        bound_check_legogroth16::BoundCheckProtocol,
+        bound_check_bpp::BoundCheckBppProtocol,
+        bound_check_legogroth16::BoundCheckLegoGrothProtocol,
+        bound_check_smc::BoundCheckSmcProtocol,
+        bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
         ps_signature::PSSignaturePoK,
         r1cs_legogorth16::R1CSLegogroth16Protocol,
         saver::SaverProtocol,
@@ -32,6 +35,54 @@ pub struct VerifierConfig {
     /// Uses `RandomizedPairingChecker` to speed up pairing checks.
     /// If true, uses lazy `RandomizedPairingChecker` that trades-off memory for compute time
     pub use_lazy_randomized_pairing_checks: Option<bool>,
+}
+
+macro_rules! err_incompat_proof {
+    ($s_idx:ident, $s: ident, $proof: ident) => {
+        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+            $s_idx,
+            format!("{:?}", $proof),
+            format!("{:?}", $s),
+        ))
+    };
+}
+
+macro_rules! check_resp_for_equalities {
+    ($witness_equalities:ident, $s_idx: ident, $p: ident, $func_name: ident, $self: ident, $responses_for_equalities: ident) => {
+        for i in 0..$witness_equalities.len() {
+            // Check witness equalities for this statement. As there is only 1 witness
+            // of interest, its index is always 0
+            if $witness_equalities[i].contains(&($s_idx, 0)) {
+                let resp = $p.$func_name();
+                $self::check_response_for_equality(
+                    $s_idx,
+                    0,
+                    i,
+                    &mut $responses_for_equalities,
+                    resp,
+                )?;
+            }
+        }
+    };
+}
+
+macro_rules! check_resp_for_equalities_with_err {
+    ($witness_equalities:ident, $s_idx: ident, $p: ident, $func_name: ident, $self: ident, $responses_for_equalities: ident) => {
+        for i in 0..$witness_equalities.len() {
+            // Check witness equalities for this statement. As there is only 1 witness
+            // of interest, its index is always 0
+            if $witness_equalities[i].contains(&($s_idx, 0)) {
+                let resp = $p.$func_name()?;
+                $self::check_response_for_equality(
+                    $s_idx,
+                    0,
+                    i,
+                    &mut $responses_for_equalities,
+                    resp,
+                )?;
+            }
+        }
+    };
 }
 
 impl<E, G> Proof<E, G>
@@ -74,6 +125,9 @@ where
             ));
         }
 
+        // TODO: Use this for all sub-proofs and not just Bulletproofs++
+        let mut transcript = new_merlin_transcript(b"composite-proof");
+
         // TODO: Check SNARK SRSs compatible when aggregating and statement proof compatible with proof spec when aggregating
 
         let aggregate_snarks =
@@ -105,8 +159,14 @@ where
         }
 
         // Prepare commitment keys for running Schnorr protocols of all statements.
-        let (bound_check_comm, ek_comm, chunked_comm, r1cs_comm_keys) =
-            proof_spec.derive_commitment_keys()?;
+        let (
+            bound_check_comm,
+            ek_comm,
+            chunked_comm,
+            r1cs_comm_keys,
+            bound_check_bpp_comm,
+            bound_check_smc_comm,
+        ) = proof_spec.derive_commitment_keys()?;
 
         // Prepare required parameters for pairings
         let (
@@ -121,6 +181,7 @@ where
             derived_ps_param,
             derived_ps_pk,
             derived_bbs_param,
+            derived_smc_param,
         ) = proof_spec.derive_prepared_parameters()?;
 
         // All the distinct equalities in `ProofSpec`
@@ -182,13 +243,7 @@ where
                             &mut challenge_bytes,
                         )?;
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::PoKBBSSignature23G1(s) => match proof {
                     StatementProof::PoKBBSSignature23G1(p) => {
@@ -216,30 +271,18 @@ where
                             &mut challenge_bytes,
                         )?;
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::AccumulatorMembership(s) => match proof {
                     StatementProof::AccumulatorMembership(p) => {
-                        for i in 0..witness_equalities.len() {
-                            // Check witness equalities for this statement. As there is only 1 witness
-                            // of interest, i.e. the accumulator member, its index is always 0
-                            if witness_equalities[i].contains(&(s_idx, 0)) {
-                                let resp = p.get_schnorr_response_for_element();
-                                Self::check_response_for_equality(
-                                    s_idx,
-                                    0,
-                                    i,
-                                    &mut responses_for_equalities,
-                                    resp,
-                                )?;
-                            }
-                        }
+                        check_resp_for_equalities!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_element,
+                            Self,
+                            responses_for_equalities
+                        );
                         let params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
                         let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
@@ -251,30 +294,18 @@ where
                             &mut challenge_bytes,
                         )?;
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::AccumulatorNonMembership(s) => match proof {
                     StatementProof::AccumulatorNonMembership(p) => {
-                        // Check witness equalities for this statement. As there is only 1 witness
-                        // of interest, i.e. the accumulator non-member, its index is always 0
-                        for i in 0..witness_equalities.len() {
-                            if witness_equalities[i].contains(&(s_idx, 0)) {
-                                let resp = p.get_schnorr_response_for_element();
-                                Self::check_response_for_equality(
-                                    s_idx,
-                                    0,
-                                    i,
-                                    &mut responses_for_equalities,
-                                    resp,
-                                )?;
-                            }
-                        }
+                        check_resp_for_equalities!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_element,
+                            Self,
+                            responses_for_equalities
+                        );
                         let params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
                         let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
@@ -286,13 +317,7 @@ where
                             &mut challenge_bytes,
                         )?;
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::PedersenCommitment(s) => match proof {
                     StatementProof::PedersenCommitment(p) => {
@@ -320,28 +345,18 @@ where
                             &mut challenge_bytes,
                         )?;
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::SaverVerifier(s) => match proof {
                     StatementProof::Saver(p) => {
-                        for i in 0..witness_equalities.len() {
-                            if witness_equalities[i].contains(&(s_idx, 0)) {
-                                let resp = p.get_schnorr_response_for_combined_message()?;
-                                Self::check_response_for_equality(
-                                    s_idx,
-                                    0,
-                                    i,
-                                    &mut responses_for_equalities,
-                                    resp,
-                                )?;
-                            }
-                        }
+                        check_resp_for_equalities_with_err!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_combined_message,
+                            Self,
+                            responses_for_equalities
+                        );
                         let ek_comm_key = ek_comm.get(s_idx).unwrap();
                         let cc_keys = chunked_comm.get(s_idx).unwrap();
                         SaverProtocol::compute_challenge_contribution(
@@ -353,18 +368,14 @@ where
                         )?;
                     }
                     StatementProof::SaverWithAggregation(p) => {
-                        for i in 0..witness_equalities.len() {
-                            if witness_equalities[i].contains(&(s_idx, 0)) {
-                                let resp = p.get_schnorr_response_for_combined_message()?;
-                                Self::check_response_for_equality(
-                                    s_idx,
-                                    0,
-                                    i,
-                                    &mut responses_for_equalities,
-                                    resp,
-                                )?;
-                            }
-                        }
+                        check_resp_for_equalities_with_err!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_combined_message,
+                            Self,
+                            responses_for_equalities
+                        );
                         let ek_comm_key = ek_comm.get(s_idx).unwrap();
                         let cc_keys = chunked_comm.get(s_idx).unwrap();
                         SaverProtocol::compute_challenge_contribution_when_aggregating_snark(
@@ -375,64 +386,44 @@ where
                             &mut challenge_bytes,
                         )?;
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::BoundCheckLegoGroth16Verifier(s) => match proof {
                     StatementProof::BoundCheckLegoGroth16(p) => {
-                        for i in 0..witness_equalities.len() {
-                            if witness_equalities[i].contains(&(s_idx, 0)) {
-                                let resp = p.get_schnorr_response_for_message()?;
-                                Self::check_response_for_equality(
-                                    s_idx,
-                                    0,
-                                    i,
-                                    &mut responses_for_equalities,
-                                    resp,
-                                )?;
-                            }
-                        }
+                        check_resp_for_equalities_with_err!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_message,
+                            Self,
+                            responses_for_equalities
+                        );
 
                         let comm_key = bound_check_comm.get(s_idx).unwrap();
-                        BoundCheckProtocol::compute_challenge_contribution(
+                        BoundCheckLegoGrothProtocol::compute_challenge_contribution(
                             comm_key,
                             p,
                             &mut challenge_bytes,
                         )?;
                     }
                     StatementProof::BoundCheckLegoGroth16WithAggregation(p) => {
-                        for i in 0..witness_equalities.len() {
-                            if witness_equalities[i].contains(&(s_idx, 0)) {
-                                let resp = p.get_schnorr_response_for_message()?;
-                                Self::check_response_for_equality(
-                                    s_idx,
-                                    0,
-                                    i,
-                                    &mut responses_for_equalities,
-                                    resp,
-                                )?;
-                            }
-                        }
+                        check_resp_for_equalities_with_err!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_message,
+                            Self,
+                            responses_for_equalities
+                        );
 
                         let comm_key = bound_check_comm.get(s_idx).unwrap();
-                        BoundCheckProtocol::compute_challenge_contribution_when_aggregating_snark(
+                        BoundCheckLegoGrothProtocol::compute_challenge_contribution_when_aggregating_snark(
                             comm_key,
                             p,
                             &mut challenge_bytes,
                         )?;
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::R1CSCircomVerifier(s) => {
                     let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
@@ -481,13 +472,7 @@ where
                                 &mut challenge_bytes,
                             )?;
                         }
-                        _ => {
-                            return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                                s_idx,
-                                format!("{:?}", proof),
-                                format!("{:?}", s),
-                            ))
-                        }
+                        _ => err_incompat_proof!(s_idx, s, proof),
                     }
                 }
                 Statement::PoKPSSignature(s) => match proof {
@@ -517,13 +502,71 @@ where
                         }
                         p.challenge_contribution(&mut challenge_bytes, pk, sig_params)?;
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::BoundCheckBpp(s) => match proof {
+                    StatementProof::BoundCheckBpp(p) => {
+                        check_resp_for_equalities_with_err!(
+                            witness_equalities,
                             s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
+                            p,
+                            get_schnorr_response_for_message,
+                            Self,
+                            responses_for_equalities
+                        );
+
+                        let comm_key = bound_check_bpp_comm.get(s_idx).unwrap();
+                        BoundCheckBppProtocol::<G>::compute_challenge_contribution(
+                            s.min,
+                            s.max,
+                            comm_key.as_slice(),
+                            p,
+                            &mut challenge_bytes,
+                        )?;
                     }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::BoundCheckSmc(s) => match proof {
+                    StatementProof::BoundCheckSmc(p) => {
+                        check_resp_for_equalities_with_err!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_message,
+                            Self,
+                            responses_for_equalities
+                        );
+
+                        let comm_key_slice = bound_check_smc_comm.get(s_idx).unwrap();
+                        BoundCheckSmcProtocol::compute_challenge_contribution(
+                            comm_key_slice.as_slice(),
+                            p,
+                            derived_smc_param.get(s_idx).unwrap().clone(),
+                            &mut challenge_bytes,
+                        )?;
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::BoundCheckSmcWithKVVerifier(s) => match proof {
+                    StatementProof::BoundCheckSmcWithKV(p) => {
+                        check_resp_for_equalities_with_err!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_message,
+                            Self,
+                            responses_for_equalities
+                        );
+
+                        let comm_key_slice = bound_check_smc_comm.get(s_idx).unwrap();
+                        BoundCheckSmcWithKVProtocol::compute_challenge_contribution(
+                            comm_key_slice.as_slice(),
+                            p,
+                            s.get_params_and_comm_key_and_sk(&proof_spec.setup_params, s_idx)?,
+                            &mut challenge_bytes,
+                        )?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
@@ -574,13 +617,7 @@ where
                             &mut pairing_checker,
                         )?
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::PoKBBSSignature23G1(s) => match proof {
                     StatementProof::PoKBBSSignature23G1(ref p) => {
@@ -600,13 +637,7 @@ where
                             &mut pairing_checker,
                         )?
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::AccumulatorMembership(s) => match proof {
                     StatementProof::AccumulatorMembership(ref p) => {
@@ -628,13 +659,7 @@ where
                             &mut pairing_checker,
                         )?
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::AccumulatorNonMembership(s) => match proof {
                     StatementProof::AccumulatorNonMembership(ref p) => {
@@ -656,13 +681,7 @@ where
                             &mut pairing_checker,
                         )?
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::PedersenCommitment(s) => match proof {
                     StatementProof::PedersenCommitment(ref _p) => {
@@ -670,13 +689,7 @@ where
                         let sp = SchnorrProtocol::new(s_idx, comm_key, s.commitment);
                         sp.verify_proof_contribution(&challenge, &proof)?
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::SaverVerifier(s) => {
                     let enc_gens = s.get_encryption_gens(&proof_spec.setup_params, s_idx)?;
@@ -731,8 +744,12 @@ where
                 }
                 Statement::BoundCheckLegoGroth16Verifier(s) => {
                     let verifying_key = s.get_verifying_key(&proof_spec.setup_params, s_idx)?;
-                    let sp =
-                        BoundCheckProtocol::new_for_verifier(s_idx, s.min, s.max, verifying_key);
+                    let sp = BoundCheckLegoGrothProtocol::new_for_verifier(
+                        s_idx,
+                        s.min,
+                        s.max,
+                        verifying_key,
+                    );
                     let comm_key = bound_check_comm.get(s_idx).unwrap();
                     match proof {
                         StatementProof::BoundCheckLegoGroth16(ref bc_proof) => sp
@@ -817,13 +834,56 @@ where
                             &mut pairing_checker,
                         )?
                     }
-                    _ => {
-                        return Err(ProofSystemError::ProofIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", proof),
-                            format!("{:?}", s),
-                        ))
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::BoundCheckBpp(s) => match proof {
+                    StatementProof::BoundCheckBpp(ref bc_proof) => {
+                        let setup_params = s.get_setup_params(&proof_spec.setup_params, s_idx)?;
+                        let sp = BoundCheckBppProtocol::new(s_idx, s.min, s.max, setup_params);
+                        let comm_key = bound_check_bpp_comm.get(s_idx).unwrap();
+                        sp.verify_proof_contribution(
+                            &challenge,
+                            bc_proof,
+                            comm_key.as_slice(),
+                            &mut transcript,
+                        )?
                     }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::BoundCheckSmc(s) => match proof {
+                    StatementProof::BoundCheckSmc(ref bc_proof) => {
+                        let setup_params =
+                            s.get_params_and_comm_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = BoundCheckSmcProtocol::new(s_idx, s.min, s.max, setup_params);
+                        let comm_key_slice = bound_check_smc_comm.get(s_idx).unwrap();
+                        sp.verify_proof_contribution(
+                            &challenge,
+                            bc_proof,
+                            comm_key_slice.as_slice(),
+                            derived_smc_param.get(s_idx).unwrap().clone(),
+                            &mut pairing_checker,
+                        )?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::BoundCheckSmcWithKVVerifier(s) => match proof {
+                    StatementProof::BoundCheckSmcWithKV(ref bc_proof) => {
+                        let setup_params =
+                            s.get_params_and_comm_key_and_sk(&proof_spec.setup_params, s_idx)?;
+                        let sp = BoundCheckSmcWithKVProtocol::new_for_verifier(
+                            s_idx,
+                            s.min,
+                            s.max,
+                            setup_params,
+                        );
+                        let comm_key_slice = bound_check_smc_comm.get(s_idx).unwrap();
+                        sp.verify_proof_contribution(
+                            &challenge,
+                            bc_proof,
+                            comm_key_slice.as_slice(),
+                        )?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }

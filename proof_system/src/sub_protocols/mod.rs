@@ -2,7 +2,10 @@ pub mod accumulator;
 #[macro_use]
 pub mod bbs_plus;
 pub mod bbs_23;
+pub mod bound_check_bpp;
 pub mod bound_check_legogroth16;
+pub mod bound_check_smc;
+pub mod bound_check_smc_with_kv;
 pub mod ps_signature;
 pub mod r1cs_legogorth16;
 pub mod saver;
@@ -12,13 +15,18 @@ use core::borrow::Borrow;
 
 use crate::error::ProofSystemError;
 use ark_ec::{pairing::Pairing, AffineRepr};
-use ark_std::io::Write;
+use ark_ff::PrimeField;
+use ark_std::{format, io::Write};
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
     statement_proof::StatementProof,
     sub_protocols::{
-        bound_check_legogroth16::BoundCheckProtocol, r1cs_legogorth16::R1CSLegogroth16Protocol,
+        bound_check_bpp::BoundCheckBppProtocol,
+        bound_check_legogroth16::BoundCheckLegoGrothProtocol,
+        bound_check_smc::BoundCheckSmcProtocol,
+        bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
+        r1cs_legogorth16::R1CSLegogroth16Protocol,
     },
 };
 use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol};
@@ -35,11 +43,14 @@ pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
     /// For verifiable encryption using SAVER
     Saver(self::saver::SaverProtocol<'a, E>),
     /// For range proof using LegoGroth16
-    BoundCheckProtocol(BoundCheckProtocol<'a, E>),
+    BoundCheckLegoGroth16(BoundCheckLegoGrothProtocol<'a, E>),
     R1CSLegogroth16Protocol(R1CSLegogroth16Protocol<'a, E>),
-    PSSignaturePoK(self::ps_signature::PSSignaturePoK<'a, E>),
+    PSSignaturePoK(ps_signature::PSSignaturePoK<'a, E>),
     /// For BBS signature in group G1
-    PoKBBSSignature23G1(self::bbs_23::PoKBBSSigG1SubProtocol<'a, E>),
+    PoKBBSSignature23G1(bbs_23::PoKBBSSigG1SubProtocol<'a, E>),
+    BoundCheckBpp(BoundCheckBppProtocol<'a, G>),
+    BoundCheckSmc(BoundCheckSmcProtocol<'a, E>),
+    BoundCheckSmcWithKV(BoundCheckSmcWithKVProtocol<'a, E>),
 }
 
 macro_rules! delegate {
@@ -51,10 +62,13 @@ macro_rules! delegate {
                 AccumulatorNonMembership,
                 PoKDiscreteLogs,
                 Saver,
-                BoundCheckProtocol,
+                BoundCheckLegoGroth16,
                 R1CSLegogroth16Protocol,
                 PSSignaturePoK,
-                PoKBBSSignature23G1
+                PoKBBSSignature23G1,
+                BoundCheckBpp,
+                BoundCheckSmc,
+                BoundCheckSmcWithKV
             : $($tt)+
         }
     }};
@@ -118,4 +132,32 @@ fn merge_indexed_messages_with_blindings<'a, M, B, R: 'a>(
         })
         .take_while(Option::is_some)
         .flatten()
+}
+
+pub fn validate_bounds(min: u64, max: u64) -> Result<(), ProofSystemError> {
+    if max <= min {
+        return Err(ProofSystemError::BoundCheckMaxNotGreaterThanMin);
+    }
+    Ok(())
+}
+
+pub fn enforce_and_get_u64<F: PrimeField>(val: &F) -> Result<u64, ProofSystemError> {
+    let m = val.into_bigint();
+    let limbs: &[u64] = m.as_ref();
+    for i in 1..limbs.len() {
+        if limbs[i] != 0 {
+            return Err(ProofSystemError::UnsupportedValue(format!(
+                "Only supports 64 bit values Bulletproofs++ range proof but found {}",
+                val
+            )));
+        }
+    }
+    Ok(limbs[0])
+}
+
+pub fn should_use_cls(min: u64, max: u64) -> bool {
+    assert!(max > min);
+    let diff = max - min;
+    let bits = diff.ilog2();
+    bits < 20
 }

@@ -83,6 +83,12 @@ pub enum ProofSystemError {
     InvalidNumberOfAggregateLegoGroth16Proofs(usize, usize),
     NotFoundAggregateLegoGroth16ProofForRequiredStatements(usize, BTreeSet<usize>),
     PSSignaturePoKError(coconut_crypto::SignaturePoKError),
+    UnsupportedValue(String),
+    /// For an arbitrary range proof, the response of both Schnorr protocols should be same
+    DifferentResponsesForSchnorrProtocolInBpp(usize),
+    BulletproofsPlusPlus(bulletproofs_plus_plus::prelude::BulletproofsPlusPlusError),
+    SetMembershipBasedRangeProof(smc_range_proof::prelude::SmcRangeProofError),
+    SmcParamsNotProvided,
 }
 
 impl From<SchnorrError> for ProofSystemError {
@@ -130,5 +136,17 @@ impl From<CircomError> for ProofSystemError {
 impl From<coconut_crypto::SignaturePoKError> for ProofSystemError {
     fn from(e: coconut_crypto::SignaturePoKError) -> Self {
         Self::PSSignaturePoKError(e)
+    }
+}
+
+impl From<bulletproofs_plus_plus::prelude::BulletproofsPlusPlusError> for ProofSystemError {
+    fn from(e: bulletproofs_plus_plus::prelude::BulletproofsPlusPlusError) -> Self {
+        Self::BulletproofsPlusPlus(e)
+    }
+}
+
+impl From<smc_range_proof::prelude::SmcRangeProofError> for ProofSystemError {
+    fn from(e: smc_range_proof::prelude::SmcRangeProofError) -> Self {
+        Self::SetMembershipBasedRangeProof(e)
     }
 }

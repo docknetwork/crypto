@@ -31,7 +31,7 @@ use legogroth16::{
 /// Runs the LegoGroth16 protocol for proving bounds of a witness and a Schnorr protocol for proving
 /// knowledge of the witness committed in the LegoGroth16 proof.
 #[derive(Clone, Debug, PartialEq)]
-pub struct BoundCheckProtocol<'a, E: Pairing> {
+pub struct BoundCheckLegoGrothProtocol<'a, E: Pairing> {
     pub id: usize,
     pub min: u64,
     pub max: u64,
@@ -43,7 +43,7 @@ pub struct BoundCheckProtocol<'a, E: Pairing> {
     pub sp: Option<SchnorrProtocol<'a, E::G1Affine>>,
 }
 
-impl<'a, E: Pairing> BoundCheckProtocol<'a, E> {
+impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
     /// Create an instance of this protocol for the prover.
     pub fn new_for_prover(id: usize, min: u64, max: u64, proving_key: &'a ProvingKey<E>) -> Self {
         Self {
@@ -104,6 +104,7 @@ impl<'a, E: Pairing> BoundCheckProtocol<'a, E> {
         self.init_schnorr_protocol(rng, comm_key, message, blinding, v, snark_proof)
     }
 
+    /// Reuse the old randomization and proof to create a new proof.
     pub fn init_with_old_randomness_and_proof<R: RngCore>(
         &mut self,
         rng: &mut R,
@@ -135,6 +136,7 @@ impl<'a, E: Pairing> BoundCheckProtocol<'a, E> {
         self.init_schnorr_protocol(rng, comm_key, message, blinding, v, snark_proof)
     }
 
+    /// Generate challenge contribution for the Schnorr protocol
     pub fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), ProofSystemError> {
         if self.sp.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateChallenge(
@@ -239,13 +241,6 @@ impl<'a, E: Pairing> BoundCheckProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn validate_bounds(min: u64, max: u64) -> Result<(), ProofSystemError> {
-        if max <= min {
-            return Err(ProofSystemError::BoundCheckMaxNotGreaterThanMin);
-        }
-        Ok(())
-    }
-
     pub fn validate_verification_key(vk: &VerifyingKey<E>) -> Result<(), ProofSystemError> {
         if vk.gamma_abc_g1.len() < 4 {
             return Err(ProofSystemError::LegoGroth16Error(
@@ -259,6 +254,8 @@ impl<'a, E: Pairing> BoundCheckProtocol<'a, E> {
         vec![vk.gamma_abc_g1[1 + 2], vk.eta_gamma_inv_g1]
     }
 
+    /// Initializes a Schnorr protocol to prove the knowledge of committed values in the Pedersen
+    /// commitment in the Legosnark proof
     fn init_schnorr_protocol<R: RngCore>(
         &mut self,
         rng: &mut R,
@@ -291,7 +288,7 @@ impl<'a, E: Pairing> BoundCheckProtocol<'a, E> {
 // elements which might not always be true in practice. If the upper bound on the byte-size of the numbers
 // is known, then the no. of constraints in the circuit can be reduced.
 
-/// Enforce min <= value <= max
+/// Enforce min <= value < max
 #[derive(Clone)]
 pub struct BoundCheckCircuit<F: Field> {
     min: Option<F>,
@@ -324,8 +321,8 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
             AllocationMode::Input,
         )?;
 
-        // val strictly less than or equal to max, i.e. val <= max
-        val.enforce_cmp(&max, Ordering::Less, true)?;
+        // val strictly less than to max, i.e. val < max
+        val.enforce_cmp(&max, Ordering::Less, false)?;
         // val strictly greater than or equal to max, i.e. val >= min
         val.enforce_cmp(&min, Ordering::Greater, true)?;
         Ok(())
@@ -333,7 +330,7 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
 }
 
 /// Generate SNARK proving key and verification key for a circuit that checks that given a witness
-/// `w` and public inputs `min` and `max`, `min <= w <= max`
+/// `w` and public inputs `min` and `max`, `min <= w < max`
 pub fn generate_snark_srs_bound_check<E, R>(rng: &mut R) -> Result<ProvingKey<E>, ProofSystemError>
 where
     E: Pairing,
@@ -352,6 +349,7 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{prelude::StdRng, SeedableRng};
+    use std::time::{Duration, Instant};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -361,9 +359,11 @@ mod tests {
         let proving_key = generate_snark_srs_bound_check::<Bls12_381, _>(&mut rng).unwrap();
         let pvk = PreparedVerifyingKey::from(&proving_key.vk);
 
+        let mut proving_time = Duration::default();
+        let mut verifying_time = Duration::default();
+
         for (min, max, value) in [
             (100, 200, 100),
-            (100, 200, 200),
             (100, 200, 101),
             (100, 200, 199),
             (100, 200, 150),
@@ -374,9 +374,20 @@ mod tests {
                 value: Some(Fr::from(value)),
             };
             let v = Fr::rand(&mut rng);
+
+            let start = Instant::now();
             let proof = create_random_proof(circuit, v, &proving_key, &mut rng).unwrap();
+            proving_time += start.elapsed();
+
+            let start = Instant::now();
             verify_proof(&pvk, &proof, &[Fr::from(min), Fr::from(max)]).unwrap();
+            verifying_time += start.elapsed();
         }
+
+        println!(
+            "For 4 proofs, proving_time={:?} and verifying_time={:?}",
+            proving_time, verifying_time
+        );
 
         let circuit = BoundCheckCircuit {
             min: Some(Fr::from(100)),
@@ -386,15 +397,16 @@ mod tests {
         let v = Fr::rand(&mut rng);
         assert!(create_random_proof(circuit, v, &proving_key, &mut rng).is_err());
 
-        for (min, max, value) in [(100, 200, 99), (100, 200, 201)] {
-            // To create valid proof
+        for (min, max, value) in [(100, 200, 99), (100, 200, 201), (100, 200, 200)] {
             let circuit = BoundCheckCircuit {
-                min: Some(Fr::from(1)),
-                max: Some(Fr::from(1000)),
+                min: Some(Fr::from(min)),
+                max: Some(Fr::from(max)),
                 value: Some(Fr::from(value)),
             };
             let v = Fr::rand(&mut rng);
+
             let proof = create_random_proof(circuit, v, &proving_key, &mut rng).unwrap();
+
             assert!(verify_proof(&pvk, &proof, &[Fr::from(min), Fr::from(max)],).is_err());
         }
     }

@@ -1,6 +1,6 @@
 [package]
 name = "proof_system"
-version = "0.22.0"
+version = "0.23.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -18,20 +18,22 @@ ark-ec.workspace = true
 ark-std.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
-bbs_plus = { version = "0.16.0", default-features = false, path = "../bbs_plus" }
-schnorr_pok = { version = "0.14.0", default-features = false, path = "../schnorr_pok" }
-vb_accumulator = { version = "0.17.0", default-features = false, path = "../vb_accumulator" }
-dock_crypto_utils = { version = "0.15.0", default-features = false, path = "../utils" }
-saver = { version = "0.13.0", default-features = false, path = "../saver" }
+bbs_plus = { version = "0.17.0", default-features = false, path = "../bbs_plus" }
+schnorr_pok = { version = "0.15.0", default-features = false, path = "../schnorr_pok" }
+vb_accumulator = { version = "0.18.0", default-features = false, path = "../vb_accumulator" }
+dock_crypto_utils = { version = "0.16.0", default-features = false, path = "../utils" }
+saver = { version = "0.14.0", default-features = false, path = "../saver" }
 serde.workspace = true
 serde_with.workspace = true
 ark-groth16.workspace = true
 ark-r1cs-std.workspace = true
 ark-relations.workspace = true
 zeroize.workspace = true
-coconut-crypto = { version = "0.5.0", default-features = false, path = "../coconut" }
+coconut-crypto = { version = "0.6.0", default-features = false, path = "../coconut" }
 merlin = { package = "dock_merlin", version = "2.0", default-features = false, path = "../merlin" }
-legogroth16 = { version = "0.10.0", default-features = false, features = ["circom", "aggregation"], path = "../legogroth16" }
+legogroth16 = { version = "0.11.0", default-features = false, features = ["circom", "aggregation"], path = "../legogroth16" }
+bulletproofs_plus_plus = { version = "0.1.0", default-features = false, path = "../bulletproofs_plus_plus" }
+smc_range_proof = { version = "0.1.0", default-features = false, path = "../smc_range_proof" }
 itertools.workspace = true
 
 [dev-dependencies]
@@ -43,8 +45,8 @@ test_utils = { default-features = false, path = "../test_utils" }
 
 [features]
 default = ["parallel"]
-std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "merlin/std", "coconut-crypto/std"]
+std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "merlin/std", "coconut-crypto/std", "bulletproofs_plus_plus/std", "smc_range_proof/std"]
 print-trace = ["ark-std/print-trace", "schnorr_pok/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace", "dock_crypto_utils/print-trace"]
-parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel", "legogroth16/parallel", "ark-r1cs-std/parallel", "dock_crypto_utils/parallel", "coconut-crypto/parallel"]
+parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel", "legogroth16/parallel", "ark-r1cs-std/parallel", "dock_crypto_utils/parallel", "coconut-crypto/parallel", "bulletproofs_plus_plus/parallel", "smc_range_proof/parallel"]
 wasmer-js = ["legogroth16/wasmer-js"]
 wasmer-sys = ["legogroth16/wasmer-sys"]

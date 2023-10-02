@@ -23,7 +23,10 @@ use crate::{
         accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol},
         bbs_23::PoKBBSSigG1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol as PoKBBSPlusSigG1SubProtocol,
-        bound_check_legogroth16::BoundCheckProtocol,
+        bound_check_bpp::BoundCheckBppProtocol,
+        bound_check_legogroth16::BoundCheckLegoGrothProtocol,
+        bound_check_smc::BoundCheckSmcProtocol,
+        bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
         r1cs_legogorth16::R1CSLegogroth16Protocol,
         saver::SaverProtocol,
         schnorr::SchnorrProtocol,
@@ -80,6 +83,16 @@ impl<E: Pairing> ProverConfig<E> {
     }
 }
 
+macro_rules! err_incompat_witness {
+    ($s_idx:ident, $s: ident, $witness: ident) => {
+        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
+            $s_idx,
+            format!("{:?}", $witness),
+            format!("{:?}", $s),
+        ))
+    };
+}
+
 impl<E, G> Proof<E, G>
 where
     E: Pairing,
@@ -127,13 +140,24 @@ where
         }
 
         // Prepare commitment keys for running Schnorr protocols of all statements.
-        let (bound_check_comm, ek_comm, chunked_comm, r1cs_comm_keys) =
-            proof_spec.derive_commitment_keys()?;
+        let (
+            bound_check_lego_comm,
+            ek_comm,
+            chunked_comm,
+            r1cs_comm_keys,
+            bound_check_bpp_comm,
+            bound_check_smc_comm,
+        ) = proof_spec.derive_commitment_keys()?;
 
         let mut sub_protocols =
             Vec::<SubProtocol<E, G>>::with_capacity(proof_spec.statements.0.len());
 
+        // Randomness used by SAVER and LegoGroth16 proofs. This is tracked and returned so subsequent proofs for
+        // the same public params and witness can reuse this randomness
         let mut commitment_randomness = BTreeMap::<usize, E::ScalarField>::new();
+
+        // TODO: Use this for all sub-proofs and not just Bulletproofs++
+        let mut transcript = new_merlin_transcript(b"composite-proof");
 
         // Initialize sub-protocols for each statement
         for (s_idx, (statement, witness)) in proof_spec
@@ -165,13 +189,7 @@ where
                         sp.init(rng, blindings_map, w)?;
                         sub_protocols.push(SubProtocol::PoKBBSSignatureG1(sp));
                     }
-                    _ => {
-                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", witness),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::PoKBBSSignature23G1(s) => match witness {
                     Witness::PoKBBSSignature23G1(w) => {
@@ -194,13 +212,7 @@ where
                         sp.init(rng, blindings_map, w)?;
                         sub_protocols.push(SubProtocol::PoKBBSSignature23G1(sp));
                     }
-                    _ => {
-                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", witness),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::AccumulatorMembership(s) => match witness {
                     Witness::AccumulatorMembership(w) => {
@@ -218,13 +230,7 @@ where
                         sp.init(rng, blinding, w)?;
                         sub_protocols.push(SubProtocol::AccumulatorMembership(sp));
                     }
-                    _ => {
-                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", witness),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::AccumulatorNonMembership(s) => match witness {
                     Witness::AccumulatorNonMembership(w) => {
@@ -242,13 +248,7 @@ where
                         sp.init(rng, blinding, w)?;
                         sub_protocols.push(SubProtocol::AccumulatorNonMembership(sp));
                     }
-                    _ => {
-                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", witness),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::PedersenCommitment(s) => match witness {
                     Witness::PedersenCommitment(w) => {
@@ -264,13 +264,7 @@ where
                         sp.init(rng, blindings_map, w)?;
                         sub_protocols.push(SubProtocol::PoKDiscreteLogs(sp));
                     }
-                    _ => {
-                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", witness),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::SaverProver(s) => match witness {
                     Witness::Saver(w) => {
@@ -293,6 +287,7 @@ where
                         );
 
                         match config.get_saver_proof(&s_idx) {
+                            // Found a proof to reuse.
                             Some(OldSaverProof(v, ct, proof)) => {
                                 sp.init_with_ciphertext_and_proof(
                                     rng, ck_comm_ct, &cc_keys.0, &cc_keys.1, w, blinding, v, ct,
@@ -317,24 +312,23 @@ where
 
                         sub_protocols.push(SubProtocol::Saver(sp));
                     }
-                    _ => {
-                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", witness),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::BoundCheckLegoGroth16Prover(s) => match witness {
                     Witness::BoundCheckLegoGroth16(w) => {
                         let blinding = blindings.remove(&(s_idx, 0));
                         let proving_key = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
-                        let comm_key = bound_check_comm.get(s_idx).unwrap();
+                        let comm_key = bound_check_lego_comm.get(s_idx).unwrap();
 
-                        let mut sp =
-                            BoundCheckProtocol::new_for_prover(s_idx, s.min, s.max, proving_key);
+                        let mut sp = BoundCheckLegoGrothProtocol::new_for_prover(
+                            s_idx,
+                            s.min,
+                            s.max,
+                            proving_key,
+                        );
 
                         match config.get_legogroth16_proof(&s_idx) {
+                            // Found a proof to reuse.
                             Some(OldLegoGroth16Proof(v, proof)) => sp
                                 .init_with_old_randomness_and_proof(
                                     rng, comm_key, w, blinding, v, proof,
@@ -354,15 +348,9 @@ where
                                 .unwrap(),
                         );
 
-                        sub_protocols.push(SubProtocol::BoundCheckProtocol(sp));
+                        sub_protocols.push(SubProtocol::BoundCheckLegoGroth16(sp));
                     }
-                    _ => {
-                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", witness),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::R1CSCircomProver(s) => match witness {
                     Witness::R1CSLegoGroth16(w) => {
@@ -408,13 +396,7 @@ where
                         );
                         sub_protocols.push(SubProtocol::R1CSLegogroth16Protocol(sp));
                     }
-                    _ => {
-                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", witness),
-                            format!("{:?}", s),
-                        ))
-                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::PoKPSSignature(s) => match witness {
                     Witness::PoKPSSignature(w) => {
@@ -433,13 +415,50 @@ where
                         sp.init(rng, blindings_map, w)?;
                         sub_protocols.push(SubProtocol::PSSignaturePoK(sp));
                     }
-                    _ => {
-                        return Err(ProofSystemError::WitnessIncompatibleWithStatement(
-                            s_idx,
-                            format!("{:?}", witness),
-                            format!("{:?}", s),
-                        ))
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::BoundCheckBpp(s) => match witness {
+                    Witness::BoundCheckBpp(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let bpp_setup_params =
+                            s.get_setup_params(&proof_spec.setup_params, s_idx)?;
+                        let comm_key = bound_check_bpp_comm.get(s_idx).unwrap();
+                        let mut sp =
+                            BoundCheckBppProtocol::new(s_idx, s.min, s.max, bpp_setup_params);
+                        sp.init(rng, comm_key.as_slice(), w, blinding, &mut transcript)?;
+                        sub_protocols.push(SubProtocol::BoundCheckBpp(sp));
                     }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::BoundCheckSmc(s) => match witness {
+                    Witness::BoundCheckSmc(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let params_comm_key =
+                            s.get_params_and_comm_key(&proof_spec.setup_params, s_idx)?;
+                        let comm_key_as_slice = bound_check_smc_comm.get(s_idx).unwrap();
+                        let mut sp =
+                            BoundCheckSmcProtocol::new(s_idx, s.min, s.max, params_comm_key);
+                        sp.init(rng, comm_key_as_slice, w, blinding)?;
+                        sub_protocols.push(SubProtocol::BoundCheckSmc(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::BoundCheckSmcWithKVProver(s) => match witness {
+                    Witness::BoundCheckSmcWithKV(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let params_comm_key =
+                            s.get_params_and_comm_key(&proof_spec.setup_params, s_idx)?;
+                        let comm_key_as_slice = bound_check_smc_comm.get(s_idx).unwrap();
+                        let mut sp = BoundCheckSmcWithKVProtocol::new_for_prover(
+                            s_idx,
+                            s.min,
+                            s.max,
+                            params_comm_key,
+                        );
+                        sp.init(rng, comm_key_as_slice, w, blinding)?;
+                        sub_protocols.push(SubProtocol::BoundCheckSmcWithKV(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
@@ -495,8 +514,9 @@ where
             };
             let prepared_srs = PreparedProverSRS::from(srs);
 
-            let mut transcript = new_merlin_transcript(b"aggregation");
-            transcript.append(b"challenge", &challenge);
+            // TODO: Remove it and use outer transcript
+            let mut aggr_transcript = new_merlin_transcript(b"aggregation");
+            aggr_transcript.append(b"challenge", &challenge);
 
             if proof_spec.aggregate_groth16.is_some() {
                 let to_aggr = proof_spec.aggregate_groth16.unwrap();
@@ -511,7 +531,7 @@ where
                     }
                     let ag_proof = legogroth16::aggregation::groth16::aggregate_proofs(
                         prepared_srs.clone(),
-                        &mut transcript,
+                        &mut aggr_transcript,
                         &proofs,
                     )
                     .map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;
@@ -537,7 +557,7 @@ where
                     let (ag_proof, _) =
                         legogroth16::aggregation::legogroth16::using_groth16::aggregate_proofs(
                             prepared_srs.clone(),
-                            &mut transcript,
+                            &mut aggr_transcript,
                             &proofs,
                         )
                         .map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;

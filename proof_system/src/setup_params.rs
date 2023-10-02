@@ -5,12 +5,18 @@
 //! becomes more important when interacting with the WASM bindings of this crate as the overhead of repeated
 //! serialization and de-serialization can be avoided.
 
+use crate::{
+    prelude::bound_check_smc::SmcParamsAndCommitmentKey,
+    statement::bound_check_smc_with_kv::SmcParamsAndCommitmentKeyAndSecretKey,
+};
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::vec::Vec;
 use bbs_plus::prelude::{
     PublicKeyG2 as BBSPublicKeyG2, SignatureParams23G1 as BBSSignatureParams23G1,
     SignatureParamsG1 as BBSSignatureParamsG1,
 };
+use bulletproofs_plus_plus::setup::SetupParams as BppSetupParams;
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use legogroth16::{
     circom::R1CS,
     data_structures::{ProvingKey as LegoSnarkProvingKey, VerifyingKey as LegoSnarkVerifyingKey},
@@ -19,14 +25,12 @@ use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey as SaverSnarkProvingKey,
     VerifyingKey as SaverSnarkVerifyingKey,
 };
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use vb_accumulator::prelude::{
     MembershipProvingKey, NonMembershipProvingKey, PublicKey as AccumPublicKey,
     SetupParams as AccumParams,
 };
-
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 
 /// Holds (public) setup parameters of different protocols.
 #[serde_as]
@@ -53,6 +57,11 @@ pub enum SetupParams<E: Pairing, G: AffineRepr> {
     PSSignatureParams(coconut_crypto::setup::SignatureParams<E>),
     PSSignaturePublicKey(coconut_crypto::setup::PublicKey<E>),
     BBSSignatureParams23(BBSSignatureParams23G1<E>),
+    BppSetupParams(#[serde_as(as = "ArkObjectBytes")] BppSetupParams<G>),
+    SmcParamsAndCommKey(#[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKey<E>),
+    SmcParamsAndCommKeyAndSk(
+        #[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKeyAndSecretKey<E>,
+    ),
 }
 
 macro_rules! delegate {
@@ -78,7 +87,10 @@ macro_rules! delegate {
                 FieldElemVec,
                 PSSignatureParams,
                 PSSignaturePublicKey,
-                BBSSignatureParams23
+                BBSSignatureParams23,
+                BppSetupParams,
+                SmcParamsAndCommKey,
+                SmcParamsAndCommKeyAndSk
             : $($tt)+
         }
     }};
@@ -107,7 +119,10 @@ macro_rules! delegate_reverse {
                 FieldElemVec,
                 PSSignatureParams,
                 PSSignaturePublicKey,
-                BBSSignatureParams23
+                BBSSignatureParams23,
+                BppSetupParams,
+                SmcParamsAndCommKey,
+                SmcParamsAndCommKeyAndSk
             : $($tt)+
         }
 

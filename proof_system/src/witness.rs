@@ -30,6 +30,10 @@ pub enum Witness<E: Pairing> {
     R1CSLegoGroth16(R1CSCircomWitness<E>),
     PoKPSSignature(PoKPSSignature<E>),
     PoKBBSSignature23G1(PoKBBSSignature23G1<E>),
+    /// For bound check using Bulletproofs++ protocol. Its the message whose bounds are checked
+    BoundCheckBpp(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
+    BoundCheckSmc(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
+    BoundCheckSmcWithKV(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
 }
 
 macro_rules! delegate {
@@ -44,7 +48,10 @@ macro_rules! delegate {
                 BoundCheckLegoGroth16,
                 R1CSLegoGroth16,
                 PoKPSSignature,
-                PoKBBSSignature23G1
+                PoKBBSSignature23G1,
+                BoundCheckBpp,
+                BoundCheckSmc,
+                BoundCheckSmcWithKV
             : $($tt)+
         }
     }}
@@ -62,7 +69,10 @@ macro_rules! delegate_reverse {
                 BoundCheckLegoGroth16,
                 R1CSLegoGroth16,
                 PoKPSSignature,
-                PoKBBSSignature23G1
+                PoKBBSSignature23G1,
+                BoundCheckBpp,
+                BoundCheckSmc,
+                BoundCheckSmcWithKV
             : $($tt)+
         }
 

@@ -1,6 +1,6 @@
 [package]
 name = "bbs_plus"
-version = "0.16.0"
+version = "0.17.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -19,10 +19,10 @@ ark-std.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
 itertools.workspace = true
-schnorr_pok = { version = "0.14.0", default-features = false, path = "../schnorr_pok" }
-dock_crypto_utils = { version = "0.15.0", default-features = false, path = "../utils" }
-oblivious_transfer_protocols = { version = "0.3.0", default-features = false, path = "../oblivious_transfer" }
-secret_sharing_and_dkg = { version = "0.7.0", default-features = false, path = "../secret_sharing_and_dkg" }
+schnorr_pok = { version = "0.15.0", default-features = false, path = "../schnorr_pok" }
+dock_crypto_utils = { version = "0.16.0", default-features = false, path = "../utils" }
+oblivious_transfer_protocols = { version = "0.4.0", default-features = false, path = "../oblivious_transfer" }
+secret_sharing_and_dkg = { version = "0.8.0", default-features = false, path = "../secret_sharing_and_dkg" }
 sha3 = { version = "0.10.6", default-features = false }
 serde.workspace = true
 serde_with.workspace = true

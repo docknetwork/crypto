@@ -42,7 +42,7 @@ impl<E: Pairing> CircomCircuit<E> {
     }
 
     /// Does the zk-SNARK setup and returns the proving key. `commit_witness_count` is the number of private inputs
-    /// wires that should be committed in the Pedersen commitment included in the proof.  
+    /// wires that should be committed in the Pedersen commitment included in the proof.
     pub fn generate_proving_key<R: RngCore>(
         self,
         commit_witness_count: u32,

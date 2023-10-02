@@ -63,7 +63,7 @@ pub fn get_n_powers<F: PrimeField>(elem: F, n: usize) -> Vec<F> {
     powers
 }
 
-/// Returns vector [g * i * coeff, g * i^2 * coeff, g * i^3 * coeff, ..., g * i^n * coeff]
+/// Returns vector `[g * i * coeff, g * i^2 * coeff, g * i^3 * coeff, ..., g * i^n * coeff]`
 pub fn multiples_with_n_powers_of_i<G: AffineRepr>(
     g: &G,
     i: G::ScalarField,
@@ -80,9 +80,9 @@ pub fn multiples_with_n_powers_of_i<G: AffineRepr>(
     ))
 }
 
-/// In each round i, current g is split in 2 halves, g_l and g_r and new g is created as c_i*g_l + g_r
-/// where g_l and g_r are left and right halves respectively and c_i is the challenge for that round.
-/// This is done until g is of size 2. This means that all elements of the original g that are
+/// In each round `i`, current `g` is split in 2 halves, `g_l` and `g_r` and new `g` is created as `c_i*g_l + g_r`
+/// where `g_l` and `g_r` are left and right halves respectively and `c_i` is the challenge for that round.
+/// This is done until `g` is of size 2. This means that all elements of the original `g` that are
 /// on the left side in that round would be multiplied by the challenge of that round
 pub fn get_g_multiples_for_verifying_compression<F: PrimeField>(
     g_len: usize,
@@ -95,9 +95,10 @@ pub fn get_g_multiples_for_verifying_compression<F: PrimeField>(
     // For each round, divide g into an even number of equal sized partitions and each even
     // numbered (left) partition's elements are multiplied by challenge of that round
     for i in 0..challenges.len() {
-        let partition = 1 << (i + 1);
-        let partition_size = g_len / partition;
-        for j in (0..partition).step_by(2) {
+        let partitions = 1 << (i + 1);
+        let partition_size = g_len / partitions;
+        // Only multiply the even-indexed partition elements by the challenge
+        for j in (0..partitions).step_by(2) {
             for l in 0..partition_size {
                 g_multiples[j * partition_size + l] *= challenges[i];
             }
@@ -116,7 +117,7 @@ pub fn get_g_multiples_for_verifying_compression<F: PrimeField>(
     g_multiples
 }
 
-/// Convert field element vector from [c_1, c_2, c_3, ..., c_n] to [c_1*c_2*...*c_n, c_2*c_3*...*c_n, c_3*...*c_n, ..., c_{n-1}*c_n, c_n, 1]
+/// Convert field element vector from `[c_1, c_2, c_3, ..., c_n]` to `[c_1*c_2*...*c_n, c_2*c_3*...*c_n, c_3*...*c_n, ..., c_{n-1}*c_n, c_n, 1]`
 pub fn elements_to_element_products<F: PrimeField>(mut elements: Vec<F>) -> Vec<F> {
     for i in (1..elements.len()).rev() {
         let c = elements[i - 1] * elements[i];

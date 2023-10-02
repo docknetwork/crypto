@@ -7,12 +7,14 @@ use serde_with::serde_as;
 pub use legogroth16::{PreparedVerifyingKey, ProvingKey, VerifyingKey};
 
 use crate::{
-    error::ProofSystemError, setup_params::SetupParams, statement::Statement,
-    sub_protocols::bound_check_legogroth16::BoundCheckProtocol,
+    error::ProofSystemError,
+    setup_params::SetupParams,
+    statement::Statement,
+    sub_protocols::{bound_check_legogroth16::BoundCheckLegoGrothProtocol, validate_bounds},
 };
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 
-/// Proving knowledge of message that satisfies given bounds, i.e. `min <= message <= max` using LegoGroth16.
+/// Proving knowledge of message that satisfies given bounds [min, max), i.e. `min <= message < max` using LegoGroth16.
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -26,7 +28,7 @@ pub struct BoundCheckLegoGroth16Prover<E: Pairing> {
     pub snark_proving_key_ref: Option<usize>,
 }
 
-/// Proving knowledge of message that satisfies given bounds, i.e. `min <= message <= max` using LegoGroth16
+/// Proving knowledge of message that satisfies given bounds [min, max), i.e. `min <= message < max` using LegoGroth16
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -46,8 +48,8 @@ impl<E: Pairing> BoundCheckLegoGroth16Prover<E> {
         max: u64,
         snark_proving_key: ProvingKey<E>,
     ) -> Result<Statement<E, G>, ProofSystemError> {
-        BoundCheckProtocol::validate_verification_key(&snark_proving_key.vk)?;
-        BoundCheckProtocol::<E>::validate_bounds(min, max)?;
+        BoundCheckLegoGrothProtocol::validate_verification_key(&snark_proving_key.vk)?;
+        validate_bounds(min, max)?;
 
         Ok(Statement::BoundCheckLegoGroth16Prover(Self {
             min,
@@ -62,7 +64,7 @@ impl<E: Pairing> BoundCheckLegoGroth16Prover<E> {
         max: u64,
         snark_proving_key_ref: usize,
     ) -> Result<Statement<E, G>, ProofSystemError> {
-        BoundCheckProtocol::<E>::validate_bounds(min, max)?;
+        validate_bounds(min, max)?;
         Ok(Statement::BoundCheckLegoGroth16Prover(Self {
             min,
             max,
@@ -93,8 +95,8 @@ impl<E: Pairing> BoundCheckLegoGroth16Verifier<E> {
         max: u64,
         snark_verifying_key: VerifyingKey<E>,
     ) -> Result<Statement<E, G>, ProofSystemError> {
-        BoundCheckProtocol::validate_verification_key(&snark_verifying_key)?;
-        BoundCheckProtocol::<E>::validate_bounds(min, max)?;
+        BoundCheckLegoGrothProtocol::validate_verification_key(&snark_verifying_key)?;
+        validate_bounds(min, max)?;
 
         Ok(Statement::BoundCheckLegoGroth16Verifier(Self {
             min,
@@ -109,7 +111,7 @@ impl<E: Pairing> BoundCheckLegoGroth16Verifier<E> {
         max: u64,
         snark_verifying_key_ref: usize,
     ) -> Result<Statement<E, G>, ProofSystemError> {
-        BoundCheckProtocol::<E>::validate_bounds(min, max)?;
+        validate_bounds(min, max)?;
         Ok(Statement::BoundCheckLegoGroth16Verifier(Self {
             min,
             max,

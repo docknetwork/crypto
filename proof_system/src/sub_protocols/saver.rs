@@ -441,6 +441,8 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         (ck_comm_chunks, ck_comm_combined)
     }
 
+    /// Initialize 3 Schnorr proof of knowledge protocols to prove the knowledge of committed value
+    /// in ciphertext
     fn init_schnorr_protocols<R: RngCore>(
         &mut self,
         rng: &mut R,

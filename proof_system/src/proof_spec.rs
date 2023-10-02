@@ -32,6 +32,11 @@ use saver::prelude::{
     VerifyingKey as SaverVerifyingKey,
 };
 use serde::{Deserialize, Serialize};
+use smc_range_proof::prelude::MemberCommitmentKey;
+
+use crate::prelude::bound_check_smc::{
+    SmcParamsAndCommitmentKey, SmcParamsWithPairingAndCommitmentKey,
+};
 use vb_accumulator::setup::{
     PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,
     PublicKey as AccumPk, SetupParams as AccumParams,
@@ -226,10 +231,12 @@ where
             StatementDerivedParams<Vec<E::G1Affine>>,
             StatementDerivedParams<(Vec<E::G1Affine>, Vec<E::G1Affine>)>,
             StatementDerivedParams<Vec<E::G1Affine>>,
+            StatementDerivedParams<[G; 2]>,
+            StatementDerivedParams<[E::G1Affine; 2]>,
         ),
         ProofSystemError,
     > {
-        let mut derived_bound_check_comm =
+        let mut derived_bound_check_lego_comm =
             DerivedParamsTracker::<LegoVerifyingKey<E>, Vec<E::G1Affine>, E>::new();
         let mut derived_ek_comm =
             DerivedParamsTracker::<EncryptionKey<E>, Vec<E::G1Affine>, E>::new();
@@ -240,9 +247,14 @@ where
         >::new();
         let mut derived_r1cs_comm =
             DerivedParamsTracker::<LegoVerifyingKey<E>, Vec<E::G1Affine>, E>::new();
+        let mut derived_bound_check_bpp_comm = DerivedParamsTracker::<(G, G), [G; 2], E>::new();
+        let mut derived_bound_check_smc_comm =
+            DerivedParamsTracker::<MemberCommitmentKey<E::G1Affine>, [E::G1Affine; 2], E>::new();
 
         // To avoid creating variable with short lifetime
-        let mut tuple_map = BTreeMap::new();
+        let mut saver_comm_keys = BTreeMap::new();
+        let mut bpp_comm_keys = BTreeMap::new();
+
         for (s_idx, statement) in self.statements.0.iter().enumerate() {
             match statement {
                 Statement::SaverProver(_) | Statement::SaverVerifier(_) => {
@@ -257,7 +269,13 @@ where
                         ),
                         _ => panic!("This should never happen"),
                     };
-                    tuple_map.insert(s_idx, (comm_gens, chunk_bit_size));
+                    saver_comm_keys.insert(s_idx, (comm_gens, chunk_bit_size));
+                }
+                Statement::BoundCheckBpp(s) => {
+                    let ck = s
+                        .get_setup_params(&self.setup_params, s_idx)?
+                        .get_pedersen_commitment_key();
+                    bpp_comm_keys.insert(s_idx, ck);
                 }
                 _ => (),
             }
@@ -277,7 +295,7 @@ where
 
                     derived_ek_comm.on_new_statement_idx(enc_key, s_idx);
                     derived_chunked_comm
-                        .on_new_statement_idx(tuple_map.get(&s_idx).unwrap(), s_idx);
+                        .on_new_statement_idx(saver_comm_keys.get(&s_idx).unwrap(), s_idx);
                 }
 
                 Statement::BoundCheckLegoGroth16Prover(_)
@@ -291,7 +309,7 @@ where
                         }
                         _ => panic!("This should never happen"),
                     };
-                    derived_bound_check_comm.on_new_statement_idx(verifying_key, s_idx);
+                    derived_bound_check_lego_comm.on_new_statement_idx(verifying_key, s_idx);
                 }
 
                 Statement::R1CSCircomProver(_) | Statement::R1CSCircomVerifier(_) => {
@@ -306,14 +324,35 @@ where
                     };
                     derived_r1cs_comm.on_new_statement_idx(verifying_key, s_idx);
                 }
+                Statement::BoundCheckBpp(_) => {
+                    let ck = bpp_comm_keys.get(&s_idx).unwrap();
+                    derived_bound_check_bpp_comm.on_new_statement_idx(ck, s_idx);
+                }
+                Statement::BoundCheckSmc(_)
+                | Statement::BoundCheckSmcWithKVProver(_)
+                | Statement::BoundCheckSmcWithKVVerifier(_) => {
+                    let comm_key = match statement {
+                        Statement::BoundCheckSmc(s) => s.get_comm_key(&self.setup_params, s_idx)?,
+                        Statement::BoundCheckSmcWithKVProver(s) => {
+                            s.get_comm_key(&self.setup_params, s_idx)?
+                        }
+                        Statement::BoundCheckSmcWithKVVerifier(s) => {
+                            s.get_comm_key(&self.setup_params, s_idx)?
+                        }
+                        _ => panic!("This should never happen"),
+                    };
+                    derived_bound_check_smc_comm.on_new_statement_idx(comm_key, s_idx);
+                }
                 _ => (),
             }
         }
         Ok((
-            derived_bound_check_comm.finish(),
+            derived_bound_check_lego_comm.finish(),
             derived_ek_comm.finish(),
             derived_chunked_comm.finish(),
             derived_r1cs_comm.finish(),
+            derived_bound_check_bpp_comm.finish(),
+            derived_bound_check_smc_comm.finish(),
         ))
     }
 
@@ -334,6 +373,7 @@ where
             StatementDerivedParams<PreparedPSSigParams<E>>,
             StatementDerivedParams<PreparedPSPk<E>>,
             StatementDerivedParams<PreparedBBSSigParams23<E>>,
+            StatementDerivedParams<SmcParamsWithPairingAndCommitmentKey<E>>,
         ),
         ProofSystemError,
     > {
@@ -357,6 +397,11 @@ where
         let mut derived_ps_p =
             DerivedParamsTracker::<PSSigParams<E>, PreparedPSSigParams<E>, E>::new();
         let mut derived_ps_pk = DerivedParamsTracker::<PSPk<E>, PreparedPSPk<E>, E>::new();
+        let mut derived_smc_p = DerivedParamsTracker::<
+            SmcParamsAndCommitmentKey<E>,
+            SmcParamsWithPairingAndCommitmentKey<E>,
+            E,
+        >::new();
 
         for (s_idx, statement) in self.statements.0.iter().enumerate() {
             match statement {
@@ -413,6 +458,10 @@ where
                     let pk = s.get_public_key(&self.setup_params, s_idx)?;
                     derived_ps_pk.on_new_statement_idx(pk, s_idx);
                 }
+                Statement::BoundCheckSmc(s) => {
+                    let params = s.get_params_and_comm_key(&self.setup_params, s_idx)?;
+                    derived_smc_p.on_new_statement_idx(params, s_idx);
+                }
                 _ => (),
             }
         }
@@ -428,6 +477,7 @@ where
             derived_ps_p.finish(),
             derived_ps_pk.finish(),
             derived_bbs.finish(),
+            derived_smc_p.finish(),
         ))
     }
 }
