@@ -1,6 +1,6 @@
 [package]
 name = "smc_range_proof"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -20,7 +20,7 @@ rayon = {workspace = true, optional = true}
 [dev-dependencies]
 blake2.workspace = true
 ark-bls12-381.workspace = true
-schnorr_pok = { version = "0.15.0", default-features = false, path = "../schnorr_pok" }
+schnorr_pok = { version = "0.16.0", default-features = false, path = "../schnorr_pok" }
 
 [features]
 default = [ "parallel"]

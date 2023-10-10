@@ -24,6 +24,11 @@
 //! 3. Prover creates response `s = r + c*x` and sends `c` and `s` to the Verifier as proof.
 //! 4. Verifier creates `T'` as `T' = s * G - c * Y` and computes `c'` as `c' = Hash(G||Y||T')`
 //! 5. Proof if valid if `c == c'`
+//!
+//! Also implements the proof of inequality of discrete log (a value committed in a Pedersen commitment),
+//! either with a public value or with another discrete log in [`Inequality`]
+//!
+//! [`Inequality`]: crate::inequality
 
 use crate::error::SchnorrError;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
@@ -43,6 +48,7 @@ use serde_with::serde_as;
 use rayon::prelude::*;
 
 pub mod error;
+pub mod inequality;
 
 /// Trait implemented by Schnorr-based protocols for returning their contribution to the overall challenge.
 /// i.e. overall challenge is of form Hash({m_i}), and this function returns the bytecode for m_j for some j.

@@ -27,6 +27,7 @@ use crate::{
         bound_check_legogroth16::BoundCheckLegoGrothProtocol,
         bound_check_smc::BoundCheckSmcProtocol,
         bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
+        inequality::InequalityProtocol,
         r1cs_legogorth16::R1CSLegogroth16Protocol,
         saver::SaverProtocol,
         schnorr::SchnorrProtocol,
@@ -147,6 +148,7 @@ where
             r1cs_comm_keys,
             bound_check_bpp_comm,
             bound_check_smc_comm,
+            ineq_comm,
         ) = proof_spec.derive_commitment_keys()?;
 
         let mut sub_protocols =
@@ -457,6 +459,17 @@ where
                         );
                         sp.init(rng, comm_key_as_slice, w, blinding)?;
                         sub_protocols.push(SubProtocol::BoundCheckSmcWithKV(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::PublicInequality(s) => match witness {
+                    Witness::PublicInequality(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let comm_key = s.get_comm_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp =
+                            InequalityProtocol::new(s_idx, s.inequal_to.clone(), &comm_key);
+                        sp.init(rng, ineq_comm.get(s_idx).unwrap().as_slice(), w, blinding)?;
+                        sub_protocols.push(SubProtocol::Inequality(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },

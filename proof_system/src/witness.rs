@@ -34,6 +34,7 @@ pub enum Witness<E: Pairing> {
     BoundCheckBpp(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     BoundCheckSmc(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     BoundCheckSmcWithKV(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
+    PublicInequality(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
 }
 
 macro_rules! delegate {
@@ -51,7 +52,8 @@ macro_rules! delegate {
                 PoKBBSSignature23G1,
                 BoundCheckBpp,
                 BoundCheckSmc,
-                BoundCheckSmcWithKV
+                BoundCheckSmcWithKV,
+                PublicInequality
             : $($tt)+
         }
     }}
@@ -72,7 +74,8 @@ macro_rules! delegate_reverse {
                 PoKBBSSignature23G1,
                 BoundCheckBpp,
                 BoundCheckSmc,
-                BoundCheckSmcWithKV
+                BoundCheckSmcWithKV,
+                PublicInequality
             : $($tt)+
         }
 

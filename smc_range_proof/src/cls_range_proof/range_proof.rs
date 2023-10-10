@@ -105,12 +105,6 @@ impl<E: Pairing> CLSRangeProofProtocol<E> {
         if randomness_multiple != 1 {
             value = value * (base - 1) as u64;
         }
-        // let mut randomness_multiple = 1;
-        // if range % ((base - 1) as u64) != 0 {
-        //     range = range * (base - 1) as u64;
-        //     value = value * (base - 1) as u64;
-        //     randomness_multiple = randomness_multiple * (base - 1);
-        // }
 
         let l = util::find_number_of_digits(range, base);
         let G = util::find_sumset_boundaries(range, base, l);

@@ -1,4 +1,6 @@
-# schnorr_pok
+# Schnorr's proof of knowledge
+
+<!-- cargo-rdme start -->
 
 Schnorr protocol to prove knowledge of 1 or more discrete logs in zero knowledge.
 Refer [this](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) for more details of Schnorr protocol.
@@ -25,4 +27,9 @@ There is another variant of Schnorr which gives shorter proof but is not impleme
 4. Verifier creates `T'` as `T' = s * G - c * Y` and computes `c'` as `c' = Hash(G||Y||T')`
 5. Proof if valid if `c == c'`
 
-License: Apache-2.0
+Also implements the proof of inequality of discrete log (a value committed in a Pedersen commitment),
+either with a public value or with another discrete log in [`Inequality`]
+
+[`Inequality`]: https://docs.rs/schnorr_pok/latest/schnorr_pok/inequality/
+
+<!-- cargo-rdme end -->

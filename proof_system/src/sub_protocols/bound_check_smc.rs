@@ -30,7 +30,6 @@ pub struct BoundCheckSmcProtocol<'a, E: Pairing> {
     pub params_and_comm_key: &'a SmcParamsAndCommitmentKey<E>,
     pub comm: Option<E::G1Affine>,
     pub smc_protocol: Option<SmcProtocol<E>>,
-    pub smc_proof: Option<BoundCheckSmcInnerProof<E>>,
     pub sp: Option<SchnorrProtocol<'a, E::G1Affine>>,
 }
 
@@ -43,7 +42,6 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
             params_and_comm_key: params,
             comm: None,
             smc_protocol: None,
-            smc_proof: None,
             sp: None,
         }
     }

@@ -12,6 +12,7 @@ use crate::{
         bound_check_legogroth16::BoundCheckLegoGrothProtocol,
         bound_check_smc::BoundCheckSmcProtocol,
         bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
+        inequality::InequalityProtocol,
         ps_signature::PSSignaturePoK,
         r1cs_legogorth16::R1CSLegogroth16Protocol,
         saver::SaverProtocol,
@@ -166,6 +167,7 @@ where
             r1cs_comm_keys,
             bound_check_bpp_comm,
             bound_check_smc_comm,
+            ineq_comm,
         ) = proof_spec.derive_commitment_keys()?;
 
         // Prepare required parameters for pairings
@@ -568,6 +570,28 @@ where
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
+                Statement::PublicInequality(s) => match proof {
+                    StatementProof::Inequality(p) => {
+                        check_resp_for_equalities_with_err!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_message,
+                            Self,
+                            responses_for_equalities
+                        );
+
+                        let comm_key_slice = ineq_comm.get(s_idx).unwrap();
+                        InequalityProtocol::compute_challenge_contribution(
+                            comm_key_slice.as_slice(),
+                            p,
+                            &s.inequal_to,
+                            s.get_comm_key(&proof_spec.setup_params, s_idx)?,
+                            &mut challenge_bytes,
+                        )?;
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -882,6 +906,15 @@ where
                             bc_proof,
                             comm_key_slice.as_slice(),
                         )?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::PublicInequality(s) => match proof {
+                    StatementProof::Inequality(ref iq_proof) => {
+                        let comm_key = s.get_comm_key(&proof_spec.setup_params, s_idx)?;
+                        let sp = InequalityProtocol::new(s_idx, s.inequal_to, comm_key);
+                        let comm_key = ineq_comm.get(s_idx).unwrap();
+                        sp.verify_proof_contribution(&challenge, iq_proof, comm_key.as_slice())?
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },

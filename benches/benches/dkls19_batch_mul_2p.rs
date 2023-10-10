@@ -82,7 +82,7 @@ fn batch_multiplication(c: &mut Criterion) {
         )
         .unwrap();
 
-        let (party2, _, kos_rlc, gamma_b) = Party2::new(
+        let (party2, U, kos_rlc, gamma_b) = Party2::new(
             &mut rng,
             beta.clone(),
             base_ot_sender_keys.clone(),

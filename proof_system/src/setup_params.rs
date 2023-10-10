@@ -25,6 +25,7 @@ use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey as SaverSnarkProvingKey,
     VerifyingKey as SaverSnarkVerifyingKey,
 };
+use schnorr_pok::inequality::CommitmentKey;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use vb_accumulator::prelude::{
@@ -62,6 +63,7 @@ pub enum SetupParams<E: Pairing, G: AffineRepr> {
     SmcParamsAndCommKeyAndSk(
         #[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKeyAndSecretKey<E>,
     ),
+    CommitmentKey(#[serde_as(as = "ArkObjectBytes")] CommitmentKey<G>),
 }
 
 macro_rules! delegate {
@@ -90,7 +92,8 @@ macro_rules! delegate {
                 BBSSignatureParams23,
                 BppSetupParams,
                 SmcParamsAndCommKey,
-                SmcParamsAndCommKeyAndSk
+                SmcParamsAndCommKeyAndSk,
+                CommitmentKey
             : $($tt)+
         }
     }};
@@ -122,7 +125,8 @@ macro_rules! delegate_reverse {
                 BBSSignatureParams23,
                 BppSetupParams,
                 SmcParamsAndCommKey,
-                SmcParamsAndCommKeyAndSk
+                SmcParamsAndCommKeyAndSk,
+                CommitmentKey
             : $($tt)+
         }
 

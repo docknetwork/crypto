@@ -14,6 +14,7 @@ pub mod bound_check_bpp;
 pub mod bound_check_legogroth16;
 pub mod bound_check_smc;
 pub mod bound_check_smc_with_kv;
+pub mod inequality;
 pub mod ped_comm;
 pub mod ps_signature;
 pub mod r1cs_legogroth16;
@@ -57,6 +58,8 @@ pub enum Statement<E: Pairing, G: AffineRepr> {
     BoundCheckSmcWithKVProver(bound_check_smc_with_kv::BoundCheckSmcWithKVProver<E>),
     /// Used by the verifier for bound check using set-membership check with keyed verification based protocols
     BoundCheckSmcWithKVVerifier(bound_check_smc_with_kv::BoundCheckSmcWithKVVerifier<E>),
+    /// To prove inequality of a signed message with a public value
+    PublicInequality(inequality::PublicInequality<G>),
 }
 
 /// A collection of statements
@@ -111,7 +114,8 @@ macro_rules! delegate {
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKVProver,
-                BoundCheckSmcWithKVVerifier
+                BoundCheckSmcWithKVVerifier,
+                PublicInequality
             : $($tt)+
         }
     }}
@@ -136,7 +140,8 @@ macro_rules! delegate_reverse {
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKVProver,
-                BoundCheckSmcWithKVVerifier
+                BoundCheckSmcWithKVVerifier,
+                PublicInequality
             : $($tt)+
         }
 

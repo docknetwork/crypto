@@ -31,6 +31,7 @@ use saver::prelude::{
     PreparedEncryptionKey, PreparedVerifyingKey as SaverPreparedVerifyingKey,
     VerifyingKey as SaverVerifyingKey,
 };
+use schnorr_pok::inequality::CommitmentKey;
 use serde::{Deserialize, Serialize};
 use smc_range_proof::prelude::MemberCommitmentKey;
 
@@ -233,6 +234,7 @@ where
             StatementDerivedParams<Vec<E::G1Affine>>,
             StatementDerivedParams<[G; 2]>,
             StatementDerivedParams<[E::G1Affine; 2]>,
+            StatementDerivedParams<[G; 2]>,
         ),
         ProofSystemError,
     > {
@@ -250,6 +252,7 @@ where
         let mut derived_bound_check_bpp_comm = DerivedParamsTracker::<(G, G), [G; 2], E>::new();
         let mut derived_bound_check_smc_comm =
             DerivedParamsTracker::<MemberCommitmentKey<E::G1Affine>, [E::G1Affine; 2], E>::new();
+        let mut derived_ineq_comm = DerivedParamsTracker::<CommitmentKey<G>, [G; 2], E>::new();
 
         // To avoid creating variable with short lifetime
         let mut saver_comm_keys = BTreeMap::new();
@@ -343,6 +346,10 @@ where
                     };
                     derived_bound_check_smc_comm.on_new_statement_idx(comm_key, s_idx);
                 }
+                Statement::PublicInequality(s) => {
+                    let ck = s.get_comm_key(&self.setup_params, s_idx)?;
+                    derived_ineq_comm.on_new_statement_idx(ck, s_idx);
+                }
                 _ => (),
             }
         }
@@ -353,6 +360,7 @@ where
             derived_r1cs_comm.finish(),
             derived_bound_check_bpp_comm.finish(),
             derived_bound_check_smc_comm.finish(),
+            derived_ineq_comm.finish(),
         ))
     }
 

@@ -1,15 +1,16 @@
-//! Weighted Norm Linear argument for
+//! Weighted Norm Linear argument for relation `v = <c, l> + {|n|_mu}^2` given commitment `C = v*G + <l, H_vec> + <n, G_vec>`
 
 use crate::error::BulletproofsPlusPlusError;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{Field, One};
+use ark_ff::{Field, One, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, cfg_iter, format, vec, vec::Vec};
+use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut, format, ops::Neg, vec, vec::Vec};
 use dock_crypto_utils::{
     ff::{inner_product, weighted_inner_product, weighted_norm},
     transcript::Transcript,
 };
 
+use dock_crypto_utils::ff::scale;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -24,6 +25,7 @@ pub struct WeightedNormLinearArgument<G: AffineRepr> {
 }
 
 impl<G: AffineRepr> WeightedNormLinearArgument<G> {
+    /// Create new argument
     pub fn new(
         mut l: Vec<G::ScalarField>,
         mut n: Vec<G::ScalarField>,
@@ -95,17 +97,52 @@ impl<G: AffineRepr> WeightedNormLinearArgument<G> {
 
             let scaled_n_0 = cfg_iter!(n_0).map(|n| *n * rho_inv).collect::<Vec<_>>();
             let scaled_n_1 = cfg_iter!(n_1).map(|n| *n * rho).collect::<Vec<_>>();
-            // TODO: Create one big MSM
-            let X_i = g.mul(v_x)
-                + G::Group::msm_unchecked(&h_0, &l_1)
-                + G::Group::msm_unchecked(&h_1, &l_0)
-                + G::Group::msm_unchecked(&g_0, &scaled_n_1)
-                + G::Group::msm_unchecked(&g_1, &scaled_n_0);
 
-            // TODO: Create one big MSM
-            let R_i = g.mul(v_r)
-                + G::Group::msm_unchecked(&h_1, &l_1)
-                + G::Group::msm_unchecked(&g_1, &n_1);
+            // X_i = g * v_x + <h_0, l_1> + <h_1, l_0> + <g_0, scaled_n_1> + <g_1, scaled_n_0>
+
+            // Create X_i using MSM
+            let msm_size = 1 + l_1.len() + l_0.len() + n_1.len() + n_0.len();
+            let mut bases = Vec::with_capacity(msm_size);
+            let mut scalars = Vec::with_capacity(msm_size);
+            bases.push(g);
+            scalars.push(v_x);
+            // For <h_0, l_1>
+            let min = core::cmp::min(h_0.len(), l_1.len());
+            bases.extend_from_slice(&h_0[0..min]);
+            scalars.extend_from_slice(&l_1[0..min]);
+            // For <h_1, l_0>
+            let min = core::cmp::min(h_1.len(), l_0.len());
+            bases.extend_from_slice(&h_1[0..min]);
+            scalars.extend_from_slice(&l_0[0..min]);
+            // For <g_0, scaled_n_1>
+            let min = core::cmp::min(g_0.len(), scaled_n_1.len());
+            bases.extend_from_slice(&g_0[0..min]);
+            scalars.extend_from_slice(&scaled_n_1[0..min]);
+            // <g_1, scaled_n_0>
+            let min = core::cmp::min(g_1.len(), scaled_n_0.len());
+            bases.extend_from_slice(&g_1[0..min]);
+            scalars.extend_from_slice(&scaled_n_0[0..min]);
+
+            let X_i = G::Group::msm_unchecked(&bases, &scalars);
+
+            // R_i = g * v_r + <h_1, l_1> + <g_1, n_1>
+
+            // Create R_i using MSM
+            let msm_size = 1 + l_1.len() + n_1.len();
+            let mut bases = Vec::with_capacity(msm_size);
+            let mut scalars = Vec::with_capacity(msm_size);
+            bases.push(g);
+            scalars.push(v_r);
+            // For <h_1, l_1>
+            let min = core::cmp::min(h_1.len(), l_1.len());
+            bases.extend_from_slice(&h_1[0..min]);
+            scalars.extend_from_slice(&l_1[0..min]);
+            // For <g_1, n_1>
+            let min = core::cmp::min(g_1.len(), n_1.len());
+            bases.extend_from_slice(&g_1[0..min]);
+            scalars.extend_from_slice(&n_1[0..min]);
+
+            let R_i = G::Group::msm_unchecked(&bases, &scalars);
 
             transcript.append(b"X", &X_i);
             transcript.append(b"R", &R_i);
@@ -153,6 +190,7 @@ impl<G: AffineRepr> WeightedNormLinearArgument<G> {
         })
     }
 
+    /// Verify the argument.
     pub fn verify(
         &self,
         c: Vec<G::ScalarField>,
@@ -161,59 +199,49 @@ impl<G: AffineRepr> WeightedNormLinearArgument<G> {
         setup_params: &SetupParams<G>,
         transcript: &mut impl Transcript,
     ) -> Result<(), BulletproofsPlusPlusError> {
-        let SetupParams {
-            G: g,
-            G_vec: g_vec,
-            H_vec: h_vec,
-        } = setup_params;
-        if c.len() != h_vec.len() {
-            return Err(BulletproofsPlusPlusError::UnexpectedLengthOfVectors(
-                format!(
-                    "length of c={} not equal to length of H_vec={}",
-                    c.len(),
-                    h_vec.len()
-                ),
-            ));
-        }
-        if self.X.len() != self.R.len() {
-            return Err(BulletproofsPlusPlusError::UnexpectedLengthOfVectors(
-                format!(
-                    "length of X={} not equal to length of R={}",
-                    self.X.len(),
-                    self.X.len()
-                ),
-            ));
-        }
-        let mut mu = rho.square();
-        let mut gamma = Vec::with_capacity(self.X.len());
-        let mut gamma_sq_minus_1 = Vec::with_capacity(self.X.len());
-        for i in 0..self.X.len() {
-            transcript.append(b"X", &self.X[i]);
-            transcript.append(b"R", &self.R[i]);
-            gamma.push(transcript.challenge_scalar::<G::ScalarField>(b"gamma"));
-            gamma_sq_minus_1.push(gamma[i].square() - G::ScalarField::one());
-        }
-        for _ in 0..g_vec.len().ilog2() {
-            mu.square_in_place();
-        }
-        let g_multiples = Self::get_g_multiples(g_vec.len(), &rho, &gamma);
-        let h_multiples = Self::get_h_multiples(h_vec.len(), &gamma);
+        // Check if given commitment C == g * v + <h_vec, h_multiples> * l + <g_vec, g_multiples> * n - <self.X, gamma> - <self.R, gamma_sq_minus_1>
+        let (bases, scalars) =
+            self.get_bases_and_scalars_for_reduced_commitment(c, rho, setup_params, transcript)?;
 
-        let v = self.l[0] * inner_product(&c, &h_multiples) + weighted_norm(&self.n, &mu);
-        // TODO: Replace following 2 lines with a single MSM
-        let C_prime = *g * v
-            + (G::Group::msm_unchecked(h_vec, &h_multiples) * self.l[0])
-            + (G::Group::msm_unchecked(g_vec, &g_multiples) * self.n[0]);
-        if (commitment.into_group()
-            + G::Group::msm_unchecked(&self.X, &gamma)
-            + G::Group::msm_unchecked(&self.R, &gamma_sq_minus_1))
-            != C_prime
-        {
+        if commitment.into_group() != G::Group::msm_unchecked(&bases, &scalars) {
             return Err(BulletproofsPlusPlusError::WeightedNormLinearArgumentVerificationFailed);
         }
         Ok(())
     }
 
+    /// Same as `Self::verify` except that it does not take the commitment directly but takes the `bases` and `scalars`
+    /// whose inner product (MSM) gives the commitment. This is used when the calling protocol (range-proof in this case)
+    /// has to create the commitment. The calling protocol rather than creating the commitment by MSM, passed the vectors here
+    /// thus resulting in only 1 large MSM rather than 2 as verification also does an MSM
+    pub fn verify_given_commitment_multiplicands(
+        &self,
+        c: Vec<G::ScalarField>,
+        rho: G::ScalarField,
+        mut commitment_bases: Vec<G>,
+        mut commitment_scalars: Vec<G::ScalarField>,
+        setup_params: &SetupParams<G>,
+        transcript: &mut impl Transcript,
+    ) -> Result<(), BulletproofsPlusPlusError> {
+        let (mut bases, mut scalars) =
+            self.get_bases_and_scalars_for_reduced_commitment(c, rho, setup_params, transcript)?;
+
+        // Check if given commitment C == g * v + <h_vec, h_multiples> * l + <g_vec, g_multiples> * n - <self.X, gamma> - <self.R, gamma_sq_minus_1>
+        // But C = <commitment_bases, commitment_scalars>
+        // so check g * v + <h_vec, h_multiples> * l + <g_vec, g_multiples> * n - <self.X, gamma> - <self.R, gamma_sq_minus_1> - <commitment_bases, commitment_scalars> == 0
+
+        bases.append(&mut commitment_bases);
+        cfg_iter_mut!(commitment_scalars).for_each(|elem| *elem = elem.neg());
+        scalars.append(&mut commitment_scalars);
+
+        if !G::Group::msm_unchecked(&bases, &scalars).is_zero() {
+            return Err(BulletproofsPlusPlusError::WeightedNormLinearArgumentVerificationFailed);
+        }
+
+        Ok(())
+    }
+
+    /// Verify the argument recursively. This is inefficient compared to `Self::verify` and only used for debugging
+    #[cfg(test)]
     pub fn verify_recursively(
         &self,
         mut c: Vec<G::ScalarField>,
@@ -349,6 +377,81 @@ impl<G: AffineRepr> WeightedNormLinearArgument<G> {
             rho_i.square_in_place();
         }
         multiples
+    }
+
+    fn get_bases_and_scalars_for_reduced_commitment(
+        &self,
+        c: Vec<G::ScalarField>,
+        rho: G::ScalarField,
+        setup_params: &SetupParams<G>,
+        transcript: &mut impl Transcript,
+    ) -> Result<(Vec<G>, Vec<G::ScalarField>), BulletproofsPlusPlusError> {
+        let SetupParams {
+            G: g,
+            G_vec: g_vec,
+            H_vec: h_vec,
+        } = setup_params;
+        if c.len() != h_vec.len() {
+            return Err(BulletproofsPlusPlusError::UnexpectedLengthOfVectors(
+                format!(
+                    "length of c={} not equal to length of H_vec={}",
+                    c.len(),
+                    h_vec.len()
+                ),
+            ));
+        }
+        if self.X.len() != self.R.len() {
+            return Err(BulletproofsPlusPlusError::UnexpectedLengthOfVectors(
+                format!(
+                    "length of X={} not equal to length of R={}",
+                    self.X.len(),
+                    self.R.len()
+                ),
+            ));
+        }
+        let mut mu = rho.square();
+        let mut gamma = Vec::with_capacity(self.X.len());
+        let mut gamma_sq_minus_1 = Vec::with_capacity(self.X.len());
+        for i in 0..self.X.len() {
+            transcript.append(b"X", &self.X[i]);
+            transcript.append(b"R", &self.R[i]);
+            gamma.push(transcript.challenge_scalar::<G::ScalarField>(b"gamma"));
+            gamma_sq_minus_1.push(gamma[i].square() - G::ScalarField::one());
+        }
+        for _ in 0..g_vec.len().ilog2() {
+            mu.square_in_place();
+        }
+        let g_multiples = Self::get_g_multiples(g_vec.len(), &rho, &gamma);
+        let h_multiples = Self::get_h_multiples(h_vec.len(), &gamma);
+
+        let v = self.l[0] * inner_product(&c, &h_multiples) + weighted_norm(&self.n, &mu);
+
+        // C' = g * v + <h_vec, h_multiples> * l + <g_vec, g_multiples> * n
+        // Check if C + <self.X, gamma> + <self.R, gamma_sq_minus_1> == C'
+        // => C == C' - <self.X, gamma> - <self.R, gamma_sq_minus_1>
+        // => C == g * v + <h_vec, h_multiples> * l + <g_vec, g_multiples> * n - <self.X, gamma> - <self.R, gamma_sq_minus_1>
+
+        // RHS of above can be created using an MSM
+        let msm_size =
+            1 + h_multiples.len() + g_multiples.len() + gamma.len() + gamma_sq_minus_1.len();
+        let mut bases = Vec::with_capacity(msm_size);
+        let mut scalars = Vec::with_capacity(msm_size);
+        // For g*v
+        bases.push(*g);
+        scalars.push(v);
+        // For <h_vec, h_multiples> * l
+        bases.extend_from_slice(&h_vec[0..h_multiples.len()]);
+        scalars.append(&mut scale(&h_multiples, &self.l[0]));
+        // For <g_vec, g_multiples> * n
+        bases.extend_from_slice(&g_vec[0..g_multiples.len()]);
+        scalars.append(&mut scale(&g_multiples, &self.n[0]));
+        // For - <self.X, gamma>
+        bases.extend_from_slice(&self.X);
+        scalars.append(&mut scale(&gamma, &G::ScalarField::one().neg()));
+        // For - <self.R, gamma_sq_minus_1>
+        bases.extend_from_slice(&self.R);
+        scalars.append(&mut scale(&gamma_sq_minus_1, &G::ScalarField::one().neg()));
+        Ok((bases, scalars))
     }
 }
 

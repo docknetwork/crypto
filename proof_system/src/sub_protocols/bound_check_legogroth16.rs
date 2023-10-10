@@ -405,9 +405,7 @@ mod tests {
             };
             let v = Fr::rand(&mut rng);
 
-            let proof = create_random_proof(circuit, v, &proving_key, &mut rng).unwrap();
-
-            assert!(verify_proof(&pvk, &proof, &[Fr::from(min), Fr::from(max)],).is_err());
+            assert!(create_random_proof(circuit, v, &proving_key, &mut rng).is_err());
         }
     }
 }

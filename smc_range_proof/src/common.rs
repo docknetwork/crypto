@@ -32,11 +32,12 @@ impl<G: AffineRepr> MemberCommitmentKey<G> {
         }
     }
 
-    /// Pedersen commitment to the set member
+    /// Pedersen commitment to the set member, `g * member + h * randomness`
     pub fn commit(&self, member: &G::ScalarField, randomness: &G::ScalarField) -> G {
         (self.g * member + self.h * randomness).into()
     }
 
+    /// Given `base`-ary representation of a value, commit to its `digits`, `g * (1 * digits[0] + base * digits[1] + base^2 * digits[2] + base^{n-1} * digits[n-1]) + h * randomness`
     pub fn commit_decomposed(
         &self,
         base: u16,
@@ -47,6 +48,7 @@ impl<G: AffineRepr> MemberCommitmentKey<G> {
         self.commit_decomposed_given_base_powers(&base_powers, digits, randomness)
     }
 
+    /// Same as `commit_decomposed` but takes `[1, base, base^2, ..., base^{n-1}]`
     pub fn commit_decomposed_given_base_powers(
         &self,
         base_powers: &[G::ScalarField],

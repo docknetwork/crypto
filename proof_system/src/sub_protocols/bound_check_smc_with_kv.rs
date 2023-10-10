@@ -30,7 +30,6 @@ pub struct BoundCheckSmcWithKVProtocol<'a, E: Pairing> {
     pub params_and_comm_key_and_sk: Option<&'a SmcParamsAndCommitmentKeyAndSecretKey<E>>,
     pub comm: Option<E::G1Affine>,
     pub smc_protocol: Option<SmcProtocolWithKV<E>>,
-    pub smc_proof: Option<BoundCheckSmcWithKVInnerProof<E>>,
     pub sp: Option<SchnorrProtocol<'a, E::G1Affine>>,
 }
 
@@ -49,7 +48,6 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
             params_and_comm_key_and_sk: None,
             comm: None,
             smc_protocol: None,
-            smc_proof: None,
             sp: None,
         }
     }
@@ -68,7 +66,6 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
             params_and_comm_key_and_sk: Some(params),
             comm: None,
             smc_protocol: None,
-            smc_proof: None,
             sp: None,
         }
     }

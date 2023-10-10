@@ -36,6 +36,7 @@ pub enum StatementProof<E: Pairing, G: AffineRepr> {
     BoundCheckBpp(BoundCheckBppProof<G>),
     BoundCheckSmc(BoundCheckSmcProof<E>),
     BoundCheckSmcWithKV(BoundCheckSmcWithKVProof<E>),
+    Inequality(InequalityProof<G>),
 }
 
 macro_rules! delegate {
@@ -56,7 +57,8 @@ macro_rules! delegate {
                 PoKBBSSignature23G1,
                 BoundCheckBpp,
                 BoundCheckSmc,
-                BoundCheckSmcWithKV
+                BoundCheckSmcWithKV,
+                Inequality
             : $($tt)+
         }
     }};
@@ -80,7 +82,8 @@ macro_rules! delegate_reverse {
                 PoKBBSSignature23G1,
                 BoundCheckBpp,
                 BoundCheckSmc,
-                BoundCheckSmcWithKV
+                BoundCheckSmcWithKV,
+                Inequality
             : $($tt)+
         }
 
@@ -330,6 +333,25 @@ pub struct BoundCheckSmcWithKVProof<E: Pairing> {
 
 impl<E: Pairing> BoundCheckSmcWithKVProof<E> {
     pub fn get_schnorr_response_for_message(&self) -> Result<&E::ScalarField, ProofSystemError> {
+        self.sp.response.get_response(0).map_err(|e| e.into())
+    }
+}
+
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct InequalityProof<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub proof: schnorr_pok::inequality::InequalityProof<G>,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub comm: G,
+    pub sp: PedersenCommitmentProof<G>,
+}
+
+impl<G: AffineRepr> InequalityProof<G> {
+    pub fn get_schnorr_response_for_message(&self) -> Result<&G::ScalarField, ProofSystemError> {
         self.sp.response.get_response(0).map_err(|e| e.into())
     }
 }

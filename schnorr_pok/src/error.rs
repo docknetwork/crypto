@@ -12,6 +12,8 @@ pub enum SchnorrError {
     InvalidResponse,
     #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
+    ValueMustNotBeEqual,
+    InvalidProofOfEquality,
 }
 
 impl From<SerializationError> for SchnorrError {

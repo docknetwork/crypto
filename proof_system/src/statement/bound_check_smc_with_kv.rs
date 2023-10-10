@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smc_range_proof::prelude::{MemberCommitmentKey, SecretKey, SetMembershipCheckParams};
 
-/// Used by the verifier as it knows the secret key
+/// Used by the verifier as it knows the secret key. Should not be shared with the prover
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,

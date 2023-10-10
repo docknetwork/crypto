@@ -23,7 +23,7 @@ use proof_system::{
             BoundCheckSmcWithKVVerifier as BoundCheckVerifierStmt,
         },
     },
-    sub_protocols::{should_use_cls},
+    sub_protocols::should_use_cls,
     witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
 

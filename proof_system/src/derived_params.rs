@@ -29,6 +29,7 @@ use saver::{
         PreparedVerifyingKey as SaverPreparedVerifyingKey, VerifyingKey as SaverVerifyingKey,
     },
 };
+use schnorr_pok::inequality::CommitmentKey;
 use smc_range_proof::prelude::MemberCommitmentKey;
 use vb_accumulator::setup::{
     PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,
@@ -155,6 +156,14 @@ impl<'a, E: Pairing> DerivedParams<'a, MemberCommitmentKey<E::G1Affine>, [E::G1A
     for DerivedParamsTracker<'a, MemberCommitmentKey<E::G1Affine>, [E::G1Affine; 2], E>
 {
     fn new_derived(ck: &MemberCommitmentKey<E::G1Affine>) -> [E::G1Affine; 2] {
+        [ck.g, ck.h]
+    }
+}
+
+impl<'a, E: Pairing, G: AffineRepr> DerivedParams<'a, CommitmentKey<G>, [G; 2]>
+    for DerivedParamsTracker<'a, CommitmentKey<G>, [G; 2], E>
+{
+    fn new_derived(ck: &CommitmentKey<G>) -> [G; 2] {
         [ck.g, ck.h]
     }
 }

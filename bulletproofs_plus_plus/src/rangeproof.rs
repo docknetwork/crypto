@@ -6,7 +6,7 @@
 //!
 //! Notation follows the bulletproofs++ paper.
 
-use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ec::AffineRepr;
 use ark_ff::{batch_inversion, Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -750,13 +750,13 @@ impl<G: AffineRepr> Proof<G> {
         &self,
         alpha_r: &[G::ScalarField],
         alpha_r2: &[G::ScalarField],
-        t3: &G::ScalarField,
+        t_cube: &G::ScalarField,
         q_pows: &[G::ScalarField],
         alpha_d_q_inv_pows: &[G::ScalarField],
         alpha_d: &[G::ScalarField],
         total_num_digits: usize,
     ) -> G::ScalarField {
-        let two_t_3 = t3.double();
+        let two_t_3 = t_cube.double();
         let two_t_3_v = vec![two_t_3; total_num_digits];
 
         let v_hat_1 = inner_product(&two_t_3_v, q_pows);
@@ -790,7 +790,7 @@ impl<G: AffineRepr> Proof<G> {
         let t_pows = TPowers::new(t, setup_params.H_vec.len() as u32);
 
         let c_vec = create_c_vec(y, &t_pows);
-        let (t_inv, t2, t3) = (
+        let (t_inv, t_sqr, t_cube) = (
             t_pows.nth_power(-1),
             t_pows.nth_power(2),
             t_pows.nth_power(3),
@@ -815,13 +815,13 @@ impl<G: AffineRepr> Proof<G> {
         let g_offset = self.g_offset(
             &alpha_r,
             &alpha_r2,
-            t3,
+            t_cube,
             &q_pows,
             &alpha_d_q_inv_pow,
             &alpha_d,
             total_num_digits,
         );
-        let g_vec_pub_offsets = self.g_vec_pub_offsets(
+        let mut g_vec_pub_offsets = self.g_vec_pub_offsets(
             e,
             x,
             &alpha_r_q_inv_pows,
@@ -830,26 +830,45 @@ impl<G: AffineRepr> Proof<G> {
             &alpha_d_q_inv_pow,
         );
 
-        // let (r1_comm, r2_comm, r3_comm, norm_proof) =
-        //     (self.r1_comm, self.r2_comm, self.r3_comm, self.norm_proof);
-        let (S, M, D, R) = (
-            self.r3_comm.S,
-            self.r1_comm.M,
-            self.r1_comm.D,
-            self.r2_comm.R,
-        );
+        let two_t_cube = t_cube.double();
 
-        let two_t3 = t3.double();
+        // C = <V, lambda_powers> * t^3 * 2 + S * t_inv + M * delta + D * t + R * t^2 + <G_vec, g_vec_pub_offsets> + G * g_offset
 
-        // \sum_i(V_i * lambda_powers_i * t3 * 2)
-        let V = G::Group::msm_unchecked(V, &scale(&lambda_powers, &two_t3));
-        // TODO: C can be created using an MSM
-        let C = S * t_inv + M * delta + D * t + R * t2 + V;
-        let P = G::Group::msm_unchecked(&setup_params.G_vec, &g_vec_pub_offsets);
-        let C = C + P + (setup_params.G * g_offset);
+        // RHS of above can be created using an MSM
+        let msm_size = 5 + V.len() + g_vec_pub_offsets.len();
+        let mut bases = Vec::with_capacity(msm_size);
+        let mut scalars = Vec::with_capacity(msm_size);
 
-        self.norm_proof
-            .verify(c_vec, r, &C.into_affine(), setup_params, transcript)
+        // For <V, lambda_powers> * t^3 * 2
+        bases.extend_from_slice(V);
+        scalars.append(&mut scale(&lambda_powers, &two_t_cube));
+
+        // For S * t_inv + M * delta + D * t + R * t^2
+        bases.push(self.r3_comm.S);
+        bases.push(self.r1_comm.M);
+        bases.push(self.r1_comm.D);
+        bases.push(self.r2_comm.R);
+        scalars.push(*t_inv);
+        scalars.push(delta);
+        scalars.push(t);
+        scalars.push(*t_sqr);
+
+        // For <G_vec, g_vec_pub_offsets>
+        bases.extend_from_slice(&setup_params.G_vec[0..g_vec_pub_offsets.len()]);
+        scalars.append(&mut g_vec_pub_offsets);
+
+        // For G * g_offset
+        bases.push(setup_params.G);
+        scalars.push(g_offset);
+
+        self.norm_proof.verify_given_commitment_multiplicands(
+            c_vec,
+            r,
+            bases,
+            scalars,
+            setup_params,
+            transcript,
+        )
     }
 }
 

@@ -23,6 +23,7 @@ use proof_system::{
         },
         bbs_23::PoKBBSSignature23G1 as PoKSignatureBBS23G1Stmt,
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        inequality::PublicInequality as InequalityStmt,
         ped_comm::PedersenCommitment as PedersenCommitmentStmt,
         Statements,
     },
@@ -31,10 +32,11 @@ use proof_system::{
         PoKBBSSignature23G1 as PoKSignatureBBS23G1Wit, PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
     },
 };
+use schnorr_pok::inequality::CommitmentKey;
 use test_utils::{accumulators::*, bbs::*, test_serialization, Fr, ProofG1};
 
 macro_rules! gen_tests {
-    ($test1_name: ident, $test2_name: ident, $test3_name: ident, $test4_name: ident, $test5_name: ident, $setup_fn_name: ident, $sig: ident, $stmt: ident, $wit: ident, $setup_param_name: ident) => {
+    ($test1_name: ident, $test2_name: ident, $test3_name: ident, $test4_name: ident, $test5_name: ident, $test6_name: ident, $setup_fn_name: ident, $sig: ident, $stmt: ident, $wit: ident, $setup_param_name: ident) => {
         #[test]
         fn $test1_name() {
             // Prove knowledge of 3 BBS+ signatures and 3 of the messages are same among them.
@@ -810,9 +812,9 @@ macro_rules! gen_tests {
 
         #[test]
         fn $test3_name() {
-            // Prove knowledge of commitment in Pedersen commitments and equality with a BBS+ signature.
-            // Useful when requesting a blind signature and proving knowledge of a signature along with
-            // some the equality of certain messages in the commitment and signature
+            // Prove knowledge of commitment in Pedersen commitments and equality of the committed message
+            // with certain message(s) in the signature. Useful when requesting a blind signature and proving
+            // knowledge of a signature along with some the equality of certain messages in the commitment and signature
 
             let mut rng = StdRng::seed_from_u64(0u64);
 
@@ -1250,6 +1252,127 @@ macro_rules! gen_tests {
                 start.elapsed()
             );
         }
+
+        #[test]
+        fn $test6_name() {
+            // Prove inequality of a signed message with a public value.
+
+            let mut rng = StdRng::seed_from_u64(0u64);
+
+            let comm_key = CommitmentKey::<G1Affine>::new::<Blake2b512>(b"test");
+
+            let msg_count = 5;
+            let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count as u32);
+            let inequal_to = Fr::rand(&mut rng);
+            let inequal_msg_idx = 1;
+            assert_ne!(msgs[inequal_msg_idx], inequal_to);
+
+            let mut statements = Statements::new();
+            statements.add($stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements.add(InequalityStmt::new_statement_from_params(
+                inequal_to.clone(),
+                comm_key.clone(),
+            ));
+
+            test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+
+            let mut meta_statements = MetaStatements::new();
+            meta_statements.add_witness_equality(EqualWitnesses(
+                vec![(0, inequal_msg_idx), (1, 0)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+            ));
+
+            let context = Some(b"test".to_vec());
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            proof_spec.validate().unwrap();
+
+            test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+
+            let mut witnesses = Witnesses::new();
+            witnesses.add($wit::new_as_witness(
+                sig.clone(),
+                msgs.clone().into_iter().enumerate().collect(),
+            ));
+            witnesses.add(Witness::PublicInequality(msgs[inequal_msg_idx].clone()));
+
+            test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+            let nonce = Some(b"test nonce".to_vec());
+            let proof = ProofG1::new::<StdRng, Blake2b512>(
+                &mut rng,
+                proof_spec.clone(),
+                witnesses.clone(),
+                nonce.clone(),
+                Default::default(),
+            )
+            .unwrap()
+            .0;
+
+            test_serialization!(ProofG1, proof);
+
+            proof
+            .verify::<StdRng, Blake2b512>(&mut rng, proof_spec.clone(), nonce.clone(), Default::default())
+            .unwrap();
+
+
+            // Equality should fail to verify
+            let mut wrong_statements = Statements::new();
+            wrong_statements.add($stmt::new_statement_from_params(
+                sig_params,
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            // Statement mentions wrong inequal, i.e the value is equal to the signed message
+            wrong_statements.add(InequalityStmt::new_statement_from_params(
+                msgs[inequal_msg_idx].clone(),
+                comm_key.clone(),
+            ));
+
+            let mut meta_statements = MetaStatements::new();
+            meta_statements.add_witness_equality(EqualWitnesses(
+                vec![(0, inequal_msg_idx), (1, 0)]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+            ));
+
+            // proof spec with wrong statement
+            let wrong_proof_spec = ProofSpec::new(wrong_statements.clone(), meta_statements, vec![], None);
+
+            let mut witnesses = Witnesses::new();
+            witnesses.add($wit::new_as_witness(
+                sig,
+                msgs.clone().into_iter().enumerate().collect(),
+            ));
+            witnesses.add(Witness::PublicInequality(msgs[inequal_msg_idx].clone()));
+
+            // Proof can't be created when the values are equal
+            assert!(ProofG1::new::<StdRng, Blake2b512>(
+                &mut rng,
+                wrong_proof_spec.clone(),
+                witnesses.clone(),
+                None,
+                Default::default(),
+            ).is_err());
+
+            // Create proof with inequal value
+            let proof = ProofG1::new::<StdRng, Blake2b512>(
+                &mut rng,
+                proof_spec,
+                witnesses.clone(),
+                None,
+                Default::default(),
+            )
+            .unwrap()
+            .0;
+
+            // Try to verify the proof with equal value
+            assert!(proof.verify::<StdRng, Blake2b512>(&mut rng, wrong_proof_spec, None, Default::default()).is_err())
+        }
     }
 }
 
@@ -1259,6 +1382,7 @@ gen_tests!(
     pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig,
     verifier_local_linkability_with_bbs_plus,
     pok_of_bbs_plus_sig_with_reusing_setup_params,
+    pok_of_bbs_plus_sig_and_inequality_with_public_value,
     bbs_plus_sig_setup,
     SignatureG1,
     PoKSignatureBBSG1Stmt,
@@ -1271,6 +1395,7 @@ gen_tests!(
     pok_of_knowledge_in_pedersen_commitment_and_bbs_sig,
     verifier_local_linkability_with_bbs,
     pok_of_bbs_sig_with_reusing_setup_params,
+    pok_of_bbs_sig_and_inequality_with_public_value,
     bbs_sig_setup,
     Signature23G1,
     PoKSignatureBBS23G1Stmt,
