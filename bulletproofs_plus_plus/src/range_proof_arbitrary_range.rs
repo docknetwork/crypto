@@ -33,7 +33,6 @@ impl<G: AffineRepr> ProofArbitraryRange<G> {
         setup_params: SetupParams<G>,
         transcript: &mut impl Transcript,
     ) -> Result<Self, BulletproofsPlusPlusError> {
-        // TODO: Fx base
         let base = 2;
         Self::new_with_given_base(
             rng,

@@ -112,6 +112,6 @@ impl<Gr: AffineRepr> SetupParams<Gr> {
 
     /// Get number of generators `G_i` required for creating proofs
     pub fn get_no_of_G(base: u16, num_value_bits: u16, num_proofs: u32) -> u32 {
-        ark_std::cmp::max(num_value_bits as u32 / base_bits(base) as u32, base as u32) * num_proofs
+        core::cmp::max(num_value_bits as u32 / base_bits(base) as u32, base as u32) * num_proofs
     }
 }

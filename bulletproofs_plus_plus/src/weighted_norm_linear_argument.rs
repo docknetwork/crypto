@@ -312,6 +312,7 @@ impl<G: AffineRepr> WeightedNormLinearArgument<G> {
     }
 
     /// Returns <c, l> + {|n|^2}_mu
+    #[cfg(test)]
     fn compute_v(
         l: &[G::ScalarField],
         n: &[G::ScalarField],

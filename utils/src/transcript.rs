@@ -97,6 +97,10 @@ impl Transcript for Merlin {
     }
 }
 
+// TODO: Impl Write trait for Merlin
+// TODO: Support domain-separator function that adds a label to transcript. One approach is to have MerlinTranscript struct
+// that has a mutable field called write_label set which is used in call to `append_message`
+
 #[cfg(test)]
 mod test {
     use super::*;

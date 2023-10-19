@@ -44,18 +44,19 @@
 //!
 //! The implementation tries to use the same variable names as the paper and thus violate Rust's naming conventions at places.
 //!
+//!
 //! [`setup`]: crate::setup
 //! [`signature`]: crate::signature
 //! [`proof`]: crate::proof
 //! [`signature_23`]: crate::signature_23
 //! [`proof_23`]: crate::proof_23
-//! [`proof_23_alternate`]: crate::proof_23_alternate
+//! [`proof_23_alternate`]: crate::proof_23_cdl
 //! [`threshold`]: crate::threshold
 
 pub mod error;
 pub mod proof;
 pub mod proof_23;
-pub mod proof_23_alternate;
+pub mod proof_23_cdl;
 pub mod setup;
 pub mod signature;
 pub mod signature_23;
@@ -65,7 +66,7 @@ pub mod prelude {
     pub use crate::{
         error::BBSPlusError,
         proof::{MessageOrBlinding, PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol},
-        proof_23_alternate::{PoKOfSignature23G1Proof, PoKOfSignature23G1Protocol},
+        proof_23_cdl::{PoKOfSignature23G1Proof, PoKOfSignature23G1Protocol},
         setup::*,
         signature::{SignatureG1, SignatureG2},
         signature_23::Signature23G1,

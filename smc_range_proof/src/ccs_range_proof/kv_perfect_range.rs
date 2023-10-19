@@ -51,7 +51,6 @@ impl<E: Pairing> CCSPerfectRangeProofWithKVProtocol<E> {
         comm_key: &MemberCommitmentKey<E::G1Affine>,
         params: &SetMembershipCheckParams<E>,
     ) -> Result<Self, SmcRangeProofError> {
-        // TODO: Fx me, use min, max
         Self::init_given_base(
             rng,
             value,

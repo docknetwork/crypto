@@ -1,6 +1,6 @@
 //! Proof of knowledge of BBS signature and corresponding messages as per section 5.2 of the BBS paper with
 //! slight modification described below.
-//! The paper requires the prover to prove `e(A_bar, X_2) = e (B_bar, g2)` where `B_bar = C(m)*r + A_bar*-e`.
+//! The paper requires the prover to prove `e(A_bar, X_2) = e (B_bar, g2)` where `A_bar = A * r` and `B_bar = C(m)*r + A_bar*-e`.
 //! The prover sends `A_bar`, `B_bar` to the verifier and also proves the knowledge of `r`, `e` and any
 //! messages in `C(m)` in `B_bar`. Here `r` is a random element chosen by the prover on each proof of knowledge.
 //! Above approach has a problem when some messages under 2 signatures need to be proven equal in zero
@@ -8,11 +8,11 @@
 //! contains a Pedersen commitment to witness of the SNARK. Because `r` will be different for each signature,
 //! the witnesses for the Schnorr proof will be different, i.e. `m*r` and `m*r'` for the same message `m` and
 //! thus the folklore method of proving equal witnesses in multiple statements cant be used. Thus the protocol
-//! below using the same approach as used in BBS+. The prover in addition to sending `A_bar = A*r1`, `B_bar = B*r1`
-//! to the verifier sends `d = C(m)*r1` as well. The prover picks a random `r1`, calculates `r2 = 1 / r1` and
+//! below uses a similar approach as used in BBS+. The prover in addition to sending `A_bar = A*r1*r2`, `B_bar = (C(m) - A*e)*r1*r2`
+//! to the verifier sends `d = C(m)*r2` as well for random `r1`, `r2`. The prover calculates `r3 = 1 / r2` and
 //! creates 2 Schnorr proofs for:
-//! 1. `B_bar - d = A_bar * -e`, here `-e` is the witness and `B_bar, d, A_bar` are the instance
-//! 2. `d * r2 = C(m)`. Here the witnesses are `r2` and any messages part of `C(m)` which the prover is hiding and
+//! 1. `B_bar = d * r1 + A_bar * -e`, here `r1` and `-e` is the witness and `B_bar, d, A_bar` are the instance
+//! 2. `d * r3 = C(m)`. Here the witnesses are `r3` and any messages part of `C(m)` which the prover is hiding and
 //! the instance is `g + \sum_i{h_i*m_i}` for all `m_i` that the prover is revealing.
 
 use crate::{
@@ -22,14 +22,15 @@ use crate::{
     setup::{MultiMessageSignatureParams, PreparedSignatureParams23G1, SignatureParams23G1},
     signature_23::Signature23G1,
 };
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::{Field, PrimeField, Zero};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     io::Write,
     rand::RngCore,
+    vec,
     vec::Vec,
     One, UniformRand,
 };
@@ -38,15 +39,10 @@ use dock_crypto_utils::{
     serde_utils::*,
 };
 use itertools::multiunzip;
-use schnorr_pok::{
-    error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrCommitment,
-    SchnorrResponse,
-};
+use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-impl_proof_of_knowledge_of_discrete_log!(KnowledgeOfEProtocol, KnowledgeOfEProof);
 
 /// Protocol to prove knowledge of BBS signature in group G1.
 #[serde_as]
@@ -72,9 +68,11 @@ pub struct PoKOfSignature23G1Protocol<E: Pairing> {
     #[zeroize(skip)]
     #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
-    /// For proving relation `B_bar - d = A_bar * -e`
-    pub sc_comm_1: KnowledgeOfEProtocol<E::G1Affine>,
-    /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r2 + sum_{j notin D}(h_j*m_j)`
+    /// For proving relation `B_bar = d * r1 + A_bar * -e`
+    pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
+    #[serde_as(as = "(ArkObjectBytes, ArkObjectBytes)")]
+    sc_wits_1: (E::ScalarField, E::ScalarField),
+    /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + sum_{j notin D}(h_j*m_j)`
     #[zeroize(skip)]
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
@@ -94,9 +92,11 @@ pub struct PoKOfSignature23G1Proof<E: Pairing> {
     pub B_bar: E::G1Affine,
     #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
-    /// Proof of relation `B_bar - d = A_bar * -e`
-    pub sc_proof_1: KnowledgeOfEProof<E::G1Affine>,
-    /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r2 + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
+    /// Proof of relation `B_bar = d * r3 + A_bar * -e`
+    #[serde_as(as = "ArkObjectBytes")]
+    pub T1: E::G1Affine,
+    pub sc_resp_1: SchnorrResponse<E::G1Affine>,
+    /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
     #[serde_as(as = "ArkObjectBytes")]
     pub T2: E::G1Affine,
     pub sc_resp_2: SchnorrResponse<E::G1Affine>,
@@ -137,29 +137,34 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
         }
 
         let r1 = E::ScalarField::rand(rng);
-        let r2 = r1.inverse().ok_or(BBSPlusError::CannotInvert0)?;
+        let r2 = E::ScalarField::rand(rng);
+        // r3 = 1/r2
+        let r3 = r2.inverse().ok_or(BBSPlusError::CannotInvert0)?;
 
         // b = (e+x) * A = g1 + sum(h_i*m_i) for all i in I
         let b = params.b(messages.iter().enumerate())?;
-        // d = b * r1
-        let d = b * r1;
-        // A_bar = A * r1
-        let A_bar = signature.A.mul_bigint(r1.into_bigint());
+        // d = b * r2
+        let d = b * r2;
+        // A_bar = A * r1 * r2
+        let A_bar = signature.A * (r1 * r2);
         let A_bar_affine = A_bar.into_affine();
-        // B_bar = d - e * A_bar
-        let B_bar = d - (A_bar.mul_bigint(signature.e.into_bigint()));
+        // B_bar = d * r1 - e * A_bar
+        let B_bar = d * r1 - (A_bar * signature.e);
         let d_affine = d.into_affine();
 
         // Following is the 1st step of the Schnorr protocol for the relation pi in the paper. pi is a
         // conjunction of 2 relations:
-        // 1. `B_bar - d == A_bar*{-e}`
-        // 2. `g1 + \sum_{i \in D}(h_i*m_i)` == `d*r2 + \sum_{j \notin D}(h_j*{-m_j})`
+        // 1. `B_bar == d * r1 + A_bar*{-e}`
+        // 2. `g1 + \sum_{i \in D}(h_i*m_i)` == `d*r3 + \sum_{j \notin D}(h_j*{-m_j})`
         // for all disclosed messages `m_i` and for all undisclosed messages `m_j`.
         // For each of the above relations, a Schnorr protocol is executed; the first to prove knowledge
         // of `(e, r1)`, and the second of `(r2, {m_j}_{j \notin D})`. The secret knowledge items are
         // referred to as witnesses, and the public items as instances.
-        let sc_comm_1 =
-            KnowledgeOfEProtocol::init(-signature.e, E::ScalarField::rand(rng), &A_bar_affine);
+        let bases_1 = [A_bar_affine, d_affine];
+        let randomness_1 = vec![E::ScalarField::rand(rng), E::ScalarField::rand(rng)];
+        let wits_1 = (-signature.e, r1);
+
+        let sc_comm_1 = SchnorrCommitment::new(&bases_1, randomness_1);
 
         // For proving relation `g1 + \sum_{i \in D}(h_i*m_i)` = `d*r2 + \sum_{j \notin D}(h_j*{-m_j})`
         // for all disclosed messages `m_i` and for all undisclosed messages `m_j`, usually the number of disclosed
@@ -176,7 +181,7 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
             .map(|(idx, blinding)| (params.h[idx], blinding, messages[idx]));
 
         let (bases_2, randomness_2, wits_2): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(
-            [(d_affine, rand(rng), -r2)]
+            [(d_affine, rand(rng), -r3)]
                 .into_iter()
                 .chain(h_blinding_message),
         );
@@ -189,6 +194,7 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
             B_bar: B_bar.into_affine(),
             d: d_affine,
             sc_comm_1,
+            sc_wits_1: wits_1,
             sc_comm_2,
             sc_wits_2: wits_2,
         })
@@ -218,16 +224,19 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
         self,
         challenge: &E::ScalarField,
     ) -> Result<PoKOfSignature23G1Proof<E>, BBSPlusError> {
-        let sc_proof_1 = self.sc_comm_1.clone().gen_proof(challenge);
+        let resp_1 = self
+            .sc_comm_1
+            .response(&[self.sc_wits_1.0, self.sc_wits_1.1], challenge)?;
 
-        // Schnorr response for relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r2 + \sum_{j not in D}(h_j*{-m_j})`
+        // Schnorr response for relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + \sum_{j not in D}(h_j*{-m_j})`
         let resp_2 = self.sc_comm_2.response(&self.sc_wits_2, challenge)?;
 
         Ok(PoKOfSignature23G1Proof {
             A_bar: self.A_bar,
             B_bar: self.B_bar,
             d: self.d,
-            sc_proof_1,
+            T1: self.sc_comm_1.t,
+            sc_resp_1: resp_1,
             T2: self.sc_comm_2.t,
             sc_resp_2: resp_2,
         })
@@ -341,7 +350,7 @@ where
             &self.A_bar,
             &self.B_bar,
             &self.d,
-            &self.sc_proof_1.t,
+            &self.T1,
             &self.T2,
             revealed_msgs,
             params,
@@ -380,12 +389,16 @@ where
         h: Vec<E::G1Affine>,
     ) -> Result<(), BBSPlusError> {
         // Verify the 1st Schnorr proof
-        let B_bar_minus_d = (self.B_bar.into_group() - self.d.into_group()).into_affine();
-        if !self
-            .sc_proof_1
-            .verify(&B_bar_minus_d, &self.A_bar, challenge)
+        let bases_1 = [self.A_bar, self.d];
+        match self
+            .sc_resp_1
+            .is_valid(&bases_1, &self.B_bar, &self.T1, challenge)
         {
-            return Err(BBSPlusError::FirstSchnorrVerificationFailed);
+            Ok(()) => (),
+            Err(SchnorrError::InvalidResponse) => {
+                return Err(BBSPlusError::FirstSchnorrVerificationFailed)
+            }
+            Err(other) => return Err(BBSPlusError::SchnorrError(other)),
         }
 
         // Verify the 2nd Schnorr proof
