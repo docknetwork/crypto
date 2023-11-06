@@ -176,14 +176,11 @@ mod tests {
             let mut chal_bytes = vec![];
             pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let proof = pok.clone().gen_proof(&challenge).unwrap();
 
-            proof
-                .verify(&challenge, empty(), &pk, &params)
-                .unwrap();
+            proof.verify(&challenge, empty(), &pk, &params).unwrap();
         })
     }
 
@@ -215,14 +212,11 @@ mod tests {
             let mut chal_bytes = vec![];
             pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let proof = pok.clone().gen_proof(&challenge).unwrap();
 
-            proof
-                .verify(&challenge, reveal_msgs, &pk, &params)
-                .unwrap();
+            proof.verify(&challenge, reveal_msgs, &pk, &params).unwrap();
         })
     }
 
@@ -324,8 +318,7 @@ mod tests {
             let mut chal_bytes = vec![];
             pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let proof = pok.clone().gen_proof(&challenge).unwrap();
             let mut revealed = reveal_msgs.into_iter().rev();
@@ -359,8 +352,7 @@ mod tests {
         let mut chal_bytes = vec![];
         pok.challenge_contribution(&mut chal_bytes, &pk, &params)
             .unwrap();
-        let challenge =
-            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
+        let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let proof = pok.clone().gen_proof(&challenge).unwrap();
         let revealed = messages.iter().enumerate().into_iter().rev();
@@ -386,21 +378,14 @@ mod tests {
             let mut chal_bytes = vec![];
             pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let mut proof = pok.clone().gen_proof(&challenge).unwrap();
 
-            assert!(proof
-                .verify(&challenge, empty(), &pk, &params)
-                .is_ok());
-            assert!(proof
-                .verify(&challenge, empty(), &pk1, &params)
-                .is_err());
+            assert!(proof.verify(&challenge, empty(), &pk, &params).is_ok());
+            assert!(proof.verify(&challenge, empty(), &pk1, &params).is_err());
             *proof.k.value = G2Projective::rand(&mut rng).into_affine();
-            assert!(proof
-                .verify(&challenge, empty(), &pk, &params)
-                .is_err())
+            assert!(proof.verify(&challenge, empty(), &pk, &params).is_err())
         })
     }
 
@@ -431,8 +416,7 @@ mod tests {
             let mut chal_bytes = vec![];
             pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
             let proof = pok.clone().gen_proof(&challenge).unwrap();
 
