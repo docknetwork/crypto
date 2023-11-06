@@ -76,7 +76,7 @@ fn pok_sig_benchmark(c: &mut Criterion) {
         let sig = &sigs_range[i];
 
         let mut prove_group = c.benchmark_group(format!("Creating proof for Proof-of-knowledge of signature and corresponding multi-message of size {}", count));
-        for (_j, r_count) in k.iter().enumerate() {
+        for (j, r_count) in k.iter().enumerate() {
             prove_group.bench_with_input(
                 BenchmarkId::from_parameter(format!("Revealing {} messages", r_count)),
                 &r_count,
@@ -89,7 +89,7 @@ fn pok_sig_benchmark(c: &mut Criterion) {
                                     .iter()
                                     .enumerate()
                                     .merge_join_by(
-                                        revealed_indices[i].iter(),
+                                        revealed_indices[j].iter(),
                                         |(m_idx, _), reveal_idx| m_idx.cmp(reveal_idx),
                                     )
                                     .map(|either| match either {
