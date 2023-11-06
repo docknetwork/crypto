@@ -178,7 +178,7 @@ impl<'pair, Pair, F: PrimeField> UnpackedBlindedMessages<'pair, Pair, F> {
         let (paired, (msgs, blindings)): (Vec<_>, _) =
             process_results(paired, |iter| iter.unzip())?;
         if paired.is_empty() {
-            Err(MessageUnpackingError::NoMessagesProvided)
+            Ok(Self(paired, msgs, blindings))
         } else if pair_with.len() != total_count {
             Err(MessageUnpackingError::LessMessagesThanExpected {
                 provided: total_count,

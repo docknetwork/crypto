@@ -558,14 +558,23 @@ mod tests {
     #[test]
     fn empty_proof() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let (_sk, _pk, params, _messages) = test_setup::<Bls12_381, Blake2b512, _>(&mut rng, 1);
+        let (_, _, params, messages) = test_setup::<Bls12_381, Blake2b512, _>(&mut rng, 1);
         let h = G1::rand(&mut rng).into_affine();
 
-        assert_eq!(
-            MessagesPoKGenerator::init(&mut rng, &[], &params, &h),
-            Err(MessagesPoKError::MessageInputError(
-                MessageUnpackingError::NoMessagesProvided
-            ))
-        );
+        let pok = MessagesPoKGenerator::init(&mut rng, &[], &params, &h)
+            .unwrap();
+
+        let mut chal_bytes_prover = vec![];
+        pok.challenge_contribution(&mut chal_bytes_prover, &params, &h)
+            .unwrap();
+        let challenge_prover =
+            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+
+        let proof = pok.clone().gen_proof(&challenge_prover).unwrap();
+        let indices = (0..messages.len()).rev();
+
+        assert!(proof
+            .verify(&challenge_prover, indices.clone(), &params, &h)
+            .is_ok());
     }
 }
