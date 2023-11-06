@@ -173,17 +173,14 @@ mod tests {
 
             let pok = SignaturePoKGenerator::init(&mut rng, &messages, &sig, &pk, &params).unwrap();
 
-            let mut chal_bytes_prover = vec![];
-            pok.challenge_contribution(&mut chal_bytes_prover, &pk, &params)
+            let mut chal_bytes = vec![];
+            pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge_prover =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
-            let proof = pok.clone().gen_proof(&challenge_prover).unwrap();
+            let proof = pok.clone().gen_proof(&challenge).unwrap();
 
-            proof
-                .verify(&challenge_prover, empty(), &pk, &params)
-                .unwrap();
+            proof.verify(&challenge, empty(), &pk, &params).unwrap();
         })
     }
 
@@ -212,17 +209,14 @@ mod tests {
             )
             .unwrap();
 
-            let mut chal_bytes_prover = vec![];
-            pok.challenge_contribution(&mut chal_bytes_prover, &pk, &params)
+            let mut chal_bytes = vec![];
+            pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge_prover =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
-            let proof = pok.clone().gen_proof(&challenge_prover).unwrap();
+            let proof = pok.clone().gen_proof(&challenge).unwrap();
 
-            proof
-                .verify(&challenge_prover, reveal_msgs, &pk, &params)
-                .unwrap();
+            proof.verify(&challenge, reveal_msgs, &pk, &params).unwrap();
         })
     }
 
@@ -321,17 +315,16 @@ mod tests {
             )
             .unwrap();
 
-            let mut chal_bytes_prover = vec![];
-            pok.challenge_contribution(&mut chal_bytes_prover, &pk, &params)
+            let mut chal_bytes = vec![];
+            pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge_prover =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
-            let proof = pok.clone().gen_proof(&challenge_prover).unwrap();
+            let proof = pok.clone().gen_proof(&challenge).unwrap();
             let mut revealed = reveal_msgs.into_iter().rev();
 
             assert_eq!(
-                proof.verify(&challenge_prover, revealed.clone(), &pk, &params,),
+                proof.verify(&challenge, revealed.clone(), &pk, &params,),
                 Err(SignaturePoKError::RevealedIndicesMustBeUniqueAndSorted {
                     previous: revealed.next().unwrap().0,
                     current: revealed.next().unwrap().0
@@ -347,12 +340,26 @@ mod tests {
 
         let sig = Signature::new(&mut rng, messages.as_slice(), &sk, &params).unwrap();
 
-        assert_eq!(
-            SignaturePoKGenerator::init(&mut rng, &[], &sig, &pk, &params),
-            Err(SignaturePoKError::MessageInputError(
-                MessageUnpackingError::NoMessagesProvided
-            ))
-        );
+        let pok = SignaturePoKGenerator::init(
+            &mut rng,
+            messages.iter().map(|_| CommitMessage::RevealMessage),
+            &sig,
+            &pk,
+            &params,
+        )
+        .unwrap();
+
+        let mut chal_bytes = vec![];
+        pok.challenge_contribution(&mut chal_bytes, &pk, &params)
+            .unwrap();
+        let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
+
+        let proof = pok.clone().gen_proof(&challenge).unwrap();
+        let revealed = messages.iter().enumerate().into_iter().rev();
+
+        assert!(proof
+            .verify(&challenge, revealed.clone(), &pk, &params)
+            .is_ok());
     }
 
     #[test]
@@ -368,24 +375,17 @@ mod tests {
 
             let pok = SignaturePoKGenerator::init(&mut rng, &messages, &sig, &pk, &params).unwrap();
 
-            let mut chal_bytes_prover = vec![];
-            pok.challenge_contribution(&mut chal_bytes_prover, &pk, &params)
+            let mut chal_bytes = vec![];
+            pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge_prover =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
-            let mut proof = pok.clone().gen_proof(&challenge_prover).unwrap();
+            let mut proof = pok.clone().gen_proof(&challenge).unwrap();
 
-            assert!(proof
-                .verify(&challenge_prover, empty(), &pk, &params)
-                .is_ok());
-            assert!(proof
-                .verify(&challenge_prover, empty(), &pk1, &params)
-                .is_err());
+            assert!(proof.verify(&challenge, empty(), &pk, &params).is_ok());
+            assert!(proof.verify(&challenge, empty(), &pk1, &params).is_err());
             *proof.k.value = G2Projective::rand(&mut rng).into_affine();
-            assert!(proof
-                .verify(&challenge_prover, empty(), &pk, &params)
-                .is_err())
+            assert!(proof.verify(&challenge, empty(), &pk, &params).is_err())
         })
     }
 
@@ -413,13 +413,12 @@ mod tests {
 
             let pok = SignaturePoKGenerator::init(&mut rng, comms, &sig, &pk, &params).unwrap();
 
-            let mut chal_bytes_prover = vec![];
-            pok.challenge_contribution(&mut chal_bytes_prover, &pk, &params)
+            let mut chal_bytes = vec![];
+            pok.challenge_contribution(&mut chal_bytes, &pk, &params)
                 .unwrap();
-            let challenge_prover =
-                compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+            let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
-            let proof = pok.clone().gen_proof(&challenge_prover).unwrap();
+            let proof = pok.clone().gen_proof(&challenge).unwrap();
 
             for idx in committed_msg_indices {
                 assert_eq!(
