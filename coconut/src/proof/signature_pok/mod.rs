@@ -349,11 +349,11 @@ mod tests {
 
         let pok = SignaturePoKGenerator::init(&mut rng, &[], &sig, &pk, &params).unwrap();
 
-        let mut chal_bytes_prover = vec![];
-        pok.challenge_contribution(&mut chal_bytes_prover, &pk, &params)
+        let mut chal_bytes = vec![];
+        pok.challenge_contribution(&mut chal_bytes, &pk, &params)
             .unwrap();
         let challenge_prover =
-            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let proof = pok.clone().gen_proof(&challenge_prover).unwrap();
         let revealed = messages.iter().enumerate().into_iter().rev();

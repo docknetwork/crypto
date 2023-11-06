@@ -564,11 +564,11 @@ mod tests {
         let pok = MessagesPoKGenerator::init(&mut rng, &[], &params, &h)
             .unwrap();
 
-        let mut chal_bytes_prover = vec![];
-        pok.challenge_contribution(&mut chal_bytes_prover, &params, &h)
+        let mut chal_bytes = vec![];
+        pok.challenge_contribution(&mut chal_bytes, &params, &h)
             .unwrap();
         let challenge_prover =
-            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
+            compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let proof = pok.clone().gen_proof(&challenge_prover).unwrap();
         let indices = (0..messages.len()).rev();
