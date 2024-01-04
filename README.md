@@ -8,10 +8,10 @@ Library providing privacy enhancing cryptographic primitives.
 
 ## Primitives
 
-1. [Schnorr proof of knowledge protocol](./schnorr_pok) to prove knowledge of discrete log. [This](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) is a good reference. 
+1. [Schnorr proof of knowledge protocol](./schnorr_pok) to prove knowledge of discrete log and inequality of discrete logs. [This](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) is a good reference. 
 2. [BBS and BBS+ signatures](./bbs_plus) for anonymous credentials. BBS+ is based on the paper [Anonymous Attestation Using the Strong Diffie Hellman Assumption Revisited](https://eprint.iacr.org/2016/663) and 
    BBS is based on the paper [Revisiting BBS Signatures](https://eprint.iacr.org/2023/275). Also implements the threshold variants of these based on the paper [Threshold BBS+ Signatures for Distributed Anonymous Credential Issuance](https://eprint.iacr.org/2023/602)
-3. [Dynamic accumulators, both positive and universal](./vb_accumulator). Based on the paper [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
+3. [Dynamic accumulators, both positive and universal](./vb_accumulator). Based on the papers [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777) and [Efficient Constructions of Pairing Based Accumulators](https://eprint.iacr.org/2021/638)
 4. [Composite proof system](./proof_system) that combines above primitives for use cases like 
    - prove knowledge of a BBS+ signature and the corresponding messages
    - prove knowledge of a modified PS signature and the corresponding messages
@@ -26,6 +26,7 @@ Library providing privacy enhancing cryptographic primitives.
 8. [Cocount and PS signatures](./coconut/). Based on the paper [Security Analysis of Coconut, an Attribute-Based Credential Scheme with Threshold Issuance](https://eprint.iacr.org/2022/011)
 9. [LegoGroth16](./legogroth16/).  LegoGroth16, the [LegoSNARK](https://eprint.iacr.org/2019/142) variant of [Groth16](https://eprint.iacr.org/2016/260) zkSNARK proof system
 10. [Oblivious Transfer (OT) and Oblivious Transfer Extensions (OTE)](./oblivious_transfer).
+11. [Short group signatures](./short_group_sig/). BB signature and weak-BB signature and their proofs of knowledge based on the papers [Short Signatures Without Random Oracles](https://eprint.iacr.org/2004/171) and [Scalable Revocation Scheme for Anonymous Credentials Based on n-times Unlinkable Proofs](http://library.usc.edu.ph/ACM/SIGSAC%202017/wpes/p123.pdf).
 
 ## Composite proof system
 

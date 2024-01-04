@@ -7,7 +7,11 @@ Dynamic Positive and Universal accumulators according to the paper: [Dynamic Uni
 Implements
 - a dynamic positive accumulator [`PositiveAccumulator`], that supports membership proofs.
 - a dynamic universal accumulator [`UniversalAccumulator`], that supports membership and non-membership proofs.
-- a zero knowledge proof of membership and non-membership in the accumulators with [`ProofProtocol`].
+- a zero knowledge proof of membership and non-membership in the accumulators with [`ProofProtocol`] as described in the paper.
+  These are essentially proofs of knowledge of a weak-BB signature
+- an alternate and more efficient protocol of zero knowledge proof of membership and non-membership based on a more
+  efficient protocol for proving knowledge of a weak-BB signature. This isn't described in the paper.
+- keyed verification proofs of membership and non-membership where the verifier knows the secret key
 
 Allows
 - single and batch updates (additions, removals or both) to the accumulators.
@@ -23,9 +27,12 @@ The implementation tries to use the same variable names as the paper and thus vi
 ## kb_accumulator
 Dynamic Positive and Universal accumulators according to the paper: [Efficient Constructions of Pairing Based Accumulators](https://eprint.iacr.org/2021/638)
 Implements
-- a dynamic positive accumulator [`KBPositiveAccumulator`], that supports membership proofs. Based on construction 2 in the paper
+- a dynamic positive accumulator [`KBPositiveAccumulator`], that supports membership proofs. Based on construction 2 in the paper.
 - a dynamic universal accumulator [`KBUniversalAccumulator`], that supports membership and non-membership proofs. Based on construction 3 in the paper
-- zero knowledge proofs of membership and non-membership in the accumulators
+- zero knowledge proofs of membership and non-membership in the accumulators. These are essentially proofs of knowledge of a
+  BB signature and weak-BB signature.
+- an alternate and more efficient protocol for membership and non-membership proofs
+- keyed verification proofs of membership and non-membership where the verifier knows the secret key
 
 Allows batch updates to the accumulator and the witness using the techniques from `vb_accumulator`
 
