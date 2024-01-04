@@ -14,16 +14,8 @@ use schnorr_pok::error::SchnorrError;
 pub mod with_schnorr_and_blindings;
 pub mod with_schnorr_response;
 
-pub use iter::*;
-pub use try_iter::*;
 pub use utils::{
-    aliases::*,
-    extend_some::*,
-    iter::{self, *},
-    misc::*,
-    owned_pairs::*,
-    pairs::*,
-    try_iter::{self, *},
+    aliases::*, extend_some::*, iter::*, misc::*, owned_pairs::*, pairs::*, try_iter::*,
 };
 pub use with_schnorr_and_blindings::*;
 pub use with_schnorr_response::*;

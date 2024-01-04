@@ -1,7 +1,10 @@
-# vb_accumulator
+<!-- cargo-rdme start -->
 
+# Accumulators based on bilinear map (pairings)
+
+## vb_accumulator
 Dynamic Positive and Universal accumulators according to the paper: [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
-Provides
+Implements
 - a dynamic positive accumulator [`PositiveAccumulator`], that supports membership proofs.
 - a dynamic universal accumulator [`UniversalAccumulator`], that supports membership and non-membership proofs.
 - a zero knowledge proof of membership and non-membership in the accumulators with [`ProofProtocol`].
@@ -17,13 +20,26 @@ Most of the update logic is in the trait [`Witness`] which is implemented by bot
 and [`NonMembershipWitness`].
 The implementation tries to use the same variable names as the paper and thus violate Rust's naming conventions at places.
 
-[`Accumulator`]: crate::positive::Accumulator
-[`PositiveAccumulator`]: crate::positive::PositiveAccumulator
-[`UniversalAccumulator`]: crate::universal::UniversalAccumulator
-[`MembershipWitness`]: crate::witness::MembershipWitness
-[`NonMembershipWitness`]: crate::witness::NonMembershipWitness
-[`Witness`]: crate::witness::Witness
-[`Omega`]: crate::batch_utils::Omega
-[`ProofProtocol`]: crate::proofs::ProofProtocol
+## kb_accumulator
+Dynamic Positive and Universal accumulators according to the paper: [Efficient Constructions of Pairing Based Accumulators](https://eprint.iacr.org/2021/638)
+Implements
+- a dynamic positive accumulator [`KBPositiveAccumulator`], that supports membership proofs. Based on construction 2 in the paper
+- a dynamic universal accumulator [`KBUniversalAccumulator`], that supports membership and non-membership proofs. Based on construction 3 in the paper
+- zero knowledge proofs of membership and non-membership in the accumulators
 
-License: Apache-2.0
+Allows batch updates to the accumulator and the witness using the techniques from `vb_accumulator`
+
+The implementation uses type-3 pairings compared to type-1 in the paper.
+
+[`Accumulator`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/positive/trait.Accumulator.html
+[`PositiveAccumulator`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/positive/struct.PositiveAccumulator.html
+[`UniversalAccumulator`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/universal/struct.UniversalAccumulator.html
+[`MembershipWitness`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/witness/struct.MembershipWitness.html
+[`NonMembershipWitness`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/witness/struct.NonMembershipWitness.html
+[`Witness`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/witness/trait.Witness.html
+[`Omega`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/batch_utils/struct.Omega.html
+[`ProofProtocol`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/proofs/trait.ProofProtocol.html
+[`KBPositiveAccumulator`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/kb_positive_accumulator/adaptive_accumulator/struct.KBPositiveAccumulator.html
+[`KBUniversalAccumulator`]: https://docs.rs/vb_accumulator/latest/vb_accumulator/kb_universal_accumulator/accumulator/struct.KBUniversalAccumulator.html
+
+<!-- cargo-rdme end -->

@@ -16,7 +16,6 @@ pub struct AggregatedGroth16<E: Pairing> {
 #[serde(bound = "")]
 pub struct Proof<E: Pairing, G: AffineRepr> {
     pub statement_proofs: Vec<StatementProof<E, G>>,
-    pub nonce: Option<Vec<u8>>,
     // TODO: Remove this skip
     #[serde(skip)]
     pub aggregated_groth16: Option<Vec<AggregatedGroth16<E>>>,
@@ -27,7 +26,7 @@ pub struct Proof<E: Pairing, G: AffineRepr> {
 
 impl<E: Pairing, G: AffineRepr> PartialEq for Proof<E, G> {
     fn eq(&self, other: &Self) -> bool {
-        (self.statement_proofs == other.statement_proofs) && (self.nonce == other.nonce)
+        self.statement_proofs == other.statement_proofs
         // TODO: Add remaining
     }
 }

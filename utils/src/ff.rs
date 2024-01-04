@@ -4,21 +4,25 @@ use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut, rand::Rng, vec::Vec};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+#[macro_export]
+macro_rules! cfg_iter_sum {
+    ($iter: expr, $initial: tt) => {{
+        #[cfg(feature = "parallel")]
+        let result = $iter.reduce($initial, |a, b| a + b);
+
+        #[cfg(not(feature = "parallel"))]
+        let result = $iter.fold($initial(), |a, b| a + b);
+
+        result
+    }};
+}
+
 /// Inner product of 2 vectors `a` and `b`
 pub fn inner_product<F: PrimeField>(a: &[F], b: &[F]) -> F {
     let size = a.len().min(b.len());
-
-    #[cfg(feature = "parallel")]
-    let sum = cfg_into_iter!(0..size)
-        .map(|i| a[i] * b[i])
-        .reduce(|| F::zero(), |accum, v| accum + v);
-
-    #[cfg(not(feature = "parallel"))]
-    let sum = (0..size)
-        .map(|i| a[i] * b[i])
-        .fold(F::zero(), |accum, v| accum + v);
-
-    sum
+    let product = cfg_into_iter!(0..size).map(|i| a[i] * b[i]);
+    let zero = F::zero;
+    cfg_iter_sum!(product, zero)
 }
 
 /// Hadamard product of two vectors of scalars
@@ -49,17 +53,10 @@ pub fn weighted_inner_product<F: PrimeField>(a: &[F], b: &[F], w: &F) -> F {
     let mut weights = powers(w, size as u32 + 1);
     weights.remove(0);
 
-    #[cfg(feature = "parallel")]
-    let sum = cfg_into_iter!(0..size)
-        .map(|i| a[i] * b[i] * weights[i])
-        .reduce(|| F::zero(), |accum, v| accum + v);
+    let product = cfg_into_iter!(0..size).map(|i| a[i] * b[i] * weights[i]);
 
-    #[cfg(not(feature = "parallel"))]
-    let sum = (0..size)
-        .map(|i| a[i] * b[i] * weights[i])
-        .fold(F::zero(), |accum, v| accum + v);
-
-    sum
+    let zero = F::zero;
+    cfg_iter_sum!(product, zero)
 }
 
 /// Weighted inner product of the vector `n` with itself. Calculated as `\sum_{i=0}(n_i * n_i * w^{i+1})`

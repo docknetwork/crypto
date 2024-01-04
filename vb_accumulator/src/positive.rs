@@ -432,6 +432,10 @@ pub trait Accumulator<E: Pairing> {
     /// Create an `Accumulator` using the accumulated value. This is used for membership verification
     /// purposes only
     fn from_accumulated(accumulated: E::G1Affine) -> Self;
+
+    fn randomized_value(&self, randomizer: &E::ScalarField) -> E::G1Affine {
+        (*self.value() * randomizer).into_affine()
+    }
 }
 
 impl<E> Accumulator<E> for PositiveAccumulator<E>
@@ -449,13 +453,19 @@ where
     }
 }
 
+impl<E: Pairing> AsRef<E::G1Affine> for PositiveAccumulator<E> {
+    fn as_ref(&self) -> &E::G1Affine {
+        self.value()
+    }
+}
+
 impl<E> PositiveAccumulator<E>
 where
     E: Pairing,
 {
     /// Create a new positive accumulator
-    pub fn initialize(setup_params: &SetupParams<E>) -> Self {
-        Self(setup_params.P)
+    pub fn initialize(params_gen: impl AsRef<E::G1Affine>) -> Self {
+        Self(*params_gen.as_ref())
     }
 
     /// Compute new accumulated value after addition
@@ -655,6 +665,19 @@ pub mod tests {
                 &params
             ));
             total_mem_check_time += start.elapsed();
+
+            // Randomizing the witness and accumulator
+            let random = Fr::rand(&mut rng);
+            let randomized_accum = accumulator.randomized_value(&random);
+            let randomized_wit = m_wit.randomize(&random);
+            let verification_accumulator = PositiveAccumulator::from_accumulated(randomized_accum);
+            assert!(verification_accumulator.verify_membership(
+                &elem,
+                &randomized_wit,
+                &keypair.public_key,
+                &params
+            ));
+
             elems.push(elem);
         }
 
@@ -685,11 +708,14 @@ pub mod tests {
         let (params, keypair, mut accumulator_1, mut state_1) = setup_positive_accum(&mut rng);
 
         // Create more accumulators to compare. Same elements will be added and removed from them as accumulator_1
-        let mut accumulator_2 = PositiveAccumulator::initialize(&params);
+        let mut accumulator_2: PositiveAccumulator<Bls12_381> =
+            PositiveAccumulator::initialize(&params);
         let mut state_2 = InMemoryState::<Fr>::new();
-        let mut accumulator_3 = PositiveAccumulator::initialize(&params);
+        let mut accumulator_3: PositiveAccumulator<Bls12_381> =
+            PositiveAccumulator::initialize(&params);
         let mut state_3 = InMemoryState::<Fr>::new();
-        let mut accumulator_4 = PositiveAccumulator::initialize(&params);
+        let mut accumulator_4: PositiveAccumulator<Bls12_381> =
+            PositiveAccumulator::initialize(&params);
         let mut state_4 = InMemoryState::<Fr>::new();
 
         let additions: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
@@ -764,11 +790,8 @@ pub mod tests {
         assert_ne!(*accumulator_2.value(), *accumulator_3.value());
 
         // Add and remove in call as a batch
-        let computed_new = accumulator_3.compute_new_post_batch_updates(
-            &new_additions,
-            &removals,
-            &keypair.secret_key,
-        );
+        let computed_new: <Bls12_381 as Pairing>::G1Affine = accumulator_3
+            .compute_new_post_batch_updates(&new_additions, &removals, &keypair.secret_key);
         accumulator_3 = accumulator_3
             .batch_updates(
                 new_additions.clone(),

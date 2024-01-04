@@ -168,11 +168,8 @@ impl<E: Pairing> SetMembershipCheckProof<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        bb_sig::SignatureParams,
-        ccs_set_membership::setup::{
-            SetMembershipCheckParams, SetMembershipCheckParamsWithPairing,
-        },
+    use crate::ccs_set_membership::setup::{
+        SetMembershipCheckParams, SetMembershipCheckParamsWithPairing,
     };
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_std::{
@@ -182,6 +179,7 @@ mod tests {
     use blake2::Blake2b512;
     use dock_crypto_utils::misc::n_rand;
     use schnorr_pok::compute_random_oracle_challenge;
+    use short_group_sig::common::SignatureParams;
 
     #[test]
     fn membership_check() {

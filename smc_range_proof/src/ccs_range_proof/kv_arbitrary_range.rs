@@ -2,19 +2,18 @@
 //! secret key of the BB-sig
 
 use crate::{
-    bb_sig::SecretKey, ccs_set_membership::setup::SetMembershipCheckParams,
-    common::MemberCommitmentKey, error::SmcRangeProofError,
+    ccs_set_membership::setup::SetMembershipCheckParams, common::MemberCommitmentKey,
+    error::SmcRangeProofError,
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 
+use crate::ccs_range_proof::util::{check_commitment_for_arbitrary_range, find_l_greater_than};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, format, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::misc::n_rand;
-
-use crate::ccs_range_proof::util::{check_commitment_for_arbitrary_range, find_l_greater_than};
-use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
+use dock_crypto_utils::{misc::n_rand, msm::multiply_field_elems_with_same_group_elem};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use short_group_sig::weak_bb_sig::SecretKey;
 
 use crate::common::padded_base_n_digits_as_field_elements;
 

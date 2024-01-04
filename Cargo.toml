@@ -18,7 +18,8 @@ members = [
     "kvac",
     "merlin",
     "bulletproofs_plus_plus",
-    "smc_range_proof"
+    "smc_range_proof",
+    "short_group_sig"
 ]
 resolver = "2"
 

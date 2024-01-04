@@ -171,15 +171,10 @@ pub trait Witness<G: AffineRepr> {
         }
         // `d_A` = Evaluation of polynomial `d_A(y)` for each y in `elements`
         // `v_A` = Evaluation of polynomial `v_A(y)` for each y in `elements`
-        let (d_A, v_A): (Vec<_>, Vec<_>) = cfg_iter!(elements)
-            .map(|element| {
-                (
-                    Poly_d::eval_direct(additions, element),
-                    Poly_v_A::eval_direct(additions, &sk.0, element),
-                )
-            })
-            .unzip();
-
+        let d_A: Vec<_> = cfg_iter!(elements)
+            .map(|element| Poly_d::eval_direct(additions, element))
+            .collect();
+        let v_A = Poly_v_A::eval_direct_on_batch(additions, &sk.0, elements);
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
         let table = WindowTable::new(elements.len(), old_accumulator.into_group());
 
@@ -210,15 +205,11 @@ pub trait Witness<G: AffineRepr> {
         }
         // `d_D` = Evaluation of polynomial `d_D(y)` for each y in `elements`
         // `v_D` = Evaluation of polynomial `v_D(y)` for each y in `elements`
-        let (mut d_D, v_D): (Vec<_>, Vec<_>) = cfg_iter!(elements)
-            .map(|element| {
-                (
-                    Poly_d::eval_direct(removals, element),
-                    Poly_v_D::eval_direct(removals, &sk.0, element),
-                )
-            })
-            .unzip();
+        let mut d_D: Vec<_> = cfg_iter!(elements)
+            .map(|element| Poly_d::eval_direct(removals, element))
+            .collect();
 
+        let v_D = Poly_v_D::eval_direct_on_batch(removals, &sk.0, elements);
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
         let table = WindowTable::new(elements.len(), old_accumulator.into_group());
 
@@ -263,10 +254,7 @@ pub trait Witness<G: AffineRepr> {
                 )
             })
             .unzip();
-        let v_AD = cfg_iter!(elements)
-            .map(|element| Poly_v_AD::eval_direct(additions, removals, &sk.0, element))
-            .collect::<Vec<_>>();
-
+        let v_AD = Poly_v_AD::eval_direct_on_batch(additions, removals, &sk.0, elements);
         // The same group element (self.V) has to multiplied by each inverse so creating a window table
         let table = WindowTable::new(elements.len(), old_accumulator.into_group());
 
@@ -329,7 +317,7 @@ pub trait Witness<G: AffineRepr> {
         element: &G::ScalarField,
         old_witness: &G,
     ) -> Result<(G::ScalarField, G), VBAccumulatorError> {
-        if updates_and_omegas.len() < 2 {
+        if updates_and_omegas.len() == 1 {
             return Self::compute_update_using_public_info_after_batch_updates(
                 updates_and_omegas[0].0,
                 updates_and_omegas[0].1,
@@ -348,6 +336,16 @@ pub trait Witness<G: AffineRepr> {
             omegas.push(omega);
         }
 
+        Self::compute_update_for_multiple_batches(additions, removals, omegas, element, old_witness)
+    }
+
+    fn compute_update_for_multiple_batches(
+        additions: Vec<&[G::ScalarField]>,
+        removals: Vec<&[G::ScalarField]>,
+        omegas: Vec<&Omega<G>>,
+        element: &G::ScalarField,
+        old_witness: &G,
+    ) -> Result<(G::ScalarField, G), VBAccumulatorError> {
         // d_{A_{i->j}} - product of all evaluations of polynomial d_A
         let mut d_A_ij = G::ScalarField::one();
         // d_{D_{i->j}} - product of all evaluations of polynomial d_D
@@ -385,8 +383,12 @@ pub trait Witness<G: AffineRepr> {
                 max_omega_size = omegas[t].len();
             }
 
-            d_A_ij *= Poly_d::eval_direct(additions[t], element);
-            d_D_ij *= Poly_d::eval_direct(removals[t], element);
+            if additions.len() > t {
+                d_A_ij *= Poly_d::eval_direct(additions[t], element);
+            }
+            if removals.len() > t {
+                d_D_ij *= Poly_d::eval_direct(removals[t], element);
+            }
         }
 
         let d_D_ij_inv = d_D_ij.inverse().ok_or(VBAccumulatorError::CannotBeZero)?;
@@ -471,6 +473,24 @@ pub struct NonMembershipWitness<G: AffineRepr> {
     pub d: G::ScalarField,
     #[serde_as(as = "ArkObjectBytes")]
     pub C: G,
+}
+
+impl<G: AffineRepr> AsRef<G> for MembershipWitness<G> {
+    fn as_ref(&self) -> &G {
+        &self.0
+    }
+}
+
+impl<G: AffineRepr> AsRef<G> for NonMembershipWitness<G> {
+    fn as_ref(&self) -> &G {
+        &self.C
+    }
+}
+
+impl<G: AffineRepr> From<G> for MembershipWitness<G> {
+    fn from(value: G) -> Self {
+        Self(value)
+    }
 }
 
 impl<G> Witness<G> for MembershipWitness<G> where G: AffineRepr {}
@@ -611,6 +631,10 @@ where
 
     pub fn affine_points_to_membership_witnesses(wits: Vec<G>) -> Vec<MembershipWitness<G>> {
         cfg_into_iter!(wits).map(MembershipWitness).collect()
+    }
+
+    pub fn randomize(&self, randomizer: &G::ScalarField) -> Self {
+        Self((self.0 * randomizer).into_affine())
     }
 }
 
@@ -767,6 +791,13 @@ where
         })
     }
 
+    pub fn randomize(&self, randomizer: &G::ScalarField) -> Self {
+        Self {
+            d: self.d * randomizer,
+            C: (self.C * randomizer).into_affine(),
+        }
+    }
+
     fn prepare_non_membership_witnesses(
         d_factor: Vec<G::ScalarField>,
         new_wits: Vec<G>,
@@ -785,9 +816,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::time::{Duration, Instant};
 
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     use ark_ec::pairing::Pairing;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
@@ -801,11 +833,6 @@ mod tests {
         test_serialization,
         universal::{tests::setup_universal_accum, UniversalAccumulator},
     };
-
-    use super::*;
-
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
-    type G1 = <Bls12_381 as Pairing>::G1Affine;
 
     #[test]
     fn single_membership_witness_update_positive_accumulator() {
@@ -1100,6 +1127,7 @@ mod tests {
             ));
         }
 
+        let start = Instant::now();
         let new_wits = MembershipWitness::update_using_secret_key_after_batch_additions(
             &additions_2,
             &additions_1,
@@ -1108,6 +1136,13 @@ mod tests {
             &keypair.secret_key,
         )
         .unwrap();
+        println!(
+            "Updating {} membership witnesses after {} additions takes {:?}",
+            additions_1.len(),
+            additions_2.len(),
+            start.elapsed()
+        );
+
         assert_eq!(new_wits.len(), witnesses_1.len());
         for i in 0..new_wits.len() {
             assert!(verification_accumulator.verify_membership(
@@ -1145,6 +1180,7 @@ mod tests {
             ));
         }
 
+        let start = Instant::now();
         let new_wits = MembershipWitness::update_using_secret_key_after_batch_removals(
             &removals,
             &additions_2,
@@ -1153,6 +1189,13 @@ mod tests {
             &keypair.secret_key,
         )
         .unwrap();
+        println!(
+            "Updating {} membership witnesses after {} removals takes {:?}",
+            additions_2.len(),
+            removals.len(),
+            start.elapsed()
+        );
+
         assert_eq!(new_wits.len(), witnesses_3.len());
         for i in 0..new_wits.len() {
             assert!(verification_accumulator.verify_membership(
@@ -1191,11 +1234,14 @@ mod tests {
             additions: Vec<Fr>,
             removals: &[Fr],
             elements: &[Fr],
-            old_witnesses: &[MembershipWitness<G1>],
+            old_witnesses: &[MembershipWitness<G1Affine>],
             keypair: &Keypair<Bls12_381>,
             params: &SetupParams<Bls12_381>,
             state: &mut dyn State<Fr>,
-        ) -> (PositiveAccumulator<Bls12_381>, Vec<MembershipWitness<G1>>) {
+        ) -> (
+            PositiveAccumulator<Bls12_381>,
+            Vec<MembershipWitness<G1Affine>>,
+        ) {
             let accumulator_new = current_accm
                 .batch_updates(additions.clone(), removals, &keypair.secret_key, state)
                 .unwrap();
@@ -1210,6 +1256,7 @@ mod tests {
                 ));
             }
 
+            let start = Instant::now();
             let new_witnesses = MembershipWitness::update_using_secret_key_after_batch_updates(
                 &additions,
                 removals,
@@ -1219,6 +1266,14 @@ mod tests {
                 &keypair.secret_key,
             )
             .unwrap();
+            println!(
+                "Updating {} membership witnesses after {} additions and {} removals takes {:?}",
+                elements.len(),
+                additions.len(),
+                removals.len(),
+                start.elapsed()
+            );
+
             assert_eq!(new_witnesses.len(), old_witnesses.len());
             for i in 0..new_witnesses.len() {
                 assert!(verification_accumulator.verify_membership(

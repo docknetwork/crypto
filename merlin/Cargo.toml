@@ -1,6 +1,6 @@
 [package]
 name = "dock_merlin"
-version = "2.0.0"
+version = "3.0.0"
 authors = ["Henry de Valence <hdevalence@hdevalence.ca>"]
 edition = "2018"
 readme = "README.md"
@@ -28,7 +28,7 @@ rand_core = { version = "0.6", default-features = false }
 hex = {version = "0.4.3", default-features = false, optional = true}
 
 [dev-dependencies]
-strobe-rs = "0.5"
+strobe-rs = "0.8.1"
 curve25519-dalek = { version = "4", package = "curve25519-dalek-ng" }
 rand_chacha = "0.3"
 

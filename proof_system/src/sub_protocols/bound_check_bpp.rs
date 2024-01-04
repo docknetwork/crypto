@@ -6,8 +6,11 @@ use crate::{
 };
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, UniformRand};
-use bulletproofs_plus_plus::{prelude::ProofArbitraryRange, setup::SetupParams};
+use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand};
+use bulletproofs_plus_plus::{
+    prelude::{ProofArbitraryRange, Prover},
+    setup::SetupParams,
+};
 use dock_crypto_utils::transcript::Transcript;
 
 /// Runs the Bulletproofs++ protocol for proving bounds of a witness and a Schnorr protocol for proving
@@ -18,7 +21,10 @@ pub struct BoundCheckBppProtocol<'a, G: AffineRepr> {
     pub min: u64,
     pub max: u64,
     pub setup_params: &'a SetupParams<G>,
-    pub bpp_proof: Option<ProofArbitraryRange<G>>,
+    pub commitments: Option<Vec<G>>,
+    pub bpp_randomness: Option<Vec<G::ScalarField>>,
+    pub values: Option<Vec<u64>>,
+    // pub bpp_proof: Option<ProofArbitraryRange<G>>,
     pub sp1: Option<SchnorrProtocol<'a, G>>,
     pub sp2: Option<SchnorrProtocol<'a, G>>,
 }
@@ -30,7 +36,10 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
             min,
             max,
             setup_params,
-            bpp_proof: None,
+            commitments: None,
+            bpp_randomness: None,
+            values: None,
+            // bpp_proof: None,
             sp1: None,
             sp2: None,
         }
@@ -42,7 +51,7 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         comm_key: &'a [G],
         message: G::ScalarField,
         blinding: Option<G::ScalarField>,
-        transcript: &mut impl Transcript,
+        // transcript: &mut impl Transcript,
     ) -> Result<(), ProofSystemError> {
         if self.sp1.is_some() || self.sp2.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -51,23 +60,23 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
 
         // blindings for the commitments in the Bulletproofs++ proof, there will be 2 Bulletproofs++ proofs, for ranges `(message - min)` and `(max - message)`
         let bpp_randomness = vec![G::ScalarField::rand(rng), G::ScalarField::rand(rng)];
-        let proof = ProofArbitraryRange::new(
-            rng,
-            Self::get_num_bits(self.max),
+        let (commitments, values) = ProofArbitraryRange::compute_commitments_and_values(
             vec![(msg_as_u64, self.min, self.max)],
-            bpp_randomness.clone(),
-            self.setup_params.clone(),
-            transcript,
+            &bpp_randomness,
+            &self.setup_params,
         )?;
-        assert_eq!(proof.num_proofs(), 1);
         self.init_schnorr_protocol(
             rng,
             comm_key,
             message,
             blinding,
             (bpp_randomness[0], bpp_randomness[1]),
-            proof,
-        )
+            &commitments,
+        )?;
+        self.values = Some(values);
+        self.commitments = Some(commitments);
+        self.bpp_randomness = Some(bpp_randomness);
+        Ok(())
     }
 
     fn init_schnorr_protocol<R: RngCore>(
@@ -77,7 +86,7 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         message: G::ScalarField,
         blinding: Option<G::ScalarField>,
         blindings_for_bpp: (G::ScalarField, G::ScalarField),
-        bpp_proof: ProofArbitraryRange<G>,
+        commitments: &[G],
     ) -> Result<(), ProofSystemError> {
         // blinding used to prove knowledge of message in `snark_proof.d`. The caller of this method ensures
         // that this will be same as the one used proving knowledge of the corresponding message in BBS+
@@ -91,13 +100,20 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         blindings.insert(0, blinding);
 
         let (r1, r2) = blindings_for_bpp;
-        let (comm_1, comm_2) = self.get_commitments_to_values(&bpp_proof)?;
+        // let (comm_1, comm_2) = self.get_commitments_to_values(&bpp_proof)?;
+        let (comm_1, comm_2) =
+            (ProofArbitraryRange::get_commitments_to_values_given_transformed_commitments_and_g(
+                commitments,
+                vec![(self.min, self.max)],
+                &self.setup_params.G,
+            )?)
+            .remove(0);
         // NOTE: value of id is dummy
         let mut sp1 = SchnorrProtocol::new(10000, comm_key, comm_1);
         let mut sp2 = SchnorrProtocol::new(10000, comm_key, comm_2);
         sp1.init(rng, blindings.clone(), vec![message, r1])?;
         sp2.init(rng, blindings, vec![message, -r2])?;
-        self.bpp_proof = Some(bpp_proof);
+        // self.bpp_proof = Some(bpp_proof);
         self.sp1 = Some(sp1);
         self.sp2 = Some(sp2);
         Ok(())
@@ -122,17 +138,30 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
     }
 
     /// Generate responses for both the Schnorr protocols
-    pub fn gen_proof_contribution<E: Pairing>(
+    pub fn gen_proof_contribution<E: Pairing, R: RngCore>(
         &mut self,
+        rng: &mut R,
         challenge: &G::ScalarField,
+        transcript: &mut impl Transcript,
     ) -> Result<StatementProof<E, G>, ProofSystemError> {
         if self.sp1.is_none() || self.sp2.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,
             ));
         }
+        let commitments = self.commitments.take().unwrap();
+        let prover = Prover::new(
+            Self::get_num_bits(self.max),
+            commitments.clone(),
+            self.values.take().unwrap(),
+            self.bpp_randomness.take().unwrap(),
+        )?;
+        let proof = prover.prove(rng, self.setup_params.clone(), transcript)?;
         Ok(StatementProof::BoundCheckBpp(BoundCheckBppProof {
-            bpp_proof: self.bpp_proof.take().unwrap(),
+            bpp_proof: ProofArbitraryRange {
+                proof,
+                V: commitments,
+            },
             sp1: self
                 .sp1
                 .take()
@@ -155,7 +184,10 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
     ) -> Result<(), ProofSystemError> {
         proof
             .bpp_proof
-            .verify(Self::get_num_bits(self.max), &self.setup_params, transcript)?;
+            .verify(Self::get_num_bits(self.max), &self.setup_params, transcript)
+            .map_err(|e| {
+                ProofSystemError::BulletproofsPlusPlusProofContributionFailed(self.id as u32, e)
+            })?;
         if !proof.check_schnorr_responses_consistency()? {
             return Err(ProofSystemError::DifferentResponsesForSchnorrProtocolInBpp(
                 self.id,
@@ -167,8 +199,10 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         let sp1 = SchnorrProtocol::new(10000, comm_key, comm_1);
         let sp2 = SchnorrProtocol::new(10000, comm_key, comm_2);
 
-        sp1.verify_proof_contribution_as_struct(challenge, &proof.sp1)?;
-        sp2.verify_proof_contribution_as_struct(challenge, &proof.sp2)
+        sp1.verify_proof_contribution(challenge, &proof.sp1)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
+        sp2.verify_proof_contribution(challenge, &proof.sp2)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
     pub fn compute_challenge_contribution<W: Write>(

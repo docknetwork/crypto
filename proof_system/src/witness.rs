@@ -12,7 +12,6 @@ use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::error::ProofSystemError;
-pub use serialization::*;
 
 /// Secret data that the prover will prove knowledge of, this data is known only to the prover
 #[serde_as]

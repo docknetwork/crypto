@@ -10,7 +10,7 @@
 //! 5. Implements the Keyed-Verification of the above protocols where the verifier knows the secret key of the BB sig. This makes
 //! the proof generation and verification more efficient by removing the need for pairings. This idea is taken from this PhD. thesis.
 //!
-//! Above protocols use a pairing based signature called the [BB signature](src/bb_sig.rs).
+//! Above protocols use a pairing based signature called the Weak BB signature.
 //!
 //! References:
 //!
@@ -20,7 +20,6 @@
 
 #[macro_use]
 pub mod common;
-pub mod bb_sig;
 pub mod ccs_range_proof;
 pub mod ccs_set_membership;
 mod cls_range_proof;
@@ -28,7 +27,6 @@ pub mod error;
 
 pub mod prelude {
     pub use crate::{
-        bb_sig::{PublicKeyG2, SecretKey, SignatureParams, SignatureParamsWithPairing},
         ccs_range_proof::{
             CCSArbitraryRangeProof, CCSArbitraryRangeProofProtocol,
             CCSArbitraryRangeProofWithKVProtocol, CCSArbitraryRangeWithKVProof,
@@ -39,7 +37,10 @@ pub mod prelude {
         cls_range_proof::{
             CLSRangeProof, CLSRangeProofProtocol, CLSRangeProofWithKV, CLSRangeProofWithKVProtocol,
         },
-        common::MemberCommitmentKey,
+        common::{
+            MemberCommitmentKey, PublicKeyG2, SecretKey, SignatureG1, SignatureParams,
+            SignatureParamsWithPairing,
+        },
         error::SmcRangeProofError,
     };
 }

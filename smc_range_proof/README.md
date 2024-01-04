@@ -11,7 +11,7 @@ where `u` is the base and the upper bound is a power of the base. [Code](src/ccs
 5. Implements the Keyed-Verification of the above protocols where the verifier knows the secret key of the BB sig. This makes
 the proof generation and verification more efficient by removing the need for pairings. This idea is taken from this PhD. thesis.
 
-Above protocols use a pairing based signature called the [BB signature](src/bb_sig.rs).
+Above protocols use a pairing based signature called the Weak BB signature.
 
 References:
 

@@ -39,8 +39,8 @@ pub struct SecretKey<F: PrimeField> {
 }
 
 impl<F: PrimeField> SecretKey<F> {
-    pub const X_SALT: &[u8] = b"PS-SIG-X-KEYGEN-SALT";
-    pub const Y_SALT: &[u8] = b"PS-SIG-Y-KEYGEN-SALT";
+    pub const X_SALT: &'static [u8] = b"PS-SIG-X-KEYGEN-SALT";
+    pub const Y_SALT: &'static [u8] = b"PS-SIG-Y-KEYGEN-SALT";
 
     /// Generates random secret key compatible with `message_count` messages.
     pub fn rand<R: RngCore>(rng: &mut R, message_count: u32) -> Self {

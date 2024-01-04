@@ -67,7 +67,6 @@ pub struct PoKOfSignature23G1Protocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub B_bar: E::G1Affine,
     /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `sum_{j notin D}(h_j*m_j)`
-    #[zeroize(skip)]
     pub sc_comm: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
     sc_wits: Vec<E::ScalarField>,

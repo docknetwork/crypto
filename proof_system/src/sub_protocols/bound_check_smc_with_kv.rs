@@ -216,30 +216,37 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
             .ok_or(ProofSystemError::SmcParamsNotProvided)?;
         let comm_key = params.get_comm_key();
         match &proof.proof {
-            BoundCheckSmcWithKVInnerProof::CCS(c) => c.verify(
-                &proof.comm,
-                challenge,
-                self.min,
-                self.max,
-                comm_key,
-                params.get_smc_params(),
-                &params.sk,
-            )?,
-            BoundCheckSmcWithKVInnerProof::CLS(c) => c.verify(
-                &proof.comm,
-                challenge,
-                self.min,
-                self.max,
-                comm_key,
-                params.get_smc_params(),
-                &params.sk,
-            )?,
+            BoundCheckSmcWithKVInnerProof::CCS(c) => {
+                c.verify(
+                    &proof.comm,
+                    challenge,
+                    self.min,
+                    self.max,
+                    comm_key,
+                    params.get_smc_params(),
+                    &params.sk,
+                )
+                .map_err(|e| ProofSystemError::SmcRangeProofContributionFailed(self.id as u32, e))?
+            }
+            BoundCheckSmcWithKVInnerProof::CLS(c) => {
+                c.verify(
+                    &proof.comm,
+                    challenge,
+                    self.min,
+                    self.max,
+                    comm_key,
+                    params.get_smc_params(),
+                    &params.sk,
+                )
+                .map_err(|e| ProofSystemError::SmcRangeProofContributionFailed(self.id as u32, e))?
+            }
         }
 
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key_as_slice, proof.comm);
 
-        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
+        sp.verify_proof_contribution(challenge, &proof.sp)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
     pub fn compute_challenge_contribution<W: Write>(

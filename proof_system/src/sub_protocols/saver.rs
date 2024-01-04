@@ -1,6 +1,8 @@
 use crate::{
     error::ProofSystemError,
-    statement_proof::{SaverProof, SaverProofWhenAggregatingSnarks, StatementProof},
+    statement_proof::{
+        PedersenCommitmentProof, SaverProof, SaverProofWhenAggregatingSnarks, StatementProof,
+    },
     sub_protocols::schnorr::SchnorrProtocol,
 };
 use ark_ec::{
@@ -278,39 +280,53 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
                     &PairingOutput(pvk.alpha_g1_beta_g2),
                 );
             }
-            None => {
-                proof
-                    .ciphertext
-                    .verify_commitment_and_proof(&proof.snark_proof, pvk, pek, pgens)?
-            }
+            None => proof
+                .ciphertext
+                .verify_commitment_and_proof(&proof.snark_proof, pvk, pek, pgens)
+                .map_err(|e| ProofSystemError::SaverProofContributionFailed(self.id as u32, e))?,
         }
 
-        // NOTE: value of id is dummy
-        let sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, proof.ciphertext.commitment);
-        let sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, proof.comm_chunks);
-        let sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, proof.comm_combined);
-
-        sp_ciphertext.verify_proof_contribution_as_struct(challenge, &proof.sp_ciphertext)?;
-        sp_chunks.verify_proof_contribution_as_struct(challenge, &proof.sp_chunks)?;
-        sp_combined.verify_proof_contribution_as_struct(challenge, &proof.sp_combined)
+        self.verify_ciphertext_and_commitment(
+            challenge,
+            &proof.ciphertext,
+            proof.comm_combined.clone(),
+            proof.comm_chunks.clone(),
+            &proof.sp_ciphertext,
+            &proof.sp_chunks,
+            &proof.sp_combined,
+            ck_comm_ct,
+            ck_comm_chunks,
+            ck_comm_combined,
+        )
     }
 
-    pub fn verify_proof_contribution_when_aggregating_snark(
+    pub fn verify_ciphertext_and_commitment(
         &self,
         challenge: &E::ScalarField,
-        proof: &SaverProofWhenAggregatingSnarks<E>,
+        ciphertext: &Ciphertext<E>,
+        comm_combined: E::G1Affine,
+        comm_chunks: E::G1Affine,
+        s_pr_ciphertext: &PedersenCommitmentProof<E::G1Affine>,
+        s_pr_chunks: &PedersenCommitmentProof<E::G1Affine>,
+        s_pr_combined: &PedersenCommitmentProof<E::G1Affine>,
         ck_comm_ct: &[E::G1Affine],
         ck_comm_chunks: &[E::G1Affine],
         ck_comm_combined: &[E::G1Affine],
     ) -> Result<(), ProofSystemError> {
         // NOTE: value of id is dummy
-        let sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, proof.ciphertext.commitment);
-        let sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, proof.comm_chunks);
-        let sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, proof.comm_combined);
+        let sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, ciphertext.commitment);
+        let sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, comm_chunks);
+        let sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, comm_combined);
 
-        sp_ciphertext.verify_proof_contribution_as_struct(challenge, &proof.sp_ciphertext)?;
-        sp_chunks.verify_proof_contribution_as_struct(challenge, &proof.sp_chunks)?;
-        sp_combined.verify_proof_contribution_as_struct(challenge, &proof.sp_combined)
+        sp_ciphertext
+            .verify_proof_contribution(challenge, s_pr_ciphertext)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
+        sp_chunks
+            .verify_proof_contribution(challenge, s_pr_chunks)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
+        sp_combined
+            .verify_proof_contribution(challenge, s_pr_combined)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
     pub fn verify_ciphertext_commitments_in_batch<R: Rng>(
@@ -326,7 +342,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
             ciphertexts
                 .len()
                 .try_into()
-                .map_err(|_| ProofSystemError::TooManyCifertexts(ciphertexts.len()))?,
+                .map_err(|_| ProofSystemError::TooManyCiphertexts(ciphertexts.len()))?,
         );
         let pek = pek.into();
         let pgens = pgens.into();

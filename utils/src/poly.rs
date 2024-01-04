@@ -1,6 +1,6 @@
 use ark_ff::{PrimeField, Zero};
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
-use ark_std::{cfg_into_iter, vec::Vec};
+use ark_std::{cfg_into_iter, vec, vec::Vec};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -30,31 +30,26 @@ pub fn multiply_many_polys<F: PrimeField>(polys: Vec<DensePolynomial<F>>) -> Den
         .reduce(|a, b| multiply_poly(&a, &b))
         .unwrap();
 
+    let one = || DensePolynomial::from_coefficients_vec(vec![F::one()]);
     #[cfg(feature = "parallel")]
-    let r = polys.into_par_iter().reduce(
-        || DensePolynomial::from_coefficients_vec(vec![F::one()]),
-        |a, b| multiply_poly(&a, &b),
-    );
+    let r = polys
+        .into_par_iter()
+        .reduce(one, |a, b| multiply_poly(&a, &b));
 
     r
 }
 
 /// Given a vector of polynomials `polys` and scalars `coeffs`, return their inner product `polys[0] * coeffs[0] + polys[1] * coeffs[1] + ...`
 pub fn inner_product_poly<F: PrimeField>(
-    polys: Vec<DensePolynomial<F>>,
+    polys: &[DensePolynomial<F>],
     coeffs: Vec<F>,
 ) -> DensePolynomial<F> {
     let product = cfg_into_iter!(coeffs)
         .zip(cfg_into_iter!(polys))
-        .map(|(f, p)| &p * f);
+        .map(|(f, p)| p * f);
 
-    #[cfg(feature = "parallel")]
-    let sum = product.reduce(DensePolynomial::zero, |a, b| a + b);
-
-    #[cfg(not(feature = "parallel"))]
-    let sum = product.fold(DensePolynomial::zero(), |a, b| a + b);
-
-    sum
+    let zero = DensePolynomial::zero;
+    cfg_iter_sum!(product, zero)
 }
 
 /// Create a polynomial from given `roots` as `(x-roots[0])*(x-roots[1])*(x-roots[2])*..`
@@ -64,19 +59,10 @@ pub fn poly_from_roots<F: PrimeField>(roots: &[F]) -> DensePolynomial<F> {
     }
 
     // [(x-roots[0]), (x-roots[1]), (x-roots[2]), ..., (x-roots[last])]
-
-    #[cfg(not(feature = "parallel"))]
-    let x_i = roots
-        .iter()
+    let terms = cfg_into_iter!(roots)
         .map(|i| DensePolynomial::from_coefficients_slice(&[-*i, F::one()]))
         .collect::<Vec<_>>();
 
-    #[cfg(feature = "parallel")]
-    let x_i = roots
-        .par_iter()
-        .map(|i| DensePolynomial::from_coefficients_slice(&[-*i, F::one()]))
-        .collect();
-
     // Product (x-roots[0]) * (x-roots[1]) * (x-roots[2]) * ... * (x-roots[last])
-    multiply_many_polys(x_i)
+    multiply_many_polys(terms)
 }

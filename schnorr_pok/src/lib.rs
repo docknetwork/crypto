@@ -286,7 +286,7 @@ macro_rules! impl_proof_of_knowledge_of_discrete_log {
                 $protocol_name::compute_challenge_contribution(base, y, &self.t, writer)
             }
 
-            /// base*response - y*challenge == t
+            /// `base*response - y*challenge == t`
             pub fn verify(&self, y: &G, base: &G, challenge: &G::ScalarField) -> bool {
                 let mut expected = base.mul_bigint(self.response.into_bigint());
                 expected -= y.mul_bigint(challenge.into_bigint());

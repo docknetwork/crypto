@@ -93,7 +93,9 @@
 
 use crate::{
     error::VBAccumulatorError,
-    setup::{PreparedPublicKey, PreparedSetupParams, PublicKey, SetupParams},
+    setup::{
+        NonMembershipProvingKey, PreparedPublicKey, PreparedSetupParams, PublicKey, SetupParams,
+    },
     witness::{MembershipWitness, NonMembershipWitness},
 };
 use ark_ec::{
@@ -104,130 +106,14 @@ use ark_ec::{
 use ark_ff::{Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use digest::Digest;
-use dock_crypto_utils::{
-    affine_group_element_from_byte_slices, hashing_utils::projective_group_elem_from_try_and_incr,
-    serde_utils::*,
-};
+use dock_crypto_utils::serde_utils::*;
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use dock_crypto_utils::{
-    concat_slices, msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker,
-};
+use dock_crypto_utils::{msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-
-/// The public parameters (in addition to public key, accumulator setup params) used during the proof
-/// of membership and non-membership are called `ProvingKey`. These are mutually agreed upon by the
-/// prover and verifier and can be different between different provers and verifiers but using the
-/// same accumulator parameters and keys. The parameters are named as `X`, `Y` `Z` and `K` in the paper
-///
-/// Common elements of the membership and non-membership proving key, i.e., `X`, `Y` and `Z`
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct ProvingKey<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
-    pub X: G,
-    #[serde_as(as = "ArkObjectBytes")]
-    pub Y: G,
-    #[serde_as(as = "ArkObjectBytes")]
-    pub Z: G,
-}
-
-/// Used between prover and verifier only to prove knowledge of member and corresponding witness.
-/// `X`, `Y` and `Z` from the paper
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct MembershipProvingKey<G: AffineRepr>(
-    #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
-    pub  ProvingKey<G>,
-);
-
-/// Used between prover and verifier only to prove knowledge of non-member and corresponding witness
-/// `X`, `Y`, `Z` and `K` from the paper
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct NonMembershipProvingKey<G: AffineRepr> {
-    #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
-    pub XYZ: ProvingKey<G>,
-    #[serde_as(as = "ArkObjectBytes")]
-    pub K: G,
-}
-
-impl<G> ProvingKey<G>
-where
-    G: AffineRepr,
-{
-    /// Generate using a random number generator
-    fn generate_proving_key_using_rng<R: RngCore>(rng: &mut R) -> ProvingKey<G> {
-        ProvingKey {
-            X: G::Group::rand(rng).into(),
-            Y: G::Group::rand(rng).into(),
-            Z: G::Group::rand(rng).into(),
-        }
-    }
-
-    /// Generate by hashing known strings
-    fn generate_proving_key_using_hash<D: Digest>(label: &[u8]) -> ProvingKey<G> {
-        // 3 G1 elements
-        ProvingKey {
-            X: affine_group_element_from_byte_slices![label, b" : X"],
-            Y: affine_group_element_from_byte_slices![label, b" : Y"],
-            Z: affine_group_element_from_byte_slices![label, b" : Z"],
-        }
-    }
-}
-
-impl<G> MembershipProvingKey<G>
-where
-    G: AffineRepr,
-{
-    /// Generate using a random number generator
-    pub fn generate_using_rng<R: RngCore>(rng: &mut R) -> Self {
-        Self(ProvingKey::generate_proving_key_using_rng(rng))
-    }
-
-    /// Generate by hashing known strings
-    pub fn new<D: Digest>(label: &[u8]) -> Self {
-        Self(ProvingKey::generate_proving_key_using_hash::<D>(label))
-    }
-}
-
-impl<G> NonMembershipProvingKey<G>
-where
-    G: AffineRepr,
-{
-    /// Generate using a random number generator
-    pub fn generate_using_rng<R: RngCore>(rng: &mut R) -> Self {
-        let XYZ = ProvingKey::generate_proving_key_using_rng(rng);
-        Self {
-            XYZ,
-            K: G::Group::rand(rng).into(),
-        }
-    }
-
-    /// Generate by hashing known strings
-    pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let XYZ = ProvingKey::generate_proving_key_using_hash::<D>(label);
-        Self {
-            XYZ,
-            K: projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : K"])
-                .into(),
-        }
-    }
-
-    /// Derive the membership proving key when doing a membership proof with a universal accumulator.
-    pub fn derive_membership_proving_key(&self) -> MembershipProvingKey<G> {
-        MembershipProvingKey(self.XYZ.clone())
-    }
-}
+use short_group_sig::common::ProvingKey;
 
 /// Common elements of the randomized witness between membership and non-membership witness
 #[serde_as]
@@ -640,31 +526,6 @@ where
         self.C.challenge_contribution(&mut writer)?;
         self.R_A.serialize_compressed(&mut writer)?;
         self.R_B
-            .serialize_compressed(&mut writer)
-            .map_err(|e| e.into())
-    }
-}
-
-impl<G: AffineRepr> SchnorrChallengeContributor for ProvingKey<G> {
-    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
-        self.X.serialize_compressed(&mut writer)?;
-        self.Y.serialize_compressed(&mut writer)?;
-        self.Z
-            .serialize_compressed(&mut writer)
-            .map_err(|e| e.into())
-    }
-}
-
-impl<G: AffineRepr> SchnorrChallengeContributor for MembershipProvingKey<G> {
-    fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
-        self.0.challenge_contribution(writer)
-    }
-}
-
-impl<G: AffineRepr> SchnorrChallengeContributor for NonMembershipProvingKey<G> {
-    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
-        self.XYZ.challenge_contribution(&mut writer)?;
-        self.K
             .serialize_compressed(&mut writer)
             .map_err(|e| e.into())
     }
@@ -1123,7 +984,7 @@ where
         witness: &MembershipWitness<E::G1Affine>,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
-        prk: &MembershipProvingKey<E::G1Affine>,
+        prk: impl AsRef<ProvingKey<E::G1Affine>>,
     ) -> Self {
         let (rw, sc, bl) = Self::randomize_witness_and_compute_commitments(
             rng,
@@ -1133,7 +994,7 @@ where
             None,
             pk,
             params,
-            &prk.0,
+            prk.as_ref(),
         );
         Self {
             element: *element,
@@ -1152,7 +1013,7 @@ where
         accumulator_value: &E::G1Affine,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
-        prk: &MembershipProvingKey<E::G1Affine>,
+        prk: impl AsRef<ProvingKey<E::G1Affine>>,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
         Self::compute_challenge_contribution(
@@ -1161,7 +1022,7 @@ where
             accumulator_value,
             pk,
             params,
-            &prk.0,
+            prk.as_ref(),
             writer,
         )
     }
@@ -1329,7 +1190,7 @@ where
         accumulator_value: &E::G1Affine,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
-        prk: &MembershipProvingKey<E::G1Affine>,
+        prk: impl AsRef<ProvingKey<E::G1Affine>>,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
         MembershipProofProtocol::compute_challenge_contribution(
@@ -1338,7 +1199,7 @@ where
             accumulator_value,
             pk,
             params,
-            &prk.0,
+            prk.as_ref(),
             writer,
         )
     }
@@ -1352,7 +1213,7 @@ where
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
-        prk: &MembershipProvingKey<E::G1Affine>,
+        prk: impl AsRef<ProvingKey<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof(
             &self.randomized_witness.0,
@@ -1363,7 +1224,7 @@ where
             challenge,
             pk,
             params,
-            &prk.0,
+            prk.as_ref(),
         )
     }
 
@@ -1373,7 +1234,7 @@ where
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
-        prk: &MembershipProvingKey<E::G1Affine>,
+        prk: impl AsRef<ProvingKey<E::G1Affine>>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), VBAccumulatorError> {
         <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof_with_randomized_pairing_checker(
@@ -1385,7 +1246,7 @@ where
             challenge,
             pk,
             params,
-            &prk.0,
+            prk.as_ref(),
             pairing_checker
         )
     }
@@ -1570,6 +1431,7 @@ mod tests {
         universal::tests::setup_universal_accum,
     };
 
+    use crate::setup::MembershipProvingKey;
     use ark_bls12_381::Bls12_381;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
@@ -1617,7 +1479,7 @@ mod tests {
         let mut proof_verif_duration = Duration::default();
         let mut proof_verif_with_prepared_duration = Duration::default();
         let mut proof_verif_with_rand_pair_check_duration = Duration::default();
-        let mut proof_verif__with_prepared_and_rand_pair_check_duration = Duration::default();
+        let mut proof_verif_with_prepared_and_rand_pair_check_duration = Duration::default();
 
         let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
 
@@ -1719,7 +1581,32 @@ mod tests {
                     &mut pairing_checker,
                 )
                 .unwrap();
-            proof_verif__with_prepared_and_rand_pair_check_duration += start.elapsed();
+            proof_verif_with_prepared_and_rand_pair_check_duration += start.elapsed();
+
+            // Randomizing accumulator and witness
+            let random = Fr::rand(&mut rng);
+            let randomized_accum = (*accumulator.value() * random).into_affine();
+            let randomized_wit = MembershipWitness((witnesses[i].0 * random).into_affine());
+            let protocol = MembershipProofProtocol::init(
+                &mut rng,
+                &elems[i],
+                None,
+                &randomized_wit,
+                &keypair.public_key,
+                &params,
+                &prk,
+            );
+            let challenge = Fr::rand(&mut rng);
+            let proof = protocol.gen_proof(&challenge);
+            proof
+                .verify(
+                    &randomized_accum,
+                    &challenge,
+                    keypair.public_key.clone(),
+                    params.clone(),
+                    &prk,
+                )
+                .unwrap();
         }
 
         let start = Instant::now();
@@ -1744,7 +1631,7 @@ mod tests {
         );
         println!(
             "Time to verify {} membership proofs using prepared params and randomized pairing checker is {:?}",
-            count, proof_verif__with_prepared_and_rand_pair_check_duration
+            count, proof_verif_with_prepared_and_rand_pair_check_duration
         );
     }
 
@@ -1795,7 +1682,7 @@ mod tests {
         let mut proof_verif_duration = Duration::default();
         let mut proof_verif_with_prepared_duration = Duration::default();
         let mut proof_verif_with_rand_pair_check_duration = Duration::default();
-        let mut proof_verif__with_prepared_and_rand_pair_check_duration = Duration::default();
+        let mut proof_verif_with_prepared_and_rand_pair_check_duration = Duration::default();
 
         let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
 
@@ -1896,7 +1783,35 @@ mod tests {
                     &mut pairing_checker,
                 )
                 .unwrap();
-            proof_verif__with_prepared_and_rand_pair_check_duration += start.elapsed();
+            proof_verif_with_prepared_and_rand_pair_check_duration += start.elapsed();
+
+            // Randomizing accumulator and witness
+            let random = Fr::rand(&mut rng);
+            let randomized_accum = (*accumulator.value() * random).into_affine();
+            let randomized_wit = NonMembershipWitness {
+                d: witnesses[i].d * random,
+                C: (witnesses[i].C * random).into_affine(),
+            };
+            let protocol = NonMembershipProofProtocol::init(
+                &mut rng,
+                &elems[i],
+                None,
+                &randomized_wit,
+                &keypair.public_key,
+                &params,
+                &prk,
+            );
+            let challenge = Fr::rand(&mut rng);
+            let proof = protocol.gen_proof(&challenge);
+            proof
+                .verify(
+                    &randomized_accum,
+                    &challenge,
+                    keypair.public_key.clone(),
+                    params.clone(),
+                    &prk,
+                )
+                .unwrap();
         }
 
         let start = Instant::now();
@@ -1921,7 +1836,7 @@ mod tests {
         );
         println!(
             "Time to verify {} non-membership proofs using prepared params and randomized pairing checker is {:?}",
-            count, proof_verif__with_prepared_and_rand_pair_check_duration
+            count, proof_verif_with_prepared_and_rand_pair_check_duration
         );
     }
 }

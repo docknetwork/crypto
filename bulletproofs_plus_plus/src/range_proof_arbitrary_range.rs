@@ -54,6 +54,28 @@ impl<G: AffineRepr> ProofArbitraryRange<G> {
         setup_params: SetupParams<G>,
         transcript: &mut impl Transcript,
     ) -> Result<Self, BulletproofsPlusPlusError> {
+        let (V, v) =
+            Self::compute_commitments_and_values(values_and_bounds, &randomness, &setup_params)?;
+        let prover = Prover::new_with_given_base(base, num_bits, V.clone(), v, randomness)?;
+        let proof = prover.prove(rng, setup_params, transcript)?;
+        Ok(Self { V, proof })
+    }
+
+    pub fn verify(
+        &self,
+        num_bits: u16,
+        setup_params: &SetupParams<G>,
+        transcript: &mut impl Transcript,
+    ) -> Result<(), BulletproofsPlusPlusError> {
+        self.proof
+            .verify(num_bits, &self.V, setup_params, transcript)
+    }
+
+    pub fn compute_commitments_and_values(
+        values_and_bounds: Vec<(u64, u64, u64)>,
+        randomness: &[G::ScalarField],
+        setup_params: &SetupParams<G>,
+    ) -> Result<(Vec<G>, Vec<u64>), BulletproofsPlusPlusError> {
         if values_and_bounds.len() * 2 != randomness.len() {
             return Err(BulletproofsPlusPlusError::UnexpectedLengthOfVectors(
                 format!(
@@ -85,19 +107,7 @@ impl<G: AffineRepr> ProofArbitraryRange<G> {
             v.push(v_i - min);
             v.push(max - 1 - v_i);
         }
-        let prover = Prover::new_with_given_base(base, num_bits, V.clone(), v, randomness)?;
-        let proof = prover.prove(rng, setup_params, transcript)?;
-        Ok(Self { V, proof })
-    }
-
-    pub fn verify(
-        &self,
-        num_bits: u16,
-        setup_params: &SetupParams<G>,
-        transcript: &mut impl Transcript,
-    ) -> Result<(), BulletproofsPlusPlusError> {
-        self.proof
-            .verify(num_bits, &self.V, setup_params, transcript)
+        Ok((V, v))
     }
 
     pub fn num_proofs(&self) -> u32 {
@@ -134,9 +144,17 @@ impl<G: AffineRepr> ProofArbitraryRange<G> {
                 self.num_proofs() as usize,
             ));
         }
-        let table = WindowTable::new(self.num_proofs() as usize * 2, g.into_group());
-        let mut comms = Vec::with_capacity(self.num_proofs() as usize);
-        for i in (0..self.V.len()).step_by(2) {
+        Self::get_commitments_to_values_given_transformed_commitments_and_g(&self.V, bounds, g)
+    }
+
+    pub fn get_commitments_to_values_given_transformed_commitments_and_g(
+        transformed_comms: &[G],
+        bounds: Vec<(u64, u64)>,
+        g: &G,
+    ) -> Result<Vec<(G, G)>, BulletproofsPlusPlusError> {
+        let table = WindowTable::new(transformed_comms.len(), g.into_group());
+        let mut comms = Vec::with_capacity(transformed_comms.len() / 2);
+        for i in (0..transformed_comms.len()).step_by(2) {
             let (min, max) = (bounds[i / 2].0, bounds[i / 2].1);
             if max <= min {
                 return Err(BulletproofsPlusPlusError::IncorrectBounds(format!(
@@ -145,10 +163,11 @@ impl<G: AffineRepr> ProofArbitraryRange<G> {
                 )));
             }
             // `V[i]` is a commitment to `value - min` and `V[i+1]` is a commitment to `max - 1 - value`. Generate commitments
-            // to value by `V[i] + g * min` and `g * (max - 1) - V[i+1]`
+            // to `value` by `V[i] + g * min` and `g * (max - 1) - V[i+1]`
             comms.push((
-                (self.V[i] + table.multiply(&G::ScalarField::from(min))).into_affine(),
-                (table.multiply(&G::ScalarField::from(max - 1)) - self.V[i + 1]).into_affine(),
+                (transformed_comms[i] + table.multiply(&G::ScalarField::from(min))).into_affine(),
+                (table.multiply(&G::ScalarField::from(max - 1)) - transformed_comms[i + 1])
+                    .into_affine(),
             ));
         }
         Ok(comms)

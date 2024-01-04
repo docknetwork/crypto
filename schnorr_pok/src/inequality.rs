@@ -321,7 +321,6 @@ impl<G: AffineRepr> InequalityProof<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compute_random_oracle_challenge;
     use ark_bls12_381::{Bls12_381, G1Affine};
     use ark_ec::pairing::Pairing;
     use ark_std::{
@@ -329,6 +328,7 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
+    use dock_crypto_utils::transcript::{MerlinTranscript, Transcript};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -350,19 +350,31 @@ mod tests {
         )
         .unwrap();
 
-        let mut bytes = vec![];
+        let mut prover_transcript = MerlinTranscript::new(b"test");
         protocol
-            .challenge_contribution_for_public_inequality(&comm, &in_equal, &comm_key, &mut bytes)
+            .challenge_contribution_for_public_inequality(
+                &comm,
+                &in_equal,
+                &comm_key,
+                &mut prover_transcript,
+            )
             .unwrap();
-        let challenge_prover = compute_random_oracle_challenge::<Fr, Blake2b512>(&bytes);
+        let challenge_prover = prover_transcript.challenge_scalar(b"chal");
 
         let proof = protocol.gen_proof(&challenge_prover).unwrap();
 
-        let mut bytes = vec![];
+        let mut verifier_transcript = MerlinTranscript::new(b"test");
         proof
-            .challenge_contribution_for_public_inequality(&comm, &in_equal, &comm_key, &mut bytes)
+            .challenge_contribution_for_public_inequality(
+                &comm,
+                &in_equal,
+                &comm_key,
+                &mut verifier_transcript,
+            )
             .unwrap();
-        let challenge_verifier = compute_random_oracle_challenge::<Fr, Blake2b512>(&bytes);
+        let challenge_verifier = verifier_transcript.challenge_scalar(b"chal");
+
+        assert_eq!(challenge_prover, challenge_verifier);
 
         proof
             .verify_for_inequality_with_public_value(
@@ -385,19 +397,29 @@ mod tests {
         )
         .unwrap();
 
-        let mut bytes = vec![];
+        let mut prover_transcript = MerlinTranscript::new(b"test1");
         protocol
-            .challenge_contribution_for_committed_inequality(&comm, &comm2, &comm_key, &mut bytes)
+            .challenge_contribution_for_committed_inequality(
+                &comm,
+                &comm2,
+                &comm_key,
+                &mut prover_transcript,
+            )
             .unwrap();
-        let challenge_prover = compute_random_oracle_challenge::<Fr, Blake2b512>(&bytes);
+        let challenge_prover = prover_transcript.challenge_scalar(b"chal");
 
         let proof = protocol.gen_proof(&challenge_prover).unwrap();
 
-        let mut bytes = vec![];
+        let mut verifier_transcript = MerlinTranscript::new(b"test1");
         proof
-            .challenge_contribution_for_committed_inequality(&comm, &comm2, &comm_key, &mut bytes)
+            .challenge_contribution_for_committed_inequality(
+                &comm,
+                &comm2,
+                &comm_key,
+                &mut verifier_transcript,
+            )
             .unwrap();
-        let challenge_verifier = compute_random_oracle_challenge::<Fr, Blake2b512>(&bytes);
+        let challenge_verifier = verifier_transcript.challenge_scalar(b"chal");
 
         proof
             .verify_for_inequality_with_committed_value(

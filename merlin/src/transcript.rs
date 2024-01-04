@@ -97,6 +97,10 @@ impl Transcript {
     /// Protocols](https://merlin.cool/use/protocol.html) section of
     /// the Merlin website for details on labels.
     pub fn append_message(&mut self, label: &'static [u8], message: &[u8]) {
+        self.append_message_with_non_static_label(label, message)
+    }
+
+    pub fn append_message_with_non_static_label(&mut self, label: &[u8], message: &[u8]) {
         let data_len = encode_usize_as_u32(message.len());
         self.strobe.meta_ad(label, false);
         self.strobe.meta_ad(&data_len, true);
@@ -176,6 +180,10 @@ impl Transcript {
     /// Protocols](https://merlin.cool/use/protocol.html) section of
     /// the Merlin website for details on labels.
     pub fn challenge_bytes(&mut self, label: &'static [u8], dest: &mut [u8]) {
+        self.challenge_bytes_with_non_static_label(label, dest)
+    }
+
+    pub fn challenge_bytes_with_non_static_label(&mut self, label: &[u8], dest: &mut [u8]) {
         let data_len = encode_usize_as_u32(dest.len());
         self.strobe.meta_ad(label, false);
         self.strobe.meta_ad(&data_len, true);

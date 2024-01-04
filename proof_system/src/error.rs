@@ -1,10 +1,12 @@
 use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeSet, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::error::BBSPlusError;
+use bulletproofs_plus_plus::error::BulletproofsPlusPlusError;
 use dock_crypto_utils::try_iter::InvalidPair;
 use legogroth16::{circom::CircomError, error::Error as LegoGroth16Error};
 use saver::error::SaverError;
 use schnorr_pok::error::SchnorrError;
+use smc_range_proof::prelude::SmcRangeProofError;
 use vb_accumulator::error::VBAccumulatorError;
 
 #[derive(Debug)]
@@ -31,7 +33,7 @@ pub enum ProofSystemError {
     SubProtocolAlreadyInitialized(usize),
     SubProtocolNotReadyToGenerateProof(usize),
     InvalidSetupParamsIndex(usize),
-    TooManyCifertexts(usize),
+    TooManyCiphertexts(usize),
     NeitherParamsNorRefGiven(usize),
     IncompatibleBBSPlusSetupParamAtIndex(usize),
     IncompatiblePSSetupParamAtIndex(usize),
@@ -86,9 +88,20 @@ pub enum ProofSystemError {
     UnsupportedValue(String),
     /// For an arbitrary range proof, the response of both Schnorr protocols should be same
     DifferentResponsesForSchnorrProtocolInBpp(usize),
-    BulletproofsPlusPlus(bulletproofs_plus_plus::prelude::BulletproofsPlusPlusError),
-    SetMembershipBasedRangeProof(smc_range_proof::prelude::SmcRangeProofError),
+    BulletproofsPlusPlus(BulletproofsPlusPlusError),
+    SetMembershipBasedRangeProof(SmcRangeProofError),
     SmcParamsNotProvided,
+    SchnorrProofContributionFailed(u32, SchnorrError),
+    BBSPlusProofContributionFailed(u32, BBSPlusError),
+    BBSProofContributionFailed(u32, BBSPlusError),
+    VBAccumProofContributionFailed(u32, VBAccumulatorError),
+    SaverProofContributionFailed(u32, SaverError),
+    LegoSnarkProofContributionFailed(u32, LegoGroth16Error),
+    PSProofContributionFailed(u32, coconut_crypto::SignaturePoKError),
+    BulletproofsPlusPlusProofContributionFailed(u32, BulletproofsPlusPlusError),
+    SmcRangeProofContributionFailed(u32, SmcRangeProofError),
+    DetachedVBAccumProofContributionFailed(u32, VBAccumulatorError),
+    IncorrectEncryptedAccumulator,
 }
 
 impl From<SchnorrError> for ProofSystemError {
@@ -139,14 +152,14 @@ impl From<coconut_crypto::SignaturePoKError> for ProofSystemError {
     }
 }
 
-impl From<bulletproofs_plus_plus::prelude::BulletproofsPlusPlusError> for ProofSystemError {
-    fn from(e: bulletproofs_plus_plus::prelude::BulletproofsPlusPlusError) -> Self {
+impl From<BulletproofsPlusPlusError> for ProofSystemError {
+    fn from(e: BulletproofsPlusPlusError) -> Self {
         Self::BulletproofsPlusPlus(e)
     }
 }
 
-impl From<smc_range_proof::prelude::SmcRangeProofError> for ProofSystemError {
-    fn from(e: smc_range_proof::prelude::SmcRangeProofError) -> Self {
+impl From<SmcRangeProofError> for ProofSystemError {
+    fn from(e: SmcRangeProofError) -> Self {
         Self::SetMembershipBasedRangeProof(e)
     }
 }

@@ -41,6 +41,7 @@ pub struct Ciphertext<E: Pairing> {
 }
 
 impl<E: Pairing> Ciphertext<E> {
+    /// Returns the ciphertext and randomness created for encryption
     pub fn new<R: RngCore>(
         rng: &mut R,
         upk: &E::G1Affine,

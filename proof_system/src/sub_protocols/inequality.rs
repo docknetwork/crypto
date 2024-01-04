@@ -137,16 +137,20 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
         proof: &InequalityProof<G>,
         comm_key_as_slice: &[G],
     ) -> Result<(), ProofSystemError> {
-        proof.proof.verify_for_inequality_with_public_value(
-            &proof.comm,
-            &self.inequal_to,
-            challenge,
-            &self.comm_key,
-        )?;
+        proof
+            .proof
+            .verify_for_inequality_with_public_value(
+                &proof.comm,
+                &self.inequal_to,
+                challenge,
+                &self.comm_key,
+            )
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key_as_slice, proof.comm);
 
-        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
+        sp.verify_proof_contribution(challenge, &proof.sp)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
     pub fn compute_challenge_contribution<W: Write>(

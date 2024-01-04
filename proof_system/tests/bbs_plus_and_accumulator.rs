@@ -20,12 +20,18 @@ use proof_system::{
         accumulator::{
             AccumulatorMembership as AccumulatorMembershipStmt,
             AccumulatorNonMembership as AccumulatorNonMembershipStmt,
+            DetachedAccumulatorMembershipProver, DetachedAccumulatorMembershipVerifier,
+            DetachedAccumulatorNonMembershipProver, DetachedAccumulatorNonMembershipVerifier,
         },
         bbs_23::PoKBBSSignature23G1 as PoKSignatureBBS23G1Stmt,
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
         inequality::PublicInequality as InequalityStmt,
         ped_comm::PedersenCommitment as PedersenCommitmentStmt,
         Statements,
+    },
+    statement_proof::StatementProof,
+    sub_protocols::accumulator::{
+        DetachedAccumulatorMembershipSubProtocol, DetachedAccumulatorNonMembershipSubProtocol,
     },
     witness::{
         Membership as MembershipWit, NonMembership as NonMembershipWit,
@@ -1868,4 +1874,707 @@ fn proof_spec_validation() {
 
     let ps_3 = ProofSpec::new(statements_3, meta_statements_3, vec![], None);
     assert!(ps_3.validate().is_err());
+}
+
+#[test]
+fn detached_accumulator() {
+    // Prove knowledge of BBS+ signature and one of the message's membership and non-membership in accumulators
+    let mut rng = StdRng::seed_from_u64(0u64);
+
+    let msg_count = 6;
+    let (msgs, sig_params, sig_keypair, sig) = bbs_plus_sig_setup(&mut rng, msg_count as u32);
+
+    let max = 10;
+    let (pos_accum_params, pos_accum_keypair, mut pos_accumulator, mut pos_state) =
+        setup_positive_accum(&mut rng);
+    let mem_prk = MembershipProvingKey::generate_using_rng(&mut rng);
+
+    // Message with index `accum_member_1_idx` is added in the positive accumulator
+    let accum_member_1_idx = 1;
+    let accum_member_1 = msgs[accum_member_1_idx];
+
+    pos_accumulator = pos_accumulator
+        .add(
+            accum_member_1,
+            &pos_accum_keypair.secret_key,
+            &mut pos_state,
+        )
+        .unwrap();
+    let mem_1_wit = pos_accumulator
+        .get_membership_witness(&accum_member_1, &pos_accum_keypair.secret_key, &pos_state)
+        .unwrap();
+    assert!(pos_accumulator.verify_membership(
+        &accum_member_1,
+        &mem_1_wit,
+        &pos_accum_keypair.public_key,
+        &pos_accum_params
+    ));
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(
+        DetachedAccumulatorMembershipProver::new_statement_from_params(
+            pos_accum_params.clone(),
+            pos_accum_keypair.public_key.clone(),
+            mem_prk.clone(),
+            *pos_accumulator.value(),
+        ),
+    );
+
+    // Create meta statement describing that message in the signature at index `accum_member_1_idx` is
+    // same as the accumulator member
+    let mut meta_statements = MetaStatements::new();
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![
+            (0, accum_member_1_idx),
+            (1, 0), // Since accumulator (non)membership has only one (for applications) which is the (non)member, that witness is at index 0.
+        ]
+        .into_iter()
+        .collect::<BTreeSet<WitnessRef>>(),
+    ));
+
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(MetaStatements, meta_statements);
+
+    let context = Some(b"test".to_vec());
+    let proof_spec = ProofSpec::new(
+        statements.clone(),
+        meta_statements.clone(),
+        vec![],
+        context.clone(),
+    );
+    proof_spec.validate().unwrap();
+
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig.clone(),
+        msgs.clone().into_iter().enumerate().collect(),
+    ));
+    witnesses.add(MembershipWit::new_as_witness(
+        accum_member_1,
+        mem_1_wit.clone(),
+    ));
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+    let nonce = Some(b"test-nonce".to_vec());
+
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
+        &mut rng,
+        proof_spec.clone(),
+        witnesses.clone(),
+        nonce.clone(),
+        Default::default(),
+    )
+    .unwrap()
+    .0;
+
+    test_serialization!(ProofG1, proof);
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(
+        DetachedAccumulatorMembershipVerifier::new_statement_from_params(
+            pos_accum_params.clone(),
+            pos_accum_keypair.public_key.clone(),
+            mem_prk.clone(),
+        ),
+    );
+    let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+
+    let start = Instant::now();
+    proof
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default(),
+        )
+        .unwrap();
+    println!(
+        "Time to verify proof with a BBS+ signature and positive accumulator membership: {:?}",
+        start.elapsed()
+    );
+
+    match &proof.statement_proofs[1] {
+        StatementProof::DetachedAccumulatorMembership(p) => {
+            let sp = DetachedAccumulatorMembershipSubProtocol::new(
+                1,
+                &pos_accum_params,
+                &pos_accum_keypair.public_key,
+                &mem_prk,
+            );
+            sp.verify_proof_contribution(
+                p,
+                &pos_accum_keypair.secret_key,
+                pos_accum_keypair.public_key.clone(),
+                pos_accum_params.clone(),
+            )
+            .unwrap();
+        }
+        _ => assert!(false, "Needed a detached accumulator proof"),
+    }
+
+    /*// Wrong witness reference fails to verify
+    let mut meta_statements_incorrect = MetaStatements::new();
+    meta_statements_incorrect.add_witness_equality(EqualWitnesses(
+        vec![(0, 0), (1, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+    let proof_spec_incorrect = ProofSpec::new(
+        statements.clone(),
+        meta_statements_incorrect,
+        vec![],
+        context.clone(),
+    );
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
+        &mut rng,
+        proof_spec_incorrect.clone(),
+        witnesses,
+        nonce.clone(),
+        Default::default(),
+    )
+    .unwrap()
+    .0;
+
+    assert!(proof
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec_incorrect.clone(),
+            nonce.clone(),
+            Default::default()
+        )
+        .is_err());
+    assert!(proof
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec_incorrect,
+            nonce.clone(),
+            VerifierConfig {
+                use_lazy_randomized_pairing_checks: Some(false),
+            },
+        )
+        .is_err());
+
+    // Non-member fails to verify
+    let mut witnesses_incorrect = Witnesses::new();
+    witnesses_incorrect.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig.clone(),
+        msgs.clone().into_iter().enumerate().collect(),
+    ));
+    witnesses_incorrect.add(Witness::AccumulatorMembership(MembershipWit {
+        element: msgs[2], // 2nd message from BBS+ sig in accumulator
+        witness: mem_1_wit.clone(),
+    }));
+    let mut meta_statements = MetaStatements::new();
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![
+            (0, 2), // 2nd message from BBS+ sig in accumulator
+            (1, 0),
+        ]
+        .into_iter()
+        .collect::<BTreeSet<WitnessRef>>(),
+    ));
+    let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context.clone());
+    proof_spec.validate().unwrap();
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
+        &mut rng,
+        proof_spec.clone(),
+        witnesses_incorrect,
+        nonce.clone(),
+        Default::default(),
+    )
+    .unwrap()
+    .0;
+    assert!(proof
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default()
+        )
+        .is_err());
+    assert!(proof
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec,
+            nonce.clone(),
+            VerifierConfig {
+                use_lazy_randomized_pairing_checks: Some(false),
+            },
+        )
+        .is_err());*/
+
+    // Prove knowledge of signature and membership of message with index `accum_member_2_idx` in universal accumulator
+    let accum_member_2_idx = 2;
+    let accum_member_2 = msgs[accum_member_2_idx];
+    let (uni_accum_params, uni_accum_keypair, mut uni_accumulator, initial_elements, mut uni_state) =
+        setup_universal_accum(&mut rng, max);
+    let non_mem_prk = NonMembershipProvingKey::generate_using_rng(&mut rng);
+    let derived_mem_prk = non_mem_prk.derive_membership_proving_key();
+
+    uni_accumulator = uni_accumulator
+        .add(
+            accum_member_2,
+            &uni_accum_keypair.secret_key,
+            &initial_elements,
+            &mut uni_state,
+        )
+        .unwrap();
+    let mem_2_wit = uni_accumulator
+        .get_membership_witness(&accum_member_2, &uni_accum_keypair.secret_key, &uni_state)
+        .unwrap();
+    assert!(uni_accumulator.verify_membership(
+        &accum_member_2,
+        &mem_2_wit,
+        &uni_accum_keypair.public_key,
+        &uni_accum_params
+    ));
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(
+        DetachedAccumulatorMembershipProver::new_statement_from_params(
+            uni_accum_params.clone(),
+            uni_accum_keypair.public_key.clone(),
+            derived_mem_prk.clone(),
+            *uni_accumulator.value(),
+        ),
+    );
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig.clone(),
+        msgs.clone().into_iter().enumerate().collect(),
+    ));
+    witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+        element: accum_member_2,
+        witness: mem_2_wit.clone(),
+    }));
+
+    let mut meta_statements = MetaStatements::new();
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, accum_member_2_idx), (1, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(MetaStatements, meta_statements);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+    let proof_spec = ProofSpec::new(
+        statements.clone(),
+        meta_statements.clone(),
+        vec![],
+        context.clone(),
+    );
+    proof_spec.validate().unwrap();
+
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
+        &mut rng,
+        proof_spec.clone(),
+        witnesses.clone(),
+        nonce.clone(),
+        Default::default(),
+    )
+    .unwrap()
+    .0;
+
+    test_serialization!(ProofG1, proof);
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(
+        DetachedAccumulatorMembershipVerifier::new_statement_from_params(
+            uni_accum_params.clone(),
+            uni_accum_keypair.public_key.clone(),
+            derived_mem_prk.clone(),
+        ),
+    );
+    let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+
+    let start = Instant::now();
+    proof
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default(),
+        )
+        .unwrap();
+    println!(
+        "Time to verify proof with a BBS+ signature and universal accumulator membership: {:?}",
+        start.elapsed()
+    );
+
+    match &proof.statement_proofs[1] {
+        StatementProof::DetachedAccumulatorMembership(p) => {
+            let sp = DetachedAccumulatorMembershipSubProtocol::new(
+                1,
+                &uni_accum_params,
+                &uni_accum_keypair.public_key,
+                &derived_mem_prk,
+            );
+            sp.verify_proof_contribution(
+                p,
+                &uni_accum_keypair.secret_key,
+                uni_accum_keypair.public_key.clone(),
+                uni_accum_params.clone(),
+            )
+            .unwrap();
+        }
+        _ => assert!(false, "Needed a detached accumulator proof"),
+    }
+
+    // Prove knowledge of signature and non-membership of message with index `accum_non_member_idx` in universal accumulator
+    let accum_non_member_idx = 3;
+    let accum_non_member = msgs[accum_non_member_idx];
+    let non_mem_wit = uni_accumulator
+        .get_non_membership_witness(
+            &accum_non_member,
+            &uni_accum_keypair.secret_key,
+            &uni_state,
+            &uni_accum_params,
+        )
+        .unwrap();
+    assert!(uni_accumulator.verify_non_membership(
+        &accum_non_member,
+        &non_mem_wit,
+        &uni_accum_keypair.public_key,
+        &uni_accum_params
+    ));
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(
+        DetachedAccumulatorNonMembershipProver::new_statement_from_params(
+            uni_accum_params.clone(),
+            uni_accum_keypair.public_key.clone(),
+            non_mem_prk.clone(),
+            *uni_accumulator.value(),
+        ),
+    );
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig.clone(),
+        msgs.clone().into_iter().enumerate().collect(),
+    ));
+    witnesses.add(Witness::AccumulatorNonMembership(NonMembershipWit {
+        element: accum_non_member,
+        witness: non_mem_wit.clone(),
+    }));
+
+    let mut meta_statements = MetaStatements::new();
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, accum_non_member_idx), (1, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(MetaStatements, meta_statements);
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+    let proof_spec = ProofSpec::new(
+        statements.clone(),
+        meta_statements.clone(),
+        vec![],
+        context.clone(),
+    );
+    proof_spec.validate().unwrap();
+
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
+        &mut rng,
+        proof_spec.clone(),
+        witnesses.clone(),
+        nonce.clone(),
+        Default::default(),
+    )
+    .unwrap()
+    .0;
+
+    test_serialization!(ProofG1, proof);
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(
+        DetachedAccumulatorNonMembershipVerifier::new_statement_from_params(
+            uni_accum_params.clone(),
+            uni_accum_keypair.public_key.clone(),
+            non_mem_prk.clone(),
+        ),
+    );
+
+    let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+    proof_spec.validate().unwrap();
+
+    let start = Instant::now();
+    proof
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default(),
+        )
+        .unwrap();
+    println!(
+        "Time to verify proof with a BBS+ signature and universal accumulator non-membership: {:?}",
+        start.elapsed()
+    );
+
+    match &proof.statement_proofs[1] {
+        StatementProof::DetachedAccumulatorNonMembership(p) => {
+            let sp = DetachedAccumulatorNonMembershipSubProtocol::new(
+                1,
+                &uni_accum_params,
+                &uni_accum_keypair.public_key,
+                &non_mem_prk,
+            );
+            sp.verify_proof_contribution(
+                p,
+                &uni_accum_keypair.secret_key,
+                uni_accum_keypair.public_key.clone(),
+                uni_accum_params.clone(),
+            )
+            .unwrap();
+        }
+        _ => assert!(false, "Needed a detached accumulator proof"),
+    }
+
+    // Prove knowledge of signature and
+    // - membership of message with index `accum_member_1_idx` in positive accumulator
+    // - membership of message with index `accum_member_2_idx` in universal accumulator
+    // - non-membership of message with index `accum_non_member_idx` in universal accumulator
+    let mut all_setup_params = vec![];
+    all_setup_params.push(SetupParams::VbAccumulatorParams(uni_accum_params.clone()));
+    all_setup_params.push(SetupParams::VbAccumulatorPublicKey(
+        uni_accum_keypair.public_key.clone(),
+    ));
+    all_setup_params.push(SetupParams::VbAccumulatorMemProvingKey(
+        derived_mem_prk.clone(),
+    ));
+    all_setup_params.push(SetupParams::VbAccumulatorNonMemProvingKey(
+        non_mem_prk.clone(),
+    ));
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(
+        DetachedAccumulatorMembershipProver::new_statement_from_params(
+            pos_accum_params.clone(),
+            pos_accum_keypair.public_key.clone(),
+            mem_prk.clone(),
+            *pos_accumulator.value(),
+        ),
+    );
+    statements.add(
+        DetachedAccumulatorMembershipProver::new_statement_from_params_ref(
+            0,
+            1,
+            2,
+            *uni_accumulator.value(),
+        ),
+    );
+    statements.add(
+        DetachedAccumulatorNonMembershipProver::new_statement_from_params_ref(
+            0,
+            1,
+            3,
+            *uni_accumulator.value(),
+        ),
+    );
+
+    let mut meta_statements = MetaStatements::new();
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, accum_member_1_idx), (1, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, accum_member_2_idx), (2, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, accum_non_member_idx), (3, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+
+    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(MetaStatements, meta_statements);
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
+        sig,
+        msgs.into_iter().enumerate().collect(),
+    ));
+    witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+        element: accum_member_1,
+        witness: mem_1_wit,
+    }));
+    witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+        element: accum_member_2,
+        witness: mem_2_wit,
+    }));
+    witnesses.add(Witness::AccumulatorNonMembership(NonMembershipWit {
+        element: accum_non_member,
+        witness: non_mem_wit,
+    }));
+
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+    let proof_spec = ProofSpec::new(
+        statements.clone(),
+        meta_statements.clone(),
+        all_setup_params.clone(),
+        context.clone(),
+    );
+    proof_spec.validate().unwrap();
+
+    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+
+    let proof = ProofG1::new::<StdRng, Blake2b512>(
+        &mut rng,
+        proof_spec.clone(),
+        witnesses.clone(),
+        nonce.clone(),
+        Default::default(),
+    )
+    .unwrap()
+    .0;
+
+    test_serialization!(ProofG1, proof);
+
+    let mut statements = Statements::new();
+    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        sig_params,
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    statements.add(
+        DetachedAccumulatorMembershipVerifier::new_statement_from_params(
+            pos_accum_params.clone(),
+            pos_accum_keypair.public_key.clone(),
+            mem_prk.clone(),
+        ),
+    );
+    statements.add(DetachedAccumulatorMembershipVerifier::new_statement_from_params_ref(0, 1, 2));
+    statements
+        .add(DetachedAccumulatorNonMembershipVerifier::new_statement_from_params_ref(0, 1, 3));
+
+    let proof_spec = ProofSpec::new(
+        statements.clone(),
+        meta_statements,
+        all_setup_params,
+        context,
+    );
+
+    let start = Instant::now();
+    proof
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            Default::default(),
+        )
+        .unwrap();
+    println!("Time to verify proof with a BBS+ signature and 3 accumulator membership and non-membership checks: {:?}", start.elapsed());
+
+    match &proof.statement_proofs[1] {
+        StatementProof::DetachedAccumulatorMembership(p) => {
+            let sp = DetachedAccumulatorMembershipSubProtocol::new(
+                1,
+                &pos_accum_params,
+                &pos_accum_keypair.public_key,
+                &mem_prk,
+            );
+            sp.verify_proof_contribution(
+                p,
+                &pos_accum_keypair.secret_key,
+                pos_accum_keypair.public_key.clone(),
+                pos_accum_params.clone(),
+            )
+            .unwrap();
+        }
+        _ => assert!(false, "Needed a detached accumulator proof"),
+    }
+    match &proof.statement_proofs[2] {
+        StatementProof::DetachedAccumulatorMembership(p) => {
+            let sp = DetachedAccumulatorMembershipSubProtocol::new(
+                2,
+                &uni_accum_params,
+                &uni_accum_keypair.public_key,
+                &derived_mem_prk,
+            );
+            sp.verify_proof_contribution(
+                p,
+                &uni_accum_keypair.secret_key,
+                uni_accum_keypair.public_key.clone(),
+                uni_accum_params.clone(),
+            )
+            .unwrap();
+        }
+        _ => assert!(false, "Needed a detached accumulator proof"),
+    }
+    match &proof.statement_proofs[3] {
+        StatementProof::DetachedAccumulatorNonMembership(p) => {
+            let sp = DetachedAccumulatorNonMembershipSubProtocol::new(
+                3,
+                &uni_accum_params,
+                &uni_accum_keypair.public_key,
+                &non_mem_prk,
+            );
+            sp.verify_proof_contribution(
+                p,
+                &uni_accum_keypair.secret_key,
+                uni_accum_keypair.public_key.clone(),
+                uni_accum_params.clone(),
+            )
+            .unwrap();
+        }
+        _ => assert!(false, "Needed a detached accumulator proof"),
+    }
 }

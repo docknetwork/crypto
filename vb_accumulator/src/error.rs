@@ -7,6 +7,7 @@ use ark_std::fmt::Debug;
 use dock_crypto_utils::serde_utils::ArkSerializationError;
 use schnorr_pok::error::SchnorrError;
 use serde::Serialize;
+use short_group_sig::error::ShortGroupSigError;
 
 #[derive(Debug, Serialize)]
 pub enum VBAccumulatorError {
@@ -33,6 +34,12 @@ pub enum VBAccumulatorError {
     #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
+    InvalidMembershipCorrectnessProof,
+    InvalidNonMembershipCorrectnessProof,
+    IncorrectRandomizedWitness,
+    InvalidWitness,
+    ShortGroupSigError(ShortGroupSigError),
+    MismatchBetweenSignatureAndAccumulatorValue,
 }
 
 impl From<SchnorrError> for VBAccumulatorError {
@@ -44,5 +51,11 @@ impl From<SchnorrError> for VBAccumulatorError {
 impl From<SerializationError> for VBAccumulatorError {
     fn from(e: SerializationError) -> Self {
         Self::Serialization(e)
+    }
+}
+
+impl From<ShortGroupSigError> for VBAccumulatorError {
+    fn from(e: ShortGroupSigError) -> Self {
+        Self::ShortGroupSigError(e)
     }
 }

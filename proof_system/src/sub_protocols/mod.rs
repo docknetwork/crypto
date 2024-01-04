@@ -20,15 +20,16 @@ use ark_ff::PrimeField;
 use ark_std::{format, io::Write};
 use itertools::{EitherOrBoth, Itertools};
 
-use crate::{
-    statement_proof::StatementProof,
-    sub_protocols::{
-        bound_check_bpp::BoundCheckBppProtocol,
-        bound_check_legogroth16::BoundCheckLegoGrothProtocol,
-        bound_check_smc::BoundCheckSmcProtocol,
-        bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol, inequality::InequalityProtocol,
-        r1cs_legogorth16::R1CSLegogroth16Protocol,
+use crate::sub_protocols::{
+    accumulator::{
+        DetachedAccumulatorMembershipSubProtocol, DetachedAccumulatorNonMembershipSubProtocol,
     },
+    bound_check_bpp::BoundCheckBppProtocol,
+    bound_check_legogroth16::BoundCheckLegoGrothProtocol,
+    bound_check_smc::BoundCheckSmcProtocol,
+    bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
+    inequality::InequalityProtocol,
+    r1cs_legogorth16::R1CSLegogroth16Protocol,
 };
 use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol};
 
@@ -42,7 +43,7 @@ pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
     AccumulatorNonMembership(AccumulatorNonMembershipSubProtocol<'a, E>),
     PoKDiscreteLogs(self::schnorr::SchnorrProtocol<'a, G>),
     /// For verifiable encryption using SAVER
-    Saver(self::saver::SaverProtocol<'a, E>),
+    Saver(saver::SaverProtocol<'a, E>),
     /// For range proof using LegoGroth16
     BoundCheckLegoGroth16(BoundCheckLegoGrothProtocol<'a, E>),
     R1CSLegogroth16Protocol(R1CSLegogroth16Protocol<'a, E>),
@@ -57,6 +58,8 @@ pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
     BoundCheckSmcWithKV(BoundCheckSmcWithKVProtocol<'a, E>),
     /// To prove inequality of a signed message with a public value
     Inequality(InequalityProtocol<'a, G>),
+    DetachedAccumulatorMembership(DetachedAccumulatorMembershipSubProtocol<'a, E>),
+    DetachedAccumulatorNonMembership(DetachedAccumulatorNonMembershipSubProtocol<'a, E>),
 }
 
 macro_rules! delegate {
@@ -75,30 +78,17 @@ macro_rules! delegate {
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKV,
-                Inequality
+                Inequality,
+                DetachedAccumulatorMembership,
+                DetachedAccumulatorNonMembership
             : $($tt)+
         }
     }};
 }
 
-pub trait ProofSubProtocol<E: Pairing, G: AffineRepr<ScalarField = E::ScalarField>> {
-    fn challenge_contribution(&self, target: &mut [u8]) -> Result<(), ProofSystemError>;
-    fn gen_proof_contribution(
-        &mut self,
-        challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError>;
-}
-
 impl<'a, E: Pairing, G: AffineRepr<ScalarField = E::ScalarField>> SubProtocol<'a, E, G> {
     pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ProofSystemError> {
         delegate!(self.challenge_contribution(writer))
-    }
-
-    pub fn gen_proof_contribution(
-        &mut self,
-        challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
-        delegate!(self.gen_proof_contribution(challenge))
     }
 }
 

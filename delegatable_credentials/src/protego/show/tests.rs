@@ -432,7 +432,7 @@ pub fn show(
             println!("Show time: {:?}", show_time);
             println!("Verify time: {:?}", verify_time);
         }
-        _ => panic!("this should never happen"),
+        _ => unreachable!(),
     }
 }
 

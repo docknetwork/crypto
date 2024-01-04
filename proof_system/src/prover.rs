@@ -14,13 +14,20 @@ use digest::Digest;
 use legogroth16::aggregation::srs::PreparedProverSRS;
 
 use crate::{
+    constants::{
+        BBS_23_LABEL, BBS_PLUS_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL, COMPOSITE_PROOF_LABEL,
+        CONTEXT_LABEL, NONCE_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL,
+    },
     meta_statement::WitnessRef,
     prelude::SnarkpackSRS,
     proof::{AggregatedGroth16, Proof},
     proof_spec::ProofSpec,
     statement_proof::StatementProof,
     sub_protocols::{
-        accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol},
+        accumulator::{
+            AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol,
+            DetachedAccumulatorMembershipSubProtocol, DetachedAccumulatorNonMembershipSubProtocol,
+        },
         bbs_23::PoKBBSSigG1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol as PoKBBSPlusSigG1SubProtocol,
         bound_check_bpp::BoundCheckBppProtocol,
@@ -35,7 +42,7 @@ use crate::{
 };
 use dock_crypto_utils::{
     hashing_utils::field_elem_from_try_and_incr,
-    transcript::{new_merlin_transcript, Transcript},
+    transcript::{MerlinTranscript, Transcript},
 };
 use saver::encryption::Ciphertext;
 
@@ -158,8 +165,13 @@ where
         // the same public params and witness can reuse this randomness
         let mut commitment_randomness = BTreeMap::<usize, E::ScalarField>::new();
 
-        // TODO: Use this for all sub-proofs and not just Bulletproofs++
-        let mut transcript = new_merlin_transcript(b"composite-proof");
+        let mut transcript = MerlinTranscript::new(COMPOSITE_PROOF_LABEL);
+        if let Some(n) = nonce.as_ref() {
+            transcript.append_message(NONCE_LABEL, n);
+        }
+        if let Some(ctx) = &proof_spec.context {
+            transcript.append_message(CONTEXT_LABEL, ctx);
+        }
 
         // Initialize sub-protocols for each statement
         for (s_idx, (statement, witness)) in proof_spec
@@ -189,6 +201,8 @@ where
                             pk,
                         );
                         sp.init(rng, blindings_map, w)?;
+                        transcript.set_label(BBS_PLUS_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::PoKBBSSignatureG1(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -212,6 +226,8 @@ where
                             pk,
                         );
                         sp.init(rng, blindings_map, w)?;
+                        transcript.set_label(BBS_23_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::PoKBBSSignature23G1(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -230,6 +246,8 @@ where
                             s.accumulator_value,
                         );
                         sp.init(rng, blinding, w)?;
+                        transcript.set_label(VB_ACCUM_MEM_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::AccumulatorMembership(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -248,6 +266,8 @@ where
                             s.accumulator_value,
                         );
                         sp.init(rng, blinding, w)?;
+                        transcript.set_label(VB_ACCUM_NON_MEM_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::AccumulatorNonMembership(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -264,6 +284,7 @@ where
                         let comm_key = s.get_commitment_key(&proof_spec.setup_params, s_idx)?;
                         let mut sp = SchnorrProtocol::new(s_idx, comm_key, s.commitment);
                         sp.init(rng, blindings_map, w)?;
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::PoKDiscreteLogs(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -312,6 +333,7 @@ where
                                 .unwrap(),
                         );
 
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::Saver(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -350,6 +372,7 @@ where
                                 .unwrap(),
                         );
 
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::BoundCheckLegoGroth16(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -396,6 +419,8 @@ where
                                 .last()
                                 .unwrap(),
                         );
+
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::R1CSLegogroth16Protocol(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -415,6 +440,7 @@ where
                         let mut sp =
                             PSSignaturePoK::new(s_idx, &s.revealed_messages, sig_params, pk);
                         sp.init(rng, blindings_map, w)?;
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::PSSignaturePoK(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -427,7 +453,8 @@ where
                         let comm_key = bound_check_bpp_comm.get(s_idx).unwrap();
                         let mut sp =
                             BoundCheckBppProtocol::new(s_idx, s.min, s.max, bpp_setup_params);
-                        sp.init(rng, comm_key.as_slice(), w, blinding, &mut transcript)?;
+                        sp.init(rng, comm_key.as_slice(), w, blinding)?;
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::BoundCheckBpp(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -441,6 +468,7 @@ where
                         let mut sp =
                             BoundCheckSmcProtocol::new(s_idx, s.min, s.max, params_comm_key);
                         sp.init(rng, comm_key_as_slice, w, blinding)?;
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::BoundCheckSmc(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -458,6 +486,7 @@ where
                             params_comm_key,
                         );
                         sp.init(rng, comm_key_as_slice, w, blinding)?;
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::BoundCheckSmcWithKV(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -469,7 +498,39 @@ where
                         let mut sp =
                             InequalityProtocol::new(s_idx, s.inequal_to.clone(), &comm_key);
                         sp.init(rng, ineq_comm.get(s_idx).unwrap().as_slice(), w, blinding)?;
+                        sp.challenge_contribution(&mut transcript)?;
                         sub_protocols.push(SubProtocol::Inequality(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::DetachedAccumulatorMembershipProver(s) => match witness {
+                    Witness::AccumulatorMembership(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp =
+                            DetachedAccumulatorMembershipSubProtocol::new(s_idx, params, pk, prk);
+                        sp.init(rng, s.accumulator_value, blinding, w)?;
+                        transcript.set_label(VB_ACCUM_MEM_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
+                        sub_protocols.push(SubProtocol::DetachedAccumulatorMembership(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::DetachedAccumulatorNonMembershipProver(s) => match witness {
+                    Witness::AccumulatorNonMembership(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = DetachedAccumulatorNonMembershipSubProtocol::new(
+                            s_idx, params, pk, prk,
+                        );
+                        sp.init(rng, s.accumulator_value, blinding, w)?;
+                        transcript.set_label(VB_ACCUM_NON_MEM_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
+                        sub_protocols.push(SubProtocol::DetachedAccumulatorNonMembership(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
@@ -485,27 +546,47 @@ where
             ));
         }
 
-        // Get nonce's and context's challenge contribution
-        let mut challenge_bytes = vec![];
-        if let Some(n) = nonce.as_ref() {
-            challenge_bytes.extend_from_slice(n)
-        }
-        if let Some(ctx) = &proof_spec.context {
-            challenge_bytes.extend_from_slice(ctx);
-        }
-
-        // Get each sub-protocol's challenge contribution
-        for p in sub_protocols.iter() {
-            p.challenge_contribution(&mut challenge_bytes)?;
-        }
-
         // Generate the challenge
-        let challenge = Self::generate_challenge_from_bytes::<D>(&challenge_bytes);
+        let challenge = transcript.challenge_scalar(COMPOSITE_PROOF_CHALLENGE_LABEL);
 
         // Get each sub-protocol's proof
         let mut statement_proofs = Vec::with_capacity(sub_protocols.len());
-        for mut p in sub_protocols {
-            statement_proofs.push(p.gen_proof_contribution(&challenge)?);
+        for p in sub_protocols {
+            statement_proofs.push(match p {
+                SubProtocol::PoKBBSSignatureG1(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::AccumulatorMembership(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::AccumulatorNonMembership(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::PoKDiscreteLogs(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::Saver(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::BoundCheckLegoGroth16(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::R1CSLegogroth16Protocol(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::PSSignaturePoK(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::PoKBBSSignature23G1(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::BoundCheckBpp(mut sp) => {
+                    sp.gen_proof_contribution(rng, &challenge, &mut transcript)?
+                }
+                SubProtocol::BoundCheckSmc(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::BoundCheckSmcWithKV(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::Inequality(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::DetachedAccumulatorMembership(mut sp) => {
+                    sp.gen_proof_contribution(rng, &challenge)?
+                }
+                SubProtocol::DetachedAccumulatorNonMembership(mut sp) => {
+                    sp.gen_proof_contribution(rng, &challenge)?
+                }
+            });
         }
 
         // TODO: Revisit - aggregating after challenge generation, is this correct?
@@ -527,10 +608,6 @@ where
             };
             let prepared_srs = PreparedProverSRS::from(srs);
 
-            // TODO: Remove it and use outer transcript
-            let mut aggr_transcript = new_merlin_transcript(b"aggregation");
-            aggr_transcript.append(b"challenge", &challenge);
-
             if proof_spec.aggregate_groth16.is_some() {
                 let to_aggr = proof_spec.aggregate_groth16.unwrap();
                 let mut proofs = vec![];
@@ -544,7 +621,7 @@ where
                     }
                     let ag_proof = legogroth16::aggregation::groth16::aggregate_proofs(
                         prepared_srs.clone(),
-                        &mut aggr_transcript,
+                        &mut transcript,
                         &proofs,
                     )
                     .map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;
@@ -570,7 +647,7 @@ where
                     let (ag_proof, _) =
                         legogroth16::aggregation::legogroth16::using_groth16::aggregate_proofs(
                             prepared_srs.clone(),
-                            &mut aggr_transcript,
+                            &mut transcript,
                             &proofs,
                         )
                         .map_err(|e| ProofSystemError::LegoGroth16Error(e.into()))?;
@@ -585,7 +662,6 @@ where
         Ok((
             Self {
                 statement_proofs,
-                nonce,
                 aggregated_groth16: if !aggregated_groth16.is_empty() {
                     Some(aggregated_groth16)
                 } else {
@@ -609,10 +685,6 @@ where
 
     pub fn statement_proofs(&self) -> &[StatementProof<E, G>] {
         &self.statement_proofs
-    }
-
-    pub fn nonce(&self) -> &Option<Vec<u8>> {
-        &self.nonce
     }
 
     /// Hash bytes to a field element. This is vulnerable to timing attack and is only used input
@@ -662,7 +734,6 @@ where
         }
         Self {
             statement_proofs,
-            nonce: self.nonce.clone(),
             aggregated_groth16: self.aggregated_groth16.clone(),
             aggregated_legogroth16: self.aggregated_legogroth16.clone(),
         }

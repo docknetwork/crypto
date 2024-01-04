@@ -247,6 +247,8 @@ pub mod tests {
             }
         }
 
+        test_serialization!(CommitmentKey<G1>, comm_key1);
+        test_serialization!(CommitmentKey<G2>, comm_key2);
         check(&mut rng, &comm_key1);
         check(&mut rng, &comm_key2);
     }

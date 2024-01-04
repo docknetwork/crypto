@@ -107,6 +107,12 @@ pub struct UniversalAccumulator<E: Pairing> {
     pub max_size: u64,
 }
 
+impl<E: Pairing> AsRef<E::G1Affine> for UniversalAccumulator<E> {
+    fn as_ref(&self) -> &E::G1Affine {
+        self.value()
+    }
+}
+
 impl<E> Accumulator<E> for UniversalAccumulator<E>
 where
     E: Pairing,
@@ -138,33 +144,18 @@ where
     /// the `max_size + 1` are generated randomly.
     pub fn initialize<R: RngCore>(
         rng: &mut R,
-        setup_params: &SetupParams<E>,
+        params_gen: impl AsRef<E::G1Affine>,
         max_size: u64,
         sk: &SecretKey<E::ScalarField>,
         xs: Vec<E::ScalarField>,
         initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
     ) -> Self {
-        let mut f_V = E::ScalarField::one();
-        for x in xs {
-            f_V *= x + sk.0;
-            initial_elements_store.add(x);
-        }
+        let f_V = Self::compute_initial(rng, max_size, sk, xs, initial_elements_store);
 
-        // We need more secret elements than known elements (in case all witness holders collude). As there can
-        // be at most `max_size` witnesses, there must be at least `max_size + 1` initial elements secret.
-        // It's assumed that elements in `xs` are public constants and thus `max_size + 1` more random elements are generated.
-        // Thus there are `max_size + xs.len() + 1` initial elements in total. However, if `xs` could be assumed
-        // secret, then only `max_size - xs.len() + 1` random elements need to be generated.
-        // Accepting an argument indicating whether `xs` is public could be another way to solve it
-        // but as `xs.len <<< max_size` in practice, didn't feel right to make the function accept
-        // one more argument and make caller decide one more thing.
-        for _ in 0..(max_size + 1) {
-            let elem = E::ScalarField::rand(rng);
-            f_V *= elem + sk.0;
-            initial_elements_store.add(elem);
-        }
-
-        let V = setup_params.P.mul_bigint(f_V.into_bigint()).into_affine();
+        let V = params_gen
+            .as_ref()
+            .mul_bigint(f_V.into_bigint())
+            .into_affine();
 
         Self { V, f_V, max_size }
     }
@@ -175,21 +166,16 @@ where
     /// is present for legacy purposes. This will likely be removed.
     pub fn initialize_with_all_random<R: RngCore>(
         rng: &mut R,
-        setup_params: &SetupParams<E>,
+        params_gen: impl AsRef<E::G1Affine>,
         max_size: u64,
         sk: &SecretKey<E::ScalarField>,
         initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
     ) -> Self {
-        let mut f_V = E::ScalarField::one();
-        for _ in 0..max_size + 1 {
-            // Each of the random values should be preserved by the manager and should not be removed (check before removing)
-            // from the accumulator
-            let elem = E::ScalarField::rand(rng);
-            f_V *= elem + sk.0;
-            initial_elements_store.add(elem);
-        }
-
-        let V = setup_params.P.mul_bigint(f_V.into_bigint()).into_affine();
+        let f_V = Self::compute_random_initial(rng, max_size, sk, initial_elements_store);
+        let V = params_gen
+            .as_ref()
+            .mul_bigint(f_V.into_bigint())
+            .into_affine();
 
         Self { V, f_V, max_size }
     }
@@ -199,10 +185,13 @@ where
     /// where `y_i` are the initial elements and `alpha` is the secret key
     pub fn initialize_given_f_V(
         f_V: E::ScalarField,
-        setup_params: &SetupParams<E>,
+        params_gen: impl AsRef<E::G1Affine>,
         max_size: u64,
     ) -> Self {
-        let V = setup_params.P.mul_bigint(f_V.into_bigint()).into_affine();
+        let V = params_gen
+            .as_ref()
+            .mul_bigint(f_V.into_bigint())
+            .into_affine();
         Self { V, f_V, max_size }
     }
 
@@ -442,13 +431,13 @@ where
         d: E::ScalarField,
         non_member: &E::ScalarField,
         sk: &SecretKey<E::ScalarField>,
-        params: &SetupParams<E>,
+        params_gen: impl AsRef<E::G1Affine>,
     ) -> Result<NonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
         if d.is_zero() {
             return Err(VBAccumulatorError::CannotBeZero);
         }
         let mut y_plus_alpha_inv = (*non_member + sk.0).inverse().unwrap();
-        let mut C = params.P.into_group();
+        let mut C = params_gen.as_ref().into_group();
         C *= (self.f_V - d) * y_plus_alpha_inv;
         y_plus_alpha_inv.zeroize();
         Ok(NonMembershipWitness {
@@ -467,7 +456,7 @@ where
             E::ScalarField,
             ElementIterator = impl Iterator<Item = &'a E::ScalarField>,
         >,
-        params: &SetupParams<E>,
+        params_gen: impl AsRef<E::G1Affine>,
     ) -> Result<NonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
         if state.has(non_member) {
             return Err(VBAccumulatorError::ElementPresent);
@@ -482,7 +471,7 @@ where
             d *= *member - non_member;
         }
 
-        self.compute_non_membership_witness_given_d(d, non_member, sk, params)
+        self.compute_non_membership_witness_given_d(d, non_member, sk, params_gen)
     }
 
     /// Compute a vector `d` for a batch where each `non_member_i` in batch has `d` as `d_i` and
@@ -516,7 +505,7 @@ where
         d: Vec<E::ScalarField>,
         non_members: &[E::ScalarField],
         sk: &SecretKey<E::ScalarField>,
-        params: &SetupParams<E>,
+        params_gen: impl AsRef<E::G1Affine>,
     ) -> Result<Vec<NonMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
         if cfg_iter!(d).any(|&x| x.is_zero()) {
             return Err(VBAccumulatorError::CannotBeZero);
@@ -534,8 +523,10 @@ where
             .collect::<Vec<_>>();
 
         // The same group element (self.V) has to be multiplied by each element in P_multiple, so we create a window table
-        let mut wits =
-            multiply_field_elems_with_same_group_elem(params.P.into_group(), P_multiple.as_slice());
+        let mut wits = multiply_field_elems_with_same_group_elem(
+            params_gen.as_ref().into_group(),
+            P_multiple.as_slice(),
+        );
         let wits_affine = E::G1::normalize_batch(&wits);
         cfg_iter_mut!(y_plus_alpha_inv).for_each(|y| y.zeroize());
         wits.iter_mut().for_each(|w| w.zeroize());
@@ -559,7 +550,7 @@ where
             E::ScalarField,
             ElementIterator = impl Iterator<Item = &'a E::ScalarField>,
         >,
-        params: &SetupParams<E>,
+        params_gen: impl AsRef<E::G1Affine>,
     ) -> Result<Vec<NonMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
         for element in non_members {
             if state.has(element) {
@@ -591,7 +582,7 @@ where
             d_for_witnesses,
             non_members,
             sk,
-            params,
+            params_gen,
         )
     }
 
@@ -646,6 +637,52 @@ where
     pub fn from_value(f_V: E::ScalarField, V: E::G1Affine, max_size: u64) -> Self {
         Self { f_V, V, max_size }
     }
+
+    fn compute_initial<R: RngCore>(
+        rng: &mut R,
+        max_size: u64,
+        sk: &SecretKey<E::ScalarField>,
+        xs: Vec<E::ScalarField>,
+        initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
+    ) -> E::ScalarField {
+        let mut f_V = E::ScalarField::one();
+        for x in xs {
+            f_V *= x + sk.0;
+            initial_elements_store.add(x);
+        }
+
+        // We need more secret elements than known elements (in case all witness holders collude). As there can
+        // be at most `max_size` witnesses, there must be at least `max_size + 1` initial elements secret.
+        // It's assumed that elements in `xs` are public constants and thus `max_size + 1` more random elements are generated.
+        // Thus there are `max_size + xs.len() + 1` initial elements in total. However, if `xs` could be assumed
+        // secret, then only `max_size - xs.len() + 1` random elements need to be generated.
+        // Accepting an argument indicating whether `xs` is public could be another way to solve it
+        // but as `xs.len <<< max_size` in practice, didn't feel right to make the function accept
+        // one more argument and make caller decide one more thing.
+        for _ in 0..(max_size + 1) {
+            let elem = E::ScalarField::rand(rng);
+            f_V *= elem + sk.0;
+            initial_elements_store.add(elem);
+        }
+        f_V
+    }
+
+    fn compute_random_initial<R: RngCore>(
+        rng: &mut R,
+        max_size: u64,
+        sk: &SecretKey<E::ScalarField>,
+        initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
+    ) -> E::ScalarField {
+        let mut f_V = E::ScalarField::one();
+        for _ in 0..max_size + 1 {
+            // Each of the random values should be preserved by the manager and should not be removed (check before removing)
+            // from the accumulator
+            let elem = E::ScalarField::rand(rng);
+            f_V *= elem + sk.0;
+            initial_elements_store.add(elem);
+        }
+        f_V
+    }
 }
 
 #[cfg(test)]
@@ -694,7 +731,7 @@ pub mod tests {
         let (params, keypair, accumulator, initial_elements, _) =
             setup_universal_accum(&mut rng, max);
 
-        let accumulator_1 =
+        let accumulator_1: UniversalAccumulator<Bls12_381> =
             UniversalAccumulator::initialize_given_f_V(accumulator.f_V, &params, max);
         assert_eq!(accumulator, accumulator_1);
 
@@ -721,7 +758,7 @@ pub mod tests {
         let initial: Vec<Fr> = initial_elements_for_bls12_381!(Fr);
         assert_eq!(initial.len(), 12);
         let mut initial_elements_1 = InMemoryInitialElements::new();
-        let accumulator_1 = UniversalAccumulator::initialize(
+        let accumulator_1: UniversalAccumulator<Bls12_381> = UniversalAccumulator::initialize(
             &mut rng,
             &params,
             max,
@@ -741,7 +778,7 @@ pub mod tests {
 
     #[test]
     fn membership_non_membership() {
-        // Test to check (non)membership in accumulator
+        // Test to check membership and non-membership in accumulator
         let max = 100;
         let mut rng = StdRng::seed_from_u64(0u64);
 
@@ -789,6 +826,18 @@ pub mod tests {
                 NonMembershipWitness<<Bls12_381 as Pairing>::G1Affine>,
                 nm_wit
             );
+
+            // Randomizing the witness and accumulator
+            let random = Fr::rand(&mut rng);
+            let randomized_accum = accumulator.randomized_value(&random);
+            let randomized_wit = nm_wit.randomize(&random);
+            let verification_accum = UniversalAccumulator::from_accumulated(randomized_accum);
+            assert!(verification_accum.verify_non_membership(
+                &elem,
+                &randomized_wit,
+                &keypair.public_key,
+                &params
+            ));
 
             assert!(accumulator
                 .remove(&elem, &keypair.secret_key, &initial_elements, &mut state)

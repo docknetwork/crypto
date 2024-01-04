@@ -9,7 +9,7 @@ use ark_std::{
     vec::Vec,
 };
 use digest::DynDigest;
-use dock_crypto_utils::transcript::Merlin;
+use dock_crypto_utils::transcript::MerlinTranscript;
 use itertools::interleave;
 use oblivious_transfer_protocols::{
     ot_based_multiplication::{
@@ -29,7 +29,7 @@ pub struct Phase2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PA
     /// Number of threshold signatures being generated in a single batch.
     pub batch_size: u32,
     /// Transcripts to record protocol interactions with each participant and later used to generate random challenges
-    pub transcripts: BTreeMap<ParticipantId, Merlin>,
+    pub transcripts: BTreeMap<ParticipantId, MerlinTranscript>,
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     /// Map where this participant plays the role of sender, i.e Party1
     pub multiplication_party1:
@@ -71,7 +71,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         assert_eq!(masked_signing_key_share.len(), masked_r.len());
         let batch_size = masked_signing_key_share.len() as u32;
 
-        let mut transcripts = BTreeMap::<ParticipantId, Merlin>::new();
+        let mut transcripts = BTreeMap::<ParticipantId, MerlinTranscript>::new();
         let mut multiplication_party1 =
             BTreeMap::<ParticipantId, Party1<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>>::new();
         let mut multiplication_party2 =
@@ -86,7 +86,8 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             interleave(masked_r.clone(), masked_signing_key_share.clone()).collect::<Vec<_>>();
 
         for other in others {
-            let mut trans = Merlin::new(b"Multiplication phase for threshold BBS and BBS+");
+            let mut trans =
+                MerlinTranscript::new(b"Multiplication phase for threshold BBS and BBS+");
             if id > other {
                 if let Some((base_ot_choices, base_ot_keys)) =
                     base_ot_output.receiver.remove(&other)

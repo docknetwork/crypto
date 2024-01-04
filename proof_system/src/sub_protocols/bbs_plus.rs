@@ -1,6 +1,7 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
 use bbs_plus::{
+    error::BBSPlusError,
     prelude::{
         MultiMessageSignatureParams, PoKOfSignatureG1Proof, PreparedPublicKeyG2,
         PreparedSignatureParamsG1, PublicKeyG2, SignatureParamsG1,
@@ -134,7 +135,7 @@ macro_rules! impl_bbs_subprotocol {
             pk: impl Into<PreparedPublicKeyG2<E>>,
             params: impl Into<$prepared_params<E>>,
             pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
-        ) -> Result<(), ProofSystemError> {
+        ) -> Result<(), BBSPlusError> {
             match pairing_checker {
                 Some(c) => proof.verify_with_randomized_pairing_checker(
                     self.revealed_messages,
@@ -142,10 +143,9 @@ macro_rules! impl_bbs_subprotocol {
                     pk,
                     params,
                     c,
-                )?,
-                None => proof.verify(self.revealed_messages, challenge, pk, params)?,
+                ),
+                None => proof.verify(self.revealed_messages, challenge, pk, params),
             }
-            Ok(())
         }
     };
 }

@@ -199,13 +199,16 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
                     &pvk.alpha_g1_beta_g2,
                 );
             }
-            None => verify_proof(pvk, snark_proof, pub_inp)?,
+            None => verify_proof(pvk, snark_proof, pub_inp).map_err(|e| {
+                ProofSystemError::LegoSnarkProofContributionFailed(self.id as u32, e)
+            })?,
         }
 
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.snark_proof.d);
 
-        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
+        sp.verify_proof_contribution(challenge, &proof.sp)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
     pub fn verify_proof_contribution_using_prepared_when_aggregating_snark(
@@ -216,7 +219,8 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
     ) -> Result<(), ProofSystemError> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
-        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
+        sp.verify_proof_contribution(challenge, &proof.sp)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
     pub fn compute_challenge_contribution<W: Write>(

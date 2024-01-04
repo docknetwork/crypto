@@ -7,7 +7,7 @@ use ark_std::{
 use bbs_plus::prelude::{PoKOfSignature23G1Proof, PoKOfSignatureG1Proof};
 use bulletproofs_plus_plus::prelude::ProofArbitraryRange;
 use coconut_crypto::SignaturePoK as PSSignaturePoK;
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{ecies, serde_utils::*};
 use saver::encryption::Ciphertext;
 use schnorr_pok::SchnorrResponse;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,6 @@ use serde_with::serde_as;
 use vb_accumulator::prelude::{MembershipProof, NonMembershipProof};
 
 use crate::error::ProofSystemError;
-pub use serialization::*;
 
 /// Proof corresponding to one `Statement`
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -37,6 +36,8 @@ pub enum StatementProof<E: Pairing, G: AffineRepr> {
     BoundCheckSmc(BoundCheckSmcProof<E>),
     BoundCheckSmcWithKV(BoundCheckSmcWithKVProof<E>),
     Inequality(InequalityProof<G>),
+    DetachedAccumulatorMembership(DetachedAccumulatorMembershipProof<E>),
+    DetachedAccumulatorNonMembership(DetachedAccumulatorNonMembershipProof<E>),
 }
 
 macro_rules! delegate {
@@ -58,7 +59,9 @@ macro_rules! delegate {
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKV,
-                Inequality
+                Inequality,
+                DetachedAccumulatorMembership,
+                DetachedAccumulatorNonMembership
             : $($tt)+
         }
     }};
@@ -83,7 +86,9 @@ macro_rules! delegate_reverse {
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKV,
-                Inequality
+                Inequality,
+                DetachedAccumulatorMembership,
+                DetachedAccumulatorNonMembership
             : $($tt)+
         }
 
@@ -356,6 +361,40 @@ impl<G: AffineRepr> InequalityProof<G> {
     }
 }
 
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct DetachedAccumulatorMembershipProof<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub accumulator: E::G1Affine,
+    pub accum_proof: MembershipProof<E>,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub challenge: E::ScalarField,
+    /// Encrypted opening
+    // TODO: Make constants as generic
+    #[serde_as(as = "ArkObjectBytes")]
+    pub encrypted: ecies::Encryption<E::G2Affine, 32, 24>,
+}
+
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct DetachedAccumulatorNonMembershipProof<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub accumulator: E::G1Affine,
+    pub accum_proof: NonMembershipProof<E>,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub challenge: E::ScalarField,
+    /// Encrypted opening
+    // TODO: Make constants as generic
+    #[serde_as(as = "ArkObjectBytes")]
+    pub encrypted: ecies::Encryption<E::G2Affine, 32, 24>,
+}
+
 mod serialization {
     use super::{
         AffineRepr, CanonicalDeserialize, CanonicalSerialize, Pairing, Read, SerializationError,
@@ -473,63 +512,4 @@ mod serialization {
 
     impl_serz_for_bound_check_inner!(BoundCheckSmcInnerProof);
     impl_serz_for_bound_check_inner!(BoundCheckSmcWithKVInnerProof);
-
-    /*impl<E: Pairing> Valid for BoundCheckSmcInnerProof<E> {
-        fn check(&self) -> Result<(), SerializationError> {
-            match self {
-                Self::CCS(c) => c.check(),
-                Self::CLS(c) => c.check(),
-            }
-        }
-    }
-
-    impl<E: Pairing> CanonicalSerialize for BoundCheckSmcInnerProof<E> {
-        fn serialize_with_mode<W: Write>(
-            &self,
-            mut writer: W,
-            compress: Compress,
-        ) -> Result<(), SerializationError> {
-            match self {
-                Self::CCS(c) => {
-                    CanonicalSerialize::serialize_with_mode(&0u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(c, &mut writer, compress)
-                }
-                Self::CLS(c) => {
-                    CanonicalSerialize::serialize_with_mode(&1u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(c, &mut writer, compress)
-                }
-            }
-        }
-
-        fn serialized_size(&self, compress: Compress) -> usize {
-            match self {
-                Self::CCS(c) => 0u8.serialized_size(compress) + c.serialized_size(compress),
-                Self::CLS(c) => 1u8.serialized_size(compress) + c.serialized_size(compress),
-            }
-        }
-    }
-
-    impl<E: Pairing> CanonicalDeserialize for BoundCheckSmcInnerProof<E> {
-        fn deserialize_with_mode<R: Read>(
-            mut reader: R,
-            compress: Compress,
-            validate: Validate,
-        ) -> Result<Self, SerializationError> {
-            let t: u8 =
-                CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
-            match t {
-                0u8 => Ok(Self::CCS(CanonicalDeserialize::deserialize_with_mode(
-                    &mut reader,
-                    compress,
-                    validate,
-                )?)),
-                1u8 => Ok(Self::CLS(CanonicalDeserialize::deserialize_with_mode(
-                    &mut reader,
-                    compress,
-                    validate,
-                )?)),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
-    }*/
 }

@@ -30,11 +30,13 @@ ark-r1cs-std.workspace = true
 ark-relations.workspace = true
 zeroize.workspace = true
 coconut-crypto = { version = "0.7.0", default-features = false, path = "../coconut" }
-merlin = { package = "dock_merlin", version = "2.0", default-features = false, path = "../merlin" }
+merlin = { package = "dock_merlin", version = "3.0.0", default-features = false, path = "../merlin" }
 legogroth16 = { version = "0.11.0", default-features = false, features = ["circom", "aggregation"], path = "../legogroth16" }
 bulletproofs_plus_plus = { version = "0.2.0", default-features = false, path = "../bulletproofs_plus_plus" }
 smc_range_proof = { version = "0.2.0", default-features = false, path = "../smc_range_proof" }
 itertools.workspace = true
+aead = {version = "0.5.2", default-features = false, features = [ "alloc" ]}
+chacha20poly1305 = {version = "0.10.1", default-features = false}
 
 [dev-dependencies]
 ark-bls12-381.workspace = true

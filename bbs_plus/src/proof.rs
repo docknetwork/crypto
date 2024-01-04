@@ -116,12 +116,10 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
     /// For proving relation `A_bar - d = A_prime * -e + h_0 * r2`
-    #[zeroize(skip)]
     pub sc_comm_1: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "(ArkObjectBytes, ArkObjectBytes)")]
     sc_wits_1: (E::ScalarField, E::ScalarField),
     /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + sum_{j notin D}(h_j*m_j)`
-    #[zeroize(skip)]
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
     sc_wits_2: Vec<E::ScalarField>,

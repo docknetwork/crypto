@@ -1,38 +1,15 @@
-//! BB signature
+//! Weak BB signature
 
-use crate::error::SmcRangeProofError;
-use ark_ec::{
-    pairing::{Pairing, PairingOutput},
-    AffineRepr,
+use crate::{
+    common::{SignatureParams, SignatureParamsWithPairing},
+    error::ShortGroupSigError,
 };
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{
-    cfg_into_iter, collections::BTreeSet, ops::Neg, rand::RngCore, vec::Vec, UniformRand,
-};
-use digest::Digest;
+use ark_std::{rand::RngCore, vec::Vec};
+use core::ops::Neg;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-use dock_crypto_utils::{concat_slices, hashing_utils::affine_group_elem_from_try_and_incr};
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
-/// Public parameters for creating and verifying BB signatures
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SignatureParams<E: Pairing> {
-    pub g1: E::G1Affine,
-    pub g2: E::G2Affine,
-}
-
-/// `SignatureParams` with pre-computation done for protocols more efficient
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SignatureParamsWithPairing<E: Pairing> {
-    pub g1: E::G1Affine,
-    pub g2: E::G2Affine,
-    pub g2_prepared: E::G2Prepared,
-    /// pairing e(g1, g2)
-    pub g1g2: PairingOutput<E>,
-}
 
 /// Secret key used by the signer to sign messages
 #[derive(
@@ -44,61 +21,18 @@ pub struct SecretKey<F: PrimeField>(pub F);
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PublicKeyG2<E: Pairing>(pub <E as Pairing>::G2Affine);
 
-impl<E: Pairing> SignatureParams<E> {
-    pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let g1 =
-            affine_group_elem_from_try_and_incr::<E::G1Affine, D>(&concat_slices![label, b" : g1"]);
-        let g2 =
-            affine_group_elem_from_try_and_incr::<E::G2Affine, D>(&concat_slices![label, b" : g2"]);
-        Self { g1, g2 }
-    }
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct PreparedPublicKeyG2<E: Pairing>(pub E::G2Prepared);
 
-    pub fn generate_using_rng<R: RngCore>(rng: &mut R) -> Self {
-        Self {
-            g1: E::G1::rand(rng).into(),
-            g2: E::G2::rand(rng).into(),
-        }
-    }
-
-    pub fn is_valid(&self) -> bool {
-        !(self.g1.is_zero() || self.g2.is_zero())
-    }
-}
-
-impl<E: Pairing> From<SignatureParams<E>> for SignatureParamsWithPairing<E> {
-    fn from(params: SignatureParams<E>) -> Self {
-        let g1g2 = E::pairing(params.g1, params.g2);
-        Self {
-            g1: params.g1,
-            g2: params.g2,
-            g2_prepared: E::G2Prepared::from(params.g2),
-            g1g2,
-        }
+impl<E: Pairing> From<PublicKeyG2<E>> for PreparedPublicKeyG2<E> {
+    fn from(pk: PublicKeyG2<E>) -> Self {
+        Self(E::G2Prepared::from(pk.0))
     }
 }
 
 impl<F: PrimeField> SecretKey<F> {
     pub fn new<R: RngCore>(rng: &mut R) -> Self {
         Self(F::rand(rng))
-    }
-
-    /// Generate secret key which should not be in `0, -1, 2, .. -(base-1)` because during range proof using
-    /// base `base`, signature is created over `0, 1, 2, ... base-1`
-    pub fn new_for_base<R: RngCore>(rng: &mut R, base: u16) -> Self {
-        let mut sk = F::rand(rng);
-        let neg_bases = cfg_into_iter!(0..base)
-            .map(|b| F::from(b).neg())
-            .collect::<BTreeSet<_>>();
-        while neg_bases.contains(&sk) {
-            sk = F::rand(rng)
-        }
-        Self(sk)
-    }
-
-    pub fn is_valid_for_base(&self, base: u16) -> bool {
-        let neg_bases = (0..base).map(|b| F::from(b).neg());
-        let position = neg_bases.into_iter().position(|b| b == self.0);
-        position.is_none()
     }
 }
 
@@ -140,9 +74,9 @@ impl<E: Pairing> SignatureG1<E> {
         message: &E::ScalarField,
         pk: &PublicKeyG2<E>,
         params: &SignatureParams<E>,
-    ) -> Result<(), SmcRangeProofError> {
+    ) -> Result<(), ShortGroupSigError> {
         if !self.is_non_zero() {
-            return Err(SmcRangeProofError::ZeroSignature);
+            return Err(ShortGroupSigError::ZeroSignature);
         }
         // Check e(sig, pk + g2*m) == e(g1, g2) => e(g1, g2) - e(sig, pk + g2*m) == 0 => e(g1, g2) + e(sig, -(pk + g2*m)) == 0
         // gm = -g2*m - g2*x
@@ -153,7 +87,7 @@ impl<E: Pairing> SignatureG1<E> {
         )
         .is_zero()
         {
-            return Err(SmcRangeProofError::InvalidSignature);
+            return Err(ShortGroupSigError::InvalidSignature);
         }
         Ok(())
     }
@@ -163,21 +97,27 @@ impl<E: Pairing> SignatureG1<E> {
         message: &E::ScalarField,
         pk: &PublicKeyG2<E>,
         params: &SignatureParamsWithPairing<E>,
-    ) -> Result<(), SmcRangeProofError> {
+    ) -> Result<(), ShortGroupSigError> {
         if !self.is_non_zero() {
-            return Err(SmcRangeProofError::ZeroSignature);
+            return Err(ShortGroupSigError::ZeroSignature);
         }
         // Check e(sig, pk + g2*m) == e(g1, g2)
         // gm = g2*m + g2*x
         let gm = params.g2 * message + pk.0;
         if E::pairing(E::G1Prepared::from(self.0), E::G2Prepared::from(gm)) != params.g1g2 {
-            return Err(SmcRangeProofError::InvalidSignature);
+            return Err(ShortGroupSigError::InvalidSignature);
         }
         Ok(())
     }
 
     pub fn is_non_zero(&self) -> bool {
         !self.0.is_zero()
+    }
+}
+
+impl<E: Pairing> AsRef<E::G1Affine> for SignatureG1<E> {
+    fn as_ref(&self) -> &E::G1Affine {
+        &self.0
     }
 }
 
@@ -189,25 +129,6 @@ mod tests {
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-
-    #[test]
-    fn secret_key_validation() {
-        let mut rng = StdRng::seed_from_u64(0u64);
-        for base in [2, 4, 8, 16, 32, 64] {
-            SecretKey::<Fr>::new_for_base(&mut rng, base);
-        }
-
-        // Create secret key as negative of a base
-        let sk = SecretKey(Fr::from(32).neg());
-
-        for base in [2, 4, 8, 16] {
-            assert!(sk.is_valid_for_base(base));
-        }
-
-        for base in [33, 64, 128] {
-            assert!(!sk.is_valid_for_base(base));
-        }
-    }
 
     #[test]
     fn signature_verification() {

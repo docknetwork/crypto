@@ -20,8 +20,6 @@ pub mod ps_signature;
 pub mod r1cs_legogroth16;
 pub mod saver;
 
-pub use serialization::*;
-
 /// Type of relation being proved and the public values for the relation
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -60,6 +58,12 @@ pub enum Statement<E: Pairing, G: AffineRepr> {
     BoundCheckSmcWithKVVerifier(bound_check_smc_with_kv::BoundCheckSmcWithKVVerifier<E>),
     /// To prove inequality of a signed message with a public value
     PublicInequality(inequality::PublicInequality<G>),
+    DetachedAccumulatorMembershipProver(accumulator::DetachedAccumulatorMembershipProver<E>),
+    DetachedAccumulatorMembershipVerifier(accumulator::DetachedAccumulatorMembershipVerifier<E>),
+    DetachedAccumulatorNonMembershipProver(accumulator::DetachedAccumulatorNonMembershipProver<E>),
+    DetachedAccumulatorNonMembershipVerifier(
+        accumulator::DetachedAccumulatorNonMembershipVerifier<E>,
+    ),
 }
 
 /// A collection of statements
@@ -115,7 +119,11 @@ macro_rules! delegate {
                 BoundCheckSmc,
                 BoundCheckSmcWithKVProver,
                 BoundCheckSmcWithKVVerifier,
-                PublicInequality
+                PublicInequality,
+                DetachedAccumulatorMembershipProver,
+                DetachedAccumulatorMembershipVerifier,
+                DetachedAccumulatorNonMembershipProver,
+                DetachedAccumulatorNonMembershipVerifier
             : $($tt)+
         }
     }}
@@ -141,7 +149,11 @@ macro_rules! delegate_reverse {
                 BoundCheckSmc,
                 BoundCheckSmcWithKVProver,
                 BoundCheckSmcWithKVVerifier,
-                PublicInequality
+                PublicInequality,
+                DetachedAccumulatorMembershipProver,
+                DetachedAccumulatorMembershipVerifier,
+                DetachedAccumulatorNonMembershipProver,
+                DetachedAccumulatorNonMembershipVerifier
             : $($tt)+
         }
 

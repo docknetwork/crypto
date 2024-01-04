@@ -9,8 +9,6 @@ use ark_std::{
 };
 use serde::{Deserialize, Serialize};
 
-pub use serialization::*;
-
 /// Reference to a witness described as the tuple (`statement_id`, `witness_id`)
 pub type WitnessRef = (usize, usize);
 

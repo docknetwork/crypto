@@ -13,6 +13,7 @@ use crate::{
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use schnorr_pok::error::SchnorrError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchnorrProtocol<'a, G: AffineRepr> {
@@ -95,28 +96,14 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
         Ok(PedersenCommitmentProof::new(commitment.t, responses))
     }
 
-    pub fn verify_proof_contribution<E: Pairing>(
-        &self,
-        challenge: &G::ScalarField,
-        proof: &StatementProof<E, G>,
-    ) -> Result<(), ProofSystemError> {
-        match proof {
-            StatementProof::PedersenCommitment(p) => {
-                self.verify_proof_contribution_as_struct(challenge, p)
-            }
-            _ => Err(ProofSystemError::ProofIncompatibleWithSchnorrProtocol),
-        }
-    }
-
-    pub fn verify_proof_contribution_as_struct(
+    pub fn verify_proof_contribution(
         &self,
         challenge: &G::ScalarField,
         proof: &PedersenCommitmentProof<G>,
-    ) -> Result<(), ProofSystemError> {
+    ) -> Result<(), SchnorrError> {
         proof
             .response
             .is_valid(self.commitment_key, &self.commitment, &proof.t, challenge)
-            .map_err(|e| e.into())
     }
 
     pub fn compute_challenge_contribution<W: Write>(

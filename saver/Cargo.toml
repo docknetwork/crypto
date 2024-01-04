@@ -22,7 +22,7 @@ serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
 legogroth16 = { version = "0.11.0", default-features = false, features = ["aggregation"], path = "../legogroth16" }
-merlin = { package = "dock_merlin", version = "2.0", default-features = false, path = "../merlin" }
+merlin = { package = "dock_merlin", version = "3.0.0", default-features = false, path = "../merlin" }
 
 [dev-dependencies]
 blake2.workspace = true

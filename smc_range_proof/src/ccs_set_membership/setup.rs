@@ -1,13 +1,15 @@
-use crate::{
-    bb_sig::{PublicKeyG2, SecretKey, SignatureG1, SignatureParams, SignatureParamsWithPairing},
-    error::SmcRangeProofError,
-};
+use crate::error::SmcRangeProofError;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, io::Write, rand::RngCore, vec::Vec};
 use digest::Digest;
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
+use short_group_sig::{
+    common::{SignatureParams, SignatureParamsWithPairing},
+    weak_bb_sig::{PublicKeyG2, SecretKey, SignatureG1},
+};
 
+use crate::common::generate_secret_key_for_base;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -113,6 +115,14 @@ impl<E: Pairing> SetMembershipCheckParams<E> {
         sig_params: SignatureParams<E>,
     ) -> (Self, SecretKey<E::ScalarField>) {
         let sk = SecretKey::new(rng);
+        Self::new_given_sig_params_and_secret_key(set, sig_params, sk)
+    }
+
+    pub fn new_given_sig_params_and_secret_key(
+        set: Vec<E::ScalarField>,
+        sig_params: SignatureParams<E>,
+        sk: SecretKey<E::ScalarField>,
+    ) -> (Self, SecretKey<E::ScalarField>) {
         let pk = PublicKeyG2::generate_using_secret_key(&sk, &sig_params);
         let sigs = cfg_iter!(set)
             .map(|i| SignatureG1::new(i, &sk, &sig_params))
@@ -137,7 +147,8 @@ impl<E: Pairing> SetMembershipCheckParams<E> {
         let set = cfg_into_iter!(0..base)
             .map(|i| E::ScalarField::from(i))
             .collect();
-        Self::new_given_sig_params(rng, set, sig_params)
+        let sk = generate_secret_key_for_base::<R, E::ScalarField>(rng, base);
+        Self::new_given_sig_params_and_secret_key(set, sig_params, sk)
     }
 
     /// Verify each signature in the params

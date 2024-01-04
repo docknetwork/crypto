@@ -2,14 +2,15 @@
 //! secret key of the BB-sig
 
 use crate::{
-    bb_sig::SecretKey, ccs_set_membership::setup::SetMembershipCheckParams,
-    common::MemberCommitmentKey, error::SmcRangeProofError,
+    ccs_set_membership::setup::SetMembershipCheckParams, common::MemberCommitmentKey,
+    error::SmcRangeProofError,
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::{misc::n_rand, msm::multiply_field_elems_with_same_group_elem};
+use short_group_sig::weak_bb_sig::SecretKey;
 
 use crate::common::padded_base_n_digits_as_field_elements;
 

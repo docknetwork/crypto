@@ -188,49 +188,66 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
         let comm_key = &self.params_and_comm_key.comm_key;
         match &proof.proof {
             BoundCheckSmcInnerProof::CCS(c) => match pairing_checker {
-                Some(pc) => c.verify_given_randomized_pairing_checker(
-                    &proof.comm,
-                    challenge,
-                    self.min,
-                    self.max,
-                    comm_key,
-                    params.params,
-                    pc,
-                )?,
-                None => c.verify(
-                    &proof.comm,
-                    challenge,
-                    self.min,
-                    self.max,
-                    comm_key,
-                    params.params,
-                )?,
+                Some(pc) => c
+                    .verify_given_randomized_pairing_checker(
+                        &proof.comm,
+                        challenge,
+                        self.min,
+                        self.max,
+                        comm_key,
+                        params.params,
+                        pc,
+                    )
+                    .map_err(|e| {
+                        ProofSystemError::SmcRangeProofContributionFailed(self.id as u32, e)
+                    })?,
+                None => c
+                    .verify(
+                        &proof.comm,
+                        challenge,
+                        self.min,
+                        self.max,
+                        comm_key,
+                        params.params,
+                    )
+                    .map_err(|e| {
+                        ProofSystemError::SmcRangeProofContributionFailed(self.id as u32, e)
+                    })?,
             },
             BoundCheckSmcInnerProof::CLS(c) => match pairing_checker {
-                Some(pc) => c.verify_given_randomized_pairing_checker(
-                    &proof.comm,
-                    challenge,
-                    self.min,
-                    self.max,
-                    comm_key,
-                    params.params,
-                    pc,
-                )?,
-                None => c.verify(
-                    &proof.comm,
-                    challenge,
-                    self.min,
-                    self.max,
-                    comm_key,
-                    params.params,
-                )?,
+                Some(pc) => c
+                    .verify_given_randomized_pairing_checker(
+                        &proof.comm,
+                        challenge,
+                        self.min,
+                        self.max,
+                        comm_key,
+                        params.params,
+                        pc,
+                    )
+                    .map_err(|e| {
+                        ProofSystemError::SmcRangeProofContributionFailed(self.id as u32, e)
+                    })?,
+                None => c
+                    .verify(
+                        &proof.comm,
+                        challenge,
+                        self.min,
+                        self.max,
+                        comm_key,
+                        params.params,
+                    )
+                    .map_err(|e| {
+                        ProofSystemError::SmcRangeProofContributionFailed(self.id as u32, e)
+                    })?,
             },
         }
 
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key_as_slice, proof.comm);
 
-        sp.verify_proof_contribution_as_struct(challenge, &proof.sp)
+        sp.verify_proof_contribution(challenge, &proof.sp)
+            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
     pub fn compute_challenge_contribution<W: Write>(

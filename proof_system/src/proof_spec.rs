@@ -270,7 +270,7 @@ where
                             s.get_chunked_commitment_gens(&self.setup_params, s_idx)?,
                             s.chunk_bit_size,
                         ),
-                        _ => panic!("This should never happen"),
+                        _ => unreachable!(),
                     };
                     saver_comm_keys.insert(s_idx, (comm_gens, chunk_bit_size));
                 }
@@ -293,7 +293,7 @@ where
                         Statement::SaverVerifier(s) => {
                             s.get_encryption_key(&self.setup_params, s_idx)?
                         }
-                        _ => panic!("This should never happen"),
+                        _ => unreachable!(),
                     };
 
                     derived_ek_comm.on_new_statement_idx(enc_key, s_idx);
@@ -310,7 +310,7 @@ where
                         Statement::BoundCheckLegoGroth16Verifier(s) => {
                             s.get_verifying_key(&self.setup_params, s_idx)?
                         }
-                        _ => panic!("This should never happen"),
+                        _ => unreachable!(),
                     };
                     derived_bound_check_lego_comm.on_new_statement_idx(verifying_key, s_idx);
                 }
@@ -323,7 +323,7 @@ where
                         Statement::R1CSCircomVerifier(s) => {
                             s.get_verifying_key(&self.setup_params, s_idx)?
                         }
-                        _ => panic!("This should never happen"),
+                        _ => unreachable!(),
                     };
                     derived_r1cs_comm.on_new_statement_idx(verifying_key, s_idx);
                 }
@@ -342,7 +342,7 @@ where
                         Statement::BoundCheckSmcWithKVVerifier(s) => {
                             s.get_comm_key(&self.setup_params, s_idx)?
                         }
-                        _ => panic!("This should never happen"),
+                        _ => unreachable!(),
                     };
                     derived_bound_check_smc_comm.on_new_statement_idx(comm_key, s_idx);
                 }

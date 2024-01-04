@@ -38,12 +38,18 @@ use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use digest::{Digest, DynDigest};
-use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+use schnorr_pok::{
+    error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrChallengeContributor,
+};
 
-use dock_crypto_utils::{affine_group_element_from_byte_slices, join, serde_utils::*};
+use dock_crypto_utils::{
+    affine_group_element_from_byte_slices, concat_slices, join, serde_utils::*,
+};
 
+use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use short_group_sig::common::ProvingKey;
 
 /// Secret key for accumulator manager
 #[serde_as]
@@ -137,6 +143,12 @@ where
     /// Params shouldn't be 0
     pub fn is_valid(&self) -> bool {
         !self.P.is_zero() && !self.P_tilde.is_zero()
+    }
+}
+
+impl<E: Pairing> AsRef<E::G1Affine> for SetupParams<E> {
+    fn as_ref(&self) -> &E::G1Affine {
+        &self.P
     }
 }
 
@@ -235,6 +247,95 @@ impl<E: Pairing> From<PublicKey<E>> for PreparedPublicKey<E> {
 
 // Implement proof of knowledge of secret key in public key
 impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKey, PoKSecretKeyInPublicKeyProof);
+
+/// Used between prover and verifier only to prove knowledge of member and corresponding witness.
+/// `X`, `Y` and `Z` from the paper
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct MembershipProvingKey<G: AffineRepr>(
+    #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
+    pub  ProvingKey<G>,
+);
+
+/// Used between prover and verifier only to prove knowledge of non-member and corresponding witness
+/// `X`, `Y`, `Z` and `K` from the paper
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct NonMembershipProvingKey<G: AffineRepr> {
+    #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
+    pub XYZ: ProvingKey<G>,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub K: G,
+}
+
+impl<G> MembershipProvingKey<G>
+where
+    G: AffineRepr,
+{
+    /// Generate using a random number generator
+    pub fn generate_using_rng<R: RngCore>(rng: &mut R) -> Self {
+        Self(ProvingKey::generate_using_rng(rng))
+    }
+
+    /// Generate by hashing known strings
+    pub fn new<D: Digest>(label: &[u8]) -> Self {
+        Self(ProvingKey::generate_using_hash::<D>(label))
+    }
+}
+
+impl<G> NonMembershipProvingKey<G>
+where
+    G: AffineRepr,
+{
+    /// Generate using a random number generator
+    pub fn generate_using_rng<R: RngCore>(rng: &mut R) -> Self {
+        let XYZ = ProvingKey::generate_using_rng(rng);
+        Self {
+            XYZ,
+            K: G::Group::rand(rng).into(),
+        }
+    }
+
+    /// Generate by hashing known strings
+    pub fn new<D: Digest>(label: &[u8]) -> Self {
+        let XYZ = ProvingKey::generate_using_hash::<D>(label);
+        Self {
+            XYZ,
+            K: projective_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : K"])
+                .into(),
+        }
+    }
+
+    /// Derive the membership proving key when doing a membership proof with a universal accumulator.
+    pub fn derive_membership_proving_key(&self) -> MembershipProvingKey<G> {
+        MembershipProvingKey(self.XYZ.clone())
+    }
+}
+
+impl<G: AffineRepr> AsRef<ProvingKey<G>> for MembershipProvingKey<G> {
+    fn as_ref(&self) -> &ProvingKey<G> {
+        &self.0
+    }
+}
+
+impl<G: AffineRepr> SchnorrChallengeContributor for MembershipProvingKey<G> {
+    fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
+        self.0.challenge_contribution(writer)
+    }
+}
+
+impl<G: AffineRepr> SchnorrChallengeContributor for NonMembershipProvingKey<G> {
+    fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
+        self.XYZ.challenge_contribution(&mut writer)?;
+        self.K
+            .serialize_compressed(&mut writer)
+            .map_err(|e| e.into())
+    }
+}
 
 #[cfg(test)]
 mod tests {

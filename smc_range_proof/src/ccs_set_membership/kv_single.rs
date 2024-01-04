@@ -2,12 +2,13 @@
 //! the secret key for BB sig
 
 use crate::{
-    bb_sig::SecretKey, ccs_set_membership::setup::SetMembershipCheckParams,
-    common::MemberCommitmentKey, error::SmcRangeProofError,
+    ccs_set_membership::setup::SetMembershipCheckParams, common::MemberCommitmentKey,
+    error::SmcRangeProofError,
 };
 use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
+use short_group_sig::weak_bb_sig::SecretKey;
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SetMembershipCheckWithKVProtocol<E: Pairing> {
@@ -156,7 +157,7 @@ impl<E: Pairing> SetMembershipCheckWithKVProof<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{bb_sig::SignatureParams, ccs_set_membership::setup::SetMembershipCheckParams};
+    use crate::ccs_set_membership::setup::SetMembershipCheckParams;
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
@@ -165,6 +166,7 @@ mod tests {
     use blake2::Blake2b512;
     use dock_crypto_utils::misc::n_rand;
     use schnorr_pok::compute_random_oracle_challenge;
+    use short_group_sig::common::SignatureParams;
 
     #[test]
     fn membership_check() {

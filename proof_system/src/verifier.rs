@@ -1,4 +1,8 @@
 use crate::{
+    constants::{
+        BBS_23_LABEL, BBS_PLUS_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL, COMPOSITE_PROOF_LABEL,
+        CONTEXT_LABEL, NONCE_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL,
+    },
     error::ProofSystemError,
     proof::Proof,
     proof_spec::{ProofSpec, SnarkpackSRS},
@@ -26,7 +30,7 @@ use bbs_plus::prelude::MultiMessageSignatureParams;
 use digest::Digest;
 use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker,
-    transcript::{new_merlin_transcript, Transcript},
+    transcript::{MerlinTranscript, Transcript},
 };
 use saver::encryption::Ciphertext;
 
@@ -49,7 +53,7 @@ macro_rules! err_incompat_proof {
 }
 
 macro_rules! check_resp_for_equalities {
-    ($witness_equalities:ident, $s_idx: ident, $p: ident, $func_name: ident, $self: ident, $responses_for_equalities: ident) => {
+    ($witness_equalities:ident, $s_idx: ident, $p: expr, $func_name: ident, $self: ident, $responses_for_equalities: ident) => {
         for i in 0..$witness_equalities.len() {
             // Check witness equalities for this statement. As there is only 1 witness
             // of interest, its index is always 0
@@ -68,7 +72,7 @@ macro_rules! check_resp_for_equalities {
 }
 
 macro_rules! check_resp_for_equalities_with_err {
-    ($witness_equalities:ident, $s_idx: ident, $p: ident, $func_name: ident, $self: ident, $responses_for_equalities: ident) => {
+    ($witness_equalities:ident, $s_idx: ident, $p: expr, $func_name: ident, $self: ident, $responses_for_equalities: ident) => {
         for i in 0..$witness_equalities.len() {
             // Check witness equalities for this statement. As there is only 1 witness
             // of interest, its index is always 0
@@ -126,8 +130,7 @@ where
             ));
         }
 
-        // TODO: Use this for all sub-proofs and not just Bulletproofs++
-        let mut transcript = new_merlin_transcript(b"composite-proof");
+        let mut transcript = MerlinTranscript::new(COMPOSITE_PROOF_LABEL);
 
         // TODO: Check SNARK SRSs compatible when aggregating and statement proof compatible with proof spec when aggregating
 
@@ -202,12 +205,11 @@ where
             vec![None; witness_equalities.len()];
 
         // Get nonce's and context's challenge contribution
-        let mut challenge_bytes = vec![];
         if let Some(n) = nonce.as_ref() {
-            challenge_bytes.extend_from_slice(n)
+            transcript.append_message(NONCE_LABEL, n);
         }
         if let Some(ctx) = &proof_spec.context {
-            challenge_bytes.extend_from_slice(ctx);
+            transcript.append_message(CONTEXT_LABEL, ctx);
         }
 
         // Get challenge contribution for each statement and check if response is equal for all witnesses.
@@ -239,10 +241,11 @@ where
                                 }
                             }
                         }
+                        transcript.set_label(BBS_PLUS_LABEL);
                         p.challenge_contribution(
                             &s.revealed_messages,
                             sig_params,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -267,10 +270,11 @@ where
                                 }
                             }
                         }
+                        transcript.set_label(BBS_23_LABEL);
                         p.challenge_contribution(
                             &s.revealed_messages,
                             sig_params,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -288,12 +292,13 @@ where
                         let params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
                         let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        transcript.set_label(VB_ACCUM_MEM_LABEL);
                         p.challenge_contribution(
                             &s.accumulator_value,
                             pk,
                             params,
                             prk,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -311,12 +316,13 @@ where
                         let params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
                         let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        transcript.set_label(VB_ACCUM_NON_MEM_LABEL);
                         p.challenge_contribution(
                             &s.accumulator_value,
                             pk,
                             params,
                             prk,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -344,7 +350,7 @@ where
                             comm_key,
                             &s.commitment,
                             &p.t,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -366,7 +372,7 @@ where
                             &cc_keys.0,
                             &cc_keys.1,
                             p,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     StatementProof::SaverWithAggregation(p) => {
@@ -385,7 +391,7 @@ where
                             &cc_keys.0,
                             &cc_keys.1,
                             p,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -405,7 +411,7 @@ where
                         BoundCheckLegoGrothProtocol::compute_challenge_contribution(
                             comm_key,
                             p,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     StatementProof::BoundCheckLegoGroth16WithAggregation(p) => {
@@ -422,7 +428,7 @@ where
                         BoundCheckLegoGrothProtocol::compute_challenge_contribution_when_aggregating_snark(
                             comm_key,
                             p,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -449,7 +455,7 @@ where
                             R1CSLegogroth16Protocol::compute_challenge_contribution(
                                 r1cs_comm_keys.get(s_idx).unwrap(),
                                 p,
-                                &mut challenge_bytes,
+                                &mut transcript,
                             )?;
                         }
                         StatementProof::R1CSLegoGroth16WithAggregation(p) => {
@@ -471,7 +477,7 @@ where
                             R1CSLegogroth16Protocol::compute_challenge_contribution_when_aggregating_snark(
                                 r1cs_comm_keys.get(s_idx).unwrap(),
                                 p,
-                                &mut challenge_bytes,
+                                &mut transcript,
                             )?;
                         }
                         _ => err_incompat_proof!(s_idx, s, proof),
@@ -502,7 +508,7 @@ where
                                 }
                             }
                         }
-                        p.challenge_contribution(&mut challenge_bytes, pk, sig_params)?;
+                        p.challenge_contribution(&mut transcript, pk, sig_params)?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -523,7 +529,7 @@ where
                             s.max,
                             comm_key.as_slice(),
                             p,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -544,7 +550,7 @@ where
                             comm_key_slice.as_slice(),
                             p,
                             derived_smc_param.get(s_idx).unwrap().clone(),
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -565,7 +571,7 @@ where
                             comm_key_slice.as_slice(),
                             p,
                             s.get_params_and_comm_key_and_sk(&proof_spec.setup_params, s_idx)?,
-                            &mut challenge_bytes,
+                            &mut transcript,
                         )?
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -587,7 +593,55 @@ where
                             p,
                             &s.inequal_to,
                             s.get_comm_key(&proof_spec.setup_params, s_idx)?,
-                            &mut challenge_bytes,
+                            &mut transcript,
+                        )?;
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::DetachedAccumulatorMembershipVerifier(s) => match proof {
+                    StatementProof::DetachedAccumulatorMembership(p) => {
+                        check_resp_for_equalities!(
+                            witness_equalities,
+                            s_idx,
+                            p.accum_proof,
+                            get_schnorr_response_for_element,
+                            Self,
+                            responses_for_equalities
+                        );
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        transcript.set_label(VB_ACCUM_MEM_LABEL);
+                        p.accum_proof.challenge_contribution(
+                            &p.accumulator,
+                            pk,
+                            params,
+                            prk,
+                            &mut transcript,
+                        )?;
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::DetachedAccumulatorNonMembershipVerifier(s) => match proof {
+                    StatementProof::DetachedAccumulatorNonMembership(p) => {
+                        check_resp_for_equalities!(
+                            witness_equalities,
+                            s_idx,
+                            p.accum_proof,
+                            get_schnorr_response_for_element,
+                            Self,
+                            responses_for_equalities
+                        );
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        transcript.set_label(VB_ACCUM_NON_MEM_LABEL);
+                        p.accum_proof.challenge_contribution(
+                            &p.accumulator,
+                            pk,
+                            params,
+                            prk,
+                            &mut transcript,
                         )?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -612,7 +666,7 @@ where
         }
 
         // Verifier independently generates challenge
-        let challenge = Self::generate_challenge_from_bytes::<D>(&challenge_bytes);
+        let challenge = transcript.challenge_scalar(COMPOSITE_PROOF_CHALLENGE_LABEL);
 
         // Verify the proof for each statement
         for (s_idx, (statement, proof)) in proof_spec
@@ -639,7 +693,10 @@ where
                             derived_bbs_pk.get(s_idx).unwrap().clone(),
                             derived_bbs_plus_param.get(s_idx).unwrap().clone(),
                             &mut pairing_checker,
-                        )?
+                        )
+                        .map_err(|e| {
+                            ProofSystemError::BBSPlusProofContributionFailed(s_idx as u32, e)
+                        })?
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -659,7 +716,10 @@ where
                             derived_bbs_pk.get(s_idx).unwrap().clone(),
                             derived_bbs_param.get(s_idx).unwrap().clone(),
                             &mut pairing_checker,
-                        )?
+                        )
+                        .map_err(|e| {
+                            ProofSystemError::BBSProofContributionFailed(s_idx as u32, e)
+                        })?
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -708,10 +768,12 @@ where
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::PedersenCommitment(s) => match proof {
-                    StatementProof::PedersenCommitment(ref _p) => {
+                    StatementProof::PedersenCommitment(ref p) => {
                         let comm_key = s.get_commitment_key(&proof_spec.setup_params, s_idx)?;
                         let sp = SchnorrProtocol::new(s_idx, comm_key, s.commitment);
-                        sp.verify_proof_contribution(&challenge, &proof)?
+                        sp.verify_proof_contribution(&challenge, p).map_err(|e| {
+                            ProofSystemError::SchnorrProofContributionFailed(s_idx as u32, e)
+                        })?
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -749,9 +811,14 @@ where
                                 ProofSystemError::InvalidStatementProofIndex(s_idx)
                             })?;
                             agg_saver[*agg_idx].push(saver_proof.ciphertext.clone());
-                            sp.verify_proof_contribution_when_aggregating_snark(
+                            sp.verify_ciphertext_and_commitment(
                                 &challenge,
-                                saver_proof,
+                                &saver_proof.ciphertext,
+                                saver_proof.comm_combined.clone(),
+                                saver_proof.comm_chunks.clone(),
+                                &saver_proof.sp_ciphertext,
+                                &saver_proof.sp_chunks,
+                                &saver_proof.sp_combined,
                                 ek_comm_key,
                                 &cc_keys.0,
                                 &cc_keys.1,
@@ -918,6 +985,8 @@ where
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
+                Statement::DetachedAccumulatorMembershipVerifier(_s) => (),
+                Statement::DetachedAccumulatorNonMembershipVerifier(_s) => (),
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -929,9 +998,6 @@ where
                 Some(SnarkpackSRS::VerifierSrs(srs)) => srs,
                 _ => return Err(ProofSystemError::SnarckpackSrsNotProvided),
             };
-
-            let mut transcript = new_merlin_transcript(b"aggregation");
-            transcript.append(b"challenge", &challenge);
 
             if let Some(to_aggregate) = proof_spec.aggregate_groth16 {
                 if let Some(aggr_proofs) = self.aggregated_groth16 {

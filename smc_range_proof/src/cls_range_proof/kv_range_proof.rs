@@ -11,8 +11,8 @@ use crate::{
 };
 use dock_crypto_utils::misc::n_rand;
 
-use crate::prelude::SecretKey;
 use dock_crypto_utils::{ff::inner_product, msm::multiply_field_elems_with_same_group_elem};
+use short_group_sig::weak_bb_sig::SecretKey;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

@@ -2,13 +2,23 @@ use ark_ec::AffineRepr;
 
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{rand::RngCore, vec::Vec};
+use ark_std::{
+    cfg_into_iter, collections::BTreeSet, ops::Neg, rand::RngCore, vec::Vec, UniformRand,
+};
 use digest::Digest;
 use dock_crypto_utils::{
     concat_slices,
     ff::{inner_product, powers},
     hashing_utils::affine_group_elem_from_try_and_incr,
     misc::rand,
+};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
+pub use short_group_sig::{
+    common::{SignatureParams, SignatureParamsWithPairing},
+    weak_bb_sig::{PublicKeyG2, SecretKey, SignatureG1},
 };
 
 /// Commitment key to commit the set member
@@ -100,6 +110,26 @@ macro_rules! randomize_sigs {
     }};
 }
 
+pub fn generate_secret_key_for_base<R: RngCore, F: PrimeField>(
+    rng: &mut R,
+    base: u16,
+) -> SecretKey<F> {
+    let mut sk = F::rand(rng);
+    let neg_bases = cfg_into_iter!(0..base)
+        .map(|b| F::from(b).neg())
+        .collect::<BTreeSet<_>>();
+    while neg_bases.contains(&sk) {
+        sk = F::rand(rng)
+    }
+    SecretKey(sk)
+}
+
+pub fn is_secret_key_valid_for_base<F: PrimeField>(sk: &SecretKey<F>, base: u16) -> bool {
+    let neg_bases = (0..base).map(|b| F::from(b).neg());
+    let position = neg_bases.into_iter().position(|b| b == sk.0);
+    position.is_none()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +163,24 @@ mod tests {
         let comm = comm_key.commit(&Fr::from(value), &randomness);
         let comm_d = comm_key.commit_decomposed(base, &digits, &randomness);
         assert_eq!(comm, comm_d)
+    }
+
+    #[test]
+    fn secret_key_validation() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        for base in [2, 4, 8, 16, 32, 64] {
+            generate_secret_key_for_base::<StdRng, Fr>(&mut rng, base);
+        }
+
+        // Create secret key as negative of a base
+        let sk = SecretKey(Fr::from(32).neg());
+
+        for base in [2, 4, 8, 16] {
+            assert!(is_secret_key_valid_for_base(&sk, base));
+        }
+
+        for base in [33, 64, 128] {
+            assert!(!is_secret_key_valid_for_base(&sk, base));
+        }
     }
 }

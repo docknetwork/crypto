@@ -1,4 +1,8 @@
-# Coconut
+<!-- cargo-rdme start -->
 
-- Threshold anonymous credentials
-- Based on the paper [Security Analysis of Coconut, an Attribute-Based Credential Scheme with Threshold Issuance](https://eprint.iacr.org/2022/011)
+# Threshold anonymous credentials using Coconut
+
+- Based on the paper [Security Analysis of Coconut, an Attribute-Based Credential Scheme with Threshold Issuance](https://eprint.iacr.org/2022/011).
+- Contains a modified implementation of PS (Pointcheval-Sanders) signature, as described in the above paper.
+
+<!-- cargo-rdme end -->

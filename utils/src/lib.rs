@@ -1,12 +1,16 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
+extern crate core;
 
 pub mod aliases;
 pub mod extend_some;
 // TODO: Feature gate this
 #[macro_use]
 pub mod serde_utils;
+pub mod ecies;
+pub mod elgamal;
+#[macro_use]
 pub mod ff;
 pub mod hashing_utils;
 pub mod iter;

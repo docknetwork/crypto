@@ -69,7 +69,7 @@ pub mod tests {
     use ark_ec::{
         pairing::Pairing, scalar_mul::wnaf::WnafContext, AffineRepr, CurveGroup, VariableBaseMSM,
     };
-    use ark_ff::PrimeField;
+    use ark_ff::{PrimeField, Zero};
     use ark_std::{
         cfg_iter,
         rand::{rngs::StdRng, SeedableRng},
@@ -81,6 +81,38 @@ pub mod tests {
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
     type G1 = <Bls12_381 as Pairing>::G1;
+    type G2 = <Bls12_381 as Pairing>::G2;
+
+    #[test]
+    fn temp() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let g1 = G1::rand(&mut rng);
+        let g2 = G2::rand(&mut rng);
+        fn get_bytes_g1(g: &G1, compressed: bool) -> Vec<u8> {
+            let mut b = vec![];
+            if compressed {
+                g.serialize_compressed(&mut b).unwrap();
+            } else {
+                g.serialize_uncompressed(&mut b).unwrap();
+            }
+            return b;
+        }
+        fn get_bytes_g2(g: &G2, compressed: bool) -> Vec<u8> {
+            let mut b = vec![];
+            if compressed {
+                g.serialize_compressed(&mut b).unwrap();
+            } else {
+                g.serialize_uncompressed(&mut b).unwrap();
+            }
+            return b;
+        }
+        println!("g1 compressed {:?}", get_bytes_g1(&g1, true));
+        println!("g1 uncompressed {:?}", get_bytes_g1(&g1, false));
+        println!("g2 compressed {:?}", get_bytes_g2(&g2, true));
+        println!("g2 uncompressed {:?}", get_bytes_g2(&g2, false));
+        println!("g1 zero compressed {:?}", get_bytes_g1(&G1::zero(), true));
+        println!("g2 zero compressed {:?}", get_bytes_g2(&G2::zero(), true));
+    }
 
     #[test]
     fn timing_ark_ops() {

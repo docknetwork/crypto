@@ -22,17 +22,21 @@ digest.workspace = true
 serde.workspace = true
 serde_with.workspace = true
 rayon = {workspace = true, optional = true}
-merlin = { package = "dock_merlin", version = "2.0", default-features = false, path = "../merlin" }
+merlin = { package = "dock_merlin", version = "3.0.0", default-features = false, path = "../merlin" }
 itertools.workspace = true
 num = { version = "0.4.1", default-features = false }
+hkdf = {version = "0.12.3", default-features = false}
+sha2 = {version = "0.10.8", default-features = false}
+aead = {version = "0.5.2", default-features = false, features = [ "alloc" ]}
 
 [dev-dependencies]
 blake2.workspace = true
 ark-bls12-381.workspace = true
+chacha20poly1305 = {version = "0.10.1", default-features = false}
 
 [features]
 default = ["parallel"]
-std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std", "ark-poly/std", "merlin/std", "num/std"]
+std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std", "ark-poly/std", "merlin/std", "num/std", "hkdf/std", "sha2/std", "chacha20poly1305/std"]
 print-trace = ["ark-std/print-trace"]
 parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-poly/parallel", "ark-std/parallel", "rayon"]
 #with-serde = ["serde", "serde_with"]

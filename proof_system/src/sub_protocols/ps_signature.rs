@@ -130,19 +130,23 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
         match pairing_checker {
-            Some(c) => proof.verify_with_randomized_pairing_checker(
-                challenge,
-                self.revealed_messages.iter().map(|(idx, msg)| (*idx, msg)),
-                &pk.into(),
-                &params.into(),
-                c,
-            )?,
-            None => proof.verify(
-                challenge,
-                self.revealed_messages.iter().map(|(idx, msg)| (*idx, msg)),
-                &pk.into(),
-                &params.into(),
-            )?,
+            Some(c) => proof
+                .verify_with_randomized_pairing_checker(
+                    challenge,
+                    self.revealed_messages.iter().map(|(idx, msg)| (*idx, msg)),
+                    &pk.into(),
+                    &params.into(),
+                    c,
+                )
+                .map_err(|e| ProofSystemError::PSProofContributionFailed(self.id as u32, e))?,
+            None => proof
+                .verify(
+                    challenge,
+                    self.revealed_messages.iter().map(|(idx, msg)| (*idx, msg)),
+                    &pk.into(),
+                    &params.into(),
+                )
+                .map_err(|e| ProofSystemError::PSProofContributionFailed(self.id as u32, e))?,
         }
         Ok(())
     }
