@@ -3,13 +3,13 @@ use crate::{
     prelude::SecretKey,
     witness::{MembershipWitness, Witness},
 };
-use ark_ec::{pairing::Pairing};
+use ark_ec::pairing::Pairing;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, vec::Vec};
 use short_group_sig::bb_sig::SignatureG1 as BBSig;
 
-use crate::batch_utils::{Omega};
+use crate::batch_utils::Omega;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -110,7 +110,13 @@ impl<E: Pairing> KBPositiveAccumulatorWitness<E> {
             removals.push(r);
             omegas.push(omega);
         }
-        let (_, new_wit) = MembershipWitness::compute_update_for_multiple_batches(Vec::new(), removals, omegas, self.get_accumulator_member(), &self.accum_witness.0)?;
+        let (_, new_wit) = MembershipWitness::compute_update_for_multiple_batches(
+            Vec::new(),
+            removals,
+            omegas,
+            self.get_accumulator_member(),
+            &self.accum_witness.0,
+        )?;
         Ok(KBPositiveAccumulatorWitness {
             signature: self.signature.clone(),
             accum_witness: MembershipWitness(new_wit),

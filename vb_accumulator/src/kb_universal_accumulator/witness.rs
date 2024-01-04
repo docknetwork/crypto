@@ -13,8 +13,7 @@ use ark_std::{cfg_into_iter, cfg_iter, vec, vec::Vec};
 use crate::prelude::Omega;
 use dock_crypto_utils::msm::WindowTable;
 
-use dock_crypto_utils::cfg_iter_sum;
-use dock_crypto_utils::ff::inner_product;
+use dock_crypto_utils::{cfg_iter_sum, ff::inner_product};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
