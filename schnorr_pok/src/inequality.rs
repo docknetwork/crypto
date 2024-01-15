@@ -15,22 +15,20 @@
 //! use the above protocol with commitment set to `C1 - C2` and `v = 0` as `C1 - C2 = g * (m1 - m2) + h * (r1 - r2)`. If `(m1 - m2)` ≠ 0, then `m1` ≠ `m2``
 
 use crate::{
-    error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrCommitment,
-    SchnorrResponse,
+    discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
+    error::SchnorrError,
+    SchnorrCommitment, SchnorrResponse,
 };
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{PrimeField, Zero};
+use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::{
-    concat_slices, hashing_utils::affine_group_elem_from_try_and_incr, misc::n_rand, serde_utils::*,
+    concat_slices, hashing_utils::affine_group_elem_from_try_and_incr, misc::n_rand,
 };
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
-impl_proof_of_knowledge_of_discrete_log!(KnowledgeOfExpProtocol, KnowledgeOfExpProof);
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// The commitment key for commitment `C`
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -63,7 +61,7 @@ pub struct DiscreteLogInequalityProtocol<G: AffineRepr> {
     pub k: G::ScalarField,
     pub b: G,
     pub sc_c: SchnorrCommitment<G>,
-    pub sc_b: KnowledgeOfExpProtocol<G>,
+    pub sc_b: PokDiscreteLogProtocol<G>,
     pub sc_b_ped: SchnorrCommitment<G>,
 }
 
@@ -73,7 +71,7 @@ pub struct InequalityProof<G: AffineRepr> {
     pub b: G,
     pub sc_c: SchnorrResponse<G>,
     pub t_c: G,
-    pub sc_b: KnowledgeOfExpProof<G>,
+    pub sc_b: PokDiscreteLog<G>,
     pub sc_b_ped: SchnorrResponse<G>,
     pub t_b_ped: G,
 }
@@ -97,7 +95,7 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         let sc_c = SchnorrCommitment::new(&[comm_key.g, comm_key.h], n_rand(rng, 2).collect());
         let w = (value - inequal_to) * a;
         let b = comm_key.g * w;
-        let sc_b = KnowledgeOfExpProtocol::init(w, G::ScalarField::rand(rng), &comm_key.g);
+        let sc_b = PokDiscreteLogProtocol::init(w, G::ScalarField::rand(rng), &comm_key.g);
         let sc_b_ped = SchnorrCommitment::new(
             &[
                 Self::base_for_b(commitment, inequal_to, comm_key),

@@ -7,7 +7,7 @@ use crate::{
 };
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use legogroth16::{
     calculate_d,
@@ -176,7 +176,7 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
                 let d = calculate_d(pvk, snark_proof, inputs)?;
                 c.add_multiple_sources_and_target(
                     &[snark_proof.a, snark_proof.c, d],
-                    vec![
+                    [
                         snark_proof.b.into(),
                         pvk.delta_g2_neg_pc.clone(),
                         pvk.gamma_g2_neg_pc.clone(),

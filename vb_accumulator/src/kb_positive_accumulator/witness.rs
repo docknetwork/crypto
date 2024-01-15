@@ -1,6 +1,5 @@
 use crate::{
     error::VBAccumulatorError,
-    prelude::SecretKey,
     witness::{MembershipWitness, Witness},
 };
 use ark_ec::pairing::Pairing;
@@ -9,12 +8,26 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, vec::Vec};
 use short_group_sig::bb_sig::SignatureG1 as BBSig;
 
-use crate::batch_utils::Omega;
+use crate::{batch_utils::Omega, kb_positive_accumulator::setup::SecretKey};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Membership witness in for the positive accumulator
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+    Zeroize,
+    ZeroizeOnDrop,
+)]
+#[serde(bound = "")]
 pub struct KBPositiveAccumulatorWitness<E: Pairing> {
     /// The BB signature on the member
     pub signature: BBSig<E>,
@@ -64,7 +77,7 @@ impl<E: Pairing> KBPositiveAccumulatorWitness<E> {
                 &members,
                 &old_accum_wits,
                 old_accumulator,
-                sk,
+                &sk.accum,
             )?;
         Ok(cfg_into_iter!(new_wits)
             .zip(cfg_into_iter!(old_witnesses))
@@ -134,26 +147,21 @@ mod tests {
             tests::setup_kb_positive_accum, KBPositiveAccumulator,
         },
         persistence::State,
-        setup::{Keypair, SetupParams},
     };
     use ark_bls12_381::{Bls12_381, Fr};
 
+    use crate::kb_positive_accumulator::setup::{PublicKey, SetupParams};
     use ark_std::{
         cfg_iter,
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
     use blake2::Blake2b512;
-    use short_group_sig::{
-        bb_sig::{PublicKeyG2 as BBSigPublicKey, SecretKey as BBSigSecretKey},
-        common::SignatureParams as BBSigParams,
-    };
 
     #[test]
     fn single_membership_witness_update() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let (sig_params, sk, pk, params, keypair, mut accumulator, mut state) =
-            setup_kb_positive_accum(&mut rng);
+        let (params, sk, pk, mut accumulator, mut state) = setup_kb_positive_accum(&mut rng);
 
         let mut members = vec![];
         let mut witnesses = vec![];
@@ -165,10 +173,10 @@ mod tests {
         for _ in 0..count {
             let elem = Fr::rand(&mut rng);
             let wit = accumulator
-                .add::<Blake2b512>(&elem, &keypair.secret_key, &mut state, &sk, &sig_params)
+                .add::<Blake2b512>(&elem, &sk, &params, &mut state)
                 .unwrap();
             accumulator
-                .verify_membership(&elem, &wit, &keypair.public_key, &params, &pk, &sig_params)
+                .verify_membership(&elem, &wit, &pk, &params)
                 .unwrap();
             members.push(elem);
             witnesses.push(wit);
@@ -178,20 +186,13 @@ mod tests {
         let mut i = count - 1;
         loop {
             let new_accumulator = accumulator
-                .remove::<Blake2b512>(&members[i], &keypair.secret_key, &mut state, &sk)
+                .remove::<Blake2b512>(&members[i], &sk, &mut state)
                 .unwrap();
             let mut j = i;
             while j > 0 {
                 // Update witness of each element before i, going backwards
                 assert!(new_accumulator
-                    .verify_membership(
-                        &members[j - 1],
-                        &witnesses[j - 1],
-                        &keypair.public_key,
-                        &params,
-                        &pk,
-                        &sig_params
-                    )
+                    .verify_membership(&members[j - 1], &witnesses[j - 1], &pk, &params)
                     .is_err());
 
                 let start = Instant::now();
@@ -205,14 +206,7 @@ mod tests {
                 update_post_remove_counter += 1;
 
                 new_accumulator
-                    .verify_membership(
-                        &members[j - 1],
-                        &new_wit,
-                        &keypair.public_key,
-                        &params,
-                        &pk,
-                        &sig_params,
-                    )
+                    .verify_membership(&members[j - 1], &new_wit, &pk, &params)
                     .unwrap();
                 witnesses[j - 1] = new_wit;
                 j -= 1;
@@ -233,8 +227,7 @@ mod tests {
     #[test]
     fn batch_updates_witnesses() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let (sig_params, sk, pk, params, keypair, accumulator, mut state) =
-            setup_kb_positive_accum(&mut rng);
+        let (params, sk, pk, accumulator, mut state) = setup_kb_positive_accum(&mut rng);
 
         let additions_1: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
         let additions_2: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
@@ -247,56 +240,24 @@ mod tests {
 
         // Add elements in `additions_1`, compute witnesses for them, then add `additions_2`
         let wits = accumulator
-            .add_batch::<Blake2b512>(
-                additions_1.clone(),
-                &keypair.secret_key,
-                &mut state,
-                &sk,
-                &sig_params,
-            )
+            .add_batch::<Blake2b512>(additions_1.clone(), &sk, &params, &mut state)
             .unwrap();
         let witnesses_1 = accumulator
-            .get_witnesses_for_batch::<Blake2b512>(
-                &additions_1,
-                &keypair.secret_key,
-                &state,
-                &sk,
-                &sig_params,
-            )
+            .get_witnesses_for_batch::<Blake2b512>(&additions_1, &sk, &params, &mut state)
             .unwrap();
         assert_eq!(wits, witnesses_1);
         for i in 0..witnesses_1.len() {
             accumulator
-                .verify_membership(
-                    &additions_1[i],
-                    &witnesses_1[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&additions_1[i], &witnesses_1[i], &pk, &params)
                 .unwrap();
         }
 
         let witnesses_2 = accumulator
-            .add_batch::<Blake2b512>(
-                additions_2.clone(),
-                &keypair.secret_key,
-                &mut state,
-                &sk,
-                &sig_params,
-            )
+            .add_batch::<Blake2b512>(additions_2.clone(), &sk, &params, &mut state)
             .unwrap();
         for i in 0..witnesses_2.len() {
             accumulator
-                .verify_membership(
-                    &additions_2[i],
-                    &witnesses_2[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&additions_2[i], &witnesses_2[i], &pk, &params)
                 .unwrap();
         }
 
@@ -314,30 +275,16 @@ mod tests {
 
         // Remove elements in `removals` and update witnesses for `additions_2`
         let accumulator_2 = accumulator
-            .remove_batch::<Blake2b512>(&removals, &keypair.secret_key, &mut state, &sk)
+            .remove_batch::<Blake2b512>(&removals, &sk, &mut state)
             .unwrap();
         for i in 0..witnesses_1.len() {
             assert!(accumulator_2
-                .verify_membership(
-                    &additions_1[i],
-                    &witnesses_1[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params
-                )
+                .verify_membership(&additions_1[i], &witnesses_1[i], &pk, &params)
                 .is_err());
         }
         for i in 0..witnesses_2.len() {
             assert!(accumulator_2
-                .verify_membership(
-                    &additions_2[i],
-                    &witnesses_2[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params
-                )
+                .verify_membership(&additions_2[i], &witnesses_2[i], &pk, &params)
                 .is_err());
         }
 
@@ -352,20 +299,13 @@ mod tests {
             &removed_members,
             &witnesses_2,
             accumulator.value(),
-            &keypair.secret_key,
+            &sk,
         )
         .unwrap();
         assert_eq!(new_wits.len(), witnesses_2.len());
         for i in 0..new_wits.len() {
             accumulator_2
-                .verify_membership(
-                    &additions_2[i],
-                    &new_wits[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&additions_2[i], &new_wits[i], &pk, &params)
                 .unwrap();
         }
 
@@ -377,24 +317,11 @@ mod tests {
         }
 
         let witnesses_3 = accumulator_2
-            .get_witnesses_for_batch::<Blake2b512>(
-                &remaining,
-                &keypair.secret_key,
-                &state,
-                &sk,
-                &sig_params,
-            )
+            .get_witnesses_for_batch::<Blake2b512>(&remaining, &sk, &params, &mut state)
             .unwrap();
         for i in 0..witnesses_3.len() {
             accumulator_2
-                .verify_membership(
-                    &remaining[i],
-                    &witnesses_3[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&remaining[i], &witnesses_3[i], &pk, &params)
                 .unwrap();
         }
 
@@ -408,44 +335,28 @@ mod tests {
             removals: &[Fr],
             elements: &[Fr],
             old_witnesses: &[KBPositiveAccumulatorWitness<Bls12_381>],
-            keypair: &Keypair<Bls12_381>,
-            params: &SetupParams<Bls12_381>,
             state: &mut dyn State<Fr>,
-            sig_sk: &BBSigSecretKey<Fr>,
-            sig_pk: &BBSigPublicKey<Bls12_381>,
-            sig_params: &BBSigParams<Bls12_381>,
+            sk: &SecretKey<Fr>,
+            pk: &PublicKey<Bls12_381>,
+            params: &SetupParams<Bls12_381>,
         ) -> (
             KBPositiveAccumulator<Bls12_381>,
             Vec<KBPositiveAccumulatorWitness<Bls12_381>>,
         ) {
             let (accumulator_new, _wits) = current_accm
-                .batch_updates::<Blake2b512>(
-                    additions.clone(),
-                    removals,
-                    &keypair.secret_key,
-                    state,
-                    sig_sk,
-                    sig_params,
-                )
+                .batch_updates::<Blake2b512>(additions.clone(), removals, sk, params, state)
                 .unwrap();
             if !removals.is_empty() {
                 for i in 0..old_witnesses.len() {
                     assert!(accumulator_new
-                        .verify_membership(
-                            &elements[i],
-                            &old_witnesses[i],
-                            &keypair.public_key,
-                            params,
-                            sig_pk,
-                            sig_params
-                        )
+                        .verify_membership(&elements[i], &old_witnesses[i], pk, params)
                         .is_err());
                 }
             }
 
             let removed_members = cfg_into_iter!(removals)
                 .map(|r| {
-                    KBPositiveAccumulator::<Bls12_381>::accumulator_member::<Blake2b512>(r, sig_sk)
+                    KBPositiveAccumulator::<Bls12_381>::accumulator_member::<Blake2b512>(r, sk)
                 })
                 .collect::<Vec<_>>();
             let new_witnesses =
@@ -453,20 +364,13 @@ mod tests {
                     &removed_members,
                     old_witnesses,
                     current_accm.value(),
-                    &keypair.secret_key,
+                    sk,
                 )
                 .unwrap();
             assert_eq!(new_witnesses.len(), old_witnesses.len());
             for i in 0..new_witnesses.len() {
                 accumulator_new
-                    .verify_membership(
-                        &elements[i],
-                        &new_witnesses[i],
-                        &keypair.public_key,
-                        params,
-                        sig_pk,
-                        sig_params,
-                    )
+                    .verify_membership(&elements[i], &new_witnesses[i], pk, params)
                     .unwrap();
             }
             (accumulator_new, new_witnesses)
@@ -478,12 +382,10 @@ mod tests {
             &additions_2,
             &remaining,
             &witnesses_3,
-            &keypair,
-            &params,
             &mut state,
             &sk,
             &pk,
-            &sig_params,
+            &params,
         );
         let verification_accumulator_4 =
             KBPositiveAccumulator::<Bls12_381>::from_accumulated(*accumulator_4.value());
@@ -494,12 +396,10 @@ mod tests {
             &[],
             &remaining,
             &witnesses_3,
-            &keypair,
-            &params,
             &mut state_cloned,
             &sk,
             &pk,
-            &sig_params,
+            &params,
         );
         let _verification_accumulator_4_new =
             KBPositiveAccumulator::<Bls12_381>::from_accumulated(*accumulator_4_new.value());
@@ -510,19 +410,16 @@ mod tests {
             &additions_2,
             &remaining,
             &witnesses_6,
-            &keypair,
-            &params,
             &mut state_cloned,
             &sk,
             &pk,
-            &sig_params,
+            &params,
         );
 
         // Public updates to witnesses - each one in `remaining` updates his witness using publicly published info from manager
         let omega = Omega::new_for_kb_positive_accumulator::<Blake2b512>(
             &additions_2,
             accumulator_2.value(),
-            &keypair.secret_key,
             &sk,
         );
 
@@ -539,7 +436,6 @@ mod tests {
                 &additions_2,
                 &remaining[i],
                 accumulator_2.value(),
-                &keypair.secret_key,
                 &sk,
             );
             let new_wit = witnesses_3[i]
@@ -547,14 +443,7 @@ mod tests {
                 .unwrap();
             assert_eq!(witnesses_4[i], new_wit);
             verification_accumulator_4
-                .verify_membership(
-                    &remaining[i],
-                    &new_wit,
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&remaining[i], &new_wit, &pk, &params)
                 .unwrap();
         }
     }
@@ -562,37 +451,23 @@ mod tests {
     #[test]
     fn update_witnesses_after_multiple_batch_updates() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let (sig_params, sk, pk, params, keypair, accumulator, mut state) =
-            setup_kb_positive_accum(&mut rng);
+        let (params, sk, pk, accumulator, mut state) = setup_kb_positive_accum(&mut rng);
 
         let mut members = vec![];
         for _ in 0..10 {
             let elem = Fr::rand(&mut rng);
             accumulator
-                .add::<Blake2b512>(&elem, &keypair.secret_key, &mut state, &sk, &sig_params)
+                .add::<Blake2b512>(&elem, &sk, &params, &mut state)
                 .unwrap();
             members.push(elem)
         }
 
         let witnesses = accumulator
-            .get_witnesses_for_batch::<Blake2b512>(
-                &members,
-                &keypair.secret_key,
-                &state,
-                &sk,
-                &sig_params,
-            )
+            .get_witnesses_for_batch::<Blake2b512>(&members, &sk, &params, &mut state)
             .unwrap();
         for i in 0..10 {
             accumulator
-                .verify_membership(
-                    &members[i],
-                    &witnesses[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&members[i], &witnesses[i], &pk, &params)
                 .unwrap();
         }
 
@@ -622,33 +497,19 @@ mod tests {
             .collect::<Vec<_>>();
 
         accumulator
-            .add_batch::<Blake2b512>(
-                additions_1.clone(),
-                &keypair.secret_key,
-                &mut state,
-                &sk,
-                &sig_params,
-            )
+            .add_batch::<Blake2b512>(additions_1.clone(), &sk, &params, &mut state)
             .unwrap();
         let accumulator_1 = accumulator
-            .remove_batch::<Blake2b512>(&removals_1, &keypair.secret_key, &mut state, &sk)
+            .remove_batch::<Blake2b512>(&removals_1, &sk, &mut state)
             .unwrap();
         for i in 0..witnesses.len() {
             assert!(accumulator_1
-                .verify_membership(
-                    &members[i],
-                    &witnesses[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params
-                )
+                .verify_membership(&members[i], &witnesses[i], &pk, &params)
                 .is_err());
         }
         let omega_1 = Omega::new_for_kb_positive_accumulator::<Blake2b512>(
             &removals_1,
             accumulator.value(),
-            &keypair.secret_key,
             &sk,
         );
 
@@ -660,45 +521,24 @@ mod tests {
                 )])
                 .unwrap();
             accumulator_1
-                .verify_membership(
-                    &members[i],
-                    &new_wit,
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&members[i], &new_wit, &pk, &params)
                 .unwrap();
         }
 
         accumulator_1
-            .add_batch::<Blake2b512>(
-                additions_2.clone(),
-                &keypair.secret_key,
-                &mut state,
-                &sk,
-                &sig_params,
-            )
+            .add_batch::<Blake2b512>(additions_2.clone(), &sk, &params, &mut state)
             .unwrap();
         let accumulator_2 = accumulator_1
-            .remove_batch::<Blake2b512>(&removals_2, &keypair.secret_key, &mut state, &sk)
+            .remove_batch::<Blake2b512>(&removals_2, &sk, &mut state)
             .unwrap();
         for i in 0..witnesses.len() {
             assert!(accumulator_2
-                .verify_membership(
-                    &members[i],
-                    &witnesses[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params
-                )
+                .verify_membership(&members[i], &witnesses[i], &pk, &params)
                 .is_err());
         }
         let omega_2 = Omega::new_for_kb_positive_accumulator::<Blake2b512>(
             &removals_2,
             accumulator_1.value(),
-            &keypair.secret_key,
             &sk,
         );
 
@@ -710,45 +550,24 @@ mod tests {
                 ])
                 .unwrap();
             accumulator_2
-                .verify_membership(
-                    &members[i],
-                    &new_wit,
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&members[i], &new_wit, &pk, &params)
                 .unwrap();
         }
 
         accumulator_2
-            .add_batch::<Blake2b512>(
-                additions_3.clone(),
-                &keypair.secret_key,
-                &mut state,
-                &sk,
-                &sig_params,
-            )
+            .add_batch::<Blake2b512>(additions_3.clone(), &sk, &params, &mut state)
             .unwrap();
         let accumulator_3 = accumulator_2
-            .remove_batch::<Blake2b512>(&removals_3, &keypair.secret_key, &mut state, &sk)
+            .remove_batch::<Blake2b512>(&removals_3, &sk, &mut state)
             .unwrap();
         for i in 0..witnesses.len() {
             assert!(accumulator_3
-                .verify_membership(
-                    &members[i],
-                    &witnesses[i],
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params
-                )
+                .verify_membership(&members[i], &witnesses[i], &pk, &params)
                 .is_err());
         }
         let omega_3 = Omega::new_for_kb_positive_accumulator::<Blake2b512>(
             &removals_3,
             accumulator_2.value(),
-            &keypair.secret_key,
             &sk,
         );
 
@@ -761,14 +580,7 @@ mod tests {
                 ])
                 .unwrap();
             accumulator_3
-                .verify_membership(
-                    &members[i],
-                    &new_wit,
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&members[i], &new_wit, &pk, &params)
                 .unwrap();
         }
     }
@@ -781,17 +593,10 @@ mod tests {
     ) {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        let (sig_params, sk, pk, params, keypair, mut accumulator, mut state) =
-            setup_kb_positive_accum(&mut rng);
+        let (params, sk, pk, mut accumulator, mut state) = setup_kb_positive_accum(&mut rng);
 
         accumulator
-            .add_batch::<Blake2b512>(
-                initial_additions,
-                &keypair.secret_key,
-                &mut state,
-                &sk,
-                &sig_params,
-            )
+            .add_batch::<Blake2b512>(initial_additions, &sk, &params, &mut state)
             .unwrap();
 
         let mut omegas = vec![];
@@ -799,7 +604,7 @@ mod tests {
 
         // Witness that will be updated with multiple batches
         let wit = accumulator
-            .get_witness::<Blake2b512>(member, &keypair.secret_key, &mut state, &sk, &sig_params)
+            .get_witness::<Blake2b512>(member, &sk, &params, &mut state)
             .unwrap();
 
         // This witness is updated with only 1 batch in each iteration of the loop below
@@ -809,17 +614,15 @@ mod tests {
             let omega = Omega::new_for_kb_positive_accumulator::<Blake2b512>(
                 &removals[i],
                 accumulator.value(),
-                &keypair.secret_key,
                 &sk,
             );
             let new = accumulator
                 .batch_updates::<Blake2b512>(
                     additions[i].clone(),
                     &removals[i],
-                    &keypair.secret_key,
-                    &mut state,
                     &sk,
-                    &sig_params,
+                    &params,
+                    &mut state,
                 )
                 .unwrap();
             accumulator = new.0;
@@ -832,14 +635,7 @@ mod tests {
                 .update_using_public_info_after_batch_updates(&removed, &omega)
                 .unwrap();
             accumulator
-                .verify_membership(
-                    member,
-                    &wit_temp,
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(member, &wit_temp, &pk, &params)
                 .unwrap();
             omegas.push(omega);
             removed_members.push(removed);
@@ -855,14 +651,7 @@ mod tests {
             .unwrap();
 
         accumulator
-            .verify_membership(
-                member,
-                &new_wit,
-                &keypair.public_key,
-                &params,
-                &pk,
-                &sig_params,
-            )
+            .verify_membership(member, &new_wit, &pk, &params)
             .unwrap();
     }
 
@@ -921,24 +710,17 @@ mod tests {
     #[test]
     fn update_witnesses_after_multiple_batch_updates_2() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let (sig_params, sk, pk, params, keypair, mut accumulator, mut state) =
-            setup_kb_positive_accum(&mut rng);
+        let (params, sk, pk, mut accumulator, mut state) = setup_kb_positive_accum(&mut rng);
         let e0 = Fr::rand(&mut rng);
 
         let elements: Vec<Fr> = (0..12).map(|_| Fr::rand(&mut rng)).collect();
 
         accumulator
-            .add_batch::<Blake2b512>(
-                vec![e0, elements[0], elements[1]],
-                &keypair.secret_key,
-                &mut state,
-                &sk,
-                &sig_params,
-            )
+            .add_batch::<Blake2b512>(vec![e0, elements[0], elements[1]], &sk, &params, &mut state)
             .unwrap();
 
         let wit = accumulator
-            .get_witness::<Blake2b512>(&e0, &keypair.secret_key, &mut state, &sk, &sig_params)
+            .get_witness::<Blake2b512>(&e0, &sk, &params, &mut state)
             .unwrap();
 
         let mut wit_temp = wit.clone();
@@ -960,7 +742,6 @@ mod tests {
             let omega = Omega::new_for_kb_positive_accumulator::<Blake2b512>(
                 removals.last().unwrap(),
                 accumulator.value(),
-                &keypair.secret_key,
                 &sk,
             );
             omegas.push(omega);
@@ -968,10 +749,9 @@ mod tests {
                 .batch_updates::<Blake2b512>(
                     additions.last().unwrap().clone(),
                     removals.last().unwrap(),
-                    &keypair.secret_key,
-                    &mut state,
                     &sk,
-                    &sig_params,
+                    &params,
+                    &mut state,
                 )
                 .unwrap();
             accumulator = new.0;
@@ -982,14 +762,7 @@ mod tests {
                 )
                 .unwrap();
             accumulator
-                .verify_membership(
-                    &e0,
-                    &wit_temp,
-                    &keypair.public_key,
-                    &params,
-                    &pk,
-                    &sig_params,
-                )
+                .verify_membership(&e0, &wit_temp, &pk, &params)
                 .unwrap();
         }
 
@@ -1003,14 +776,7 @@ mod tests {
             .unwrap();
 
         accumulator
-            .verify_membership(
-                &e0,
-                &new_wit,
-                &keypair.public_key,
-                &params,
-                &pk,
-                &sig_params,
-            )
+            .verify_membership(&e0, &new_wit, &pk, &params)
             .unwrap();
     }
 }

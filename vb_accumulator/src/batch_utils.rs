@@ -26,12 +26,11 @@ use dock_crypto_utils::{
     poly::{inner_product_poly, multiply_many_polys, multiply_poly},
     serde_utils::*,
 };
-use short_group_sig::bb_sig::SecretKey as BBSigSecretKey;
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use dock_crypto_utils::ff::inner_product;
+use dock_crypto_utils::ff::{inner_product, powers};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -476,7 +475,8 @@ where
     }
 }
 
-/// Published by the accumulator manager to allow witness updates without secret info. Defined in section 4.1 of the paper
+/// Published by the accumulator manager to allow witness updates without secret info. This "represents" a polynomial which
+/// will be evaluated at the element whose witness needs to be updated. Defined in section 4.1 of the paper
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -510,13 +510,12 @@ where
     pub fn new_for_kb_positive_accumulator<D: Default + DynDigest + Clone>(
         removals: &[G::ScalarField],
         old_accumulator: &G,
-        sk: &SecretKey<G::ScalarField>,
-        sig_sk: &BBSigSecretKey<G::ScalarField>,
+        sk: &crate::kb_positive_accumulator::setup::SecretKey<G::ScalarField>,
     ) -> Self {
         let accum_members = cfg_into_iter!(removals)
-            .map(|r| prf::<G::ScalarField, D>(r, sig_sk))
+            .map(|r| prf::<G::ScalarField, D>(r, &sk.sig))
             .collect::<Vec<_>>();
-        let poly = Poly_v_D::generate(&accum_members, &sk.0);
+        let poly = Poly_v_D::generate(&accum_members, &sk.accum.0);
         let coeffs = poly.get_coefficients();
         Self(G::Group::normalize_batch(
             &multiply_field_elems_with_same_group_elem(old_accumulator.into_group().neg(), coeffs),
@@ -643,7 +642,8 @@ where
         (omega_mem, omega_non_mem)
     }
 
-    /// Inner product of powers of `y`, i.e. the element for which witness needs to be updated and `omega`
+    /// Inner product of powers of `y`, i.e. the element for which witness needs to be updated and `omega`.
+    /// Equivalent to evaluating the polynomial at `y` and multiplying the result by `scalar`
     /// Used by the (non)member to update its witness without the knowledge of secret key.
     pub fn inner_product_with_scaled_powers_of_y(
         &self,
@@ -653,6 +653,16 @@ where
         let powers_of_y = Self::scaled_powers_of_y(y, scalar, self.len());
         // <powers_of_y, omega>
         G::Group::msm_unchecked(&self.0, &powers_of_y)
+    }
+
+    pub fn inner_product_with_scaled_powers_of_y_temp(
+        &self,
+        y: &G::ScalarField,
+        scalar: &G::ScalarField,
+    ) -> G::Group {
+        let pow = powers(y, self.len() as u32);
+        let r = G::Group::msm_unchecked(&self.0, &pow);
+        r * scalar
     }
 
     /// Return [`scalar`*1, `scalar`*`y`, `scalar`*`y^2`, `scalar`*`y^3`, ..., `scalar`*`y^{n-1}`]
@@ -722,16 +732,15 @@ where
         removals: &[G::ScalarField],
         element: &G::ScalarField,
         old_accumulator: &G,
-        sk: &SecretKey<G::ScalarField>,
-        sig_sk: &BBSigSecretKey<G::ScalarField>,
+        sk: &crate::kb_positive_accumulator::setup::SecretKey<G::ScalarField>,
     ) {
         use ark_ff::Field;
 
         let removed_members = cfg_into_iter!(removals)
-            .map(|r| prf::<G::ScalarField, D>(r, sig_sk))
+            .map(|r| prf::<G::ScalarField, D>(r, &sk.sig))
             .collect::<Vec<_>>();
-        let member = prf::<G::ScalarField, D>(element, sig_sk);
-        let v_D = Poly_v_D::eval_direct(&removed_members, &sk.0, &member);
+        let member = prf::<G::ScalarField, D>(element, &sk.sig);
+        let v_D = Poly_v_D::eval_direct(&removed_members, &sk.accum.0, &member);
         let d_D_inv = Poly_d::eval_direct(&removed_members, &member)
             .inverse()
             .unwrap();
@@ -739,8 +748,7 @@ where
         let mut V_prime = old_accumulator.into_group();
         V_prime *= v_D * d_D_inv;
 
-        let omega =
-            Self::new_for_kb_positive_accumulator::<D>(removals, old_accumulator, sk, sig_sk);
+        let omega = Self::new_for_kb_positive_accumulator::<D>(removals, old_accumulator, sk);
         // <powers_of_y, omega> * 1/d_D(x)
         let y_omega_ip = omega.inner_product_with_scaled_powers_of_y(&member, &d_D_inv);
 
@@ -751,7 +759,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, G1Affine};
     use ark_ec::pairing::Pairing;
     use ark_ff::One;
     use ark_std::{
@@ -932,6 +940,35 @@ mod tests {
 
             test_poly_time!(count, updates, alpha, x, Poly_v_A, "Poly_v_A");
             test_poly_time!(count, updates, alpha, x, Poly_v_D, "Poly_v_D");
+        }
+    }
+
+    #[test]
+    fn omega() {
+        // Test evaluation of polynomials defined above
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let secret_key = SecretKey(Fr::rand(&mut rng));
+        let accum_value = G1Affine::rand(&mut rng);
+        let scalar = Fr::rand(&mut rng);
+        let y = Fr::rand(&mut rng);
+        for size in [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000] {
+            let additions = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<Fr>>();
+            let removals = (0..size).map(|_| Fr::rand(&mut rng)).collect::<Vec<Fr>>();
+            let omega = Omega::new(&additions, &removals, &accum_value, &secret_key);
+            println!(
+                "For {} additions and removals, omega size is {}",
+                size,
+                omega.len()
+            );
+
+            let start = Instant::now();
+            let e1 = omega.inner_product_with_scaled_powers_of_y(&y, &scalar);
+            println!("Time taken is {:?}", start.elapsed());
+
+            let start = Instant::now();
+            let e2 = omega.inner_product_with_scaled_powers_of_y_temp(&y, &scalar);
+            println!("Time taken with temp is {:?}", start.elapsed());
+            assert_eq!(e1, e2);
         }
     }
 }

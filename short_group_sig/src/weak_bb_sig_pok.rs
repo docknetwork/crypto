@@ -9,19 +9,14 @@ use ark_ec::{
     pairing::{Pairing, PairingOutput},
     AffineRepr, CurveGroup,
 };
-use ark_ff::PrimeField;
+
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::{
-    error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrCommitment,
-    SchnorrResponse,
-};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use schnorr_pok::{SchnorrCommitment, SchnorrResponse};
 
-impl_proof_of_knowledge_of_discrete_log!(RandomnessKnowledgeProtocol, RandomnessKnowledgeProof);
+use schnorr_pok::discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Protocol to prove knowledge of a weak-BB signature in group G1
 #[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
@@ -36,9 +31,9 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     #[zeroize(skip)]
     pub T3: E::G1Affine,
     /// Protocol for proving knowledge of `alpha` in `T1 = u * alpha`
-    pub sc_T1: RandomnessKnowledgeProtocol<E::G1Affine>,
+    pub sc_T1: PokDiscreteLogProtocol<E::G1Affine>,
     /// Protocol for proving knowledge of `beta` in `T2 = v * beta`
-    pub sc_T2: RandomnessKnowledgeProtocol<E::G1Affine>,
+    pub sc_T2: PokDiscreteLogProtocol<E::G1Affine>,
     /// For proving knowledge of `message` and `delta_1` in `T1 * message + u * delta_1 = 0`
     pub sc_T1_x: SchnorrCommitment<E::G1Affine>,
     /// For proving knowledge of `message` and `delta_2` in `T2 * message + v * delta_2 = 0`
@@ -64,9 +59,9 @@ pub struct PoKOfSignatureG1Proof<E: Pairing> {
     /// `A + h * (alpha + beta)`
     pub T3: E::G1Affine,
     /// Proof of knowledge of `alpha` in `T1 = u * alpha`
-    pub sc_T1: RandomnessKnowledgeProof<E::G1Affine>,
+    pub sc_T1: PokDiscreteLog<E::G1Affine>,
     /// Proof of knowledge of `beta` in `T2 = v * beta`
-    pub sc_T2: RandomnessKnowledgeProof<E::G1Affine>,
+    pub sc_T2: PokDiscreteLog<E::G1Affine>,
     /// For relation `T1 * message + u * delta_1 = 0`
     pub sc_T1_x_t: E::G1Affine,
     pub sc_T1_x_resp: SchnorrResponse<E::G1Affine>,
@@ -86,7 +81,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         pk: &PublicKeyG2<E>,
         params: &SignatureParams<E>,
         proving_key: &ProvingKey<E::G1Affine>,
-    ) -> Result<Self, ShortGroupSigError> {
+    ) -> Self {
         let A = signature.0;
         let alpha = E::ScalarField::rand(rng);
         let beta = E::ScalarField::rand(rng);
@@ -103,8 +98,8 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let r_beta = E::ScalarField::rand(rng);
         let r_delta_1 = E::ScalarField::rand(rng);
         let r_delta_2 = E::ScalarField::rand(rng);
-        let sc_T1 = RandomnessKnowledgeProtocol::init(alpha, r_alpha, &proving_key.X);
-        let sc_T2 = RandomnessKnowledgeProtocol::init(beta, r_beta, &proving_key.Y);
+        let sc_T1 = PokDiscreteLogProtocol::init(alpha, r_alpha, &proving_key.X);
+        let sc_T2 = PokDiscreteLogProtocol::init(beta, r_beta, &proving_key.Y);
         let sc_T1_x = SchnorrCommitment::new(&[T1, proving_key.X], vec![r_x, r_delta_1]);
         let sc_T2_x = SchnorrCommitment::new(&[T2, proving_key.Y], vec![r_x, r_delta_2]);
         let g2_prepared = E::G2Prepared::from(params.g2);
@@ -117,7 +112,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
             ],
             [g2_prepared.clone(), E::G2Prepared::from(pk.0), g2_prepared],
         );
-        Ok(Self {
+        Self {
             T1,
             T2,
             T3: T3.into(),
@@ -129,7 +124,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
             delta_1,
             delta_2,
             message,
-        })
+        }
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -212,8 +207,83 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
     pub fn verify(
         &self,
         challenge: &E::ScalarField,
-        pk: &PublicKeyG2<E>,
-        params: &SignatureParams<E>,
+        pk: impl Into<E::G2Prepared>,
+        g1: impl Into<E::G1Affine>,
+        g2: impl Into<E::G2Prepared>,
+        proving_key: &ProvingKey<E::G1Affine>,
+    ) -> Result<(), ShortGroupSigError> {
+        self.verify_except_pairings(challenge, proving_key)?;
+        let s_message = self.sc_T1_x_resp.get_response(0)?;
+        let g2_prepared = g2.into();
+        let pk_prepared = pk.into();
+        // Following is the pairing check equation from the paper converted to a single multi-pairing
+        if self.R_3
+            != E::multi_pairing(
+                [
+                    E::G1Prepared::from(self.T3 * s_message),
+                    E::G1Prepared::from(
+                        proving_key.Z * (self.sc_T1.response.neg() + self.sc_T2.response.neg()),
+                    ),
+                    E::G1Prepared::from(
+                        proving_key.Z
+                            * (*self.sc_T1_x_resp.get_response(1)?
+                                + self.sc_T2_x_resp.get_response(1)?),
+                    ),
+                    E::G1Prepared::from(self.T3 * challenge),
+                    E::G1Prepared::from(g1.into() * challenge.neg()),
+                ],
+                [
+                    g2_prepared.clone(),
+                    pk_prepared.clone(),
+                    g2_prepared.clone(),
+                    pk_prepared,
+                    g2_prepared,
+                ],
+            )
+        {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
+        Ok(())
+    }
+
+    pub fn verify_with_randomized_pairing_checker(
+        &self,
+        challenge: &E::ScalarField,
+        pk: impl Into<E::G2Prepared>,
+        g1: impl Into<E::G1Affine>,
+        g2: impl Into<E::G2Prepared>,
+        proving_key: &ProvingKey<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), ShortGroupSigError> {
+        self.verify_except_pairings(challenge, proving_key)?;
+        let s_message = self.sc_T1_x_resp.get_response(0)?;
+        let g2_prepared = g2.into();
+        let pk_prepared = pk.into();
+        pairing_checker.add_multiple_sources_and_target(
+            &[
+                (self.T3 * s_message).into(),
+                (proving_key.Z * (self.sc_T1.response.neg() + self.sc_T2.response.neg())).into(),
+                (proving_key.Z
+                    * (*self.sc_T1_x_resp.get_response(1)? + self.sc_T2_x_resp.get_response(1)?))
+                .into(),
+                (self.T3 * challenge).into(),
+                (g1.into() * challenge.neg()).into(),
+            ],
+            [
+                g2_prepared.clone(),
+                pk_prepared.clone(),
+                g2_prepared.clone(),
+                pk_prepared,
+                g2_prepared,
+            ],
+            &self.R_3,
+        );
+        Ok(())
+    }
+
+    pub fn verify_except_pairings(
+        &self,
+        challenge: &E::ScalarField,
         proving_key: &ProvingKey<E::G1Affine>,
     ) -> Result<(), ShortGroupSigError> {
         if !self.sc_T1.verify(&self.T1, &proving_key.X, challenge) {
@@ -232,35 +302,6 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
             .is_valid(&[self.T1, proving_key.X], &zero, &self.sc_T1_x_t, challenge)?;
         self.sc_T2_x_resp
             .is_valid(&[self.T2, proving_key.Y], &zero, &self.sc_T2_x_t, challenge)?;
-        let g2_prepared = E::G2Prepared::from(params.g2);
-        let pk_prepared = E::G2Prepared::from(pk.0);
-        // Following is the pairing check equation from the paper converted to a single multi-pairing
-        if self.R_3
-            != E::multi_pairing(
-                [
-                    E::G1Prepared::from(self.T3 * s_message),
-                    E::G1Prepared::from(
-                        proving_key.Z * (self.sc_T1.response.neg() + self.sc_T2.response.neg()),
-                    ),
-                    E::G1Prepared::from(
-                        proving_key.Z
-                            * (*self.sc_T1_x_resp.get_response(1)?
-                                + self.sc_T2_x_resp.get_response(1)?),
-                    ),
-                    E::G1Prepared::from(self.T3 * challenge),
-                    E::G1Prepared::from(params.g1 * challenge.neg()),
-                ],
-                [
-                    g2_prepared.clone(),
-                    pk_prepared.clone(),
-                    g2_prepared.clone(),
-                    pk_prepared,
-                    g2_prepared,
-                ],
-            )
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
         Ok(())
     }
 
@@ -293,7 +334,10 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::weak_bb_sig::SecretKey;
+    use crate::{
+        common::SignatureParamsWithPairing,
+        weak_bb_sig::{PreparedPublicKeyG2, SecretKey},
+    };
     use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
@@ -306,16 +350,17 @@ mod tests {
     fn proof_of_knowledge_of_signature() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let params = SignatureParams::<Bls12_381>::new::<Blake2b512>(b"test-params");
+        let params_with_pairing = SignatureParamsWithPairing::<Bls12_381>::from(params.clone());
         let prk = ProvingKey::<G1Affine>::generate_using_hash::<Blake2b512>(b"test-proving-key");
 
         let sk = SecretKey::new(&mut rng);
         let pk = PublicKeyG2::generate_using_secret_key(&sk, &params);
+        let prepared_pk = PreparedPublicKeyG2::from(pk.clone());
         let message = Fr::rand(&mut rng);
         let sig = SignatureG1::new(&message, &sk, &params);
 
         let protocol =
-            PoKOfSignatureG1Protocol::init(&mut rng, &sig, message, None, &pk, &params, &prk)
-                .unwrap();
+            PoKOfSignatureG1Protocol::init(&mut rng, &sig, message, None, &pk, &params, &prk);
         let mut chal_bytes_prover = vec![];
         protocol
             .challenge_contribution(&params, &prk, &mut chal_bytes_prover)
@@ -332,7 +377,20 @@ mod tests {
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
         assert_eq!(challenge_prover, challenge_verifier);
         proof
-            .verify(&challenge_verifier, &pk, &params, &prk)
+            .verify(&challenge_verifier, pk.0, params.g1, params.g2, &prk)
             .unwrap();
+
+        let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
+        proof
+            .verify_with_randomized_pairing_checker(
+                &challenge_verifier,
+                prepared_pk.0,
+                params.g1,
+                params_with_pairing.g2_prepared,
+                &prk,
+                &mut pairing_checker,
+            )
+            .unwrap();
+        assert!(pairing_checker.verify());
     }
 }

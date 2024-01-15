@@ -1,16 +1,11 @@
 //! Credential show and verification from Fig. 3 of the paper
 
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_ff::PrimeField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_ec::pairing::Pairing;
+
 use ark_std::{collections::BTreeSet, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+use schnorr_pok::discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol};
 
 use crate::{
     error::DelegationError,
@@ -24,8 +19,6 @@ use crate::{
     },
 };
 
-impl_proof_of_knowledge_of_discrete_log!(NymOwnershipProtocol, NymOwnership);
-
 #[derive(Clone, Debug)]
 pub struct CredentialShow<E: Pairing> {
     /// Commitment to each attribute set
@@ -36,7 +29,7 @@ pub struct CredentialShow<E: Pairing> {
     pub disclosed_attributes_witness: AggregateSubsetWitness<E>,
     pub pseudonym: UserPublicKey<E>,
     /// Schnorr proof of knowledge of secret key corresponding to the pseudonym.
-    pub schnorr: NymOwnership<E::G1Affine>,
+    pub schnorr: PokDiscreteLog<E::G1Affine>,
 }
 
 /// Protocol to create `CredentialShow`
@@ -47,7 +40,7 @@ pub struct CredentialShowProtocol<E: Pairing> {
     pub disclosed_attributes_witness: AggregateSubsetWitness<E>,
     pub pseudonym: UserPublicKey<E>,
     pub pseudonym_secret: UserSecretKey<E>,
-    pub schnorr: NymOwnershipProtocol<E::G1Affine>,
+    pub schnorr: PokDiscreteLogProtocol<E::G1Affine>,
 }
 
 impl<E: Pairing> CredentialShowProtocol<E> {
@@ -94,7 +87,7 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         )?;
 
         let blinding = E::ScalarField::rand(rng);
-        let schnorr = NymOwnershipProtocol::init(new_usk.0, blinding, set_comm_srs.get_P1());
+        let schnorr = PokDiscreteLogProtocol::init(new_usk.0, blinding, set_comm_srs.get_P1());
         Ok(Self {
             commitments: rand_cred.commitments.clone(),
             signature: rand_cred.signature,

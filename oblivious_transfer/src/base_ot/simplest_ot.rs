@@ -7,16 +7,17 @@
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, cfg_iter, io::Write, rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::{Digest, ExtendableOutput, Update};
 use dock_crypto_utils::{msm::WindowTable, serde_utils::ArkObjectBytes};
 use itertools::Itertools;
 use schnorr_pok::{
-    compute_random_oracle_challenge, error::SchnorrError, impl_proof_of_knowledge_of_discrete_log,
+    compute_random_oracle_challenge,
+    discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 
 use crate::{error::OTError, util, Bit, Key};
 
@@ -27,8 +28,6 @@ use rayon::prelude::*;
 
 use crate::configs::OTConfig;
 use sha3::{Sha3_256, Shake256};
-
-impl_proof_of_knowledge_of_discrete_log!(SecretKnowledgeProtocol, SecretKnowledgeProof);
 
 /// Public key created by base OT sender and sent to the receiver
 #[serde_as]
@@ -175,10 +174,10 @@ impl<G: AffineRepr> ROTSenderSetup<G> {
         rng: &mut R,
         num_ot: u16,
         B: &G,
-    ) -> Result<(Self, SenderPubKey<G>, SecretKnowledgeProof<G>), OTError> {
+    ) -> Result<(Self, SenderPubKey<G>, PokDiscreteLog<G>), OTError> {
         let (setup, S) = Self::new(rng, OTConfig::new_2_message(num_ot)?, B);
         let blinding = G::ScalarField::rand(rng);
-        let schnorr_protocol = SecretKnowledgeProtocol::init(setup.y.clone(), blinding, B);
+        let schnorr_protocol = PokDiscreteLogProtocol::init(setup.y.clone(), blinding, B);
         let mut challenge_bytes = vec![];
         schnorr_protocol
             .challenge_contribution(B, &S.0, &mut challenge_bytes)
@@ -280,7 +279,7 @@ impl ROTReceiverKeys {
         num_ot: u16,
         choices: Vec<Bit>,
         S: SenderPubKey<G>,
-        schnorr_proof: &SecretKnowledgeProof<G>,
+        schnorr_proof: &PokDiscreteLog<G>,
         B: &G,
     ) -> Result<(Self, ReceiverPubKeys<G>), OTError> {
         let mut challenge_bytes = vec![];
@@ -759,7 +758,6 @@ pub mod tests {
             check_base_ot_keys(&choices, &receiver_keys, &sender_keys);
 
             if check_serialization {
-                test_serialization!(SecretKnowledgeProof<G1>, schnorr_proof);
                 test_serialization!(OneOfTwoROTSenderKeys, sender_keys);
                 test_serialization!(VSROTChallenger, sender_challenger);
                 test_serialization!(Challenges, challenges);

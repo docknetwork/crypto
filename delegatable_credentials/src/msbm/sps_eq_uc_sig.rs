@@ -8,7 +8,6 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     cfg_into_iter, cfg_iter,
     collections::BTreeSet,
-    io::Write,
     ops::{Add, Mul, Neg},
     rand::RngCore,
     vec::Vec,
@@ -17,10 +16,11 @@ use ark_std::{
 use digest::Digest;
 
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+
+use schnorr_pok::discrete_log::PokDiscreteLog;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 
 use crate::{
     mercurial_sig::Signature as MercurialSig,
@@ -35,8 +35,6 @@ use crate::{
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-impl_proof_of_knowledge_of_discrete_log!(RandCommitmentProtocol, RandCommitmentProof);
 
 #[serde_as]
 #[derive(
@@ -130,7 +128,7 @@ impl<E: Pairing> Signature<E> {
         rng: &mut R,
         trapdoor_set_comm_srs: &E::ScalarField,
         commitment_to_randomness: Vec<E::G1Affine>,
-        commitment_to_randomness_proof: Vec<RandCommitmentProof<E::G1Affine>>,
+        commitment_to_randomness_proof: Vec<PokDiscreteLog<E::G1Affine>>,
         challenge: &E::ScalarField,
         messages: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,

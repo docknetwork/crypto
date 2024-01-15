@@ -12,17 +12,39 @@ use ark_ff::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::DynDigest;
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Secret key used by the signer to sign messages
+#[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Zeroize,
+    ZeroizeOnDrop,
+    Serialize,
+    Deserialize,
 )]
-pub struct SecretKey<F: PrimeField>(pub F, pub F);
+pub struct SecretKey<F: PrimeField>(
+    #[serde_as(as = "ArkObjectBytes")] pub F,
+    #[serde_as(as = "ArkObjectBytes")] pub F,
+);
 
 /// Public key used to verify signatures
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PublicKeyG2<E: Pairing>(pub <E as Pairing>::G2Affine, pub <E as Pairing>::G2Affine);
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct PublicKeyG2<E: Pairing>(
+    #[serde_as(as = "ArkObjectBytes")] pub <E as Pairing>::G2Affine,
+    #[serde_as(as = "ArkObjectBytes")] pub <E as Pairing>::G2Affine,
+);
 
 impl<F: PrimeField> SecretKey<F> {
     pub fn new<R: RngCore>(rng: &mut R) -> Self {
@@ -30,10 +52,7 @@ impl<F: PrimeField> SecretKey<F> {
     }
 }
 
-impl<E: Pairing> PublicKeyG2<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> PublicKeyG2<E> {
     pub fn generate_using_secret_key(
         secret_key: &SecretKey<E::ScalarField>,
         params: &SignatureParams<E>,
@@ -51,10 +70,32 @@ where
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct PreparedPublicKeyG2<E: Pairing>(pub E::G2Prepared, pub E::G2Prepared, pub E::G2Affine);
+
+impl<E: Pairing> From<PublicKeyG2<E>> for PreparedPublicKeyG2<E> {
+    fn from(pk: PublicKeyG2<E>) -> Self {
+        Self(E::G2Prepared::from(pk.0), E::G2Prepared::from(pk.1), pk.1)
+    }
+}
+
+#[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Zeroize,
+    ZeroizeOnDrop,
+    Serialize,
+    Deserialize,
 )]
-pub struct SignatureG1<E: Pairing>(pub E::G1Affine, pub E::ScalarField);
+pub struct SignatureG1<E: Pairing>(
+    #[serde_as(as = "ArkObjectBytes")] pub E::G1Affine,
+    #[serde_as(as = "ArkObjectBytes")] pub E::ScalarField,
+);
 
 impl<E: Pairing> SignatureG1<E> {
     /// Create a new signature

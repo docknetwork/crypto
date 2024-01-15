@@ -2,9 +2,11 @@
 
 pub mod adaptive_accumulator;
 pub mod non_adaptive_accumulator;
-pub mod proofs;
+// pub mod proofs;
 pub mod witness;
 
-pub mod proofs_alt;
+pub mod proofs;
+pub mod proofs_cdh;
+pub mod setup;
 
 pub use adaptive_accumulator::KBPositiveAccumulator;

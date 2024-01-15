@@ -7,8 +7,12 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
+};
 use schnorr_pok::{SchnorrCommitment, SchnorrResponse};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
@@ -25,10 +29,16 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     sc_wits: (E::ScalarField, E::ScalarField),
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct PoKOfSignatureG1Proof<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub A_prime: E::G1Affine,
+    #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
+    #[serde_as(as = "ArkObjectBytes")]
     pub t: E::G1Affine,
     pub sc_resp: SchnorrResponse<E::G1Affine>,
 }
@@ -40,7 +50,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         message: E::ScalarField,
         blinding: Option<E::ScalarField>,
         g1: impl Into<E::G1Affine>,
-    ) -> Result<Self, ShortGroupSigError> {
+    ) -> Self {
         let r = E::ScalarField::rand(rng);
         let blinding = blinding.unwrap_or_else(|| E::ScalarField::rand(rng));
         // A * r
@@ -54,12 +64,12 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
             vec![E::ScalarField::rand(rng), blinding],
         );
         let sc_wits = (r, message);
-        Ok(Self {
+        Self {
             A_prime: A_prime.into_affine(),
             A_bar: A_bar.into_affine(),
             sc_comm,
             sc_wits,
-        })
+        }
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -114,15 +124,7 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
         g1: impl Into<E::G1Affine>,
         g2: impl Into<E::G2Prepared>,
     ) -> Result<(), ShortGroupSigError> {
-        if self.A_prime.is_zero() {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-        self.sc_resp.is_valid(
-            &[g1.into(), self.A_prime.into_group().neg().into()],
-            &self.A_bar,
-            &self.t,
-            challenge,
-        )?;
+        self.verify_except_pairings(challenge, g1)?;
         if !E::multi_pairing(
             [
                 E::G1Prepared::from(self.A_bar),
@@ -145,6 +147,16 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
         g2: impl Into<E::G2Prepared>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), ShortGroupSigError> {
+        self.verify_except_pairings(challenge, g1)?;
+        pairing_checker.add_sources(&self.A_prime, pk.into(), &self.A_bar, g2);
+        Ok(())
+    }
+
+    pub fn verify_except_pairings(
+        &self,
+        challenge: &E::ScalarField,
+        g1: impl Into<E::G1Affine>,
+    ) -> Result<(), ShortGroupSigError> {
         if self.A_prime.is_zero() {
             return Err(ShortGroupSigError::InvalidProof);
         }
@@ -154,7 +166,6 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
             &self.t,
             challenge,
         )?;
-        pairing_checker.add_sources(&self.A_prime, pk.into(), &self.A_bar, g2);
         Ok(())
     }
 
@@ -204,8 +215,7 @@ mod tests {
         let sig = SignatureG1::new(&message, &sk, &params);
 
         let protocol =
-            PoKOfSignatureG1Protocol::<Bls12_381>::init(&mut rng, sig, message, None, params.g1)
-                .unwrap();
+            PoKOfSignatureG1Protocol::<Bls12_381>::init(&mut rng, sig, message, None, params.g1);
 
         let mut chal_bytes_prover = vec![];
         protocol

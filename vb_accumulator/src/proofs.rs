@@ -979,7 +979,7 @@ where
     /// [`randomize_witness_and_compute_commitments`]: ProofProtocol::randomize_witness_and_compute_commitments
     pub fn init<R: RngCore>(
         rng: &mut R,
-        element: &E::ScalarField,
+        element: E::ScalarField,
         element_blinding: Option<E::ScalarField>,
         witness: &MembershipWitness<E::G1Affine>,
         pk: &PublicKey<E>,
@@ -988,7 +988,7 @@ where
     ) -> Self {
         let (rw, sc, bl) = Self::randomize_witness_and_compute_commitments(
             rng,
-            element,
+            &element,
             element_blinding,
             &witness.0,
             None,
@@ -997,7 +997,7 @@ where
             prk.as_ref(),
         );
         Self {
-            element: *element,
+            element,
             randomized_witness: MembershipRandomizedWitness(rw),
             schnorr_commit: MembershipSchnorrCommit(sc),
             schnorr_blindings: MembershipBlindings(bl),
@@ -1030,13 +1030,16 @@ where
     /// Create membership proof once the overall challenge is ready. Delegates to [`compute_responses`]
     ///
     /// [`compute_responses`]: ProofProtocol::compute_responses
-    pub fn gen_proof(self, challenge: &E::ScalarField) -> MembershipProof<E> {
+    pub fn gen_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<MembershipProof<E>, VBAccumulatorError> {
         let resp = Self::compute_responses(&self.element, &self.schnorr_blindings.0, challenge);
-        MembershipProof {
+        Ok(MembershipProof {
             randomized_witness: self.randomized_witness.clone(),
             schnorr_commit: self.schnorr_commit.clone(),
             schnorr_response: MembershipSchnorrResponse(resp),
-        }
+        })
     }
 }
 
@@ -1052,7 +1055,7 @@ where
     /// [`randomize_witness_and_compute_commitments`]: ProofProtocol::randomize_witness_and_compute_commitments
     pub fn init<R: RngCore>(
         rng: &mut R,
-        element: &E::ScalarField,
+        element: E::ScalarField,
         element_blinding: Option<E::ScalarField>,
         witness: &NonMembershipWitness<E::G1Affine>,
         pk: &PublicKey<E>,
@@ -1098,7 +1101,7 @@ where
         // => new R_E = e(prk.K, params.P_tilde)^-r_v * sc.R_E = e(-r_v * prk.K, params.P_tilde) * sc.R_E
         let (rw, sc, bl) = Self::randomize_witness_and_compute_commitments(
             rng,
-            element,
+            &element,
             element_blinding,
             &witness.C,
             Some(K_table.multiply(&-r_v)),
@@ -1108,7 +1111,7 @@ where
         );
 
         Self {
-            element: *element,
+            element,
             d: witness.d,
             randomized_witness: NonMembershipRandomizedWitness {
                 C: rw,
@@ -1158,7 +1161,10 @@ where
     /// and then delegates to [`compute_responses`]
     ///
     /// [`compute_responses`]: ProofProtocol::compute_responses
-    pub fn gen_proof(self, challenge: &E::ScalarField) -> NonMembershipProof<E> {
+    pub fn gen_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<NonMembershipProof<E>, VBAccumulatorError> {
         // For d != 0
         let challenge_times_d = *challenge * self.d;
         let s_u = self.schnorr_blindings.r_u + challenge_times_d;
@@ -1167,7 +1173,7 @@ where
 
         let resp = Self::compute_responses(&self.element, &self.schnorr_blindings.C, challenge);
 
-        NonMembershipProof {
+        Ok(NonMembershipProof {
             randomized_witness: self.randomized_witness.clone(),
             schnorr_commit: self.schnorr_commit.clone(),
             schnorr_response: NonMembershipSchnorrResponse {
@@ -1176,7 +1182,7 @@ where
                 s_v,
                 s_w,
             },
-        }
+        })
     }
 }
 
@@ -1487,7 +1493,7 @@ mod tests {
             let start = Instant::now();
             let protocol = MembershipProofProtocol::init(
                 &mut rng,
-                &elems[i],
+                elems[i],
                 None,
                 &witnesses[i],
                 &keypair.public_key,
@@ -1512,7 +1518,7 @@ mod tests {
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
             let start = Instant::now();
-            let proof = protocol.gen_proof(&challenge_prover);
+            let proof = protocol.gen_proof(&challenge_prover).unwrap();
             proof_create_duration += start.elapsed();
 
             // Proof can be serialized
@@ -1589,7 +1595,7 @@ mod tests {
             let randomized_wit = MembershipWitness((witnesses[i].0 * random).into_affine());
             let protocol = MembershipProofProtocol::init(
                 &mut rng,
-                &elems[i],
+                elems[i],
                 None,
                 &randomized_wit,
                 &keypair.public_key,
@@ -1597,7 +1603,7 @@ mod tests {
                 &prk,
             );
             let challenge = Fr::rand(&mut rng);
-            let proof = protocol.gen_proof(&challenge);
+            let proof = protocol.gen_proof(&challenge).unwrap();
             proof
                 .verify(
                     &randomized_accum,
@@ -1690,7 +1696,7 @@ mod tests {
             let start = Instant::now();
             let protocol = NonMembershipProofProtocol::init(
                 &mut rng,
-                &elems[i],
+                elems[i],
                 None,
                 &witnesses[i],
                 &keypair.public_key,
@@ -1715,7 +1721,7 @@ mod tests {
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
             let start = Instant::now();
-            let proof = protocol.gen_proof(&challenge_prover);
+            let proof = protocol.gen_proof(&challenge_prover).unwrap();
             proof_create_duration += start.elapsed();
 
             let mut chal_bytes_verifier = vec![];
@@ -1794,7 +1800,7 @@ mod tests {
             };
             let protocol = NonMembershipProofProtocol::init(
                 &mut rng,
-                &elems[i],
+                elems[i],
                 None,
                 &randomized_wit,
                 &keypair.public_key,
@@ -1802,7 +1808,7 @@ mod tests {
                 &prk,
             );
             let challenge = Fr::rand(&mut rng);
-            let proof = protocol.gen_proof(&challenge);
+            let proof = protocol.gen_proof(&challenge).unwrap();
             proof
                 .verify(
                     &randomized_accum,

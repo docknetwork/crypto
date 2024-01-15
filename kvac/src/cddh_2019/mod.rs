@@ -11,8 +11,8 @@
 //! - Signer returns 2 objects, the signature composed of all `sigma`s and the proof composed of `2*n` Schnorr proofs
 //!   for total `2*n` relations, each pair of the form `sigma_{x_i} = sigma * x_i` and `X_i = g * x_i`. For each `i`,
 //!     - Generate random field element `r_i`
-//!     - Use `impl_proof_of_knowledge_of_discrete_log` to create a Schnorr protocol and call its `init` with witness `x_i`, blinding `r_i` and base `sigma`.
-//!     - Use `impl_proof_of_knowledge_of_discrete_log` to create a Schnorr protocol and call its `init` with witness `x_i`, blinding `r_i` and base `g`.
+//!     - Create a Schnorr protocol and call its `init` with witness `x_i`, blinding `r_i` and base `sigma`.
+//!     - Create a Schnorr protocol and call its `init` with witness `x_i`, blinding `r_i` and base `g`.
 //!   For each of the above `2*n`, protocols generate their challenge contribution, hash to create the challenge and then generate `2*n` proofs.
 //! - Use above MAC to generate `sigma` and `sigma_{x_i}` for `i` = 0 to `n`.
 //! - User on getting signature verifies the `2*n` proofs and checks that the response for each of the `i` pairs above is same so `n` different responses in total.

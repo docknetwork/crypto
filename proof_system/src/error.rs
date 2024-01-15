@@ -102,6 +102,7 @@ pub enum ProofSystemError {
     SmcRangeProofContributionFailed(u32, SmcRangeProofError),
     DetachedVBAccumProofContributionFailed(u32, VBAccumulatorError),
     IncorrectEncryptedAccumulator,
+    KBAccumProofContributionFailed(u32, VBAccumulatorError),
 }
 
 impl From<SchnorrError> for ProofSystemError {

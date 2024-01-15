@@ -2,9 +2,7 @@ use ark_ec::AffineRepr;
 
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{
-    cfg_into_iter, collections::BTreeSet, ops::Neg, rand::RngCore, vec::Vec, UniformRand,
-};
+use ark_std::{cfg_into_iter, collections::BTreeSet, rand::RngCore, vec::Vec};
 use digest::Digest;
 use dock_crypto_utils::{
     concat_slices,
@@ -135,6 +133,7 @@ mod tests {
     use super::*;
     use ark_bls12_381::{Fr, G1Affine};
     use ark_std::{
+        ops::Neg,
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };

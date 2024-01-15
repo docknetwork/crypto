@@ -13,28 +13,38 @@ use crate::{
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec};
+use serde::{Deserialize, Serialize};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use short_group_sig::common::ProvingKey;
 
+#[derive(Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct KBUniversalAccumulatorMembershipProofProtocol<E: Pairing>(
     pub MembershipProofProtocol<E>,
 );
 
+#[derive(Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct KBUniversalAccumulatorNonMembershipProofProtocol<E: Pairing>(
     pub MembershipProofProtocol<E>,
 );
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct KBUniversalAccumulatorMembershipProof<E: Pairing>(pub MembershipProof<E>);
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct KBUniversalAccumulatorNonMembershipProof<E: Pairing>(pub MembershipProof<E>);
 
 impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {
     pub fn init<R: RngCore>(
         rng: &mut R,
-        element: &E::ScalarField,
+        element: E::ScalarField,
         element_blinding: Option<E::ScalarField>,
         witness: &KBUniversalAccumulatorMembershipWitness<E::G1Affine>,
         pk: &PublicKey<E>,
@@ -64,8 +74,13 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {
             .challenge_contribution(accumulator_value, pk, params, prk, writer)
     }
 
-    pub fn gen_proof(self, challenge: &E::ScalarField) -> KBUniversalAccumulatorMembershipProof<E> {
-        KBUniversalAccumulatorMembershipProof(self.0.gen_proof(challenge))
+    pub fn gen_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<KBUniversalAccumulatorMembershipProof<E>, VBAccumulatorError> {
+        Ok(KBUniversalAccumulatorMembershipProof(
+            self.0.clone().gen_proof(challenge)?,
+        ))
     }
 }
 
@@ -120,7 +135,7 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProof<E> {
 impl<E: Pairing> KBUniversalAccumulatorNonMembershipProofProtocol<E> {
     pub fn init<R: RngCore>(
         rng: &mut R,
-        element: &E::ScalarField,
+        element: E::ScalarField,
         element_blinding: Option<E::ScalarField>,
         witness: &KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
         pk: &PublicKey<E>,
@@ -153,8 +168,10 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProofProtocol<E> {
     pub fn gen_proof(
         self,
         challenge: &E::ScalarField,
-    ) -> KBUniversalAccumulatorNonMembershipProof<E> {
-        KBUniversalAccumulatorNonMembershipProof(self.0.gen_proof(challenge))
+    ) -> Result<KBUniversalAccumulatorNonMembershipProof<E>, VBAccumulatorError> {
+        Ok(KBUniversalAccumulatorNonMembershipProof(
+            self.0.clone().gen_proof(challenge)?,
+        ))
     }
 }
 
@@ -289,7 +306,7 @@ mod tests {
             let start = Instant::now();
             let protocol = KBUniversalAccumulatorMembershipProofProtocol::init(
                 &mut rng,
-                &members[i],
+                members[i],
                 None,
                 &mem_witnesses[i],
                 &keypair.public_key,
@@ -312,7 +329,7 @@ mod tests {
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
             let start = Instant::now();
-            let proof = protocol.gen_proof(&challenge_prover);
+            let proof = protocol.gen_proof(&challenge_prover).unwrap();
             mem_proof_create_duration += start.elapsed();
 
             let mut chal_bytes_verifier = vec![];
@@ -383,7 +400,7 @@ mod tests {
             let start = Instant::now();
             let protocol = KBUniversalAccumulatorNonMembershipProofProtocol::init(
                 &mut rng,
-                &non_members[i],
+                non_members[i],
                 None,
                 &non_mem_witnesses[i],
                 &keypair.public_key,
@@ -406,7 +423,7 @@ mod tests {
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
             let start = Instant::now();
-            let proof = protocol.gen_proof(&challenge_prover);
+            let proof = protocol.gen_proof(&challenge_prover).unwrap();
             non_mem_proof_create_duration += start.elapsed();
 
             let mut chal_bytes_verifier = vec![];

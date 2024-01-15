@@ -29,9 +29,9 @@ pub enum Statement<E: Pairing, G: AffineRepr> {
     /// For proof of knowledge of committed elements in a Pedersen commitment
     PedersenCommitment(ped_comm::PedersenCommitment<G>),
     /// For proof of knowledge of an accumulator member and its corresponding witness
-    AccumulatorMembership(accumulator::AccumulatorMembership<E>),
+    VBAccumulatorMembership(accumulator::VBAccumulatorMembership<E>),
     /// For proof of knowledge of an accumulator non-member and its corresponding witness
-    AccumulatorNonMembership(accumulator::AccumulatorNonMembership<E>),
+    VBAccumulatorNonMembership(accumulator::VBAccumulatorNonMembership<E>),
     /// Used by prover to create proof of verifiable encryption using SAVER
     SaverProver(saver::SaverProver<E>),
     /// Used by verifier to verify proof of verifiable encryption using SAVER
@@ -64,6 +64,28 @@ pub enum Statement<E: Pairing, G: AffineRepr> {
     DetachedAccumulatorNonMembershipVerifier(
         accumulator::DetachedAccumulatorNonMembershipVerifier<E>,
     ),
+    KBUniversalAccumulatorMembership(accumulator::KBUniversalAccumulatorMembership<E>),
+    KBUniversalAccumulatorNonMembership(accumulator::KBUniversalAccumulatorNonMembership<E>),
+    VBAccumulatorMembershipCDHProver(accumulator::cdh::VBAccumulatorMembershipCDHProver<E>),
+    VBAccumulatorMembershipCDHVerifier(accumulator::cdh::VBAccumulatorMembershipCDHVerifier<E>),
+    VBAccumulatorNonMembershipCDHProver(accumulator::cdh::VBAccumulatorNonMembershipCDHProver<E>),
+    VBAccumulatorNonMembershipCDHVerifier(
+        accumulator::cdh::VBAccumulatorNonMembershipCDHVerifier<E>,
+    ),
+    KBUniversalAccumulatorMembershipCDHProver(
+        accumulator::cdh::KBUniversalAccumulatorMembershipCDHProver<E>,
+    ),
+    KBUniversalAccumulatorMembershipCDHVerifier(
+        accumulator::cdh::KBUniversalAccumulatorMembershipCDHVerifier<E>,
+    ),
+    KBUniversalAccumulatorNonMembershipCDHProver(
+        accumulator::cdh::KBUniversalAccumulatorNonMembershipCDHProver<E>,
+    ),
+    KBUniversalAccumulatorNonMembershipCDHVerifier(
+        accumulator::cdh::KBUniversalAccumulatorNonMembershipCDHVerifier<E>,
+    ),
+    KBPositiveAccumulatorMembership(accumulator::KBPositiveAccumulatorMembership<E>),
+    KBPositiveAccumulatorMembershipCDH(accumulator::cdh::KBPositiveAccumulatorMembershipCDH<E>),
 }
 
 /// A collection of statements
@@ -104,8 +126,8 @@ macro_rules! delegate {
         $crate::delegate_indexed! {
             $self $([$idx 0u8])? =>
                 PoKBBSSignatureG1,
-                AccumulatorMembership,
-                AccumulatorNonMembership,
+                VBAccumulatorMembership,
+                VBAccumulatorNonMembership,
                 PedersenCommitment,
                 SaverProver,
                 SaverVerifier,
@@ -123,7 +145,19 @@ macro_rules! delegate {
                 DetachedAccumulatorMembershipProver,
                 DetachedAccumulatorMembershipVerifier,
                 DetachedAccumulatorNonMembershipProver,
-                DetachedAccumulatorNonMembershipVerifier
+                DetachedAccumulatorNonMembershipVerifier,
+                KBUniversalAccumulatorMembership,
+                KBUniversalAccumulatorNonMembership,
+                VBAccumulatorMembershipCDHProver,
+                VBAccumulatorMembershipCDHVerifier,
+                VBAccumulatorNonMembershipCDHProver,
+                VBAccumulatorNonMembershipCDHVerifier,
+                KBUniversalAccumulatorMembershipCDHProver,
+                KBUniversalAccumulatorMembershipCDHVerifier,
+                KBUniversalAccumulatorNonMembershipCDHProver,
+                KBUniversalAccumulatorNonMembershipCDHVerifier,
+                KBPositiveAccumulatorMembership,
+                KBPositiveAccumulatorMembershipCDH
             : $($tt)+
         }
     }}
@@ -134,8 +168,8 @@ macro_rules! delegate_reverse {
         $crate::delegate_indexed_reverse! {
             $val[_idx 0u8] =>
                 PoKBBSSignatureG1,
-                AccumulatorMembership,
-                AccumulatorNonMembership,
+                VBAccumulatorMembership,
+                VBAccumulatorNonMembership,
                 PedersenCommitment,
                 SaverProver,
                 SaverVerifier,
@@ -153,7 +187,19 @@ macro_rules! delegate_reverse {
                 DetachedAccumulatorMembershipProver,
                 DetachedAccumulatorMembershipVerifier,
                 DetachedAccumulatorNonMembershipProver,
-                DetachedAccumulatorNonMembershipVerifier
+                DetachedAccumulatorNonMembershipVerifier,
+                KBUniversalAccumulatorMembership,
+                KBUniversalAccumulatorNonMembership,
+                VBAccumulatorMembershipCDHProver,
+                VBAccumulatorMembershipCDHVerifier,
+                VBAccumulatorNonMembershipCDHProver,
+                VBAccumulatorNonMembershipCDHVerifier,
+                KBUniversalAccumulatorMembershipCDHProver,
+                KBUniversalAccumulatorMembershipCDHVerifier,
+                KBUniversalAccumulatorNonMembershipCDHProver,
+                KBUniversalAccumulatorNonMembershipCDHVerifier,
+                KBPositiveAccumulatorMembership,
+                KBPositiveAccumulatorMembershipCDH
             : $($tt)+
         }
 
@@ -253,7 +299,7 @@ mod tests {
         statements.add(stmt_1);
         test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
 
-        let stmt_2 = accumulator::AccumulatorMembership::new_statement_from_params::<
+        let stmt_2 = accumulator::VBAccumulatorMembership::new_statement_from_params::<
             <Bls12_381 as Pairing>::G1Affine,
         >(
             pos_params,
@@ -266,7 +312,7 @@ mod tests {
         statements.add(stmt_2);
         test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
 
-        let stmt_3 = accumulator::AccumulatorNonMembership::new_statement_from_params::<
+        let stmt_3 = accumulator::VBAccumulatorNonMembership::new_statement_from_params::<
             <Bls12_381 as Pairing>::G1Affine,
         >(
             uni_params,

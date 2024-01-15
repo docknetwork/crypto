@@ -31,8 +31,8 @@ use proof_system::{
     setup_params::SetupParams,
     statement::{
         accumulator::{
-            AccumulatorMembership as AccumulatorMembershipStmt,
-            AccumulatorNonMembership as AccumulatorNonMembershipStmt,
+            VBAccumulatorMembership as AccumulatorMembershipStmt,
+            VBAccumulatorNonMembership as AccumulatorNonMembershipStmt,
         },
         ped_comm::PedersenCommitment as PedersenCommitmentStmt,
         ps_signature::PoKPSSignatureStatement,
@@ -445,7 +445,7 @@ fn pok_of_ps_sig_and_accumulator() {
         signature: sig.clone(),
         unrevealed_messages: msgs.clone().into_iter().enumerate().collect(),
     }));
-    witnesses_incorrect.add(Witness::AccumulatorMembership(MembershipWit {
+    witnesses_incorrect.add(Witness::VBAccumulatorMembership(MembershipWit {
         element: msgs[2], // 2nd message from PS sig in accumulator
         witness: mem_1_wit.clone(),
     }));
@@ -533,7 +533,7 @@ fn pok_of_ps_sig_and_accumulator() {
         signature: sig.clone(),
         unrevealed_messages: msgs.clone().into_iter().enumerate().collect(),
     }));
-    witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+    witnesses.add(Witness::VBAccumulatorMembership(MembershipWit {
         element: accum_member_2,
         witness: mem_2_wit.clone(),
     }));
@@ -631,7 +631,7 @@ fn pok_of_ps_sig_and_accumulator() {
         signature: sig.clone(),
         unrevealed_messages: msgs.clone().into_iter().enumerate().collect(),
     }));
-    witnesses.add(Witness::AccumulatorNonMembership(NonMembershipWit {
+    witnesses.add(Witness::VBAccumulatorNonMembership(NonMembershipWit {
         element: accum_non_member,
         witness: non_mem_wit.clone(),
     }));
@@ -754,15 +754,15 @@ fn pok_of_ps_sig_and_accumulator() {
         signature: sig,
         unrevealed_messages: msgs.clone().into_iter().enumerate().collect(),
     }));
-    witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+    witnesses.add(Witness::VBAccumulatorMembership(MembershipWit {
         element: accum_member_1,
         witness: mem_1_wit,
     }));
-    witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+    witnesses.add(Witness::VBAccumulatorMembership(MembershipWit {
         element: accum_member_2,
         witness: mem_2_wit,
     }));
-    witnesses.add(Witness::AccumulatorNonMembership(NonMembershipWit {
+    witnesses.add(Witness::VBAccumulatorNonMembership(NonMembershipWit {
         element: accum_non_member,
         witness: non_mem_wit,
     }));

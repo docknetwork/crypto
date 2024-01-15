@@ -14,9 +14,14 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 /// Public parameters for creating and verifying BB signatures
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct SignatureParams<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
     pub g1: E::G1Affine,
+    #[serde_as(as = "ArkObjectBytes")]
     pub g2: E::G2Affine,
 }
 

@@ -6,8 +6,6 @@ use ark_std::{
     vec::Vec,
 };
 
-pub use serialization::*;
-
 /// A linear combination
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct LC<E: Pairing>(pub Vec<(usize, E::ScalarField)>);

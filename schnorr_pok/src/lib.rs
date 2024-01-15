@@ -54,6 +54,7 @@ use serde_with::serde_as;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+pub mod discrete_log;
 pub mod error;
 pub mod inequality;
 
@@ -184,118 +185,6 @@ where
     // TODO: Add function for challenge contribution (bytes that are hashed)
 }
 
-// Proof of knowledge of a single discrete log
-
-#[macro_export]
-macro_rules! impl_proof_of_knowledge_of_discrete_log {
-    ($protocol_name:ident, $proof_name: ident) => {
-        /// Proof of knowledge protocol for discrete log
-        #[serde_as]
-        #[derive(
-            Clone,
-            PartialEq,
-            Eq,
-            Debug,
-            CanonicalSerialize,
-            CanonicalDeserialize,
-            Serialize,
-            Deserialize,
-            Zeroize,
-            ZeroizeOnDrop,
-        )]
-        pub struct $protocol_name<G: AffineRepr> {
-            #[zeroize(skip)]
-            #[serde_as(as = "ArkObjectBytes")]
-            pub t: G,
-            #[serde_as(as = "ArkObjectBytes")]
-            blinding: G::ScalarField,
-            #[serde_as(as = "ArkObjectBytes")]
-            witness: G::ScalarField,
-        }
-
-        #[serde_as]
-        #[derive(
-            Clone,
-            PartialEq,
-            Eq,
-            Debug,
-            CanonicalSerialize,
-            CanonicalDeserialize,
-            Serialize,
-            Deserialize,
-        )]
-        pub struct $proof_name<G: AffineRepr> {
-            #[serde_as(as = "ArkObjectBytes")]
-            pub t: G,
-            #[serde_as(as = "ArkObjectBytes")]
-            pub response: G::ScalarField,
-        }
-
-        impl<G> $protocol_name<G>
-        where
-            G: AffineRepr,
-        {
-            pub fn init(witness: G::ScalarField, blinding: G::ScalarField, base: &G) -> Self {
-                let t = base.mul_bigint(blinding.into_bigint()).into_affine();
-                Self {
-                    t,
-                    blinding,
-                    witness,
-                }
-            }
-
-            pub fn challenge_contribution<W: Write>(
-                &self,
-                base: &G,
-                y: &G,
-                writer: W,
-            ) -> Result<(), SchnorrError> {
-                Self::compute_challenge_contribution(base, y, &self.t, writer)
-            }
-
-            pub fn gen_proof(self, challenge: &G::ScalarField) -> $proof_name<G> {
-                let response = self.blinding + (self.witness * *challenge);
-                $proof_name {
-                    t: self.t,
-                    response,
-                }
-            }
-
-            pub fn compute_challenge_contribution<W: Write>(
-                base: &G,
-                y: &G,
-                t: &G,
-                mut writer: W,
-            ) -> Result<(), SchnorrError> {
-                base.serialize_compressed(&mut writer)?;
-                y.serialize_compressed(&mut writer)?;
-                t.serialize_compressed(writer).map_err(|e| e.into())
-            }
-        }
-
-        impl<G> $proof_name<G>
-        where
-            G: AffineRepr,
-        {
-            pub fn challenge_contribution<W: Write>(
-                &self,
-                base: &G,
-                y: &G,
-                writer: W,
-            ) -> Result<(), SchnorrError> {
-                $protocol_name::compute_challenge_contribution(base, y, &self.t, writer)
-            }
-
-            /// `base*response - y*challenge == t`
-            pub fn verify(&self, y: &G, base: &G, challenge: &G::ScalarField) -> bool {
-                let mut expected = base.mul_bigint(self.response.into_bigint());
-                expected -= y.mul_bigint(challenge.into_bigint());
-                expected.into_affine() == self.t
-            }
-        }
-    };
-}
-
 /// Uses try-and-increment. Vulnerable to side channel attacks.
 pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes: &[u8]) -> F {
     field_elem_from_try_and_incr::<F, D>(challenge_bytes)
@@ -304,6 +193,7 @@ pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol};
     use ark_bls12_381::Bls12_381;
     use ark_ec::{pairing::Pairing, VariableBaseMSM};
     use ark_std::{
@@ -396,22 +286,22 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         macro_rules! check {
-            ($protocol_name:ident, $proof_name: ident, $group_affine:ident, $group_projective:ident) => {
-                impl_proof_of_knowledge_of_discrete_log!($protocol_name, $proof_name);
+            ($group_affine:ident, $group_projective:ident) => {
                 let base = <Bls12_381 as Pairing>::$group_projective::rand(&mut rng).into_affine();
                 let witness = Fr::rand(&mut rng);
                 let y = base.mul_bigint(witness.into_bigint()).into_affine();
                 let blinding = Fr::rand(&mut rng);
-                let protocol = $protocol_name::<<Bls12_381 as Pairing>::$group_affine>::init(
-                    witness, blinding, &base,
-                );
+                let protocol =
+                    PokDiscreteLogProtocol::<<Bls12_381 as Pairing>::$group_affine>::init(
+                        witness, blinding, &base,
+                    );
                 let mut chal_contrib_prover = vec![];
                 protocol
                     .challenge_contribution(&base, &y, &mut chal_contrib_prover)
                     .unwrap();
 
                 test_serialization!(
-                    $protocol_name<<Bls12_381 as Pairing>::$group_affine>,
+                    PokDiscreteLogProtocol<<Bls12_381 as Pairing>::$group_affine>,
                     protocol
                 );
 
@@ -430,11 +320,11 @@ mod tests {
                 assert_eq!(chal_contrib_prover, chal_contrib_verifier);
                 assert_eq!(challenge_prover, challenge_verifier);
 
-                test_serialization!($proof_name<<Bls12_381 as Pairing>::$group_affine>, proof);
+                test_serialization!(PokDiscreteLog<<Bls12_381 as Pairing>::$group_affine>, proof);
             };
         }
 
-        check!(Protocol1, Proof1, G1Affine, G1);
-        check!(Protocol2, Proof2, G2Affine, G2);
+        check!(G1Affine, G1);
+        check!(G2Affine, G2);
     }
 }

@@ -15,24 +15,23 @@
 use crate::{
     error::VBAccumulatorError,
     prelude::{MembershipWitness, NonMembershipWitness, PreparedPublicKey, PreparedSetupParams},
+    setup::SetupParams,
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_ff::{PrimeField, Zero};
+use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
 };
 use schnorr_pok::{
-    error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrCommitment,
-    SchnorrResponse,
+    discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
+    SchnorrCommitment, SchnorrResponse,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use short_group_sig::weak_bb_sig_pok_alt::{PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol};
+use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol};
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-impl_proof_of_knowledge_of_discrete_log!(DKnowledgeProtocol, DKnowledgeProof);
 
 /// A wrapper over the protocol for proof of knowledge of weak-BB signature. The accumulator witness is the weak-BB signature and the
 /// accumulator value becomes g1 in that protocol
@@ -40,7 +39,10 @@ impl_proof_of_knowledge_of_discrete_log!(DKnowledgeProtocol, DKnowledgeProof);
 pub struct MembershipProofProtocol<E: Pairing>(pub PoKOfSignatureG1Protocol<E>);
 
 /// A wrapper over the proof of knowledge of weak-BB signature
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct MembershipProof<E: Pairing>(pub PoKOfSignatureG1Proof<E>);
 
 /// An extension over the protocol for proof of knowledge of weak-BB signature.
@@ -60,22 +62,29 @@ pub struct NonMembershipProofProtocol<E: Pairing> {
     /// (r, y, d')
     sc_wits_1: (E::ScalarField, E::ScalarField, E::ScalarField),
     /// For relation `J = Q * d'`
-    pub sc_comm_2: DKnowledgeProtocol<E::G1Affine>,
+    pub sc_comm_2: PokDiscreteLogProtocol<E::G1Affine>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct NonMembershipProof<E: Pairing> {
     /// The randomized witness `C'`
+    #[serde_as(as = "ArkObjectBytes")]
     pub C_prime: E::G1Affine,
     /// `V * r - C' * y - P * d'`
+    #[serde_as(as = "ArkObjectBytes")]
     pub C_bar: E::G1Affine,
     /// The commitment to the randomized witness `Q * d'`
+    #[serde_as(as = "ArkObjectBytes")]
     pub J: E::G1Affine,
     /// For relation `C_bar = V * r - C' * y - P * d'`
+    #[serde_as(as = "ArkObjectBytes")]
     pub t_1: E::G1Affine,
     pub sc_resp_1: SchnorrResponse<E::G1Affine>,
     /// For relation `J = Q * d'`
-    pub sc_2: DKnowledgeProof<E::G1Affine>,
+    pub sc_2: PokDiscreteLog<E::G1Affine>,
 }
 
 impl<E: Pairing> MembershipProofProtocol<E> {
@@ -85,15 +94,14 @@ impl<E: Pairing> MembershipProofProtocol<E> {
         element_blinding: Option<E::ScalarField>,
         accumulator_value: E::G1Affine,
         witness: &MembershipWitness<E::G1Affine>,
-    ) -> Result<Self, VBAccumulatorError> {
-        let p = PoKOfSignatureG1Protocol::init(
+    ) -> Self {
+        Self(PoKOfSignatureG1Protocol::init(
             rng,
             witness,
             element,
             element_blinding,
             accumulator_value,
-        )?;
-        Ok(Self(p))
+        ))
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -167,17 +175,16 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
         element_blinding: Option<E::ScalarField>,
         accumulator_value: E::G1Affine,
         witness: &NonMembershipWitness<E::G1Affine>,
-        g1: impl Into<E::G1Affine>,
+        params: &SetupParams<E>,
         Q: impl Into<E::G1Affine>,
     ) -> Self {
         let r = E::ScalarField::rand(rng);
         let element_blinding = element_blinding.unwrap_or_else(|| E::ScalarField::rand(rng));
-        let g1 = g1.into();
         let Q = Q.into();
         let d_prime = witness.d * r;
         let C_prime = witness.C * r;
         let C_prime_neg = C_prime.neg();
-        let g1_neg = g1.into_group().neg();
+        let g1_neg = params.P.into_group().neg();
         // C_bar = accumulator_value * r - C' * element - g1 * d * r
         let C_bar =
             (accumulator_value * r + C_prime_neg * element + g1_neg * d_prime).into_affine();
@@ -193,7 +200,7 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
             ],
         );
         let sc_wits_1 = (r, element, d_prime);
-        let sc_comm_2 = DKnowledgeProtocol::init(d_prime, d_prime_blinding, &Q);
+        let sc_comm_2 = PokDiscreteLogProtocol::init(d_prime, d_prime_blinding, &Q);
 
         Self {
             C_prime: C_prime.into(),
@@ -208,7 +215,7 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &E::G1Affine,
-        g1: &E::G1Affine,
+        params: &SetupParams<E>,
         Q: &E::G1Affine,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
@@ -217,7 +224,7 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
             &self.C_bar,
             &self.J,
             accumulator_value,
-            g1,
+            params,
             Q,
             &self.sc_comm_1.t,
             &self.sc_comm_2.t,
@@ -247,7 +254,7 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
         C_bar: &E::G1Affine,
         J: &E::G1Affine,
         accumulator_value: &E::G1Affine,
-        g1: &E::G1Affine,
+        params: &SetupParams<E>,
         Q: &E::G1Affine,
         t_1: &E::G1Affine,
         t_2: &E::G1Affine,
@@ -257,7 +264,7 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
         C_prime.serialize_compressed(&mut writer)?;
         J.serialize_compressed(&mut writer)?;
         accumulator_value.serialize_compressed(&mut writer)?;
-        g1.serialize_compressed(&mut writer)?;
+        params.P.serialize_compressed(&mut writer)?;
         Q.serialize_compressed(&mut writer)?;
         t_1.serialize_compressed(&mut writer)?;
         t_2.serialize_compressed(&mut writer)?;
@@ -308,7 +315,7 @@ impl<E: Pairing> NonMembershipProof<E> {
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &E::G1Affine,
-        g1: &E::G1Affine,
+        params: &SetupParams<E>,
         Q: &E::G1Affine,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
@@ -317,7 +324,7 @@ impl<E: Pairing> NonMembershipProof<E> {
             &self.C_bar,
             &self.J,
             accumulator_value,
-            g1,
+            params,
             Q,
             &self.t_1,
             &self.sc_2.t,
@@ -418,8 +425,7 @@ mod tests {
                 None,
                 *accumulator.value(),
                 &witnesses[i],
-            )
-            .unwrap();
+            );
             let mut chal_bytes_prover = vec![];
             protocol
                 .challenge_contribution(*accumulator.value(), &mut chal_bytes_prover)
@@ -507,13 +513,13 @@ mod tests {
                 None,
                 *accumulator.value(),
                 &witnesses[i],
-                params.P.clone(),
+                &params,
                 Q.clone(),
             );
 
             let mut chal_bytes_prover = vec![];
             protocol
-                .challenge_contribution(accumulator.value(), &params.P, &Q, &mut chal_bytes_prover)
+                .challenge_contribution(accumulator.value(), &params, &Q, &mut chal_bytes_prover)
                 .unwrap();
             let challenge_prover =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
@@ -523,12 +529,7 @@ mod tests {
             let start = Instant::now();
             let mut chal_bytes_verifier = vec![];
             proof
-                .challenge_contribution(
-                    accumulator.value(),
-                    &params.P,
-                    &Q,
-                    &mut chal_bytes_verifier,
-                )
+                .challenge_contribution(accumulator.value(), &params, &Q, &mut chal_bytes_verifier)
                 .unwrap();
             let challenge_verifier =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);

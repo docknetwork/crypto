@@ -272,7 +272,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
                 let d = calculate_d(pvk, &proof.ciphertext)?;
                 c.add_multiple_sources_and_target(
                     &[proof.snark_proof.a, proof.snark_proof.c, d],
-                    vec![
+                    [
                         proof.snark_proof.b.into(),
                         pvk.delta_g2_neg_pc.clone(),
                         pvk.gamma_g2_neg_pc.clone(),

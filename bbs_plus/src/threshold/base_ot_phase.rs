@@ -14,11 +14,11 @@ use digest::Digest;
 use oblivious_transfer_protocols::{
     base_ot::simplest_ot::{
         Challenges, HashedKey, OneOfTwoROTSenderKeys, ROTReceiverKeys, ROTSenderSetup,
-        ReceiverPubKeys, Responses, SecretKnowledgeProof, SenderPubKey, VSROTChallenger,
-        VSROTResponder,
+        ReceiverPubKeys, Responses, SenderPubKey, VSROTChallenger, VSROTResponder,
     },
     Bit, ParticipantId,
 };
+use schnorr_pok::discrete_log::PokDiscreteLog;
 use serde::{Deserialize, Serialize};
 
 /// The participant runs an independent base OT with each participant and stores each OT's state. If
@@ -54,7 +54,7 @@ pub struct BaseOTPhaseOutput {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct SenderPubKeyAndProof<G: AffineRepr>(SenderPubKey<G>, SecretKnowledgeProof<G>);
+pub struct SenderPubKeyAndProof<G: AffineRepr>(SenderPubKey<G>, PokDiscreteLog<G>);
 
 impl<G: AffineRepr> BaseOTPhase<G> {
     pub fn init<R: RngCore, D: Digest>(

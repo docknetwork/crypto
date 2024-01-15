@@ -54,9 +54,9 @@ use ark_ff::{
     PrimeField,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_iter, fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
+use ark_std::{cfg_iter, fmt::Debug, rand::RngCore, vec::Vec, UniformRand};
 use digest::{Digest, DynDigest};
-use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use core::iter::once;
@@ -434,8 +434,6 @@ impl_public_key!(PublicKeyG2, G2Affine, SignatureParamsG1);
 impl_public_key!(PublicKeyG1, G1Affine, SignatureParamsG2);
 impl_keypair!(KeypairG2, G2Projective, PublicKeyG2, SignatureParamsG1);
 impl_keypair!(KeypairG1, G1Projective, PublicKeyG1, SignatureParamsG2);
-impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKeyG2, PoKSecretKeyInPublicKeyG2Proof);
-impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKeyG1, PoKSecretKeyInPublicKeyG1Proof);
 
 #[serde_as]
 #[derive(
@@ -603,7 +601,10 @@ mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
-    use schnorr_pok::compute_random_oracle_challenge;
+    use schnorr_pok::{
+        compute_random_oracle_challenge,
+        discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
+    };
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -731,7 +732,7 @@ mod tests {
     #[test]
     fn proof_of_knowledge_of_public_key() {
         macro_rules! check {
-            ($group_affine:ident, $protocol_name:ident, $proof_name:ident, $public_key:ident, $params:ident) => {
+            ($group_affine:ident, $public_key:ident, $params:ident) => {
                 let mut rng = StdRng::seed_from_u64(0u64);
                 let params = $params::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), 5);
                 let seed = [0, 1, 2, 10, 11];
@@ -742,9 +743,10 @@ mod tests {
                 let witness = sk.0.clone();
                 let blinding = Fr::rand(&mut rng);
 
-                let protocol = $protocol_name::<<Bls12_381 as Pairing>::$group_affine>::init(
-                    witness, blinding, base,
-                );
+                let protocol =
+                    PokDiscreteLogProtocol::<<Bls12_381 as Pairing>::$group_affine>::init(
+                        witness, blinding, base,
+                    );
 
                 let mut chal_contrib_prover = vec![];
                 protocol
@@ -752,7 +754,7 @@ mod tests {
                     .unwrap();
 
                 test_serialization!(
-                    $protocol_name<<Bls12_381 as Pairing>::$group_affine>,
+                    PokDiscreteLogProtocol<<Bls12_381 as Pairing>::$group_affine>,
                     protocol
                 );
 
@@ -771,23 +773,11 @@ mod tests {
                 assert_eq!(chal_contrib_prover, chal_contrib_verifier);
                 assert_eq!(challenge_prover, challenge_verifier);
 
-                test_serialization!($proof_name<<Bls12_381 as Pairing>::$group_affine>, proof);
+                test_serialization!(PokDiscreteLog<<Bls12_381 as Pairing>::$group_affine>, proof);
             };
         }
 
-        check!(
-            G2Affine,
-            PoKSecretKeyInPublicKeyG2,
-            PoKSecretKeyInPublicKeyG2Proof,
-            PublicKeyG2,
-            SignatureParamsG1
-        );
-        check!(
-            G1Affine,
-            PoKSecretKeyInPublicKeyG1,
-            PoKSecretKeyInPublicKeyG1Proof,
-            PublicKeyG1,
-            SignatureParamsG2
-        );
+        check!(G2Affine, PublicKeyG2, SignatureParamsG1);
+        check!(G1Affine, PublicKeyG1, SignatureParamsG2);
     }
 }

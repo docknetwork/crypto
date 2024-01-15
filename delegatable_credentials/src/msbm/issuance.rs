@@ -7,12 +7,13 @@ use crate::{
             PreparedRootIssuerPublicKey, RootIssuerSecretKey, UpdateKey, UserPublicKey,
             UserSecretKey,
         },
-        sps_eq_uc_sig::{RandCommitmentProof, Signature},
+        sps_eq_uc_sig::Signature,
     },
     set_commitment::{SetCommitment, SetCommitmentOpening, SetCommitmentSRS},
 };
 use ark_ec::pairing::Pairing;
 use ark_std::{rand::RngCore, vec::Vec, UniformRand};
+use schnorr_pok::discrete_log::PokDiscreteLog;
 
 /// Credential issued by a root or delegated issuer when it knows the randomness for set commitments
 /// of attributes
@@ -454,7 +455,7 @@ impl<E: Pairing> CredentialWithoutOpenings<E> {
         rng: &mut R,
         trapdoor: &E::ScalarField,
         commitment_to_randomness: Vec<E::G1Affine>,
-        commitment_to_randomness_proof: Vec<RandCommitmentProof<E::G1Affine>>,
+        commitment_to_randomness_proof: Vec<PokDiscreteLog<E::G1Affine>>,
         challenge: &E::ScalarField,
         attributes: Vec<Vec<E::ScalarField>>,
         user_public_key: &UserPublicKey<E>,
@@ -502,16 +503,13 @@ impl<E: Pairing> CredentialWithoutOpenings<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::msbm::{
-        keys::{RootIssuerPublicKey, UserSecretKey},
-        sps_eq_uc_sig::RandCommitmentProtocol,
-    };
+    use crate::msbm::keys::{RootIssuerPublicKey, UserSecretKey};
     use ark_bls12_381::Bls12_381;
     use ark_ec::{AffineRepr, CurveGroup};
     use ark_ff::PrimeField;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
-    use schnorr_pok::compute_random_oracle_challenge;
+    use schnorr_pok::{compute_random_oracle_challenge, discrete_log::PokDiscreteLogProtocol};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -608,7 +606,7 @@ pub mod tests {
 
             for i in 0..l {
                 commit_to_rands.push(P1.mul_bigint(randoms[i].into_bigint()).into_affine());
-                protocols.push(RandCommitmentProtocol::init(randoms[i], blindings[i], P1));
+                protocols.push(PokDiscreteLogProtocol::init(randoms[i], blindings[i], P1));
                 protocols[i]
                     .challenge_contribution(P1, &commit_to_rands[i], &mut challenge_bytes)
                     .unwrap();

@@ -9,6 +9,7 @@ use ark_std::{
 };
 use bbs_plus::prelude::{Signature23G1, SignatureG1};
 use blake2::Blake2b512;
+use short_group_sig::common::ProvingKey;
 use std::time::Instant;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 
@@ -18,10 +19,13 @@ use proof_system::{
     setup_params::SetupParams,
     statement::{
         accumulator::{
-            AccumulatorMembership as AccumulatorMembershipStmt,
-            AccumulatorNonMembership as AccumulatorNonMembershipStmt,
             DetachedAccumulatorMembershipProver, DetachedAccumulatorMembershipVerifier,
             DetachedAccumulatorNonMembershipProver, DetachedAccumulatorNonMembershipVerifier,
+            KBPositiveAccumulatorMembership,
+            KBUniversalAccumulatorMembership as KBAccumulatorMembershipStmt,
+            KBUniversalAccumulatorNonMembership as KBAccumulatorNonMembershipStmt,
+            VBAccumulatorMembership as AccumulatorMembershipStmt,
+            VBAccumulatorNonMembership as AccumulatorNonMembershipStmt,
         },
         bbs_23::PoKBBSSignature23G1 as PoKSignatureBBS23G1Stmt,
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
@@ -30,12 +34,14 @@ use proof_system::{
         Statements,
     },
     statement_proof::StatementProof,
-    sub_protocols::accumulator::{
+    sub_protocols::accumulator::detached::{
         DetachedAccumulatorMembershipSubProtocol, DetachedAccumulatorNonMembershipSubProtocol,
     },
     witness::{
-        Membership as MembershipWit, NonMembership as NonMembershipWit,
-        PoKBBSSignature23G1 as PoKSignatureBBS23G1Wit, PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
+        KBPosMembership, KBUniMembership as KBMembershipWit,
+        KBUniNonMembership as KBNonMembershipWit, Membership as MembershipWit,
+        NonMembership as NonMembershipWit, PoKBBSSignature23G1 as PoKSignatureBBS23G1Wit,
+        PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
     },
 };
 use schnorr_pok::inequality::CommitmentKey;
@@ -279,15 +285,31 @@ macro_rules! gen_tests {
             // Prove knowledge of BBS+ signature and one of the message's membership and non-membership in accumulators
             let mut rng = StdRng::seed_from_u64(0u64);
 
-            let msg_count = 6;
-            let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count as u32);
-
             let max = 10;
             let (pos_accum_params, pos_accum_keypair, mut pos_accumulator, mut pos_state) =
                 setup_positive_accum(&mut rng);
-            let mem_prk = MembershipProvingKey::generate_using_rng(&mut rng);
 
-            // Message with index `accum_member_1_idx` is added in the positive accumulator
+            let (uni_accum_params, uni_accum_keypair, mut uni_accumulator, initial_elements, mut uni_state) =
+                setup_universal_accum(&mut rng, max);
+
+            let msg_count = 6;
+            let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count as u32);
+
+            let mut domain = msgs.clone();
+            while domain.len() < max as usize {
+                domain.push(Fr::rand(&mut rng));
+            }
+            let (kb_uni_accum_params, kb_uni_keypair, mut kb_uni_accumulator, mut kb_mem_state, mut kb_non_mem_state) =
+            setup_kb_universal_accum_given_domain(&mut rng, domain.clone());
+
+            let (kb_pos_accum_params, kb_pos_accum_sk, kb_pos_accum_pk, kb_pos_accumulator, mut kb_pos_state) = setup_kb_positive_accum(&mut rng);
+
+            let mem_prk = MembershipProvingKey::generate_using_rng(&mut rng);
+            let non_mem_prk = NonMembershipProvingKey::generate_using_rng(&mut rng);
+            let derived_mem_prk = non_mem_prk.derive_membership_proving_key();
+            let prk = ProvingKey::generate_using_rng(&mut rng);
+
+            // Message with index `accum_member_1_idx` is added in the VB positive accumulator
             let accum_member_1_idx = 1;
             let accum_member_1 = msgs[accum_member_1_idx];
 
@@ -378,7 +400,7 @@ macro_rules! gen_tests {
                 )
                 .unwrap();
             println!(
-                "Time to verify proof with a BBS+ signature and positive accumulator membership: {:?}",
+                "Time to verify proof with a BBS+ signature and VB positive accumulator membership: {:?}",
                 start.elapsed()
             );
 
@@ -393,7 +415,7 @@ macro_rules! gen_tests {
                     },
                 )
                 .unwrap();
-            println!("Time to verify proof with a BBS+ signature and positive accumulator membership with randomized pairing check: {:?}", start.elapsed());
+            println!("Time to verify proof with a BBS+ signature and VB positive accumulator membership with randomized pairing check: {:?}", start.elapsed());
 
             // Wrong witness reference fails to verify
             let mut meta_statements_incorrect = MetaStatements::new();
@@ -444,7 +466,7 @@ macro_rules! gen_tests {
                 sig.clone(),
                 msgs.clone().into_iter().enumerate().collect(),
             ));
-            witnesses_incorrect.add(Witness::AccumulatorMembership(MembershipWit {
+            witnesses_incorrect.add(Witness::VBAccumulatorMembership(MembershipWit {
                 element: msgs[2], // 2nd message from BBS+ sig in accumulator
                 witness: mem_1_wit.clone(),
             }));
@@ -491,10 +513,6 @@ macro_rules! gen_tests {
             // Prove knowledge of signature and membership of message with index `accum_member_2_idx` in universal accumulator
             let accum_member_2_idx = 2;
             let accum_member_2 = msgs[accum_member_2_idx];
-            let (uni_accum_params, uni_accum_keypair, mut uni_accumulator, initial_elements, mut uni_state) =
-                setup_universal_accum(&mut rng, max);
-            let non_mem_prk = NonMembershipProvingKey::generate_using_rng(&mut rng);
-            let derived_mem_prk = non_mem_prk.derive_membership_proving_key();
 
             uni_accumulator = uni_accumulator
                 .add(
@@ -532,7 +550,7 @@ macro_rules! gen_tests {
                 sig.clone(),
                 msgs.clone().into_iter().enumerate().collect(),
             ));
-            witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+            witnesses.add(Witness::VBAccumulatorMembership(MembershipWit {
                 element: accum_member_2,
                 witness: mem_2_wit.clone(),
             }));
@@ -576,7 +594,7 @@ macro_rules! gen_tests {
                 )
                 .unwrap();
             println!(
-                "Time to verify proof with a BBS+ signature and universal accumulator membership: {:?}",
+                "Time to verify proof with a BBS+ signature and VB universal accumulator membership: {:?}",
                 start.elapsed()
             );
 
@@ -592,7 +610,7 @@ macro_rules! gen_tests {
                     },
                 )
                 .unwrap();
-            println!("Time to verify proof with a BBS+ signature and universal accumulator membership with randomized pairing check: {:?}", start.elapsed());
+            println!("Time to verify proof with a BBS+ signature and VB universal accumulator membership with randomized pairing check: {:?}", start.elapsed());
 
             // Prove knowledge of signature and non-membership of message with index `accum_non_member_idx` in universal accumulator
             let accum_non_member_idx = 3;
@@ -630,7 +648,7 @@ macro_rules! gen_tests {
                 sig.clone(),
                 msgs.clone().into_iter().enumerate().collect(),
             ));
-            witnesses.add(Witness::AccumulatorNonMembership(NonMembershipWit {
+            witnesses.add(Witness::VBAccumulatorNonMembership(NonMembershipWit {
                 element: accum_non_member,
                 witness: non_mem_wit.clone(),
             }));
@@ -674,7 +692,7 @@ macro_rules! gen_tests {
                 )
                 .unwrap();
             println!(
-                "Time to verify proof with a BBS+ signature and universal accumulator non-membership: {:?}",
+                "Time to verify proof with a BBS+ signature and VB universal accumulator non-membership: {:?}",
                 start.elapsed()
             );
 
@@ -689,12 +707,319 @@ macro_rules! gen_tests {
                     },
                 )
                 .unwrap();
-            println!("Time to verify proof with a BBS+ signature and universal accumulator non-membership with randomized pairing check: {:?}", start.elapsed());
+            println!("Time to verify proof with a BBS+ signature and VB universal accumulator non-membership with randomized pairing check: {:?}", start.elapsed());
+
+            // Prove knowledge of signature and membership of message with index `accum_member_3_idx` in KB universal accumulator
+            let accum_member_3_idx = 3;
+            let accum_member_3 = msgs[accum_member_3_idx];
+
+            kb_uni_accumulator = kb_uni_accumulator
+                .add(
+                    accum_member_3,
+                    &kb_uni_keypair.secret_key,
+                    &mut kb_mem_state,
+                    &mut kb_non_mem_state,
+                )
+                .unwrap();
+            let mem_3_wit = kb_uni_accumulator
+                .get_membership_witness(&accum_member_3, &kb_uni_keypair.secret_key, &kb_mem_state)
+                .unwrap();
+            assert!(kb_uni_accumulator.verify_membership(
+                &accum_member_3,
+                &mem_3_wit,
+                &kb_uni_keypair.public_key,
+                &kb_uni_accum_params
+            ));
+
+            let mut statements = Statements::new();
+            statements.add($stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements.add(KBAccumulatorMembershipStmt::new_statement_from_params(
+                kb_uni_accum_params.clone(),
+                kb_uni_keypair.public_key.clone(),
+                prk.clone(),
+                *kb_uni_accumulator.mem_value(),
+            ));
+
+            let mut witnesses = Witnesses::new();
+            witnesses.add($wit::new_as_witness(
+                sig.clone(),
+                msgs.clone().into_iter().enumerate().collect(),
+            ));
+            witnesses.add(Witness::KBUniAccumulatorMembership(KBMembershipWit {
+                element: accum_member_3,
+                witness: mem_3_wit.clone(),
+            }));
+
+            let mut meta_statements = MetaStatements::new();
+            meta_statements.add_witness_equality(EqualWitnesses(
+                vec![(0, accum_member_3_idx), (1, 0)]
+                    .into_iter()
+                    .collect::<BTreeSet<WitnessRef>>(),
+            ));
+
+            test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+            test_serialization!(MetaStatements, meta_statements);
+            test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            proof_spec.validate().unwrap();
+
+            test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+
+            let proof = ProofG1::new::<StdRng, Blake2b512>(
+                &mut rng,
+                proof_spec.clone(),
+                witnesses.clone(),
+                nonce.clone(),
+                Default::default(),
+            )
+            .unwrap()
+            .0;
+
+            test_serialization!(ProofG1, proof);
+
+            let start = Instant::now();
+            proof
+                .clone()
+                .verify::<StdRng, Blake2b512>(
+                    &mut rng,
+                    proof_spec.clone(),
+                    nonce.clone(),
+                    Default::default(),
+                )
+                .unwrap();
+            println!(
+                "Time to verify proof with a BBS+ signature and KB universal accumulator membership: {:?}",
+                start.elapsed()
+            );
+
+            let start = Instant::now();
+            proof
+                .clone()
+                .verify::<StdRng, Blake2b512>(
+                    &mut rng,
+                    proof_spec.clone(),
+                    nonce.clone(),
+                    VerifierConfig {
+                        use_lazy_randomized_pairing_checks: Some(false),
+                    },
+                )
+                .unwrap();
+            println!("Time to verify proof with a BBS+ signature and KB universal accumulator membership with randomized pairing check: {:?}", start.elapsed());
+
+            // Prove knowledge of signature and non-membership of message with index `accum_non_member_idx` in KB universal accumulator
+            let accum_non_member_2_idx = 4;
+            let accum_non_member_2 = msgs[accum_non_member_2_idx];
+            let non_mem_wit_2 = kb_uni_accumulator
+                .get_non_membership_witness(
+                    &accum_non_member_2,
+                    &kb_uni_keypair.secret_key,
+                    &kb_non_mem_state
+                )
+                .unwrap();
+            assert!(kb_uni_accumulator.verify_non_membership(
+                &accum_non_member_2,
+                &non_mem_wit_2,
+                &kb_uni_keypair.public_key,
+                &kb_uni_accum_params
+            ));
+
+            let mut statements = Statements::new();
+            statements.add($stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements.add(KBAccumulatorNonMembershipStmt::new_statement_from_params(
+                kb_uni_accum_params.clone(),
+                kb_uni_keypair.public_key.clone(),
+                prk.clone(),
+                *kb_uni_accumulator.non_mem_value(),
+            ));
+
+            let mut witnesses = Witnesses::new();
+            witnesses.add($wit::new_as_witness(
+                sig.clone(),
+                msgs.clone().into_iter().enumerate().collect(),
+            ));
+            witnesses.add(Witness::KBUniAccumulatorNonMembership(KBNonMembershipWit {
+                element: accum_non_member_2,
+                witness: non_mem_wit_2.clone(),
+            }));
+
+            let mut meta_statements = MetaStatements::new();
+            meta_statements.add_witness_equality(EqualWitnesses(
+                vec![(0, accum_non_member_2_idx), (1, 0)]
+                    .into_iter()
+                    .collect::<BTreeSet<WitnessRef>>(),
+            ));
+
+            test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+            test_serialization!(MetaStatements, meta_statements);
+            test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            proof_spec.validate().unwrap();
+
+            test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+
+            let proof = ProofG1::new::<StdRng, Blake2b512>(
+                &mut rng,
+                proof_spec.clone(),
+                witnesses.clone(),
+                nonce.clone(),
+                Default::default(),
+            )
+            .unwrap()
+            .0;
+
+            test_serialization!(ProofG1, proof);
+
+            let start = Instant::now();
+            proof
+                .clone()
+                .verify::<StdRng, Blake2b512>(
+                    &mut rng,
+                    proof_spec.clone(),
+                    nonce.clone(),
+                    Default::default(),
+                )
+                .unwrap();
+            println!(
+                "Time to verify proof with a BBS+ signature and KB universal accumulator non-membership: {:?}",
+                start.elapsed()
+            );
+
+            let start = Instant::now();
+            proof
+                .verify::<StdRng, Blake2b512>(
+                    &mut rng,
+                    proof_spec.clone(),
+                    nonce.clone(),
+                    VerifierConfig {
+                        use_lazy_randomized_pairing_checks: Some(false),
+                    },
+                )
+                .unwrap();
+            println!("Time to verify proof with a BBS+ signature and KB universal accumulator non-membership with randomized pairing check: {:?}", start.elapsed());
+
+            // Message with index `accum_member_4` is added in the KB positive accumulator
+            let accum_member_4_idx = 1;
+            let accum_member_4 = msgs[accum_member_4_idx];
+
+            let mem_4_wit = kb_pos_accumulator
+                .add::<Blake2b512>(
+                    &accum_member_4,
+                    &kb_pos_accum_sk,
+                    &kb_pos_accum_params,
+                    &mut kb_pos_state,
+                )
+                .unwrap();
+            kb_pos_accumulator.verify_membership(
+                &accum_member_4,
+                &mem_4_wit,
+                &kb_pos_accum_pk,
+                &kb_pos_accum_params
+            ).unwrap();
+
+            let mut statements = Statements::new();
+            statements.add($stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements.add(KBPositiveAccumulatorMembership::new_statement_from_params(
+                kb_pos_accum_params.clone(),
+                kb_pos_accum_pk.clone(),
+                prk.clone(),
+                *kb_pos_accumulator.value(),
+            ));
+
+            // Create meta statement describing that message in the signature at index `accum_member_1_idx` is
+            // same as the accumulator member
+            let mut meta_statements = MetaStatements::new();
+            meta_statements.add_witness_equality(EqualWitnesses(
+                vec![
+                    (0, accum_member_4_idx),
+                    (1, 0), // Since accumulator (non)membership has only one (for applications) which is the (non)member, that witness is at index 0.
+                ]
+                .into_iter()
+                .collect::<BTreeSet<WitnessRef>>(),
+            ));
+
+            test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+            test_serialization!(MetaStatements, meta_statements);
+
+            let context = Some(b"test".to_vec());
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            proof_spec.validate().unwrap();
+
+            test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+
+            let mut witnesses = Witnesses::new();
+            witnesses.add($wit::new_as_witness(
+                sig.clone(),
+                msgs.clone().into_iter().enumerate().collect(),
+            ));
+            witnesses.add(KBPosMembership::new_as_witness(
+                accum_member_4,
+                mem_4_wit.clone(),
+            ));
+            test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+            let nonce = Some(b"test-nonce".to_vec());
+
+            let proof = ProofG1::new::<StdRng, Blake2b512>(
+                &mut rng,
+                proof_spec.clone(),
+                witnesses.clone(),
+                nonce.clone(),
+                Default::default(),
+            )
+            .unwrap()
+            .0;
+
+            test_serialization!(ProofG1, proof);
+
+            let start = Instant::now();
+            proof
+                .clone()
+                .verify::<StdRng, Blake2b512>(
+                    &mut rng,
+                    proof_spec.clone(),
+                    nonce.clone(),
+                    Default::default(),
+                )
+                .unwrap();
+            println!(
+                "Time to verify proof with a BBS+ signature and KB positive accumulator membership: {:?}",
+                start.elapsed()
+            );
+
+            let start = Instant::now();
+            proof
+                .verify::<StdRng, Blake2b512>(
+                    &mut rng,
+                    proof_spec.clone(),
+                    nonce.clone(),
+                    VerifierConfig {
+                        use_lazy_randomized_pairing_checks: Some(false),
+                    },
+                )
+                .unwrap();
+            println!("Time to verify proof with a BBS+ signature and KB positive accumulator membership with randomized pairing check: {:?}", start.elapsed());
 
             // Prove knowledge of signature and
-            // - membership of message with index `accum_member_1_idx` in positive accumulator
-            // - membership of message with index `accum_member_2_idx` in universal accumulator
-            // - non-membership of message with index `accum_non_member_idx` in universal accumulator
+            // - membership of message with index `accum_member_1_idx` in VB positive accumulator
+            // - membership of message with index `accum_member_2_idx` in VB universal accumulator
+            // - non-membership of message with index `accum_non_member_idx` VB in universal accumulator
+            // - membership of message with index `accum_member_3_idx` in KB universal accumulator
+            // - non-membership of message with index `accum_non_member_2_idx` KB in universal accumulator
+            // - membership of message with index `accum_member_4_idx` in KB positive accumulator
             let mut all_setup_params = vec![];
             all_setup_params.push(SetupParams::VbAccumulatorParams(uni_accum_params));
             all_setup_params.push(SetupParams::VbAccumulatorPublicKey(
@@ -702,6 +1027,15 @@ macro_rules! gen_tests {
             ));
             all_setup_params.push(SetupParams::VbAccumulatorMemProvingKey(derived_mem_prk));
             all_setup_params.push(SetupParams::VbAccumulatorNonMemProvingKey(non_mem_prk));
+            all_setup_params.push(SetupParams::VbAccumulatorParams(kb_uni_accum_params));
+            all_setup_params.push(SetupParams::VbAccumulatorPublicKey(
+                kb_uni_keypair.public_key.clone(),
+            ));
+            all_setup_params.push(SetupParams::BBSigProvingKey(prk));
+            all_setup_params.push(SetupParams::KBPositiveAccumulatorParams(kb_pos_accum_params));
+            all_setup_params.push(SetupParams::KBPositiveAccumulatorPublicKey(
+                kb_pos_accum_pk.clone(),
+            ));
 
             let mut statements = Statements::new();
             statements.add($stmt::new_statement_from_params(
@@ -727,6 +1061,24 @@ macro_rules! gen_tests {
                 3,
                 *uni_accumulator.value(),
             ));
+            statements.add(KBAccumulatorMembershipStmt::new_statement_from_params_ref(
+                4,
+                5,
+                6,
+                *kb_uni_accumulator.mem_value(),
+            ));
+            statements.add(KBAccumulatorNonMembershipStmt::new_statement_from_params_ref(
+                4,
+                5,
+                6,
+                *kb_uni_accumulator.non_mem_value(),
+            ));
+            statements.add(KBPositiveAccumulatorMembership::new_statement_from_params_ref(
+                7,
+                8,
+                6,
+                *kb_pos_accumulator.value(),
+            ));
 
             let mut meta_statements = MetaStatements::new();
             meta_statements.add_witness_equality(EqualWitnesses(
@@ -744,6 +1096,21 @@ macro_rules! gen_tests {
                     .into_iter()
                     .collect::<BTreeSet<WitnessRef>>(),
             ));
+            meta_statements.add_witness_equality(EqualWitnesses(
+                vec![(0, accum_member_3_idx), (4, 0)]
+                    .into_iter()
+                    .collect::<BTreeSet<WitnessRef>>(),
+            ));
+            meta_statements.add_witness_equality(EqualWitnesses(
+                vec![(0, accum_non_member_2_idx), (5, 0)]
+                    .into_iter()
+                    .collect::<BTreeSet<WitnessRef>>(),
+            ));
+            meta_statements.add_witness_equality(EqualWitnesses(
+                vec![(0, accum_member_4_idx), (6, 0)]
+                    .into_iter()
+                    .collect::<BTreeSet<WitnessRef>>(),
+            ));
 
             test_serialization!(Statements<Bls12_381, G1Affine>, statements);
             test_serialization!(MetaStatements, meta_statements);
@@ -753,17 +1120,29 @@ macro_rules! gen_tests {
                 sig,
                 msgs.into_iter().enumerate().collect(),
             ));
-            witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+            witnesses.add(Witness::VBAccumulatorMembership(MembershipWit {
                 element: accum_member_1,
                 witness: mem_1_wit,
             }));
-            witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+            witnesses.add(Witness::VBAccumulatorMembership(MembershipWit {
                 element: accum_member_2,
                 witness: mem_2_wit,
             }));
-            witnesses.add(Witness::AccumulatorNonMembership(NonMembershipWit {
+            witnesses.add(Witness::VBAccumulatorNonMembership(NonMembershipWit {
                 element: accum_non_member,
                 witness: non_mem_wit,
+            }));
+            witnesses.add(Witness::KBUniAccumulatorMembership(KBMembershipWit {
+                element: accum_member_3,
+                witness: mem_3_wit,
+            }));
+            witnesses.add(Witness::KBUniAccumulatorNonMembership(KBNonMembershipWit {
+                element: accum_non_member_2,
+                witness: non_mem_wit_2,
+            }));
+            witnesses.add(Witness::KBPosAccumulatorMembership(KBPosMembership {
+                element: accum_member_4,
+                witness: mem_4_wit,
             }));
 
             test_serialization!(Witnesses<Bls12_381>, witnesses);
@@ -800,7 +1179,7 @@ macro_rules! gen_tests {
                     Default::default(),
                 )
                 .unwrap();
-            println!("Time to verify proof with a BBS+ signature and 3 accumulator membership and non-membership checks: {:?}", start.elapsed());
+            println!("Time to verify proof with a BBS+ signature and 6 accumulator membership and non-membership checks: {:?}", start.elapsed());
 
             let start = Instant::now();
             proof
@@ -813,7 +1192,7 @@ macro_rules! gen_tests {
                     },
                 )
                 .unwrap();
-            println!("Time to verify proof with a BBS+ signature and 3 accumulator membership and non-membership checks with randomized pairing check: {:?}", start.elapsed());
+            println!("Time to verify proof with a BBS+ signature and 6 accumulator membership and non-membership checks with randomized pairing check: {:?}", start.elapsed());
         }
 
         #[test]
@@ -2164,7 +2543,7 @@ fn detached_accumulator() {
         sig.clone(),
         msgs.clone().into_iter().enumerate().collect(),
     ));
-    witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+    witnesses.add(Witness::VBAccumulatorMembership(MembershipWit {
         element: accum_member_2,
         witness: mem_2_wit.clone(),
     }));
@@ -2289,7 +2668,7 @@ fn detached_accumulator() {
         sig.clone(),
         msgs.clone().into_iter().enumerate().collect(),
     ));
-    witnesses.add(Witness::AccumulatorNonMembership(NonMembershipWit {
+    witnesses.add(Witness::VBAccumulatorNonMembership(NonMembershipWit {
         element: accum_non_member,
         witness: non_mem_wit.clone(),
     }));
@@ -2450,15 +2829,15 @@ fn detached_accumulator() {
         sig,
         msgs.into_iter().enumerate().collect(),
     ));
-    witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+    witnesses.add(Witness::VBAccumulatorMembership(MembershipWit {
         element: accum_member_1,
         witness: mem_1_wit,
     }));
-    witnesses.add(Witness::AccumulatorMembership(MembershipWit {
+    witnesses.add(Witness::VBAccumulatorMembership(MembershipWit {
         element: accum_member_2,
         witness: mem_2_wit,
     }));
-    witnesses.add(Witness::AccumulatorNonMembership(NonMembershipWit {
+    witnesses.add(Witness::VBAccumulatorNonMembership(NonMembershipWit {
         element: accum_non_member,
         witness: non_mem_wit,
     }));

@@ -7,22 +7,32 @@ use ark_std::{
 use bbs_plus::prelude::{PoKOfSignature23G1Proof, PoKOfSignatureG1Proof};
 use bulletproofs_plus_plus::prelude::ProofArbitraryRange;
 use coconut_crypto::SignaturePoK as PSSignaturePoK;
-use dock_crypto_utils::{ecies, serde_utils::*};
+use dock_crypto_utils::{ecies, serde_utils::ArkObjectBytes};
 use saver::encryption::Ciphertext;
 use schnorr_pok::SchnorrResponse;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use vb_accumulator::prelude::{MembershipProof, NonMembershipProof};
+use vb_accumulator::{
+    kb_positive_accumulator::{
+        proofs::KBPositiveAccumulatorMembershipProof,
+        proofs_cdh::KBPositiveAccumulatorMembershipProof as KBPositiveAccumulatorMembershipProofCDH,
+    },
+    kb_universal_accumulator::proofs::{
+        KBUniversalAccumulatorMembershipProof, KBUniversalAccumulatorNonMembershipProof,
+    },
+    prelude::{MembershipProof, NonMembershipProof},
+};
 
 use crate::error::ProofSystemError;
 
 /// Proof corresponding to one `Statement`
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub enum StatementProof<E: Pairing, G: AffineRepr> {
     PoKBBSSignatureG1(PoKOfSignatureG1Proof<E>),
-    AccumulatorMembership(MembershipProof<E>),
-    AccumulatorNonMembership(NonMembershipProof<E>),
+    VBAccumulatorMembership(MembershipProof<E>),
+    VBAccumulatorNonMembership(NonMembershipProof<E>),
     PedersenCommitment(PedersenCommitmentProof<G>),
     Saver(SaverProof<E>),
     BoundCheckLegoGroth16(BoundCheckLegoGroth16Proof<E>),
@@ -38,6 +48,15 @@ pub enum StatementProof<E: Pairing, G: AffineRepr> {
     Inequality(InequalityProof<G>),
     DetachedAccumulatorMembership(DetachedAccumulatorMembershipProof<E>),
     DetachedAccumulatorNonMembership(DetachedAccumulatorNonMembershipProof<E>),
+    KBUniversalAccumulatorMembership(KBUniversalAccumulatorMembershipProof<E>),
+    KBUniversalAccumulatorNonMembership(KBUniversalAccumulatorNonMembershipProof<E>),
+    VBAccumulatorMembershipCDH(vb_accumulator::proofs_cdh::MembershipProof<E>),
+    VBAccumulatorNonMembershipCDH(vb_accumulator::proofs_cdh::NonMembershipProof<E>),
+    KBUniversalAccumulatorMembershipCDH(vb_accumulator::kb_universal_accumulator::proofs_cdh::KBUniversalAccumulatorMembershipProof<E>),
+    KBUniversalAccumulatorNonMembershipCDH(vb_accumulator::kb_universal_accumulator::proofs_cdh::KBUniversalAccumulatorNonMembershipProof<E>),
+    KBPositiveAccumulatorMembership(#[serde_as(as = "ArkObjectBytes")] KBPositiveAccumulatorMembershipProof<E>),
+    KBPositiveAccumulatorMembershipCDH(#[serde_as(as = "ArkObjectBytes")] KBPositiveAccumulatorMembershipProofCDH<E>),
+
 }
 
 macro_rules! delegate {
@@ -45,8 +64,8 @@ macro_rules! delegate {
         $crate::delegate_indexed! {
             $self $([$idx 0u8])? =>
                 PoKBBSSignatureG1,
-                AccumulatorMembership,
-                AccumulatorNonMembership,
+                VBAccumulatorMembership,
+                VBAccumulatorNonMembership,
                 PedersenCommitment,
                 Saver,
                 BoundCheckLegoGroth16,
@@ -61,7 +80,15 @@ macro_rules! delegate {
                 BoundCheckSmcWithKV,
                 Inequality,
                 DetachedAccumulatorMembership,
-                DetachedAccumulatorNonMembership
+                DetachedAccumulatorNonMembership,
+                KBUniversalAccumulatorMembership,
+                KBUniversalAccumulatorNonMembership,
+                VBAccumulatorMembershipCDH,
+                VBAccumulatorNonMembershipCDH,
+                KBUniversalAccumulatorMembershipCDH,
+                KBUniversalAccumulatorNonMembershipCDH,
+                KBPositiveAccumulatorMembership,
+                KBPositiveAccumulatorMembershipCDH
             : $($tt)+
         }
     }};
@@ -72,8 +99,8 @@ macro_rules! delegate_reverse {
         $crate::delegate_indexed_reverse! {
             $val[_idx 0u8] =>
                 PoKBBSSignatureG1,
-                AccumulatorMembership,
-                AccumulatorNonMembership,
+                VBAccumulatorMembership,
+                VBAccumulatorNonMembership,
                 PedersenCommitment,
                 Saver,
                 BoundCheckLegoGroth16,
@@ -88,7 +115,15 @@ macro_rules! delegate_reverse {
                 BoundCheckSmcWithKV,
                 Inequality,
                 DetachedAccumulatorMembership,
-                DetachedAccumulatorNonMembership
+                DetachedAccumulatorNonMembership,
+                KBUniversalAccumulatorMembership,
+                KBUniversalAccumulatorNonMembership,
+                VBAccumulatorMembershipCDH,
+                VBAccumulatorNonMembershipCDH,
+                KBUniversalAccumulatorMembershipCDH,
+                KBUniversalAccumulatorNonMembershipCDH,
+                KBPositiveAccumulatorMembership,
+                KBPositiveAccumulatorMembershipCDH
             : $($tt)+
         }
 

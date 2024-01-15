@@ -28,9 +28,13 @@ use saver::prelude::{
 use schnorr_pok::inequality::CommitmentKey;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use vb_accumulator::prelude::{
-    MembershipProvingKey, NonMembershipProvingKey, PublicKey as AccumPublicKey,
-    SetupParams as AccumParams,
+use short_group_sig::common::ProvingKey;
+use vb_accumulator::{
+    kb_positive_accumulator::setup::{PublicKey as KBAccumPublicKey, SetupParams as KBAccumParams},
+    prelude::{
+        MembershipProvingKey, NonMembershipProvingKey, PublicKey as AccumPublicKey,
+        SetupParams as AccumParams,
+    },
 };
 
 /// Holds (public) setup parameters of different protocols.
@@ -64,6 +68,9 @@ pub enum SetupParams<E: Pairing, G: AffineRepr> {
         #[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKeyAndSecretKey<E>,
     ),
     CommitmentKey(#[serde_as(as = "ArkObjectBytes")] CommitmentKey<G>),
+    BBSigProvingKey(ProvingKey<E::G1Affine>),
+    KBPositiveAccumulatorParams(KBAccumParams<E>),
+    KBPositiveAccumulatorPublicKey(KBAccumPublicKey<E>),
 }
 
 macro_rules! delegate {
@@ -93,7 +100,10 @@ macro_rules! delegate {
                 BppSetupParams,
                 SmcParamsAndCommKey,
                 SmcParamsAndCommKeyAndSk,
-                CommitmentKey
+                CommitmentKey,
+                BBSigProvingKey,
+                KBPositiveAccumulatorParams,
+                KBPositiveAccumulatorPublicKey
             : $($tt)+
         }
     }};
@@ -126,7 +136,10 @@ macro_rules! delegate_reverse {
                 BppSetupParams,
                 SmcParamsAndCommKey,
                 SmcParamsAndCommKeyAndSk,
-                CommitmentKey
+                CommitmentKey,
+                BBSigProvingKey,
+                KBPositiveAccumulatorParams,
+                KBPositiveAccumulatorPublicKey
             : $($tt)+
         }
 

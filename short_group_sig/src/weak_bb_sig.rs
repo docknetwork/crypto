@@ -9,17 +9,33 @@ use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec};
 use core::ops::Neg;
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Secret key used by the signer to sign messages
+#[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Zeroize,
+    ZeroizeOnDrop,
+    Serialize,
+    Deserialize,
 )]
 pub struct SecretKey<F: PrimeField>(pub F);
 
 /// Public key used to verify signatures
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PublicKeyG2<E: Pairing>(pub <E as Pairing>::G2Affine);
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct PublicKeyG2<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub <E as Pairing>::G2Affine);
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PreparedPublicKeyG2<E: Pairing>(pub E::G2Prepared);
@@ -54,10 +70,20 @@ where
     }
 }
 
+#[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Zeroize,
+    ZeroizeOnDrop,
+    Serialize,
+    Deserialize,
 )]
-pub struct SignatureG1<E: Pairing>(pub E::G1Affine);
+pub struct SignatureG1<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub E::G1Affine);
 
 impl<E: Pairing> SignatureG1<E> {
     /// Create a new signature

@@ -21,20 +21,19 @@ use crate::{
     witness::{MembershipWitness, NonMembershipWitness},
 };
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::PrimeField;
+
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
-    compute_random_oracle_challenge, error::SchnorrError, impl_proof_of_knowledge_of_discrete_log,
+    compute_random_oracle_challenge,
+    discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
     SchnorrCommitment, SchnorrResponse,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-impl_proof_of_knowledge_of_discrete_log!(DKnowledgeProtocol, DKnowledgeProof);
 
 #[derive(
     Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
@@ -86,7 +85,7 @@ pub struct NonMembershipProofProtocol<G: AffineRepr> {
     pub C_bar: G,
     pub sc_comm: SchnorrCommitment<G>,
     sc_wits: (G::ScalarField, G::ScalarField, G::ScalarField),
-    pub sc_comm_2: DKnowledgeProtocol<G>,
+    pub sc_comm_2: PokDiscreteLogProtocol<G>,
 }
 
 #[serde_as]
@@ -103,7 +102,7 @@ pub struct NonMembershipProof<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
     pub sc_resp: SchnorrResponse<G>,
-    pub sc_resp_2: DKnowledgeProof<G>,
+    pub sc_resp_2: PokDiscreteLog<G>,
 }
 
 /// The part of non-membership proof whose verification requires knowledge of secret key.
@@ -118,17 +117,13 @@ pub struct DelegatedNonMembershipProof<G: AffineRepr> {
     pub C_bar: G,
 }
 
-impl_proof_of_knowledge_of_discrete_log!(SecretKeyKnowledgeProtocol, SecretKeyKnowledgeProof);
-impl_proof_of_knowledge_of_discrete_log!(MemWitCorrectnessProtocol, MemWitCorrectnessProof);
-impl_proof_of_knowledge_of_discrete_log!(NonMemWitCorrectnessProtocol, NonMemWitCorrectnessProof);
-
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct MembershipWitnessCorrectnessProof<G: AffineRepr> {
-    pub wit_proof: MemWitCorrectnessProof<G>,
-    pub sk_proof: SecretKeyKnowledgeProof<G>,
+    pub wit_proof: PokDiscreteLog<G>,
+    pub sk_proof: PokDiscreteLog<G>,
 }
 
 #[serde_as]
@@ -136,8 +131,8 @@ pub struct MembershipWitnessCorrectnessProof<G: AffineRepr> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct NonMembershipWitnessCorrectnessProof<G: AffineRepr> {
-    pub wit_proof: NonMemWitCorrectnessProof<G>,
-    pub sk_proof: SecretKeyKnowledgeProof<G>,
+    pub wit_proof: PokDiscreteLog<G>,
+    pub sk_proof: PokDiscreteLog<G>,
 }
 
 impl<G: AffineRepr> MembershipWitnessCorrectnessProof<G> {
@@ -153,12 +148,12 @@ impl<G: AffineRepr> MembershipWitnessCorrectnessProof<G> {
         let mut challenge_bytes = vec![];
         let sk_blinding = G::ScalarField::rand(rng);
         let wit_protocol =
-            MemWitCorrectnessProtocol::init(secret_key.0, sk_blinding.clone(), &witness.0);
+            PokDiscreteLogProtocol::init(secret_key.0, sk_blinding.clone(), &witness.0);
         let y = Self::compute_y(accumulator, witness, member);
         wit_protocol
             .challenge_contribution(&witness.0, &y, &mut challenge_bytes)
             .unwrap();
-        let sk_protocol = SecretKeyKnowledgeProtocol::init(secret_key.0, sk_blinding, &params.0);
+        let sk_protocol = PokDiscreteLogProtocol::init(secret_key.0, sk_blinding, &params.0);
         sk_protocol
             .challenge_contribution(&params.0, &public_key.0, &mut challenge_bytes)
             .unwrap();
@@ -218,12 +213,12 @@ impl<G: AffineRepr> NonMembershipWitnessCorrectnessProof<G> {
         let mut challenge_bytes = vec![];
         let sk_blinding = G::ScalarField::rand(rng);
         let wit_protocol =
-            NonMemWitCorrectnessProtocol::init(secret_key.0, sk_blinding.clone(), &witness.C);
+            PokDiscreteLogProtocol::init(secret_key.0, sk_blinding.clone(), &witness.C);
         let y = Self::compute_y(accumulator, witness, non_member, params);
         wit_protocol
             .challenge_contribution(&witness.C, &y, &mut challenge_bytes)
             .unwrap();
-        let sk_protocol = SecretKeyKnowledgeProtocol::init(secret_key.0, sk_blinding, &params.0);
+        let sk_protocol = PokDiscreteLogProtocol::init(secret_key.0, sk_blinding, &params.0);
         sk_protocol
             .challenge_contribution(&params.0, &public_key.0, &mut challenge_bytes)
             .unwrap();
@@ -432,7 +427,7 @@ impl<G: AffineRepr> NonMembershipProofProtocol<G> {
         ];
         let sc_wits = (l, element, d_prime.clone());
         let sc_comm = SchnorrCommitment::new(&bases, randomness);
-        let sc_comm_2 = DKnowledgeProtocol::init(d_prime, d_prime_blinding, Q);
+        let sc_comm_2 = PokDiscreteLogProtocol::init(d_prime, d_prime_blinding, Q);
         Self {
             C_prime: C_prime.into(),
             C_hat: C_hat.into(),

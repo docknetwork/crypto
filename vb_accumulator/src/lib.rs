@@ -59,7 +59,7 @@ pub mod kb_universal_accumulator;
 pub mod persistence;
 pub mod positive;
 pub mod proofs;
-pub mod proofs_alt;
+pub mod proofs_cdh;
 pub mod proofs_keyed_verification;
 pub mod setup;
 pub mod setup_keyed_verification;

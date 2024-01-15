@@ -12,9 +12,9 @@ extern crate alloc;
 
 pub mod bb_sig;
 pub mod bb_sig_pok;
-pub mod bb_sig_pok_alt;
+pub mod bb_sig_pok_cdh;
 pub mod common;
 pub mod error;
 pub mod weak_bb_sig;
 pub mod weak_bb_sig_pok;
-pub mod weak_bb_sig_pok_alt;
+pub mod weak_bb_sig_pok_cdh;

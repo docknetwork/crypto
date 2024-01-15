@@ -38,9 +38,7 @@ use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use digest::{Digest, DynDigest};
-use schnorr_pok::{
-    error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrChallengeContributor,
-};
+use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
 
 use dock_crypto_utils::{
     affine_group_element_from_byte_slices, concat_slices, join, serde_utils::*,
@@ -106,6 +104,10 @@ pub struct SetupParams<E: Pairing> {
 }
 
 impl<F: PrimeField> SecretKey<F> {
+    pub fn new<R: RngCore>(rng: &mut R) -> Self {
+        Self(F::rand(rng))
+    }
+
     pub fn generate_using_seed<D>(seed: &[u8]) -> Self
     where
         F: PrimeField,
@@ -215,7 +217,7 @@ impl<E: Pairing> PublicKey<E> {
 
 #[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct PreparedSetupParams<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
@@ -226,7 +228,7 @@ pub struct PreparedSetupParams<E: Pairing> {
 
 #[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct PreparedPublicKey<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub E::G2Prepared);
 
@@ -244,9 +246,6 @@ impl<E: Pairing> From<PublicKey<E>> for PreparedPublicKey<E> {
         Self(E::G2Prepared::from(pk.0))
     }
 }
-
-// Implement proof of knowledge of secret key in public key
-impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKey, PoKSecretKeyInPublicKeyProof);
 
 /// Used between prover and verifier only to prove knowledge of member and corresponding witness.
 /// `X`, `Y` and `Z` from the paper
@@ -344,7 +343,10 @@ mod tests {
     use ark_bls12_381::Bls12_381;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
-    use schnorr_pok::compute_random_oracle_challenge;
+    use schnorr_pok::{
+        compute_random_oracle_challenge,
+        discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
+    };
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -427,7 +429,7 @@ mod tests {
         let witness = sk.0;
         let blinding = Fr::rand(&mut rng);
 
-        let protocol = PoKSecretKeyInPublicKey::<<Bls12_381 as Pairing>::G2Affine>::init(
+        let protocol = PokDiscreteLogProtocol::<<Bls12_381 as Pairing>::G2Affine>::init(
             witness, blinding, base,
         );
 
@@ -437,7 +439,7 @@ mod tests {
             .unwrap();
 
         test_serialization!(
-            PoKSecretKeyInPublicKey::<<Bls12_381 as Pairing>::G2Affine>,
+            PokDiscreteLogProtocol::<<Bls12_381 as Pairing>::G2Affine>,
             protocol
         );
 
@@ -456,9 +458,6 @@ mod tests {
         assert_eq!(chal_contrib_prover, chal_contrib_verifier);
         assert_eq!(challenge_prover, challenge_verifier);
 
-        test_serialization!(
-            PoKSecretKeyInPublicKeyProof<<Bls12_381 as Pairing>::G2Affine>,
-            proof
-        );
+        test_serialization!(PokDiscreteLog<<Bls12_381 as Pairing>::G2Affine>, proof);
     }
 }

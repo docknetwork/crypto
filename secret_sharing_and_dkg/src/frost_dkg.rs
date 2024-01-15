@@ -7,20 +7,18 @@ use crate::{
     error::SSError,
     feldman_dvss_dkg, feldman_vss,
 };
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::PrimeField;
+use ark_ec::AffineRepr;
+
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{collections::BTreeMap, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
-    compute_random_oracle_challenge, error::SchnorrError, impl_proof_of_knowledge_of_discrete_log,
+    compute_random_oracle_challenge,
+    discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::{Zeroize, ZeroizeOnDrop};
-
-impl_proof_of_knowledge_of_discrete_log!(SecretKeyKnowledgeProtocol, SecretKeyKnowledge);
 
 /// State of a participant during Round 1
 #[serde_as]
@@ -48,7 +46,7 @@ pub struct Round1Msg<G: AffineRepr> {
     pub sender_id: ParticipantId,
     pub comm_coeffs: CommitmentToCoefficients<G>,
     /// Proof of knowledge of the secret key for the public key
-    pub schnorr_proof: SecretKeyKnowledge<G>,
+    pub schnorr_proof: PokDiscreteLog<G>,
 }
 
 /// State of a participant during Round 2
@@ -110,7 +108,7 @@ impl<G: AffineRepr> Round1State<G> {
         let pk_gen = pk_gen.into();
         // Create the proof of knowledge for the secret key
         let blinding = G::ScalarField::rand(rng);
-        let schnorr = SecretKeyKnowledgeProtocol::init(secret, blinding, pk_gen);
+        let schnorr = PokDiscreteLogProtocol::init(secret, blinding, pk_gen);
         let mut challenge_bytes = vec![];
         schnorr
             .challenge_contribution(
@@ -252,6 +250,8 @@ impl<G: AffineRepr> Round2State<G> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use ark_ec::CurveGroup;
+    use ark_ff::PrimeField;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,

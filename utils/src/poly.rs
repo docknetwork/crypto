@@ -30,6 +30,7 @@ pub fn multiply_many_polys<F: PrimeField>(polys: Vec<DensePolynomial<F>>) -> Den
         .reduce(|a, b| multiply_poly(&a, &b))
         .unwrap();
 
+    #[cfg(feature = "parallel")]
     let one = || DensePolynomial::from_coefficients_vec(vec![F::one()]);
     #[cfg(feature = "parallel")]
     let r = polys

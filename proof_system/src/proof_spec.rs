@@ -38,9 +38,15 @@ use smc_range_proof::prelude::MemberCommitmentKey;
 use crate::prelude::bound_check_smc::{
     SmcParamsAndCommitmentKey, SmcParamsWithPairingAndCommitmentKey,
 };
-use vb_accumulator::setup::{
-    PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,
-    PublicKey as AccumPk, SetupParams as AccumParams,
+use vb_accumulator::{
+    kb_positive_accumulator::setup::{
+        PreparedPublicKey as KBPreparedAccumPk, PreparedSetupParams as KBPreparedAccumParams,
+        PublicKey as KBAccumPublicKey, SetupParams as KBAccumParams,
+    },
+    setup::{
+        PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,
+        PublicKey as AccumPk, SetupParams as AccumParams,
+    },
 };
 
 // TODO: Serialize snarkpack params
@@ -378,6 +384,8 @@ where
             StatementDerivedParams<PreparedBBSPlusPk<E>>,
             StatementDerivedParams<PreparedAccumParams<E>>,
             StatementDerivedParams<PreparedAccumPk<E>>,
+            StatementDerivedParams<KBPreparedAccumParams<E>>,
+            StatementDerivedParams<KBPreparedAccumPk<E>>,
             StatementDerivedParams<PreparedPSSigParams<E>>,
             StatementDerivedParams<PreparedPSPk<E>>,
             StatementDerivedParams<PreparedBBSSigParams23<E>>,
@@ -410,6 +418,20 @@ where
             SmcParamsWithPairingAndCommitmentKey<E>,
             E,
         >::new();
+        let mut derived_kb_accum_p =
+            DerivedParamsTracker::<KBAccumParams<E>, KBPreparedAccumParams<E>, E>::new();
+        let mut derived_kb_accum_pk =
+            DerivedParamsTracker::<KBAccumPublicKey<E>, KBPreparedAccumPk<E>, E>::new();
+
+        macro_rules! set_derived_for_accum {
+            ($s: ident, $s_idx: ident, $derived_accum_p: ident, $derived_accum_pk: ident) => {
+                let params = $s.get_params(&self.setup_params, $s_idx)?;
+                $derived_accum_p.on_new_statement_idx(params, $s_idx);
+
+                let pk = $s.get_public_key(&self.setup_params, $s_idx)?;
+                $derived_accum_pk.on_new_statement_idx(pk, $s_idx);
+            };
+        }
 
         for (s_idx, statement) in self.statements.0.iter().enumerate() {
             match statement {
@@ -427,19 +449,35 @@ where
                     let pk = s.get_public_key(&self.setup_params, s_idx)?;
                     derived_bbs_pk.on_new_statement_idx(pk, s_idx);
                 }
-                Statement::AccumulatorMembership(s) => {
-                    let params = s.get_params(&self.setup_params, s_idx)?;
-                    derived_accum_p.on_new_statement_idx(params, s_idx);
-
-                    let pk = s.get_public_key(&self.setup_params, s_idx)?;
-                    derived_accum_pk.on_new_statement_idx(pk, s_idx);
+                Statement::VBAccumulatorMembership(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_accum_p, derived_accum_pk);
                 }
-                Statement::AccumulatorNonMembership(s) => {
-                    let params = s.get_params(&self.setup_params, s_idx)?;
-                    derived_accum_p.on_new_statement_idx(params, s_idx);
-
-                    let pk = s.get_public_key(&self.setup_params, s_idx)?;
-                    derived_accum_pk.on_new_statement_idx(pk, s_idx);
+                Statement::VBAccumulatorNonMembership(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_accum_p, derived_accum_pk);
+                }
+                Statement::KBUniversalAccumulatorMembership(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_accum_p, derived_accum_pk);
+                }
+                Statement::KBUniversalAccumulatorNonMembership(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_accum_p, derived_accum_pk);
+                }
+                Statement::VBAccumulatorMembershipCDHVerifier(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_accum_p, derived_accum_pk);
+                }
+                Statement::VBAccumulatorNonMembershipCDHVerifier(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_accum_p, derived_accum_pk);
+                }
+                Statement::KBUniversalAccumulatorMembershipCDHVerifier(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_accum_p, derived_accum_pk);
+                }
+                Statement::KBUniversalAccumulatorNonMembershipCDHVerifier(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_accum_p, derived_accum_pk);
+                }
+                Statement::KBPositiveAccumulatorMembership(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_kb_accum_p, derived_kb_accum_pk);
+                }
+                Statement::KBPositiveAccumulatorMembershipCDH(s) => {
+                    set_derived_for_accum!(s, s_idx, derived_kb_accum_p, derived_kb_accum_pk);
                 }
                 Statement::SaverVerifier(s) => {
                     let gens = s.get_encryption_gens(&self.setup_params, s_idx)?;
@@ -482,6 +520,8 @@ where
             derived_bbs_pk.finish(),
             derived_accum_p.finish(),
             derived_accum_pk.finish(),
+            derived_kb_accum_p.finish(),
+            derived_kb_accum_pk.finish(),
             derived_ps_p.finish(),
             derived_ps_pk.finish(),
             derived_bbs.finish(),

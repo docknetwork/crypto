@@ -1,38 +1,30 @@
 use ark_bls12_381::Bls12_381;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
-    io::Write,
     rand::{rngs::StdRng, SeedableRng},
     UniformRand,
 };
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use dock_crypto_utils::serde_utils::*;
-use schnorr_pok::{
-    error::SchnorrError, impl_proof_of_knowledge_of_discrete_log, SchnorrCommitment,
-};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use schnorr_pok::{discrete_log::PokDiscreteLogProtocol, SchnorrCommitment};
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 
 macro_rules! bench_single {
     ($group_affine:ident, $group_projective:ident, $c: ident) => {
         let mut rng = StdRng::seed_from_u64(0u64);
-        impl_proof_of_knowledge_of_discrete_log!(Protocol, Proof);
         let base = <Bls12_381 as Pairing>::$group_projective::rand(&mut rng).into_affine();
         let witness = Fr::rand(&mut rng);
 
         $c.bench_function("Generate proof", |b| {
             b.iter(|| {
                 let blinding = Fr::rand(&mut rng);
-                let protocol = Protocol::<<Bls12_381 as Pairing>::$group_affine>::init(
-                    black_box(witness),
-                    blinding,
-                    black_box(&base),
-                );
+                let protocol =
+                    PokDiscreteLogProtocol::<<Bls12_381 as Pairing>::$group_affine>::init(
+                        black_box(witness),
+                        blinding,
+                        black_box(&base),
+                    );
                 let challenge = Fr::rand(&mut rng);
                 protocol.gen_proof(&challenge);
             })
@@ -40,8 +32,9 @@ macro_rules! bench_single {
 
         let y = base.mul_bigint(witness.into_bigint()).into_affine();
         let blinding = Fr::rand(&mut rng);
-        let protocol =
-            Protocol::<<Bls12_381 as Pairing>::$group_affine>::init(witness, blinding, &base);
+        let protocol = PokDiscreteLogProtocol::<<Bls12_381 as Pairing>::$group_affine>::init(
+            witness, blinding, &base,
+        );
         // Not benchmarking challenge contribution as that is just serialization
         let challenge = Fr::rand(&mut rng);
         let proof = protocol.gen_proof(&challenge);

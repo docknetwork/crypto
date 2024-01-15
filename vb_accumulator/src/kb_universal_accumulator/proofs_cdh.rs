@@ -6,25 +6,35 @@ use crate::{
         KBUniversalAccumulatorMembershipWitness, KBUniversalAccumulatorNonMembershipWitness,
     },
     prelude::{PreparedPublicKey, PreparedSetupParams},
-    proofs_alt::{MembershipProof, MembershipProofProtocol},
+    proofs_cdh::{MembershipProof, MembershipProofProtocol},
 };
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use serde::{Deserialize, Serialize};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
+#[derive(Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct KBUniversalAccumulatorMembershipProofProtocol<E: Pairing>(
     pub MembershipProofProtocol<E>,
 );
 
+#[derive(Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct KBUniversalAccumulatorNonMembershipProofProtocol<E: Pairing>(
     pub MembershipProofProtocol<E>,
 );
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct KBUniversalAccumulatorMembershipProof<E: Pairing>(pub MembershipProof<E>);
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct KBUniversalAccumulatorNonMembershipProof<E: Pairing>(pub MembershipProof<E>);
 
 impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {
@@ -34,14 +44,14 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {
         element_blinding: Option<E::ScalarField>,
         accumulator_value: E::G1Affine,
         witness: &KBUniversalAccumulatorMembershipWitness<E::G1Affine>,
-    ) -> Result<Self, VBAccumulatorError> {
-        Ok(Self(MembershipProofProtocol::init(
+    ) -> Self {
+        Self(MembershipProofProtocol::init(
             rng,
             element,
             element_blinding,
             accumulator_value,
             &witness.0,
-        )?))
+        ))
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -57,7 +67,7 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {
         challenge: &E::ScalarField,
     ) -> Result<KBUniversalAccumulatorMembershipProof<E>, VBAccumulatorError> {
         Ok(KBUniversalAccumulatorMembershipProof(
-            self.0.gen_proof(challenge)?,
+            self.0.clone().gen_proof(challenge)?,
         ))
     }
 }
@@ -110,14 +120,14 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProofProtocol<E> {
         element_blinding: Option<E::ScalarField>,
         accumulator_value: E::G1Affine,
         witness: &KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
-    ) -> Result<Self, VBAccumulatorError> {
-        Ok(Self(MembershipProofProtocol::init(
+    ) -> Self {
+        Self(MembershipProofProtocol::init(
             rng,
             element,
             element_blinding,
             accumulator_value,
             &witness.0,
-        )?))
+        ))
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -133,7 +143,7 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProofProtocol<E> {
         challenge: &E::ScalarField,
     ) -> Result<KBUniversalAccumulatorNonMembershipProof<E>, VBAccumulatorError> {
         Ok(KBUniversalAccumulatorNonMembershipProof(
-            self.0.gen_proof(challenge)?,
+            self.0.clone().gen_proof(challenge)?,
         ))
     }
 }
@@ -265,8 +275,7 @@ mod tests {
                 None,
                 *accumulator.mem_value(),
                 &mem_witnesses[i],
-            )
-            .unwrap();
+            );
             mem_proof_create_duration += start.elapsed();
 
             let mut chal_bytes_prover = vec![];
@@ -342,8 +351,7 @@ mod tests {
                 None,
                 *accumulator.non_mem_value(),
                 &non_mem_witnesses[i],
-            )
-            .unwrap();
+            );
             non_mem_proof_create_duration += start.elapsed();
 
             let mut chal_bytes_prover = vec![];

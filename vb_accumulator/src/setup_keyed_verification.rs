@@ -2,13 +2,12 @@ use crate::setup::SecretKey;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{io::Write, vec::Vec};
+use ark_std::vec::Vec;
 use digest::Digest;
 use dock_crypto_utils::{affine_group_element_from_byte_slices, serde_utils::ArkObjectBytes};
-use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Public key for accumulator manager
 #[serde_as]
@@ -64,9 +63,6 @@ impl<G: AffineRepr> PublicKey<G> {
     }
 }
 
-// Implement proof of knowledge of secret key in public key
-impl_proof_of_knowledge_of_discrete_log!(PoKSecretKeyInPublicKey, PoKSecretKeyInPublicKeyProof);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,7 +73,10 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use schnorr_pok::compute_random_oracle_challenge;
+    use schnorr_pok::{
+        compute_random_oracle_challenge,
+        discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
+    };
 
     #[test]
     fn proof_of_knowledge_of_public_key() {
@@ -94,14 +93,14 @@ mod tests {
         let witness = sk.0;
         let blinding = Fr::rand(&mut rng);
 
-        let protocol = PoKSecretKeyInPublicKey::<G1Affine>::init(witness, blinding, base);
+        let protocol = PokDiscreteLogProtocol::<G1Affine>::init(witness, blinding, base);
 
         let mut chal_contrib_prover = vec![];
         protocol
             .challenge_contribution(base, &pk.0, &mut chal_contrib_prover)
             .unwrap();
 
-        test_serialization!(PoKSecretKeyInPublicKey::<G1Affine>, protocol);
+        test_serialization!(PokDiscreteLogProtocol::<G1Affine>, protocol);
 
         let challenge_prover =
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib_prover);
@@ -118,6 +117,6 @@ mod tests {
         assert_eq!(chal_contrib_prover, chal_contrib_verifier);
         assert_eq!(challenge_prover, challenge_verifier);
 
-        test_serialization!(PoKSecretKeyInPublicKeyProof<G1Affine>, proof);
+        test_serialization!(PokDiscreteLog<G1Affine>, proof);
     }
 }

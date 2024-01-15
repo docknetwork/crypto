@@ -31,9 +31,15 @@ use saver::{
 };
 use schnorr_pok::inequality::CommitmentKey;
 use smc_range_proof::prelude::MemberCommitmentKey;
-use vb_accumulator::setup::{
-    PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,
-    PublicKey as AccumPk, SetupParams as AccumParams,
+use vb_accumulator::{
+    kb_positive_accumulator::setup::{
+        PreparedPublicKey as KBPreparedPublicKey, PreparedSetupParams as KBPreparedAccumParams,
+        PublicKey as KBAccumPublicKey, SetupParams as KBAccumParams,
+    },
+    setup::{
+        PreparedPublicKey as PreparedAccumPk, PreparedSetupParams as PreparedAccumParams,
+        PublicKey as AccumPk, SetupParams as AccumParams,
+    },
 };
 
 /// Allows creating a new derived parameter from reference to original parameter
@@ -248,6 +254,10 @@ impl_derived_for_prepared_ref!(
 impl_derived_for_prepared_ref!(AccumParams, PreparedAccumParams);
 
 impl_derived_for_prepared_ref!(AccumPk, PreparedAccumPk);
+
+impl_derived_for_prepared_ref!(KBAccumParams, KBPreparedAccumParams);
+
+impl_derived_for_prepared_ref!(KBAccumPublicKey, KBPreparedPublicKey);
 
 impl_derived_for_prepared_ref!(
     /// To derive params with prepared G2 and pairing from `SetMembershipCheckParams`

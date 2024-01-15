@@ -152,20 +152,20 @@ pub fn verify_tipp_mipp<E: Pairing, T: Transcript>(
     // z = e(A,B)
     pairing_checker.add_multiple_sources_and_target(
         &[proof.tmipp.gipa.final_a],
-        vec![b_prep.clone()],
+        [b_prep.clone()],
         &final_res.zab,
     );
     //  final_aB.0 = T = e(A,v1)e(w1,B)
     pairing_checker.add_multiple_sources_and_target(
         &[proof.tmipp.gipa.final_a, proof.tmipp.gipa.final_wkey.0],
-        vec![v_0_prep.clone(), b_prep.clone()],
+        [v_0_prep.clone(), b_prep.clone()],
         &final_res.tab,
     );
 
     //  final_aB.1 = U = e(A,v2)e(w2,B)
     pairing_checker.add_multiple_sources_and_target(
         &[proof.tmipp.gipa.final_a, proof.tmipp.gipa.final_wkey.1],
-        vec![v_1_prep.clone(), b_prep],
+        [v_1_prep.clone(), b_prep],
         &final_res.uab,
     );
 
@@ -177,13 +177,13 @@ pub fn verify_tipp_mipp<E: Pairing, T: Transcript>(
     // T = e(C,v1)
     pairing_checker.add_multiple_sources_and_target(
         &[proof.tmipp.gipa.final_c],
-        vec![v_0_prep],
+        [v_0_prep],
         &final_res.tc,
     );
     // U = e(C,v2)
     pairing_checker.add_multiple_sources_and_target(
         &[proof.tmipp.gipa.final_c],
-        vec![v_1_prep],
+        [v_1_prep],
         &final_res.uc,
     );
 

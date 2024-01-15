@@ -22,7 +22,14 @@ use itertools::{EitherOrBoth, Itertools};
 
 use crate::sub_protocols::{
     accumulator::{
-        DetachedAccumulatorMembershipSubProtocol, DetachedAccumulatorNonMembershipSubProtocol,
+        cdh::{
+            KBPositiveAccumulatorMembershipCDHSubProtocol,
+            KBUniversalAccumulatorMembershipCDHSubProtocol,
+            KBUniversalAccumulatorNonMembershipCDHSubProtocol,
+            VBAccumulatorMembershipCDHSubProtocol, VBAccumulatorNonMembershipCDHSubProtocol,
+        },
+        KBPositiveAccumulatorMembershipSubProtocol, KBUniversalAccumulatorMembershipSubProtocol,
+        KBUniversalAccumulatorNonMembershipSubProtocol,
     },
     bound_check_bpp::BoundCheckBppProtocol,
     bound_check_legogroth16::BoundCheckLegoGrothProtocol,
@@ -31,7 +38,12 @@ use crate::sub_protocols::{
     inequality::InequalityProtocol,
     r1cs_legogorth16::R1CSLegogroth16Protocol,
 };
-use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol};
+use accumulator::{
+    detached::{
+        DetachedAccumulatorMembershipSubProtocol, DetachedAccumulatorNonMembershipSubProtocol,
+    },
+    VBAccumulatorMembershipSubProtocol, VBAccumulatorNonMembershipSubProtocol,
+};
 
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to
 /// form a `Proof`
@@ -39,8 +51,8 @@ use accumulator::{AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubP
 pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
     /// For BBS+ signature in group G1
     PoKBBSSignatureG1(self::bbs_plus::PoKBBSSigG1SubProtocol<'a, E>),
-    AccumulatorMembership(AccumulatorMembershipSubProtocol<'a, E>),
-    AccumulatorNonMembership(AccumulatorNonMembershipSubProtocol<'a, E>),
+    VBAccumulatorMembership(VBAccumulatorMembershipSubProtocol<'a, E>),
+    VBAccumulatorNonMembership(VBAccumulatorNonMembershipSubProtocol<'a, E>),
     PoKDiscreteLogs(self::schnorr::SchnorrProtocol<'a, G>),
     /// For verifiable encryption using SAVER
     Saver(saver::SaverProtocol<'a, E>),
@@ -60,6 +72,16 @@ pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
     Inequality(InequalityProtocol<'a, G>),
     DetachedAccumulatorMembership(DetachedAccumulatorMembershipSubProtocol<'a, E>),
     DetachedAccumulatorNonMembership(DetachedAccumulatorNonMembershipSubProtocol<'a, E>),
+    KBUniversalAccumulatorMembership(KBUniversalAccumulatorMembershipSubProtocol<'a, E>),
+    KBUniversalAccumulatorNonMembership(KBUniversalAccumulatorNonMembershipSubProtocol<'a, E>),
+    VBAccumulatorMembershipCDH(VBAccumulatorMembershipCDHSubProtocol<'a, E>),
+    VBAccumulatorNonMembershipCDH(VBAccumulatorNonMembershipCDHSubProtocol<'a, E>),
+    KBUniversalAccumulatorMembershipCDH(KBUniversalAccumulatorMembershipCDHSubProtocol<'a, E>),
+    KBUniversalAccumulatorNonMembershipCDH(
+        KBUniversalAccumulatorNonMembershipCDHSubProtocol<'a, E>,
+    ),
+    KBPositiveAccumulatorMembership(KBPositiveAccumulatorMembershipSubProtocol<'a, E>),
+    KBPositiveAccumulatorMembershipCDH(KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E>),
 }
 
 macro_rules! delegate {
@@ -67,8 +89,8 @@ macro_rules! delegate {
         $crate::delegate_indexed! {
             $self =>
                 PoKBBSSignatureG1,
-                AccumulatorMembership,
-                AccumulatorNonMembership,
+                VBAccumulatorMembership,
+                VBAccumulatorNonMembership,
                 PoKDiscreteLogs,
                 Saver,
                 BoundCheckLegoGroth16,
@@ -80,7 +102,15 @@ macro_rules! delegate {
                 BoundCheckSmcWithKV,
                 Inequality,
                 DetachedAccumulatorMembership,
-                DetachedAccumulatorNonMembership
+                DetachedAccumulatorNonMembership,
+                KBUniversalAccumulatorMembership,
+                KBUniversalAccumulatorNonMembership,
+                VBAccumulatorMembershipCDH,
+                VBAccumulatorNonMembershipCDH,
+                KBUniversalAccumulatorMembershipCDH,
+                KBUniversalAccumulatorNonMembershipCDH,
+                KBPositiveAccumulatorMembership,
+                KBPositiveAccumulatorMembershipCDH
             : $($tt)+
         }
     }};

@@ -8,13 +8,8 @@ use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use dock_crypto_utils::msm::WindowTable;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
+use schnorr_pok::discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol};
 
 use crate::{
     auditor::AuditorPublicKey,
@@ -26,16 +21,12 @@ use crate::{
     },
 };
 
-impl_proof_of_knowledge_of_discrete_log!(UserSecretKeyProtocol, UserSecretKeyProof);
-impl_proof_of_knowledge_of_discrete_log!(UserRevSecretKeyProtocol, UserRevSecretKeyProof);
-impl_proof_of_knowledge_of_discrete_log!(UserRevSecretKeyProtocolQ, UserRevSecretKeyProofQ);
-
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RevocationRequestProtocol<E: Pairing> {
     /// Schnorr protocol to prove knowledge of revocation secret key
-    pub usk_rev_protocol: UserRevSecretKeyProtocol<E::G1Affine>,
+    pub usk_rev_protocol: PokDiscreteLogProtocol<E::G1Affine>,
     /// Schnorr protocol to prove knowledge of revocation secret key with base Q
-    pub usk_rev_protocol_Q: UserRevSecretKeyProtocolQ<E::G1Affine>,
+    pub usk_rev_protocol_Q: PokDiscreteLogProtocol<E::G1Affine>,
     pub C4: E::G1Affine,
     pub C5: E::G1Affine,
     pub nym: E::ScalarField,
@@ -48,9 +39,9 @@ pub struct RevocationRequest<E: Pairing> {
     pub C5: E::G1Affine,
     pub nym: E::ScalarField,
     /// Schnorr proof to prove knowledge of revocation secret key
-    pub usk_rev_proof: UserRevSecretKeyProof<E::G1Affine>,
+    pub usk_rev_proof: PokDiscreteLog<E::G1Affine>,
     /// Schnorr proof to prove knowledge of revocation secret key with base Q
-    pub usk_rev_proof_Q: UserRevSecretKeyProofQ<E::G1Affine>,
+    pub usk_rev_proof_Q: PokDiscreteLog<E::G1Affine>,
 }
 
 /// Part of credential corresponding to revocation
@@ -65,7 +56,7 @@ pub struct RevocationCredential<E: Pairing> {
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SignatureRequestProtocol<E: Pairing> {
     /// Schnorr protocol to prove knowledge of secret key
-    pub usk_protocol: UserSecretKeyProtocol<E::G1Affine>,
+    pub usk_protocol: PokDiscreteLogProtocol<E::G1Affine>,
     pub rev: Option<RevocationRequestProtocol<E>>,
     /// Whether requesting an auditable signature, i.e. signer signs user's public key
     pub auditable_sig: bool,
@@ -79,7 +70,7 @@ pub struct SignatureRequest<E: Pairing> {
     /// Randomized C1
     pub C2: E::G1Affine,
     /// Schnorr proof to prove knowledge of secret key
-    pub usk_proof: UserSecretKeyProof<E::G1Affine>,
+    pub usk_proof: PokDiscreteLog<E::G1Affine>,
     /// Only present when the signer is issuing a revocable credential
     pub rev: Option<RevocationRequest<E>>,
     /// Whether requesting an auditable signature, i.e. signer signs user's public key
@@ -116,7 +107,7 @@ impl<E: Pairing> SignatureRequestProtocol<E> {
     ) -> Self {
         let r1 = E::ScalarField::rand(rng);
         Self {
-            usk_protocol: UserSecretKeyProtocol::init(user_sk.0, r1, P1),
+            usk_protocol: PokDiscreteLogProtocol::init(user_sk.0, r1, P1),
             rev: None,
             auditable_sig,
         }
@@ -142,13 +133,13 @@ impl<E: Pairing> SignatureRequestProtocol<E> {
         C4 += s_P1;
         C4 *= usk2;
         Ok(Self {
-            usk_protocol: UserSecretKeyProtocol::init(user_sk.0, r1, P1),
+            usk_protocol: PokDiscreteLogProtocol::init(user_sk.0, r1, P1),
             rev: Some(RevocationRequestProtocol {
                 // Note: This deviates from the paper which uses a different `r3` as blinding for
                 // `usk_rev_protocol_Q` but since it should be proven that same usk2 is the witness in
                 // both `usk_rev_protocol` and `usk_rev_protocol_Q`, same blinding is used.
-                usk_rev_protocol: UserRevSecretKeyProtocol::init(usk2, r2, P1),
-                usk_rev_protocol_Q: UserRevSecretKeyProtocolQ::init(usk2, r2, Q),
+                usk_rev_protocol: PokDiscreteLogProtocol::init(usk2, r2, P1),
+                usk_rev_protocol_Q: PokDiscreteLogProtocol::init(usk2, r2, Q),
                 C4: C4.into_affine(),
                 // C5 = usk2*Q
                 C5: Q.mul_bigint(usk2.into_bigint()).into_affine(),
@@ -189,7 +180,7 @@ impl<E: Pairing> SignatureRequestProtocol<E> {
 
     pub fn compute_challenge_contribution<W: Write>(
         auditable_sig: bool,
-        usk_protocol: &UserSecretKeyProtocol<E::G1Affine>,
+        usk_protocol: &PokDiscreteLogProtocol<E::G1Affine>,
         user_pk: &UserPublicKey<E>,
         P1: &E::G1Affine,
         mut writer: W,
@@ -201,8 +192,8 @@ impl<E: Pairing> SignatureRequestProtocol<E> {
     }
 
     pub fn compute_challenge_contribution_for_revocable<W: Write>(
-        usk_rev_protocol: &UserRevSecretKeyProtocol<E::G1Affine>,
-        usk_rev_protocol2: &UserRevSecretKeyProtocolQ<E::G1Affine>,
+        usk_rev_protocol: &PokDiscreteLogProtocol<E::G1Affine>,
+        usk_rev_protocol2: &PokDiscreteLogProtocol<E::G1Affine>,
         user_pk: &UserPublicKey<E>,
         C5: &E::G1Affine,
         P1: &E::G1Affine,

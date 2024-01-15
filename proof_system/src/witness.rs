@@ -19,8 +19,8 @@ use crate::error::ProofSystemError;
 #[serde(bound = "")]
 pub enum Witness<E: Pairing> {
     PoKBBSSignatureG1(PoKBBSSignatureG1<E>),
-    AccumulatorMembership(Membership<E>),
-    AccumulatorNonMembership(NonMembership<E>),
+    VBAccumulatorMembership(Membership<E>),
+    VBAccumulatorNonMembership(NonMembership<E>),
     PedersenCommitment(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
     /// Message being encrypted
     Saver(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
@@ -34,6 +34,9 @@ pub enum Witness<E: Pairing> {
     BoundCheckSmc(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     BoundCheckSmcWithKV(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     PublicInequality(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
+    KBUniAccumulatorMembership(KBUniMembership<E>),
+    KBUniAccumulatorNonMembership(KBUniNonMembership<E>),
+    KBPosAccumulatorMembership(KBPosMembership<E>),
 }
 
 macro_rules! delegate {
@@ -41,8 +44,8 @@ macro_rules! delegate {
         $crate::delegate_indexed! {
             $self $([$idx 0u8])? =>
                 PoKBBSSignatureG1,
-                AccumulatorMembership,
-                AccumulatorNonMembership,
+                VBAccumulatorMembership,
+                VBAccumulatorNonMembership,
                 PedersenCommitment,
                 Saver,
                 BoundCheckLegoGroth16,
@@ -52,7 +55,10 @@ macro_rules! delegate {
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKV,
-                PublicInequality
+                PublicInequality,
+                KBUniAccumulatorMembership,
+                KBUniAccumulatorNonMembership,
+                KBPosAccumulatorMembership
             : $($tt)+
         }
     }}
@@ -63,8 +69,8 @@ macro_rules! delegate_reverse {
         $crate::delegate_indexed_reverse! {
             $val[_idx 0u8] =>
                 PoKBBSSignatureG1,
-                AccumulatorMembership,
-                AccumulatorNonMembership,
+                VBAccumulatorMembership,
+                VBAccumulatorNonMembership,
                 PedersenCommitment,
                 Saver,
                 BoundCheckLegoGroth16,
@@ -74,7 +80,10 @@ macro_rules! delegate_reverse {
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKV,
-                PublicInequality
+                PublicInequality,
+                KBUniAccumulatorMembership,
+                KBUniAccumulatorNonMembership,
+                KBPosAccumulatorMembership
             : $($tt)+
         }
 
@@ -169,7 +178,7 @@ impl<E: Pairing> Drop for PoKBBSSignature23G1<E> {
     }
 }
 
-/// Secret data when proving accumulator membership
+/// Secret data when proving VB accumulator membership
 #[serde_as]
 #[derive(
     Clone,
@@ -190,7 +199,7 @@ pub struct Membership<E: Pairing> {
     pub witness: MembershipWitness<E::G1Affine>,
 }
 
-/// Secret data when proving accumulator non-membership
+/// Secret data when proving VB accumulator non-membership
 #[serde_as]
 #[derive(
     Clone,
@@ -209,6 +218,72 @@ pub struct NonMembership<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub element: E::ScalarField,
     pub witness: NonMembershipWitness<E::G1Affine>,
+}
+
+/// Secret data when proving KB universal accumulator membership
+#[serde_as]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
+#[serde(bound = "")]
+pub struct KBUniMembership<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub element: E::ScalarField,
+    pub witness:
+        vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorMembershipWitness<
+            E::G1Affine,
+        >,
+}
+
+/// Secret data when proving KB universal accumulator non-membership
+#[serde_as]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
+#[serde(bound = "")]
+pub struct KBUniNonMembership<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub element: E::ScalarField,
+    pub witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
+}
+
+/// Secret data when proving KB universal accumulator membership
+#[serde_as]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Zeroize,
+    ZeroizeOnDrop,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
+#[serde(bound = "")]
+pub struct KBPosMembership<E: Pairing> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub element: E::ScalarField,
+    pub witness: vb_accumulator::kb_positive_accumulator::witness::KBPositiveAccumulatorWitness<E>,
 }
 
 /// Witness for the Circom program. Only contains circuit wires that are explicitly set by the prover
@@ -272,7 +347,7 @@ impl<E: Pairing> PoKBBSSignatureG1<E> {
         signature: BBSSignatureG1<E>,
         unrevealed_messages: BTreeMap<usize, E::ScalarField>,
     ) -> Witness<E> {
-        Witness::PoKBBSSignatureG1(PoKBBSSignatureG1 {
+        Witness::PoKBBSSignatureG1(Self {
             signature,
             unrevealed_messages,
         })
@@ -285,7 +360,7 @@ impl<E: Pairing> PoKBBSSignature23G1<E> {
         signature: BBSSignature23G1<E>,
         unrevealed_messages: BTreeMap<usize, E::ScalarField>,
     ) -> Witness<E> {
-        Witness::PoKBBSSignature23G1(PoKBBSSignature23G1 {
+        Witness::PoKBBSSignature23G1(Self {
             signature,
             unrevealed_messages,
         })
@@ -293,22 +368,52 @@ impl<E: Pairing> PoKBBSSignature23G1<E> {
 }
 
 impl<E: Pairing> Membership<E> {
-    /// Create a `Witness` variant for proving membership in accumulator
+    /// Create a `Witness` variant for proving membership in VB accumulator
     pub fn new_as_witness(
         element: E::ScalarField,
         witness: MembershipWitness<E::G1Affine>,
     ) -> Witness<E> {
-        Witness::AccumulatorMembership(Membership { element, witness })
+        Witness::VBAccumulatorMembership(Self { element, witness })
     }
 }
 
 impl<E: Pairing> NonMembership<E> {
-    /// Create a `Witness` variant for proving non-membership in accumulator
+    /// Create a `Witness` variant for proving non-membership in VB accumulator
     pub fn new_as_witness(
         element: E::ScalarField,
         witness: NonMembershipWitness<E::G1Affine>,
     ) -> Witness<E> {
-        Witness::AccumulatorNonMembership(NonMembership { element, witness })
+        Witness::VBAccumulatorNonMembership(Self { element, witness })
+    }
+}
+
+impl<E: Pairing> KBUniMembership<E> {
+    /// Create a `Witness` variant for proving membership in KB universal accumulator
+    pub fn new_as_witness(
+        element: E::ScalarField,
+        witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorMembershipWitness<E::G1Affine>,
+    ) -> Witness<E> {
+        Witness::KBUniAccumulatorMembership(Self { element, witness })
+    }
+}
+
+impl<E: Pairing> KBUniNonMembership<E> {
+    /// Create a `Witness` variant for proving non-membership in KB universal accumulator
+    pub fn new_as_witness(
+        element: E::ScalarField,
+        witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
+    ) -> Witness<E> {
+        Witness::KBUniAccumulatorNonMembership(Self { element, witness })
+    }
+}
+
+impl<E: Pairing> KBPosMembership<E> {
+    /// Create a `Witness` variant for proving non-membership in KB universal accumulator
+    pub fn new_as_witness(
+        element: E::ScalarField,
+        witness: vb_accumulator::kb_positive_accumulator::witness::KBPositiveAccumulatorWitness<E>,
+    ) -> Witness<E> {
+        Witness::KBPosAccumulatorMembership(Self { element, witness })
     }
 }
 

@@ -2,7 +2,7 @@
 
 pub mod accumulator;
 pub mod proofs;
-pub mod proofs_alt;
+pub mod proofs_cdh;
 pub mod proofs_keyed_verification;
 pub mod witness;
 

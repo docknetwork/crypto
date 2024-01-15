@@ -16,7 +16,10 @@ use legogroth16::aggregation::srs::PreparedProverSRS;
 use crate::{
     constants::{
         BBS_23_LABEL, BBS_PLUS_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL, COMPOSITE_PROOF_LABEL,
-        CONTEXT_LABEL, NONCE_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL,
+        CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
+        KB_UNI_ACCUM_CDH_MEM_LABEL, KB_UNI_ACCUM_CDH_NON_MEM_LABEL, KB_UNI_ACCUM_MEM_LABEL,
+        KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, VB_ACCUM_CDH_MEM_LABEL,
+        VB_ACCUM_CDH_NON_MEM_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL,
     },
     meta_statement::WitnessRef,
     prelude::SnarkpackSRS,
@@ -25,8 +28,20 @@ use crate::{
     statement_proof::StatementProof,
     sub_protocols::{
         accumulator::{
-            AccumulatorMembershipSubProtocol, AccumulatorNonMembershipSubProtocol,
-            DetachedAccumulatorMembershipSubProtocol, DetachedAccumulatorNonMembershipSubProtocol,
+            cdh::{
+                KBPositiveAccumulatorMembershipCDHSubProtocol,
+                KBUniversalAccumulatorMembershipCDHSubProtocol,
+                KBUniversalAccumulatorNonMembershipCDHSubProtocol,
+                VBAccumulatorMembershipCDHSubProtocol, VBAccumulatorNonMembershipCDHSubProtocol,
+            },
+            detached::{
+                DetachedAccumulatorMembershipSubProtocol,
+                DetachedAccumulatorNonMembershipSubProtocol,
+            },
+            KBPositiveAccumulatorMembershipSubProtocol,
+            KBUniversalAccumulatorMembershipSubProtocol,
+            KBUniversalAccumulatorNonMembershipSubProtocol, VBAccumulatorMembershipSubProtocol,
+            VBAccumulatorNonMembershipSubProtocol,
         },
         bbs_23::PoKBBSSigG1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol as PoKBBSPlusSigG1SubProtocol,
@@ -173,6 +188,20 @@ where
             transcript.append_message(CONTEXT_LABEL, ctx);
         }
 
+        macro_rules! accum_protocol_init {
+            ($s: ident, $s_idx: ident, $w: ident, $protocol: ident, $protocol_variant: ident, $label: ident) => {{
+                let blinding = blindings.remove(&($s_idx, 0));
+                let params = $s.get_params(&proof_spec.setup_params, $s_idx)?;
+                let pk = $s.get_public_key(&proof_spec.setup_params, $s_idx)?;
+                let prk = $s.get_proving_key(&proof_spec.setup_params, $s_idx)?;
+                let mut sp = $protocol::new($s_idx, params, pk, prk, $s.accumulator_value);
+                sp.init(rng, blinding, $w)?;
+                transcript.set_label($label);
+                sp.challenge_contribution(&mut transcript)?;
+                sub_protocols.push(SubProtocol::$protocol_variant(sp));
+            }};
+        }
+
         // Initialize sub-protocols for each statement
         for (s_idx, (statement, witness)) in proof_spec
             .statements
@@ -232,43 +261,141 @@ where
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
-                Statement::AccumulatorMembership(s) => match witness {
-                    Witness::AccumulatorMembership(w) => {
-                        let blinding = blindings.remove(&(s_idx, 0));
-                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
-                        let mut sp = AccumulatorMembershipSubProtocol::new(
+                Statement::VBAccumulatorMembership(s) => match witness {
+                    Witness::VBAccumulatorMembership(w) => {
+                        accum_protocol_init!(
+                            s,
                             s_idx,
-                            params,
-                            pk,
-                            prk,
-                            s.accumulator_value,
-                        );
-                        sp.init(rng, blinding, w)?;
-                        transcript.set_label(VB_ACCUM_MEM_LABEL);
-                        sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::AccumulatorMembership(sp));
+                            w,
+                            VBAccumulatorMembershipSubProtocol,
+                            VBAccumulatorMembership,
+                            VB_ACCUM_MEM_LABEL
+                        )
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
-                Statement::AccumulatorNonMembership(s) => match witness {
-                    Witness::AccumulatorNonMembership(w) => {
-                        let blinding = blindings.remove(&(s_idx, 0));
-                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
-                        let mut sp = AccumulatorNonMembershipSubProtocol::new(
+                Statement::VBAccumulatorNonMembership(s) => match witness {
+                    Witness::VBAccumulatorNonMembership(w) => {
+                        accum_protocol_init!(
+                            s,
                             s_idx,
-                            params,
-                            pk,
-                            prk,
+                            w,
+                            VBAccumulatorNonMembershipSubProtocol,
+                            VBAccumulatorNonMembership,
+                            VB_ACCUM_NON_MEM_LABEL
+                        )
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::KBUniversalAccumulatorMembership(s) => match witness {
+                    Witness::KBUniAccumulatorMembership(w) => {
+                        accum_protocol_init!(
+                            s,
+                            s_idx,
+                            w,
+                            KBUniversalAccumulatorMembershipSubProtocol,
+                            KBUniversalAccumulatorMembership,
+                            KB_UNI_ACCUM_MEM_LABEL
+                        )
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::KBUniversalAccumulatorNonMembership(s) => match witness {
+                    Witness::KBUniAccumulatorNonMembership(w) => {
+                        accum_protocol_init!(
+                            s,
+                            s_idx,
+                            w,
+                            KBUniversalAccumulatorNonMembershipSubProtocol,
+                            KBUniversalAccumulatorNonMembership,
+                            KB_UNI_ACCUM_NON_MEM_LABEL
+                        )
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::VBAccumulatorMembershipCDHProver(s) => match witness {
+                    Witness::VBAccumulatorMembership(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let mut sp = VBAccumulatorMembershipCDHSubProtocol::new_for_prover(
+                            s_idx,
                             s.accumulator_value,
                         );
                         sp.init(rng, blinding, w)?;
-                        transcript.set_label(VB_ACCUM_NON_MEM_LABEL);
+                        transcript.set_label(VB_ACCUM_CDH_MEM_LABEL);
                         sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::AccumulatorNonMembership(sp));
+                        sub_protocols.push(SubProtocol::VBAccumulatorMembershipCDH(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::VBAccumulatorNonMembershipCDHProver(s) => match witness {
+                    Witness::VBAccumulatorNonMembership(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = VBAccumulatorNonMembershipCDHSubProtocol::new_for_prover(
+                            s_idx,
+                            s.accumulator_value,
+                            s.Q,
+                            params,
+                        );
+                        sp.init(rng, blinding, w)?;
+                        transcript.set_label(VB_ACCUM_CDH_NON_MEM_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
+                        sub_protocols.push(SubProtocol::VBAccumulatorNonMembershipCDH(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::KBUniversalAccumulatorMembershipCDHProver(s) => match witness {
+                    Witness::KBUniAccumulatorMembership(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let mut sp = KBUniversalAccumulatorMembershipCDHSubProtocol::new_for_prover(
+                            s_idx,
+                            s.accumulator_value,
+                        );
+                        sp.init(rng, blinding, w)?;
+                        transcript.set_label(KB_UNI_ACCUM_CDH_MEM_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
+                        sub_protocols.push(SubProtocol::KBUniversalAccumulatorMembershipCDH(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::KBUniversalAccumulatorNonMembershipCDHProver(s) => match witness {
+                    Witness::KBUniAccumulatorNonMembership(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let mut sp =
+                            KBUniversalAccumulatorNonMembershipCDHSubProtocol::new_for_prover(
+                                s_idx,
+                                s.accumulator_value,
+                            );
+                        sp.init(rng, blinding, w)?;
+                        transcript.set_label(KB_UNI_ACCUM_CDH_NON_MEM_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
+                        sub_protocols.push(SubProtocol::KBUniversalAccumulatorNonMembershipCDH(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::KBPositiveAccumulatorMembership(s) => match witness {
+                    Witness::KBPosAccumulatorMembership(w) => {
+                        accum_protocol_init!(
+                            s,
+                            s_idx,
+                            w,
+                            KBPositiveAccumulatorMembershipSubProtocol,
+                            KBPositiveAccumulatorMembership,
+                            KB_POS_ACCUM_MEM_LABEL
+                        )
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::KBPositiveAccumulatorMembershipCDH(s) => match witness {
+                    Witness::KBPosAccumulatorMembership(w) => {
+                        accum_protocol_init!(
+                            s,
+                            s_idx,
+                            w,
+                            KBPositiveAccumulatorMembershipCDHSubProtocol,
+                            KBPositiveAccumulatorMembershipCDH,
+                            KB_POS_ACCUM_CDH_MEM_LABEL
+                        )
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
@@ -504,7 +631,7 @@ where
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::DetachedAccumulatorMembershipProver(s) => match witness {
-                    Witness::AccumulatorMembership(w) => {
+                    Witness::VBAccumulatorMembership(w) => {
                         let blinding = blindings.remove(&(s_idx, 0));
                         let params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
@@ -519,7 +646,7 @@ where
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::DetachedAccumulatorNonMembershipProver(s) => match witness {
-                    Witness::AccumulatorNonMembership(w) => {
+                    Witness::VBAccumulatorNonMembership(w) => {
                         let blinding = blindings.remove(&(s_idx, 0));
                         let params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
@@ -554,10 +681,10 @@ where
         for p in sub_protocols {
             statement_proofs.push(match p {
                 SubProtocol::PoKBBSSignatureG1(mut sp) => sp.gen_proof_contribution(&challenge)?,
-                SubProtocol::AccumulatorMembership(mut sp) => {
+                SubProtocol::VBAccumulatorMembership(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
-                SubProtocol::AccumulatorNonMembership(mut sp) => {
+                SubProtocol::VBAccumulatorNonMembership(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
                 SubProtocol::PoKDiscreteLogs(mut sp) => sp.gen_proof_contribution(&challenge)?,
@@ -585,6 +712,30 @@ where
                 }
                 SubProtocol::DetachedAccumulatorNonMembership(mut sp) => {
                     sp.gen_proof_contribution(rng, &challenge)?
+                }
+                SubProtocol::KBUniversalAccumulatorMembership(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::KBUniversalAccumulatorNonMembership(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::VBAccumulatorMembershipCDH(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::VBAccumulatorNonMembershipCDH(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::KBUniversalAccumulatorMembershipCDH(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::KBUniversalAccumulatorNonMembershipCDH(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::KBPositiveAccumulatorMembership(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::KBPositiveAccumulatorMembershipCDH(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
                 }
             });
         }

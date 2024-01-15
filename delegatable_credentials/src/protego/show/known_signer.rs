@@ -23,28 +23,7 @@ use ark_std::{
     UniformRand,
 };
 
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use zeroize::{Zeroize, ZeroizeOnDrop};
-
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::{error::SchnorrError, impl_proof_of_knowledge_of_discrete_log};
-
-impl_proof_of_knowledge_of_discrete_log!(
-    AttributeCommitmentSchnorrProtocol,
-    AttributeCommitmentSchnorrProof
-);
-impl_proof_of_knowledge_of_discrete_log!(
-    AttributeCommitmentRandSchnorrProtocol,
-    AttributeCommitmentRandSchnorrProof
-);
-impl_proof_of_knowledge_of_discrete_log!(UserRevSecretSchnorrProtocol, UserRevSecretSchnorrProof);
-impl_proof_of_knowledge_of_discrete_log!(
-    AccumulatorRandSchnorrProtocol,
-    AccumulatorRandSchnorrProof
-);
-impl_proof_of_knowledge_of_discrete_log!(WitnessRandSchnorrProtocol, WitnessRandSchnorrProof);
-impl_proof_of_knowledge_of_discrete_log!(CiphertextRandSchnorrProtocol, CiphertextRandSchnorrProof);
+use schnorr_pok::discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol};
 
 /// Proof that ciphertext is correct, i.e. it encrypts the user's public key and the auditor can decrypt it.
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -53,7 +32,7 @@ pub struct CiphertextProof<E: Pairing> {
     pub C7: E::G1Affine,
     pub com1: E::G1Affine,
     pub z1: E::ScalarField,
-    pub ciphertext_rand_proof: CiphertextRandSchnorrProof<E::G1Affine>,
+    pub ciphertext_rand_proof: PokDiscreteLog<E::G1Affine>,
     pub t1: E::G2Affine,
     pub t2: E::G2Affine,
     pub t3: E::G2Affine,
@@ -70,7 +49,7 @@ pub struct CiphertextProofProtocol<E: Pairing> {
     pub r1: E::ScalarField,
     pub r2: E::ScalarField,
     pub com1: E::G1Affine,
-    pub ciphertext_rand_protocol: CiphertextRandSchnorrProtocol<E::G1Affine>,
+    pub ciphertext_rand_protocol: PokDiscreteLogProtocol<E::G1Affine>,
     pub t1: E::G2Affine,
     pub t2: E::G2Affine,
     pub t3: E::G2Affine,
@@ -83,9 +62,9 @@ pub struct RevocationShow<E: Pairing> {
     pub randomized_witness: RandomizedNonMembershipWitness<E>,
     pub C4: E::G1Affine,
     pub C5: E::G1Affine,
-    pub accum_rand_proof: AccumulatorRandSchnorrProof<E::G1Affine>,
-    pub user_rev_secret_proof: UserRevSecretSchnorrProof<E::G1Affine>,
-    pub witness_rand_proof: WitnessRandSchnorrProof<E::G1Affine>,
+    pub accum_rand_proof: PokDiscreteLog<E::G1Affine>,
+    pub user_rev_secret_proof: PokDiscreteLog<E::G1Affine>,
+    pub witness_rand_proof: PokDiscreteLog<E::G1Affine>,
 }
 
 /// Protocol to create `RevocationShow`
@@ -95,9 +74,9 @@ pub struct RevocationShowProtocol<E: Pairing> {
     pub randomized_witness: RandomizedNonMembershipWitness<E>,
     pub C4: E::G1Affine,
     pub C5: E::G1Affine,
-    pub accum_rand_protocol: AccumulatorRandSchnorrProtocol<E::G1Affine>,
-    pub user_rev_secret_protocol: UserRevSecretSchnorrProtocol<E::G1Affine>,
-    pub witness_rand_protocol: WitnessRandSchnorrProtocol<E::G1Affine>,
+    pub accum_rand_protocol: PokDiscreteLogProtocol<E::G1Affine>,
+    pub user_rev_secret_protocol: PokDiscreteLogProtocol<E::G1Affine>,
+    pub witness_rand_protocol: PokDiscreteLogProtocol<E::G1Affine>,
 }
 
 /// Protocol for creating `CoreCredentialShow`
@@ -107,8 +86,8 @@ pub struct CoreCredentialShowProtocol<E: Pairing> {
     pub C2: E::G1Affine,
     pub C3: E::G1Affine,
     pub signature: Signature<E>,
-    pub attrib_comm_protocol: AttributeCommitmentSchnorrProtocol<E::G1Affine>,
-    pub attrib_comm_rand_protocol: AttributeCommitmentRandSchnorrProtocol<E::G1Affine>,
+    pub attrib_comm_protocol: PokDiscreteLogProtocol<E::G1Affine>,
+    pub attrib_comm_rand_protocol: PokDiscreteLogProtocol<E::G1Affine>,
     /// Present if any attributes are revealed.
     pub disclosed_attributes_witness: Option<SubsetWitness<E>>,
 }
@@ -121,8 +100,8 @@ pub struct CoreCredentialShow<E: Pairing> {
     pub C2: E::G1Affine,
     pub C3: E::G1Affine,
     pub signature: Signature<E>,
-    pub attrib_comm_proof: AttributeCommitmentSchnorrProof<E::G1Affine>,
-    pub attrib_comm_rand_proof: AttributeCommitmentRandSchnorrProof<E::G1Affine>,
+    pub attrib_comm_proof: PokDiscreteLog<E::G1Affine>,
+    pub attrib_comm_rand_proof: PokDiscreteLog<E::G1Affine>,
     pub disclosed_attributes_witness: Option<SubsetWitness<E>>,
 }
 
@@ -269,8 +248,8 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         };
 
         let attrib_comm_protocol =
-            AttributeCommitmentSchnorrProtocol::init(credential.opening.r4, r1, &C_prime[0]);
-        let attrib_comm_rand_protocol = AttributeCommitmentRandSchnorrProtocol::init(mu, r2, P1);
+            PokDiscreteLogProtocol::init(credential.opening.r4, r1, &C_prime[0]);
+        let attrib_comm_rand_protocol = PokDiscreteLogProtocol::init(mu, r2, P1);
 
         let rev = if credential.supports_revocation() {
             let r3 = E::ScalarField::rand(rng);
@@ -294,9 +273,9 @@ impl<E: Pairing> CredentialShowProtocol<E> {
                 P1.mul_bigint(randomized_d.into_bigint()).into_affine(),
             );
 
-            let accum_rand_protocol = AccumulatorRandSchnorrProtocol::init(r, r3, accum);
-            let user_rev_secret_protocol = UserRevSecretSchnorrProtocol::init(usk_2 * mu, r4, Q);
-            let witness_rand_protocol = WitnessRandSchnorrProtocol::init(randomized_d, r5, P1);
+            let accum_rand_protocol = PokDiscreteLogProtocol::init(r, r3, accum);
+            let user_rev_secret_protocol = PokDiscreteLogProtocol::init(usk_2 * mu, r4, Q);
+            let witness_rand_protocol = PokDiscreteLogProtocol::init(randomized_d, r5, P1);
 
             Some(RevocationShowProtocol {
                 randomized_accum,
@@ -322,7 +301,7 @@ impl<E: Pairing> CredentialShowProtocol<E> {
             let (ct, alpha) = Ciphertext::<E>::new(rng, &upk.0, &apk.0, P1);
 
             let com1 = P1.mul(r1).add(&apk.0.mul(r2)).into_affine();
-            let ciphertext_rand_protocol = CiphertextRandSchnorrProtocol::init(alpha, r2, P1);
+            let ciphertext_rand_protocol = PokDiscreteLogProtocol::init(alpha, r2, P1);
 
             let t1 = P2.mul(beta).into_affine();
             let t2 = P2.mul(beta * mu).into_affine();

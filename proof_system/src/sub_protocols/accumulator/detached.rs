@@ -1,40 +1,19 @@
 use crate::{
     error::ProofSystemError,
-    statement_proof::{
+    prelude::{
         DetachedAccumulatorMembershipProof, DetachedAccumulatorNonMembershipProof, StatementProof,
     },
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec, vec::Vec, UniformRand};
 use chacha20poly1305::XChaCha20Poly1305;
-use dock_crypto_utils::{ecies, randomized_pairing_check::RandomizedPairingChecker};
+use dock_crypto_utils::ecies;
 use vb_accumulator::prelude::{
-    MembershipProof, MembershipProofProtocol, MembershipProvingKey, NonMembershipProof,
-    NonMembershipProofProtocol, NonMembershipProvingKey, PreparedPublicKey, PreparedSetupParams,
-    PublicKey, SetupParams as AccumParams,
+    MembershipProofProtocol, MembershipProvingKey, NonMembershipProofProtocol,
+    NonMembershipProvingKey, PreparedPublicKey, PreparedSetupParams, PublicKey,
+    SetupParams as AccumParams,
 };
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AccumulatorMembershipSubProtocol<'a, E: Pairing> {
-    pub id: usize,
-    pub params: &'a AccumParams<E>,
-    pub public_key: &'a PublicKey<E>,
-    pub proving_key: &'a MembershipProvingKey<E::G1Affine>,
-    pub accumulator_value: E::G1Affine,
-    pub protocol: Option<MembershipProofProtocol<E>>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AccumulatorNonMembershipSubProtocol<'a, E: Pairing> {
-    pub id: usize,
-    pub params: &'a AccumParams<E>,
-    pub public_key: &'a PublicKey<E>,
-    pub proving_key: &'a NonMembershipProvingKey<E::G1Affine>,
-    pub accumulator_value: E::G1Affine,
-    pub protocol: Option<NonMembershipProofProtocol<E>>,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DetachedAccumulatorMembershipSubProtocol<'a, E: Pairing> {
@@ -65,142 +44,6 @@ pub struct Opening<G: AffineRepr> {
     pub original_accumulator: G,
     pub randomizer: G::ScalarField,
     pub extra: Option<Vec<u8>>,
-}
-
-macro_rules! impl_common_funcs {
-    ( $wit_type:ident, $wit_protocol:ident, $proof_enum_variant:ident, $proof_typ: ident) => {
-        pub fn init<R: RngCore>(
-            &mut self,
-            rng: &mut R,
-            blinding: Option<E::ScalarField>,
-            witness: crate::witness::$wit_type<E>,
-        ) -> Result<(), ProofSystemError> {
-            if self.protocol.is_some() {
-                return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
-            }
-            let protocol = $wit_protocol::init(
-                rng,
-                &witness.element,
-                blinding,
-                &witness.witness,
-                self.public_key,
-                self.params,
-                self.proving_key,
-            );
-            self.protocol = Some(protocol);
-            Ok(())
-        }
-
-        pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ProofSystemError> {
-            if self.protocol.is_none() {
-                return Err(ProofSystemError::SubProtocolNotReadyToGenerateChallenge(
-                    self.id,
-                ));
-            }
-            self.protocol.as_ref().unwrap().challenge_contribution(
-                &self.accumulator_value,
-                self.public_key,
-                self.params,
-                self.proving_key,
-                writer,
-            )?;
-            Ok(())
-        }
-
-        pub fn gen_proof_contribution<G: AffineRepr>(
-            &mut self,
-            challenge: &E::ScalarField,
-        ) -> Result<StatementProof<E, G>, ProofSystemError> {
-            if self.protocol.is_none() {
-                return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
-                    self.id,
-                ));
-            }
-            let protocol = self.protocol.take().unwrap();
-            let proof = protocol.gen_proof(challenge);
-            Ok(StatementProof::$proof_enum_variant(proof))
-        }
-
-        pub fn verify_proof_contribution(
-            &self,
-            challenge: &E::ScalarField,
-            proof: &$proof_typ<E>,
-            pk: impl Into<PreparedPublicKey<E>>,
-            params: impl Into<PreparedSetupParams<E>>,
-            pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
-        ) -> Result<(), ProofSystemError> {
-            match pairing_checker {
-                Some(c) => proof.verify_with_randomized_pairing_checker(
-                    &self.accumulator_value,
-                    challenge,
-                    pk,
-                    params,
-                    self.proving_key,
-                    c,
-                ),
-                None => proof.verify(
-                    &self.accumulator_value,
-                    challenge,
-                    pk,
-                    params,
-                    self.proving_key,
-                ),
-            }
-            .map_err(|e| ProofSystemError::VBAccumProofContributionFailed(self.id as u32, e))
-        }
-    };
-}
-
-impl<'a, E: Pairing> AccumulatorMembershipSubProtocol<'a, E> {
-    pub fn new(
-        id: usize,
-        params: &'a AccumParams<E>,
-        public_key: &'a PublicKey<E>,
-        proving_key: &'a MembershipProvingKey<E::G1Affine>,
-        accumulator_value: E::G1Affine,
-    ) -> Self {
-        Self {
-            id,
-            params,
-            public_key,
-            proving_key,
-            accumulator_value,
-            protocol: None,
-        }
-    }
-
-    impl_common_funcs!(
-        Membership,
-        MembershipProofProtocol,
-        AccumulatorMembership,
-        MembershipProof
-    );
-}
-
-impl<'a, E: Pairing> AccumulatorNonMembershipSubProtocol<'a, E> {
-    pub fn new(
-        id: usize,
-        params: &'a AccumParams<E>,
-        public_key: &'a PublicKey<E>,
-        proving_key: &'a NonMembershipProvingKey<E::G1Affine>,
-        accumulator_value: E::G1Affine,
-    ) -> Self {
-        Self {
-            id,
-            params,
-            public_key,
-            proving_key,
-            accumulator_value,
-            protocol: None,
-        }
-    }
-
-    impl_common_funcs!(
-        NonMembership,
-        NonMembershipProofProtocol,
-        AccumulatorNonMembership,
-        NonMembershipProof
-    );
 }
 
 impl<'a, E: Pairing> DetachedAccumulatorMembershipSubProtocol<'a, E> {
@@ -238,7 +81,7 @@ impl<'a, E: Pairing> DetachedAccumulatorMembershipSubProtocol<'a, E> {
         let randomized_accum_witness = witness.witness.randomize(&randomizer);
         let protocol = MembershipProofProtocol::init(
             rng,
-            &witness.element,
+            witness.element,
             blinding,
             &randomized_accum_witness,
             self.public_key,
@@ -279,7 +122,7 @@ impl<'a, E: Pairing> DetachedAccumulatorMembershipSubProtocol<'a, E> {
             ));
         }
         let protocol = self.protocol.take().unwrap();
-        let accum_proof = protocol.gen_proof(challenge);
+        let accum_proof = protocol.gen_proof(challenge)?;
         // Encrypt the original accumulator value and the randomizer
         let opening = Opening {
             original_accumulator: self.original_accumulator_value.unwrap(),
@@ -376,7 +219,7 @@ impl<'a, E: Pairing> DetachedAccumulatorNonMembershipSubProtocol<'a, E> {
         let randomized_accum_witness = witness.witness.randomize(&randomizer);
         let protocol = NonMembershipProofProtocol::init(
             rng,
-            &witness.element,
+            witness.element,
             blinding,
             &randomized_accum_witness,
             self.public_key,
@@ -417,7 +260,7 @@ impl<'a, E: Pairing> DetachedAccumulatorNonMembershipSubProtocol<'a, E> {
             ));
         }
         let protocol = self.protocol.take().unwrap();
-        let accum_proof = protocol.gen_proof(challenge);
+        let accum_proof = protocol.gen_proof(challenge)?;
         // Encrypt the original accumulator value and the randomizer
         let opening = Opening {
             original_accumulator: self.original_accumulator_value.unwrap(),

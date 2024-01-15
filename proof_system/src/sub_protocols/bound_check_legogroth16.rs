@@ -191,7 +191,7 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
                 let d = calculate_d(pvk, snark_proof, pub_inp)?;
                 c.add_multiple_sources_and_target(
                     &[snark_proof.a, snark_proof.c, d],
-                    vec![
+                    [
                         snark_proof.b.into(),
                         pvk.delta_g2_neg_pc.clone(),
                         pvk.gamma_g2_neg_pc.clone(),
