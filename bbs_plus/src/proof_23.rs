@@ -20,12 +20,11 @@
 
 use crate::{
     error::BBSPlusError,
-    proof::MessageOrBlinding,
-    setup::{MultiMessageSignatureParams, PreparedPublicKeyG2, SignatureParams23G1},
+    setup::{PreparedPublicKeyG2, SignatureParams23G1},
     signature_23::Signature23G1,
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::{One, PrimeField, Zero};
+use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
@@ -37,8 +36,11 @@ use itertools::{multiunzip, MultiUnzip};
 
 use crate::setup::PreparedSignatureParams23G1;
 use dock_crypto_utils::{
-    extend_some::ExtendSome, misc::rand, randomized_pairing_check::RandomizedPairingChecker,
+    extend_some::ExtendSome,
+    misc::rand,
+    randomized_pairing_check::RandomizedPairingChecker,
     serde_utils::ArkObjectBytes,
+    signature::{MessageOrBlinding, MultiMessageSignatureParams},
 };
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
 use serde::{Deserialize, Serialize};
@@ -238,31 +240,15 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
     ) -> Result<(), BBSPlusError> {
         B_bar.serialize_compressed(&mut writer)?;
         A_bar.serialize_compressed(&mut writer)?;
-
-        // `bases_revealed` and `exponents` below are used to create g1 + \sum_{i in J}(h_i*m_i)
-        let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
-        let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
-        bases_revealed.push(params.g1);
-        exponents.push(E::ScalarField::one());
-
-        for (i, h_i) in params.h.iter().enumerate() {
-            if let Some(msg) = revealed_msgs.get(&i) {
-                bases_revealed.push(*h_i);
-                exponents.push(*msg);
-            } else {
-                // Each h_i will be used in proving knowledge of an unrevealed message
-                h_i.serialize_compressed(&mut writer)?;
+        params.g1.serialize_compressed(&mut writer)?;
+        T.serialize_compressed(&mut writer)?;
+        for i in 0..params.h.len() {
+            params.h[i].serialize_compressed(&mut writer)?;
+            if let Some(m) = revealed_msgs.get(&i) {
+                m.serialize_compressed(&mut writer)?;
             }
         }
-
-        for (i, msg) in revealed_msgs {
-            assert!(*i < params.h.len());
-            bases_revealed.push(params.h[*i]);
-            exponents.push(*msg);
-        }
-        E::G1::msm_unchecked(&bases_revealed, &exponents).serialize_compressed(&mut writer)?;
-
-        T.serialize_compressed(&mut writer).map_err(|e| e.into())
+        Ok(())
     }
 }
 

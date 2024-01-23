@@ -11,14 +11,12 @@ use ark_std::{
 use digest::DynDigest;
 use oblivious_transfer_protocols::ParticipantId;
 
+use super::{multiplication_phase::Phase2Output, utils::compute_R_and_u};
 use crate::{
-    error::BBSPlusError,
-    setup::{MultiMessageSignatureParams, SignatureParamsG1},
-    signature::SignatureG1,
+    error::BBSPlusError, setup::SignatureParamsG1, signature::SignatureG1,
     threshold::randomness_generation_phase::Phase1,
 };
-
-use super::{multiplication_phase::Phase2Output, utils::compute_R_and_u};
+use dock_crypto_utils::signature::MultiMessageSignatureParams;
 
 /// The length of vectors `r`, `e`, `s`, `masked_signing_key_shares`, `masked_rs` should
 /// be `batch_size` each item of the vector corresponds to 1 signature

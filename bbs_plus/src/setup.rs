@@ -69,6 +69,7 @@ use dock_crypto_utils::{
     join,
     misc::{n_projective_group_elements, seq_pairs_satisfy},
     serde_utils::*,
+    signature::MultiMessageSignatureParams,
     try_iter::CheckLeft,
 };
 use itertools::process_results;
@@ -77,13 +78,6 @@ use itertools::process_results;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-
-// TODO: Move to utils to that coconut can use it
-/// Trait implemented by a signature scheme params that can sign multiple messages
-pub trait MultiMessageSignatureParams {
-    /// Number of messages supported in the multi-message
-    fn supported_message_count(&self) -> usize;
-}
 
 /// Secret key used by the signer to sign messages
 #[serde_as]
@@ -115,6 +109,12 @@ impl<F: PrimeField> SecretKey<F> {
 macro_rules! impl_multi_msg_sig_params {
     ($name: ident) => {
         impl<E: Pairing> MultiMessageSignatureParams for $name<E> {
+            fn supported_message_count(&self) -> usize {
+                self.h.len()
+            }
+        }
+
+        impl<E: Pairing> MultiMessageSignatureParams for &$name<E> {
             fn supported_message_count(&self) -> usize {
                 self.h.len()
             }

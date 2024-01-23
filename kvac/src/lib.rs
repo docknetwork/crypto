@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(non_snake_case)]
 
 //! Implements Keyed-Verification Anonymous Credentials (KVAC) schemes from the following papers.
 //! KVACs are supposed to be verified by the issuer only (or anyone who shares the issuer's key)
@@ -13,3 +14,4 @@
 
 pub mod bddt_2016;
 pub mod cddh_2019;
+pub mod error;

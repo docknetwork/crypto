@@ -193,14 +193,12 @@ pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol};
     use ark_bls12_381::Bls12_381;
     use ark_ec::{pairing::Pairing, VariableBaseMSM};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-    use blake2::Blake2b512;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -279,52 +277,5 @@ mod tests {
     fn schnorr_vector() {
         test_schnorr_in_group!(G1, G1Affine);
         test_schnorr_in_group!(G2, G2Affine);
-    }
-
-    #[test]
-    fn schnorr_single() {
-        let mut rng = StdRng::seed_from_u64(0u64);
-
-        macro_rules! check {
-            ($group_affine:ident, $group_projective:ident) => {
-                let base = <Bls12_381 as Pairing>::$group_projective::rand(&mut rng).into_affine();
-                let witness = Fr::rand(&mut rng);
-                let y = base.mul_bigint(witness.into_bigint()).into_affine();
-                let blinding = Fr::rand(&mut rng);
-                let protocol =
-                    PokDiscreteLogProtocol::<<Bls12_381 as Pairing>::$group_affine>::init(
-                        witness, blinding, &base,
-                    );
-                let mut chal_contrib_prover = vec![];
-                protocol
-                    .challenge_contribution(&base, &y, &mut chal_contrib_prover)
-                    .unwrap();
-
-                test_serialization!(
-                    PokDiscreteLogProtocol<<Bls12_381 as Pairing>::$group_affine>,
-                    protocol
-                );
-
-                let challenge_prover =
-                    compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib_prover);
-                let proof = protocol.gen_proof(&challenge_prover);
-
-                let mut chal_contrib_verifier = vec![];
-                proof
-                    .challenge_contribution(&base, &y, &mut chal_contrib_verifier)
-                    .unwrap();
-
-                let challenge_verifier =
-                    compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib_verifier);
-                assert!(proof.verify(&y, &base, &challenge_verifier));
-                assert_eq!(chal_contrib_prover, chal_contrib_verifier);
-                assert_eq!(challenge_prover, challenge_verifier);
-
-                test_serialization!(PokDiscreteLog<<Bls12_381 as Pairing>::$group_affine>, proof);
-            };
-        }
-
-        check!(G1Affine, G1);
-        check!(G2Affine, G2);
     }
 }

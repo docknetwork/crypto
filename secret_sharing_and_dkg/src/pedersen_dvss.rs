@@ -13,13 +13,13 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, vec, vec::Vec};
+use dock_crypto_utils::commitment::PedersenCommitmentKey;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
 use crate::{
     common::{CommitmentToCoefficients, ParticipantId, ShareId, VerifiableShare},
     error::SSError,
-    pedersen_vss::CommitmentKey,
 };
 
 /// Used by a participant to store received shares and commitment coefficients.
@@ -65,7 +65,7 @@ impl<G: AffineRepr> SharesAccumulator<G> {
         sender_id: ParticipantId,
         share: VerifiableShare<G::ScalarField>,
         commitment_coeffs: CommitmentToCoefficients<G>,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
     ) -> Result<(), SSError> {
         if sender_id == self.participant_id {
             return Err(SSError::SenderIdSameAsReceiver(
@@ -83,7 +83,7 @@ impl<G: AffineRepr> SharesAccumulator<G> {
     /// share of the distributed secret
     pub fn finalize(
         self,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
     ) -> Result<VerifiableShare<G::ScalarField>, SSError> {
         // Check early that sufficient shares present
         let len = self.shares.len() as ShareId;
@@ -122,7 +122,7 @@ impl<G: AffineRepr> SharesAccumulator<G> {
         id: ParticipantId,
         share: VerifiableShare<G::ScalarField>,
         commitment_coeffs: CommitmentToCoefficients<G>,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
     ) -> Result<(), SSError> {
         if self.participant_id != share.id {
             return Err(SSError::UnequalParticipantAndShareId(
@@ -156,10 +156,7 @@ impl<G: AffineRepr> SharesAccumulator<G> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::{
-        common::VerifiableShares,
-        pedersen_vss::{deal_random_secret, CommitmentKey},
-    };
+    use crate::{common::VerifiableShares, pedersen_vss::deal_random_secret};
     use ark_ec::Group;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
@@ -168,10 +165,10 @@ pub mod tests {
     #[test]
     fn pedersen_distributed_verifiable_secret_sharing() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let comm_key1 = CommitmentKey::<G1>::new::<Blake2b512>(b"test");
-        let comm_key2 = CommitmentKey::<G2>::new::<Blake2b512>(b"test");
+        let comm_key1 = PedersenCommitmentKey::<G1>::new::<Blake2b512>(b"test");
+        let comm_key2 = PedersenCommitmentKey::<G2>::new::<Blake2b512>(b"test");
 
-        fn check<G: AffineRepr>(rng: &mut StdRng, comm_key: &CommitmentKey<G>) {
+        fn check<G: AffineRepr>(rng: &mut StdRng, comm_key: &PedersenCommitmentKey<G>) {
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),

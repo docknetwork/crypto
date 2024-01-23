@@ -30,7 +30,7 @@ use schnorr_pok::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol};
+use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A wrapper over the protocol for proof of knowledge of weak-BB signature. The accumulator witness is the weak-BB signature and the
@@ -43,7 +43,7 @@ pub struct MembershipProofProtocol<E: Pairing>(pub PoKOfSignatureG1Protocol<E>);
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct MembershipProof<E: Pairing>(pub PoKOfSignatureG1Proof<E>);
+pub struct MembershipProof<E: Pairing>(pub PoKOfSignatureG1<E>);
 
 /// An extension over the protocol for proof of knowledge of weak-BB signature.
 #[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
@@ -164,7 +164,7 @@ impl<E: Pairing> MembershipProof<E> {
     }
 
     pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
-        self.0.get_resp_for_message().unwrap()
+        self.0.get_resp_for_message()
     }
 }
 

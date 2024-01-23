@@ -1,16 +1,15 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
-use bbs_plus::{
-    prelude::{
-        BBSPlusError, MultiMessageSignatureParams, PoKOfSignature23G1Proof,
-        PoKOfSignature23G1Protocol, PreparedPublicKeyG2, PreparedSignatureParams23G1, PublicKeyG2,
-        SignatureParams23G1,
-    },
-    proof::MessageOrBlinding,
+use bbs_plus::prelude::{
+    BBSPlusError, PoKOfSignature23G1Proof, PoKOfSignature23G1Protocol, PreparedPublicKeyG2,
+    PreparedSignatureParams23G1, PublicKeyG2, SignatureParams23G1,
 };
 use dock_crypto_utils::{
-    iter::take_while_satisfy, misc::seq_inc_by_n_from,
-    randomized_pairing_check::RandomizedPairingChecker, try_iter::CheckLeft,
+    iter::take_while_satisfy,
+    misc::seq_inc_by_n_from,
+    randomized_pairing_check::RandomizedPairingChecker,
+    signature::{MessageOrBlinding, MultiMessageSignatureParams},
+    try_iter::CheckLeft,
 };
 use itertools::Itertools;
 

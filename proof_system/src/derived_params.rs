@@ -17,6 +17,7 @@ use coconut_crypto::setup::{
     PreparedPublicKey as PreparedPSPk, PreparedSignatureParams as PreparedPSSigParams,
     PublicKey as PSPk, SignatureParams as PSSigParams,
 };
+use dock_crypto_utils::commitment::PedersenCommitmentKey;
 use legogroth16::{
     PreparedVerifyingKey as LegoPreparedVerifyingKey, VerifyingKey as LegoVerifyingKey,
 };
@@ -29,7 +30,6 @@ use saver::{
         PreparedVerifyingKey as SaverPreparedVerifyingKey, VerifyingKey as SaverVerifyingKey,
     },
 };
-use schnorr_pok::inequality::CommitmentKey;
 use smc_range_proof::prelude::MemberCommitmentKey;
 use vb_accumulator::{
     kb_positive_accumulator::setup::{
@@ -166,10 +166,10 @@ impl<'a, E: Pairing> DerivedParams<'a, MemberCommitmentKey<E::G1Affine>, [E::G1A
     }
 }
 
-impl<'a, E: Pairing, G: AffineRepr> DerivedParams<'a, CommitmentKey<G>, [G; 2]>
-    for DerivedParamsTracker<'a, CommitmentKey<G>, [G; 2], E>
+impl<'a, E: Pairing, G: AffineRepr> DerivedParams<'a, PedersenCommitmentKey<G>, [G; 2]>
+    for DerivedParamsTracker<'a, PedersenCommitmentKey<G>, [G; 2], E>
 {
-    fn new_derived(ck: &CommitmentKey<G>) -> [G; 2] {
+    fn new_derived(ck: &PedersenCommitmentKey<G>) -> [G; 2] {
         [ck.g, ck.h]
     }
 }

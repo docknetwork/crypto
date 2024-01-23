@@ -1,12 +1,11 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{commitment::PedersenCommitmentKey, serde_utils::*};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
-use schnorr_pok::inequality::CommitmentKey;
 
 #[serde_as]
 #[derive(
@@ -18,14 +17,14 @@ pub struct PublicInequality<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub inequal_to: G::ScalarField,
     #[serde_as(as = "Option<ArkObjectBytes>")]
-    pub comm_key: Option<CommitmentKey<G>>,
+    pub comm_key: Option<PedersenCommitmentKey<G>>,
     pub comm_key_ref: Option<usize>,
 }
 
 impl<G: AffineRepr> PublicInequality<G> {
     pub fn new_statement_from_params<E: Pairing>(
         inequal_to: G::ScalarField,
-        comm_key: CommitmentKey<G>,
+        comm_key: PedersenCommitmentKey<G>,
     ) -> Statement<E, G> {
         Statement::PublicInequality(Self {
             inequal_to,
@@ -49,7 +48,7 @@ impl<G: AffineRepr> PublicInequality<G> {
         &'a self,
         setup_params: &'a [SetupParams<E, G>],
         st_idx: usize,
-    ) -> Result<&'a CommitmentKey<G>, ProofSystemError> {
+    ) -> Result<&'a PedersenCommitmentKey<G>, ProofSystemError> {
         extract_param!(
             setup_params,
             &self.comm_key,

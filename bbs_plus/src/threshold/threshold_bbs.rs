@@ -12,11 +12,10 @@ use ark_std::{
 use digest::DynDigest;
 
 use crate::{
-    error::BBSPlusError,
-    setup::{MultiMessageSignatureParams, SignatureParams23G1},
-    signature_23::Signature23G1,
+    error::BBSPlusError, setup::SignatureParams23G1, signature_23::Signature23G1,
     threshold::randomness_generation_phase::Phase1,
 };
+use dock_crypto_utils::signature::MultiMessageSignatureParams;
 use oblivious_transfer_protocols::ParticipantId;
 
 /// The length of vectors `r`, `e`, `masked_signing_key_shares`, `masked_rs` should

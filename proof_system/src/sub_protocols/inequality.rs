@@ -6,21 +6,26 @@ use crate::{
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, UniformRand};
-use schnorr_pok::inequality::{CommitmentKey, DiscreteLogInequalityProtocol};
+use dock_crypto_utils::commitment::PedersenCommitmentKey;
+use schnorr_pok::inequality::DiscreteLogInequalityProtocol;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InequalityProtocol<'a, G: AffineRepr> {
     pub id: usize,
     /// The public value with which the inequalty is being proven
     pub inequal_to: G::ScalarField,
-    pub comm_key: &'a CommitmentKey<G>,
+    pub comm_key: &'a PedersenCommitmentKey<G>,
     pub comm: Option<G>,
     pub inequality_protocol: Option<DiscreteLogInequalityProtocol<G>>,
     pub sp: Option<SchnorrProtocol<'a, G>>,
 }
 
 impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
-    pub fn new(id: usize, inequal_to: G::ScalarField, comm_key: &'a CommitmentKey<G>) -> Self {
+    pub fn new(
+        id: usize,
+        inequal_to: G::ScalarField,
+        comm_key: &'a PedersenCommitmentKey<G>,
+    ) -> Self {
         Self {
             id,
             inequal_to,
@@ -157,7 +162,7 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
         comm_key_as_slice: &[G],
         proof: &InequalityProof<G>,
         inequal_to: &G::ScalarField,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
         proof.proof.challenge_contribution_for_public_inequality(

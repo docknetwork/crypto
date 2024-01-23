@@ -18,8 +18,7 @@
 use crate::{
     error::BBSPlusError,
     prelude::PreparedPublicKeyG2,
-    proof::MessageOrBlinding,
-    setup::{MultiMessageSignatureParams, PreparedSignatureParams23G1, SignatureParams23G1},
+    setup::{PreparedSignatureParams23G1, SignatureParams23G1},
     signature_23::Signature23G1,
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
@@ -35,8 +34,10 @@ use ark_std::{
     One, UniformRand,
 };
 use dock_crypto_utils::{
-    extend_some::ExtendSome, misc::rand, randomized_pairing_check::RandomizedPairingChecker,
+    misc::rand,
+    randomized_pairing_check::RandomizedPairingChecker,
     serde_utils::*,
+    signature::{split_messages_and_blindings, MessageOrBlinding, MultiMessageSignatureParams},
 };
 use itertools::multiunzip;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
@@ -114,31 +115,24 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
     where
         MBI: IntoIterator<Item = MessageOrBlinding<'a, E::ScalarField>>,
     {
-        let (messages, ExtendSome::<Vec<_>>(indexed_blindings)): (Vec<_>, _) =
-            messages_and_blindings
-                .into_iter()
-                .enumerate()
-                .map(|(idx, msg_or_blinding)| match msg_or_blinding {
-                    MessageOrBlinding::BlindMessageRandomly(message) => {
-                        (message, (idx, rand(rng)).into())
-                    }
-                    MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding } => {
-                        (message, (idx, blinding).into())
-                    }
-                    MessageOrBlinding::RevealMessage(message) => (message, None),
-                })
-                .unzip();
-        if messages.len() != params.supported_message_count() {
-            Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
-                messages.len(),
-                params.supported_message_count(),
-            ))?
-        }
+        let (messages, indexed_blindings) =
+            match split_messages_and_blindings(rng, messages_and_blindings, params) {
+                Ok(t) => t,
+                Err(l) => {
+                    return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
+                        l,
+                        params.supported_message_count(),
+                    ))
+                }
+            };
 
         let r1 = E::ScalarField::rand(rng);
-        let r2 = E::ScalarField::rand(rng);
+        let mut r2 = E::ScalarField::rand(rng);
+        while r2.is_zero() {
+            r2 = E::ScalarField::rand(rng);
+        }
         // r3 = 1/r2
-        let r3 = r2.inverse().ok_or(BBSPlusError::CannotInvert0)?;
+        let r3 = r2.inverse().unwrap();
 
         // b = (e+x) * A = g1 + sum(h_i*m_i) for all i in I
         let b = params.b(messages.iter().enumerate())?;
@@ -253,37 +247,20 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
         params: &SignatureParams23G1<E>,
         mut writer: W,
     ) -> Result<(), BBSPlusError> {
-        B_bar.serialize_compressed(&mut writer)?;
-
-        // For 1st Schnorr
         A_bar.serialize_compressed(&mut writer)?;
-        // B_bar - d
-        let mut B_bar_minus_d = B_bar.into_group();
-        B_bar_minus_d -= d.into_group();
-        let B_bar_minus_d = B_bar_minus_d.into_affine();
-        B_bar_minus_d.serialize_compressed(&mut writer)?;
-        T1.serialize_compressed(&mut writer)?;
-
-        // For 2nd Schnorr
-        // `bases_revealed` and `exponents` below are used to create g1 + \sum_{i in D}(h_i*m_i)
-        // Note: exponents are really scalars here
-        let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
-        let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
-
+        B_bar.serialize_compressed(&mut writer)?;
+        d.serialize_compressed(&mut writer)?;
         params.g1.serialize_compressed(&mut writer)?;
-        bases_revealed.push(params.g1);
-        let r = E::ScalarField::one();
-        r.serialize_compressed(&mut writer)?;
-        exponents.push(r);
-        for (i, msg) in revealed_msgs {
-            assert!(*i < params.h.len());
-            params.h[*i].serialize_compressed(&mut writer)?;
-            bases_revealed.push(params.h[*i]);
-            msg.serialize_compressed(&mut writer)?;
-            exponents.push(*msg);
+        T1.serialize_compressed(&mut writer)?;
+        T2.serialize_compressed(&mut writer)?;
+
+        for i in 0..params.h.len() {
+            params.h[i].serialize_compressed(&mut writer)?;
+            if let Some(m) = revealed_msgs.get(&i) {
+                m.serialize_compressed(&mut writer)?;
+            }
         }
-        E::G1::msm_unchecked(&bases_revealed, &exponents).serialize_compressed(&mut writer)?;
-        T2.serialize_compressed(&mut writer).map_err(|e| e.into())
+        Ok(())
     }
 }
 
@@ -376,8 +353,7 @@ where
             }
         }
         // 1 added to the index, since 0th index is reserved for `r2`
-        let r = self.sc_resp_2.get_response(1 + adjusted_idx)?;
-        Ok(r)
+        Ok(self.sc_resp_2.get_response(1 + adjusted_idx)?)
     }
 
     pub fn verify_schnorr_proofs(

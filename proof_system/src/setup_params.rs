@@ -16,7 +16,7 @@ use bbs_plus::prelude::{
     SignatureParamsG1 as BBSSignatureParamsG1,
 };
 use bulletproofs_plus_plus::setup::SetupParams as BppSetupParams;
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use dock_crypto_utils::{commitment::PedersenCommitmentKey, serde_utils::ArkObjectBytes};
 use legogroth16::{
     circom::R1CS,
     data_structures::{ProvingKey as LegoSnarkProvingKey, VerifyingKey as LegoSnarkVerifyingKey},
@@ -25,7 +25,6 @@ use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey as SaverSnarkProvingKey,
     VerifyingKey as SaverSnarkVerifyingKey,
 };
-use schnorr_pok::inequality::CommitmentKey;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use short_group_sig::common::ProvingKey;
@@ -67,7 +66,7 @@ pub enum SetupParams<E: Pairing, G: AffineRepr> {
     SmcParamsAndCommKeyAndSk(
         #[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKeyAndSecretKey<E>,
     ),
-    CommitmentKey(#[serde_as(as = "ArkObjectBytes")] CommitmentKey<G>),
+    CommitmentKey(#[serde_as(as = "ArkObjectBytes")] PedersenCommitmentKey<G>),
     BBSigProvingKey(ProvingKey<E::G1Affine>),
     KBPositiveAccumulatorParams(KBAccumParams<E>),
     KBPositiveAccumulatorPublicKey(KBAccumPublicKey<E>),

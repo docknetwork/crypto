@@ -2,10 +2,7 @@
 
 use crate::{
     error::BBSPlusError,
-    setup::{
-        MultiMessageSignatureParams, PreparedPublicKeyG2, PreparedSignatureParams23G1, SecretKey,
-        SignatureParams23G1,
-    },
+    setup::{PreparedPublicKeyG2, PreparedSignatureParams23G1, SecretKey, SignatureParams23G1},
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::{fields::Field, PrimeField};
@@ -13,7 +10,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::BTreeMap, fmt::Debug, ops::Mul, rand::RngCore, vec::Vec, UniformRand, Zero,
 };
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{serde_utils::*, signature::MultiMessageSignatureParams};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -93,9 +90,12 @@ impl<E: Pairing> Signature23G1<E> {
         // i.e. partial_sig = g_1 + sum(h_i * m_i) for all i in uncommitted_messages
         let b = params.b(uncommitted_messages)?;
 
-        let e = E::ScalarField::rand(rng);
+        let mut e = E::ScalarField::rand(rng);
+        while (e + sk.0).is_zero() {
+            e = E::ScalarField::rand(rng)
+        }
         // 1/(e+x)
-        let e_plus_x_inv = (e + sk.0).inverse().ok_or(BBSPlusError::CannotInvert0)?;
+        let e_plus_x_inv = (e + sk.0).inverse().unwrap();
 
         // {commitment + b} * {1/(e+x)}
         let commitment_plus_b = b + commitment;

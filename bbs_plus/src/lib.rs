@@ -65,7 +65,7 @@ pub mod threshold;
 pub mod prelude {
     pub use crate::{
         error::BBSPlusError,
-        proof::{MessageOrBlinding, PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol},
+        proof::{PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol},
         proof_23_cdl::{PoKOfSignature23G1Proof, PoKOfSignature23G1Protocol},
         setup::*,
         signature::{SignatureG1, SignatureG2},

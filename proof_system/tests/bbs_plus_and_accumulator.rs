@@ -13,6 +13,7 @@ use short_group_sig::common::ProvingKey;
 use std::time::Instant;
 use vb_accumulator::prelude::{Accumulator, MembershipProvingKey, NonMembershipProvingKey};
 
+use dock_crypto_utils::commitment::PedersenCommitmentKey;
 use proof_system::{
     prelude::{EqualWitnesses, MetaStatements, VerifierConfig, Witness, WitnessRef, Witnesses},
     proof_spec::ProofSpec,
@@ -44,7 +45,6 @@ use proof_system::{
         PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
     },
 };
-use schnorr_pok::inequality::CommitmentKey;
 use test_utils::{accumulators::*, bbs::*, test_serialization, Fr, ProofG1};
 
 macro_rules! gen_tests {
@@ -1644,7 +1644,7 @@ macro_rules! gen_tests {
 
             let mut rng = StdRng::seed_from_u64(0u64);
 
-            let comm_key = CommitmentKey::<G1Affine>::new::<Blake2b512>(b"test");
+            let comm_key = PedersenCommitmentKey::<G1Affine>::new::<Blake2b512>(b"test");
 
             let msg_count = 5;
             let (msgs, sig_params, sig_keypair, sig) = $setup_fn_name(&mut rng, msg_count as u32);

@@ -6,11 +6,11 @@ use crate::error::ShortGroupSigError;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
 };
-use schnorr_pok::{SchnorrCommitment, SchnorrResponse};
+use schnorr_pok::discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -24,23 +24,19 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     #[zeroize(skip)]
     pub A_bar: E::G1Affine,
     /// For proving relation `sigma_bar = g1 * r - sigma' * m`
-    pub sc_comm: SchnorrCommitment<E::G1Affine>,
-    /// Randomness and message `(r, m)`
-    sc_wits: (E::ScalarField, E::ScalarField),
+    pub sc: PokTwoDiscreteLogsProtocol<E::G1Affine>,
 }
 
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct PoKOfSignatureG1Proof<E: Pairing> {
+pub struct PoKOfSignatureG1<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub A_prime: E::G1Affine,
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
-    pub t: E::G1Affine,
-    pub sc_resp: SchnorrResponse<E::G1Affine>,
+    pub sc: PokTwoDiscreteLogs<E::G1Affine>,
 }
 
 impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
@@ -59,16 +55,18 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let g1 = g1.into();
         // A_bar = g1 * r - A_prime * m
         let A_bar = g1 * r + A_prime_neg * message;
-        let sc_comm = SchnorrCommitment::new(
-            &[g1, A_prime_neg.into()],
-            vec![E::ScalarField::rand(rng), blinding],
+        let sc = PokTwoDiscreteLogsProtocol::init(
+            r,
+            E::ScalarField::rand(rng),
+            &g1,
+            message,
+            blinding,
+            &A_prime_neg.into(),
         );
-        let sc_wits = (r, message);
         Self {
             A_prime: A_prime.into_affine(),
             A_bar: A_bar.into_affine(),
-            sc_comm,
-            sc_wits,
+            sc,
         }
     }
 
@@ -77,27 +75,18 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         g1: impl Into<E::G1Affine>,
         writer: W,
     ) -> Result<(), ShortGroupSigError> {
-        Self::compute_challenge_contribution(
-            &self.A_bar,
-            &self.A_prime,
-            g1,
-            &self.sc_comm.t,
-            writer,
-        )
+        Self::compute_challenge_contribution(&self.A_bar, &self.A_prime, g1, &self.sc.t, writer)
     }
 
     pub fn gen_proof(
         self,
         challenge: &E::ScalarField,
-    ) -> Result<PoKOfSignatureG1Proof<E>, ShortGroupSigError> {
-        let sc_resp = self
-            .sc_comm
-            .response(&[self.sc_wits.0, self.sc_wits.1], challenge)?;
-        Ok(PoKOfSignatureG1Proof {
+    ) -> Result<PoKOfSignatureG1<E>, ShortGroupSigError> {
+        let sc = self.sc.clone().gen_proof(challenge);
+        Ok(PoKOfSignatureG1 {
             A_prime: self.A_prime,
             A_bar: self.A_bar,
-            t: self.sc_comm.t,
-            sc_resp,
+            sc,
         })
     }
 
@@ -116,7 +105,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     }
 }
 
-impl<E: Pairing> PoKOfSignatureG1Proof<E> {
+impl<E: Pairing> PoKOfSignatureG1<E> {
     pub fn verify(
         &self,
         challenge: &E::ScalarField,
@@ -160,12 +149,14 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
         if self.A_prime.is_zero() {
             return Err(ShortGroupSigError::InvalidProof);
         }
-        self.sc_resp.is_valid(
-            &[g1.into(), self.A_prime.into_group().neg().into()],
+        if !self.sc.verify(
             &self.A_bar,
-            &self.t,
+            &g1.into(),
+            &self.A_prime.into_group().neg().into(),
             challenge,
-        )?;
+        ) {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
         Ok(())
     }
 
@@ -178,13 +169,13 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
             &self.A_bar,
             &self.A_prime,
             g1,
-            &self.t,
+            &self.sc.t,
             writer,
         )
     }
 
-    pub fn get_resp_for_message(&self) -> Result<&E::ScalarField, ShortGroupSigError> {
-        self.sc_resp.get_response(1).map_err(|e| e.into())
+    pub fn get_resp_for_message(&self) -> &E::ScalarField {
+        &self.sc.response2
     }
 }
 

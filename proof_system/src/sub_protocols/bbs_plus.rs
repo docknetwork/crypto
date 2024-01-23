@@ -3,14 +3,17 @@ use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
 use bbs_plus::{
     error::BBSPlusError,
     prelude::{
-        MultiMessageSignatureParams, PoKOfSignatureG1Proof, PreparedPublicKeyG2,
-        PreparedSignatureParamsG1, PublicKeyG2, SignatureParamsG1,
+        PoKOfSignatureG1Proof, PreparedPublicKeyG2, PreparedSignatureParamsG1, PublicKeyG2,
+        SignatureParamsG1,
     },
-    proof::{MessageOrBlinding, PoKOfSignatureG1Protocol},
+    proof::PoKOfSignatureG1Protocol,
 };
 use dock_crypto_utils::{
-    iter::take_while_satisfy, misc::seq_inc_by_n_from,
-    randomized_pairing_check::RandomizedPairingChecker, try_iter::CheckLeft,
+    iter::take_while_satisfy,
+    misc::seq_inc_by_n_from,
+    randomized_pairing_check::RandomizedPairingChecker,
+    signature::{MessageOrBlinding, MultiMessageSignatureParams},
+    try_iter::CheckLeft,
 };
 use itertools::Itertools;
 

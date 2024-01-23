@@ -13,7 +13,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use short_group_sig::{
-    bb_sig_pok::{PoKOfSignatureG1Proof, PoKOfSignatureG1Protocol},
+    bb_sig_pok::{PoKOfSignatureG1, PoKOfSignatureG1Protocol},
     common::ProvingKey,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -29,7 +29,7 @@ pub struct KBPositiveAccumulatorMembershipProofProtocol<E: Pairing> {
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct KBPositiveAccumulatorMembershipProof<E: Pairing> {
-    pub sig_proof: PoKOfSignatureG1Proof<E>,
+    pub sig_proof: PoKOfSignatureG1<E>,
     pub accum_proof: MembershipProof<E>,
 }
 
@@ -112,7 +112,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
         self.accum_proof
             .verify(accumulator_value, challenge, pk.accum, params.accum)?;
         // Check that the signature's randomness is same as the non-adaptive accumulator's member
-        if self.sig_proof.get_resp_for_randomness()?
+        if self.sig_proof.get_resp_for_randomness()
             != self.accum_proof.get_schnorr_response_for_element()
         {
             return Err(VBAccumulatorError::MismatchBetweenSignatureAndAccumulatorValue);
@@ -147,7 +147,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
             pairing_checker,
         )?;
         // Check that the signature's randomness is same as the non-adaptive accumulator's member
-        if self.sig_proof.get_resp_for_randomness()?
+        if self.sig_proof.get_resp_for_randomness()
             != self.accum_proof.get_schnorr_response_for_element()
         {
             return Err(VBAccumulatorError::MismatchBetweenSignatureAndAccumulatorValue);
@@ -171,7 +171,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
     }
 
     pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
-        self.sig_proof.get_resp_for_message().unwrap()
+        self.sig_proof.get_resp_for_message()
     }
 }
 

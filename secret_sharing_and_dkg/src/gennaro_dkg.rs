@@ -9,6 +9,7 @@ use ark_ff::Zero;
 use ark_poly::univariate::DensePolynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, rand::RngCore, vec::Vec, UniformRand};
+use dock_crypto_utils::commitment::PedersenCommitmentKey;
 
 use crate::{
     common::{
@@ -16,7 +17,6 @@ use crate::{
     },
     error::SSError,
     feldman_vss, pedersen_dvss, pedersen_vss,
-    pedersen_vss::CommitmentKey,
 };
 
 /// In Phase 1, each participant runs Pedersen VSS
@@ -52,7 +52,7 @@ impl<GP1: AffineRepr> Phase1<GP1> {
         participant_id: ParticipantId,
         threshold: ShareId,
         total: ShareId,
-        comm_key: &CommitmentKey<GP1>,
+        comm_key: &PedersenCommitmentKey<GP1>,
     ) -> Result<
         (
             Self,
@@ -72,7 +72,7 @@ impl<GP1: AffineRepr> Phase1<GP1> {
         secret: GP1::ScalarField,
         threshold: ShareId,
         total: ShareId,
-        comm_key: &CommitmentKey<GP1>,
+        comm_key: &PedersenCommitmentKey<GP1>,
     ) -> Result<
         (
             Self,
@@ -105,7 +105,7 @@ impl<GP1: AffineRepr> Phase1<GP1> {
         sender_id: ParticipantId,
         share: VerifiableShare<GP1::ScalarField>,
         commitment_coeffs: CommitmentToCoefficients<GP1>,
-        comm_key: &CommitmentKey<GP1>,
+        comm_key: &PedersenCommitmentKey<GP1>,
     ) -> Result<(), SSError> {
         self.accumulator
             .add_received_share(sender_id, share, commitment_coeffs, comm_key)?;
@@ -125,7 +125,7 @@ impl<GP1: AffineRepr> Phase1<GP1> {
     /// Mark Phase 1 as over and initialize Phase 2.
     pub fn finish<GP2: AffineRepr<ScalarField = GP1::ScalarField>>(
         self,
-        ped_comm_key: &CommitmentKey<GP1>,
+        ped_comm_key: &PedersenCommitmentKey<GP1>,
         fel_comm_key: &GP2,
     ) -> Result<(Phase2<GP2, GP1>, CommitmentToCoefficients<GP2>), SSError> {
         let id = self.self_id();
@@ -205,7 +205,6 @@ impl<GP2: AffineRepr<ScalarField = GP1::ScalarField>, GP1: AffineRepr> Phase2<GP
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::pedersen_vss::CommitmentKey;
     use ark_bls12_381::Bls12_381;
     use ark_ec::{pairing::Pairing, CurveGroup};
     use ark_ff::PrimeField;
@@ -217,13 +216,13 @@ pub mod tests {
     #[test]
     fn gennaro_distributed_key_generation() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let ped_comm_key = CommitmentKey::<G1>::new::<Blake2b512>(b"test");
+        let ped_comm_key = PedersenCommitmentKey::<G1>::new::<Blake2b512>(b"test");
         let fed_comm_key = <Bls12_381 as Pairing>::G1Affine::rand(&mut rng);
         let fed_comm_key_g2 = <Bls12_381 as Pairing>::G2Affine::rand(&mut rng);
 
         fn check<GP1: AffineRepr, GP2: AffineRepr<ScalarField = GP1::ScalarField>>(
             rng: &mut StdRng,
-            ped_comm_key: &CommitmentKey<GP1>,
+            ped_comm_key: &PedersenCommitmentKey<GP1>,
             fed_comm_key: &GP2,
         ) {
             for (threshold, total) in vec![

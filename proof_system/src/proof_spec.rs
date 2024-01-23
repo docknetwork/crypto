@@ -22,6 +22,7 @@ use coconut_crypto::setup::{
     PreparedPublicKey as PreparedPSPk, PreparedSignatureParams as PreparedPSSigParams,
     PublicKey as PSPk, SignatureParams as PSSigParams,
 };
+use dock_crypto_utils::commitment::PedersenCommitmentKey;
 use legogroth16::{
     aggregation::srs::{ProverSRS, VerifierSRS},
     PreparedVerifyingKey as LegoPreparedVerifyingKey, VerifyingKey as LegoVerifyingKey,
@@ -31,7 +32,6 @@ use saver::prelude::{
     PreparedEncryptionKey, PreparedVerifyingKey as SaverPreparedVerifyingKey,
     VerifyingKey as SaverVerifyingKey,
 };
-use schnorr_pok::inequality::CommitmentKey;
 use serde::{Deserialize, Serialize};
 use smc_range_proof::prelude::MemberCommitmentKey;
 
@@ -258,7 +258,8 @@ where
         let mut derived_bound_check_bpp_comm = DerivedParamsTracker::<(G, G), [G; 2], E>::new();
         let mut derived_bound_check_smc_comm =
             DerivedParamsTracker::<MemberCommitmentKey<E::G1Affine>, [E::G1Affine; 2], E>::new();
-        let mut derived_ineq_comm = DerivedParamsTracker::<CommitmentKey<G>, [G; 2], E>::new();
+        let mut derived_ineq_comm =
+            DerivedParamsTracker::<PedersenCommitmentKey<G>, [G; 2], E>::new();
 
         // To avoid creating variable with short lifetime
         let mut saver_comm_keys = BTreeMap::new();

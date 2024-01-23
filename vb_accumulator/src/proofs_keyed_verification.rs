@@ -28,7 +28,9 @@ use digest::Digest;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
     compute_random_oracle_challenge,
-    discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
+    discrete_log::{
+        PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
+    },
     SchnorrCommitment, SchnorrResponse,
 };
 use serde::{Deserialize, Serialize};
@@ -43,8 +45,7 @@ pub struct MembershipProofProtocol<G: AffineRepr> {
     pub C_prime: G,
     #[zeroize(skip)]
     pub C_bar: G,
-    pub sc_comm: SchnorrCommitment<G>,
-    sc_wits: (G::ScalarField, G::ScalarField),
+    pub sc: PokTwoDiscreteLogsProtocol<G>,
 }
 
 #[serde_as]
@@ -57,8 +58,7 @@ pub struct MembershipProof<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub C_bar: G,
     #[serde_as(as = "ArkObjectBytes")]
-    pub t: G,
-    pub sc_resp: SchnorrResponse<G>,
+    pub sc: PokTwoDiscreteLogs<G>,
 }
 
 /// The part of membership proof whose verification requires knowledge of secret key.
@@ -284,15 +284,18 @@ impl<G: AffineRepr> MembershipProofProtocol<G> {
         let C_prime_neg = C_prime.neg();
         let C_bar = (accumulator * l + C_prime_neg * element).into_affine();
         let element_blinding = element_blinding.unwrap_or_else(|| G::ScalarField::rand(rng));
-        let bases = [accumulator, C_prime_neg.into()];
-        let randomness = vec![G::ScalarField::rand(rng), element_blinding];
-        let sc_wits = (l, element);
-        let sc_comm = SchnorrCommitment::new(&bases, randomness);
+        let sc = PokTwoDiscreteLogsProtocol::init(
+            l,
+            G::ScalarField::rand(rng),
+            &accumulator,
+            element,
+            element_blinding,
+            &C_prime_neg.into(),
+        );
         Self {
             C_prime: C_prime.into(),
             C_bar,
-            sc_comm,
-            sc_wits,
+            sc,
         }
     }
 
@@ -305,7 +308,7 @@ impl<G: AffineRepr> MembershipProofProtocol<G> {
             accumulator_value,
             &self.C_prime,
             &self.C_bar,
-            &self.sc_comm.t,
+            &self.sc.t,
             &mut writer,
         )
     }
@@ -314,14 +317,11 @@ impl<G: AffineRepr> MembershipProofProtocol<G> {
         self,
         challenge: &G::ScalarField,
     ) -> Result<MembershipProof<G>, VBAccumulatorError> {
-        let sc_resp = self
-            .sc_comm
-            .response(&[self.sc_wits.0, self.sc_wits.1], challenge)?;
+        let sc = self.sc.clone().gen_proof(challenge);
         Ok(MembershipProof {
             C_prime: self.C_prime,
             C_bar: self.C_bar,
-            t: self.sc_comm.t,
-            sc_resp,
+            sc,
         })
     }
 
@@ -362,7 +362,7 @@ impl<G: AffineRepr> MembershipProof<G> {
             accumulator_value,
             &self.C_prime,
             &self.C_bar,
-            &self.t,
+            &self.sc.t,
             &mut writer,
         )
     }
@@ -372,9 +372,14 @@ impl<G: AffineRepr> MembershipProof<G> {
         accumulator: G,
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
-        let bases = [accumulator, self.C_prime.into_group().neg().into()];
-        self.sc_resp
-            .is_valid(&bases, &self.C_bar, &self.t, challenge)?;
+        if !self.sc.verify(
+            &self.C_bar,
+            &accumulator,
+            &self.C_prime.into_group().neg().into(),
+            challenge,
+        ) {
+            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
+        }
         Ok(())
     }
 
@@ -386,7 +391,7 @@ impl<G: AffineRepr> MembershipProof<G> {
     }
 
     pub fn get_schnorr_response_for_element(&self) -> &G::ScalarField {
-        self.sc_resp.get_response(1).unwrap()
+        &self.sc.response2
     }
 }
 

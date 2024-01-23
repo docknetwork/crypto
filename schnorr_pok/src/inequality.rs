@@ -23,31 +23,10 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use digest::Digest;
-use dock_crypto_utils::{
-    concat_slices, hashing_utils::affine_group_elem_from_try_and_incr, misc::n_rand,
-};
+use dock_crypto_utils::misc::n_rand;
 
+use dock_crypto_utils::commitment::PedersenCommitmentKey;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-/// The commitment key for commitment `C`
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommitmentKey<G: AffineRepr> {
-    pub g: G,
-    pub h: G,
-}
-
-impl<G: AffineRepr> CommitmentKey<G> {
-    pub fn new<D: Digest>(label: &[u8]) -> Self {
-        let g = affine_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : G"]);
-        let h = affine_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : H"]);
-        Self { g, h }
-    }
-
-    pub fn commit(&self, member: &G::ScalarField, randomness: &G::ScalarField) -> G {
-        (self.g * member + self.h * randomness).into()
-    }
-}
 
 /// Protocol to prove inequality of discrete log (committed in a Pedersen commitment) with either a
 /// public value or another discrete log
@@ -85,7 +64,7 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         randomness: G::ScalarField,
         commitment: &G,
         inequal_to: &G::ScalarField,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
     ) -> Result<Self, SchnorrError> {
         if &value == inequal_to {
             return Err(SchnorrError::ValueMustNotBeEqual);
@@ -126,7 +105,7 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         value2: G::ScalarField,
         randomness2: G::ScalarField,
         commitment2: &G,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
     ) -> Result<Self, SchnorrError> {
         if value1 == value2 {
             return Err(SchnorrError::ValueMustNotBeEqual);
@@ -145,7 +124,7 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         &self,
         commitment: &G,
         inequal_to: &G::ScalarField,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
         writer: W,
     ) -> Result<(), SchnorrError> {
         Self::compute_challenge_contribution(
@@ -164,7 +143,7 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         &self,
         commitment1: &G,
         commitment2: &G,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
         writer: W,
     ) -> Result<(), SchnorrError> {
         Self::compute_challenge_contribution(
@@ -202,7 +181,7 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         t_c: &G,
         t_b: &G,
         t_b_ped: &G,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
         mut writer: W,
     ) -> Result<(), SchnorrError> {
         comm_key.g.serialize_compressed(&mut writer)?;
@@ -220,7 +199,11 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         (commitment1.into_group() - commitment2.into_group()).into()
     }
 
-    fn base_for_b(commitment: &G, inequal_to: &G::ScalarField, comm_key: &CommitmentKey<G>) -> G {
+    fn base_for_b(
+        commitment: &G,
+        inequal_to: &G::ScalarField,
+        comm_key: &PedersenCommitmentKey<G>,
+    ) -> G {
         (commitment.into_group() - (comm_key.g * inequal_to)).into()
     }
 }
@@ -231,7 +214,7 @@ impl<G: AffineRepr> InequalityProof<G> {
         commitment: &G,
         inequal_to: &G::ScalarField,
         challenge: &G::ScalarField,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
     ) -> Result<(), SchnorrError> {
         if self.b.is_zero() {
             return Err(SchnorrError::InvalidProofOfEquality);
@@ -261,7 +244,7 @@ impl<G: AffineRepr> InequalityProof<G> {
         commitment1: &G,
         commitment2: &G,
         challenge: &G::ScalarField,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
     ) -> Result<(), SchnorrError> {
         self.verify_for_inequality_with_public_value(
             &DiscreteLogInequalityProtocol::transformed_commitments_for_committed_inequality(
@@ -278,7 +261,7 @@ impl<G: AffineRepr> InequalityProof<G> {
         &self,
         commitment: &G,
         inequal_to: &G::ScalarField,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
         writer: W,
     ) -> Result<(), SchnorrError> {
         DiscreteLogInequalityProtocol::compute_challenge_contribution(
@@ -297,7 +280,7 @@ impl<G: AffineRepr> InequalityProof<G> {
         &self,
         commitment1: &G,
         commitment2: &G,
-        comm_key: &CommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<G>,
         writer: W,
     ) -> Result<(), SchnorrError> {
         DiscreteLogInequalityProtocol::compute_challenge_contribution(
@@ -326,14 +309,17 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use dock_crypto_utils::transcript::{MerlinTranscript, Transcript};
+    use dock_crypto_utils::{
+        commitment::PedersenCommitmentKey,
+        transcript::{MerlinTranscript, Transcript},
+    };
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn inequality_proof() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let comm_key = CommitmentKey::<G1Affine>::new::<Blake2b512>(b"test");
+        let comm_key = PedersenCommitmentKey::<G1Affine>::new::<Blake2b512>(b"test");
         let value = Fr::rand(&mut rng);
         let randomness = Fr::rand(&mut rng);
         let in_equal = Fr::rand(&mut rng);

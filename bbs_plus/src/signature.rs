@@ -92,12 +92,9 @@ use ark_std::{
 
 use crate::{
     prelude::PreparedSignatureParamsG1,
-    setup::{
-        MultiMessageSignatureParams, PreparedPublicKeyG2, PublicKeyG1, SecretKey,
-        SignatureParamsG1, SignatureParamsG2,
-    },
+    setup::{PreparedPublicKeyG2, PublicKeyG1, SecretKey, SignatureParamsG1, SignatureParamsG2},
 };
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{serde_utils::*, signature::MultiMessageSignatureParams};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -196,9 +193,12 @@ macro_rules! impl_signature_alg {
                 // i.e. partial_sig = g_1 + {h_0}*s + sum(h_i * m_i) for all i in uncommitted_messages
                 let b = params.b(uncommitted_messages, &s)?;
 
-                let e = E::ScalarField::rand(rng);
+                let mut e = E::ScalarField::rand(rng);
+                while (e + sk.0).is_zero() {
+                    e = E::ScalarField::rand(rng)
+                }
                 // 1/(e+x)
-                let e_plus_x_inv = (e + sk.0).inverse().ok_or(BBSPlusError::CannotInvert0)?;
+                let e_plus_x_inv = (e + sk.0).inverse().unwrap();
 
                 // {commitment + b} * {1/(e+x)}
                 let commitment_plus_b = b + commitment;
