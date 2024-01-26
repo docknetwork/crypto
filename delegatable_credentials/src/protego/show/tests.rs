@@ -229,7 +229,7 @@ pub fn show(
             println!("Verify time: {:?}", verify_time);
 
             if auditable {
-                assert_eq!(show.ct.unwrap().decrypt(&ask), upk.0)
+                assert_eq!(show.ct.unwrap().decrypt(&ask.0), upk.0)
             }
         }
         // When credential signer (public key) is hidden among decoys
@@ -339,7 +339,7 @@ pub fn show(
             println!("Verify time: {:?}", verify_time);
 
             if auditable {
-                assert_eq!(show.credential_show.ct.unwrap().decrypt(&ask), upk.0)
+                assert_eq!(show.credential_show.ct.unwrap().decrypt(&ask.0), upk.0)
             }
         }
         // When credential signer (public key) is hidden using policy

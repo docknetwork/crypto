@@ -21,6 +21,7 @@ use crate::{
     witness::{MembershipWitness, NonMembershipWitness},
 };
 use ark_ec::{AffineRepr, CurveGroup};
+use core::mem;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
@@ -314,10 +315,10 @@ impl<G: AffineRepr> MembershipProofProtocol<G> {
     }
 
     pub fn gen_proof(
-        self,
+        mut self,
         challenge: &G::ScalarField,
     ) -> Result<MembershipProof<G>, VBAccumulatorError> {
-        let sc = self.sc.clone().gen_proof(challenge);
+        let sc = mem::take(&mut self.sc).gen_proof(challenge);
         Ok(MembershipProof {
             C_prime: self.C_prime,
             C_bar: self.C_bar,
@@ -464,13 +465,13 @@ impl<G: AffineRepr> NonMembershipProofProtocol<G> {
     }
 
     pub fn gen_proof(
-        self,
+        mut self,
         challenge: &G::ScalarField,
     ) -> Result<NonMembershipProof<G>, VBAccumulatorError> {
         let sc_resp = self
             .sc_comm
             .response(&[self.sc_wits.0, self.sc_wits.1, self.sc_wits.2], challenge)?;
-        let sc_resp_2 = self.sc_comm_2.clone().gen_proof(challenge);
+        let sc_resp_2 = mem::take(&mut self.sc_comm_2).gen_proof(challenge);
         Ok(NonMembershipProof {
             C_prime: self.C_prime,
             C_hat: self.C_hat,

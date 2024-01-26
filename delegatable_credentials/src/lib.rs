@@ -2,7 +2,7 @@
 #![allow(non_snake_case)]
 
 pub mod accumulator;
-pub mod auditor;
+// pub mod auditor;
 pub mod error;
 #[macro_use]
 pub mod mercurial_sig;

@@ -14,7 +14,7 @@ pub trait MultiMessageSignatureParams {
 pub enum MessageOrBlinding<'a, F: PrimeField> {
     /// Message will be blinded using random blinding.
     BlindMessageRandomly(&'a F),
-    /// Message will be revealed, and thus won't be included in PoK.
+    /// Message will be revealed, and thus won't be included in the proof of knowledge.
     RevealMessage(&'a F),
     /// Message will be blinded using the supplied blinding.
     BlindMessageWithConcreteBlinding { message: &'a F, blinding: F },

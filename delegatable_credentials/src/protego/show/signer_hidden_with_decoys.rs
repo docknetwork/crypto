@@ -5,7 +5,6 @@
 
 use crate::{
     accumulator::NonMembershipWitness,
-    auditor::AuditorPublicKey,
     error::DelegationError,
     one_of_n_proof::{OneOfNProof, OneOfNSrs},
     protego::{
@@ -18,6 +17,7 @@ use crate::{
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
+use dock_crypto_utils::elgamal::PublicKey as AuditorPublicKey;
 
 /// Contains the randomized issuer public key and a proof that this randomized key was created from a set
 /// containing some decoy public keys and the issuer public key.
@@ -50,7 +50,7 @@ impl<E: Pairing> CredentialShowProtocolWithHiddenPublicKey<E> {
         decoy_public_keys: &[IssuerPublicKey<E>],
         one_of_n_srs: &OneOfNSrs<E>,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<Self, DelegationError> {
         CredentialShowProtocol::check_key_compat(
@@ -97,7 +97,7 @@ impl<E: Pairing> CredentialShowProtocolWithHiddenPublicKey<E> {
         one_of_n_srs: &OneOfNSrs<E>,
         user_sk: &UserSecretKey<E>,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         Q: &E::G1Affine,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<Self, DelegationError> {
@@ -150,7 +150,7 @@ impl<E: Pairing> CredentialShowProtocolWithHiddenPublicKey<E> {
         &self,
         accumulated: Option<&E::G1Affine>,
         Q: Option<&E::G1Affine>,
-        apk: Option<&AuditorPublicKey<E>>,
+        apk: Option<&AuditorPublicKey<E::G1Affine>>,
         P1: &E::G1Affine,
         context: &[u8],
         mut writer: W,
@@ -227,7 +227,7 @@ impl<E: Pairing> CredentialShowWithHiddenPublicKey<E> {
         disclosed_attributes: Vec<E::ScalarField>,
         possible_public_keys: &[IssuerPublicKey<E>],
         one_of_n_srs: &OneOfNSrs<E>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         let set_comm_srs = set_comm_srs.into();
@@ -253,7 +253,7 @@ impl<E: Pairing> CredentialShowWithHiddenPublicKey<E> {
         Q: &E::G1Affine,
         accumulator_pk: impl Into<crate::accumulator::PreparedPublicKey<E>>,
         one_of_n_srs: &OneOfNSrs<E>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         let set_comm_srs = set_comm_srs.into();

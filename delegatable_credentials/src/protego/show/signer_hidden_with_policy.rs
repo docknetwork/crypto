@@ -6,7 +6,6 @@
 
 use crate::{
     accumulator::NonMembershipWitness,
-    auditor::AuditorPublicKey,
     error::DelegationError,
     mercurial_sig::{PublicKey, PublicKeyG1, SecretKey, SignatureG2},
     protego::{
@@ -19,6 +18,7 @@ use crate::{
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
+use dock_crypto_utils::elgamal::PublicKey as AuditorPublicKey;
 use zeroize::Zeroize;
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize)]
@@ -71,7 +71,7 @@ impl<E: Pairing> CredentialShowProtocolWithDelegationPolicy<E> {
         issuer_public_key: &IssuerPublicKey<E>,
         signature: &SignatureG2<E>,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<Self, DelegationError> {
         CredentialShowProtocol::check_key_compat(
@@ -109,7 +109,7 @@ impl<E: Pairing> CredentialShowProtocolWithDelegationPolicy<E> {
         signature: &SignatureG2<E>,
         user_sk: &UserSecretKey<E>,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         Q: &E::G1Affine,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<Self, DelegationError> {
@@ -155,7 +155,7 @@ impl<E: Pairing> CredentialShowProtocolWithDelegationPolicy<E> {
         &self,
         accumulated: Option<&E::G1Affine>,
         Q: Option<&E::G1Affine>,
-        apk: Option<&AuditorPublicKey<E>>,
+        apk: Option<&AuditorPublicKey<E::G1Affine>>,
         P1: &E::G1Affine,
         context: &[u8],
         mut writer: W,
@@ -199,7 +199,7 @@ impl<E: Pairing> CredentialShowWithDelegationPolicy<E> {
         challenge: &E::ScalarField,
         disclosed_attributes: Vec<E::ScalarField>,
         policy_public_key: &DelegationPolicyPublicKey<E>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         let set_comm_srs = set_comm_srs.into();
@@ -229,7 +229,7 @@ impl<E: Pairing> CredentialShowWithDelegationPolicy<E> {
         accumulated: &E::G1Affine,
         Q: &E::G1Affine,
         accumulator_pk: impl Into<crate::accumulator::PreparedPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         let set_comm_srs = set_comm_srs.into();

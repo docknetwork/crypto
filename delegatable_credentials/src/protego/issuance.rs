@@ -7,12 +7,11 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
-use dock_crypto_utils::msm::WindowTable;
+use dock_crypto_utils::{elgamal::PublicKey as AuditorPublicKey, msm::WindowTable};
 
 use schnorr_pok::discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol};
 
 use crate::{
-    auditor::AuditorPublicKey,
     error::DelegationError,
     mercurial_sig::Signature,
     protego::keys::{IssuerSecretKey, PreparedIssuerPublicKey, UserPublicKey, UserSecretKey},
@@ -354,7 +353,7 @@ impl<E: Pairing> SignatureRequest<E> {
         rng: &mut R,
         issuer_sk: &IssuerSecretKey<E>,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         P1: &E::G1Affine,
         P2: &E::G2Affine,
     ) -> Result<Signature<E>, DelegationError> {
@@ -369,7 +368,7 @@ impl<E: Pairing> SignatureRequest<E> {
     pub fn create_msgs(
         self,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         P1: E::G1Affine,
     ) -> Result<Vec<E::G1Affine>, DelegationError> {
         let mut messages = vec![];
@@ -408,7 +407,7 @@ impl<E: Pairing> Credential<E> {
         attributes: Vec<E::ScalarField>,
         issuer_pk: impl Into<PreparedIssuerPublicKey<E>>,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         P1: &E::G1Affine,
         P2: impl Into<E::G2Prepared>,
     ) -> Result<Self, DelegationError> {
@@ -440,16 +439,13 @@ impl<E: Pairing> Credential<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
 
-    use crate::{auditor::AuditorSecretKey, protego::keys::IssuerPublicKey};
+    use crate::protego::keys::IssuerPublicKey;
+    use dock_crypto_utils::elgamal::SecretKey as AuditorSecretKey;
     use schnorr_pok::compute_random_oracle_challenge;
-
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
-    type G1Affine = <Bls12_381 as Pairing>::G1Affine;
-    type G2Affine = <Bls12_381 as Pairing>::G2Affine;
 
     pub fn keygen(
         rng: &mut StdRng,
@@ -457,8 +453,8 @@ pub mod tests {
         supports_revocation: bool,
         set_comm_srs: &SetCommitmentSRS<Bls12_381>,
     ) -> (
-        AuditorSecretKey<Bls12_381>,
-        AuditorPublicKey<Bls12_381>,
+        AuditorSecretKey<Fr>,
+        AuditorPublicKey<G1Affine>,
         IssuerSecretKey<Bls12_381>,
         IssuerPublicKey<Bls12_381>,
         UserSecretKey<Bls12_381>,
@@ -485,8 +481,8 @@ pub mod tests {
     ) -> (
         SetCommitmentSRS<Bls12_381>,
         Fr,
-        AuditorSecretKey<Bls12_381>,
-        AuditorPublicKey<Bls12_381>,
+        AuditorSecretKey<Fr>,
+        AuditorPublicKey<G1Affine>,
         IssuerSecretKey<Bls12_381>,
         IssuerPublicKey<Bls12_381>,
         UserSecretKey<Bls12_381>,
@@ -536,7 +532,7 @@ pub mod tests {
         rng: &mut StdRng,
         attributes: Vec<Fr>,
         auditable: bool,
-        apk: &AuditorPublicKey<Bls12_381>,
+        apk: &AuditorPublicKey<G1Affine>,
         isk: &IssuerSecretKey<Bls12_381>,
         ipk: &IssuerPublicKey<Bls12_381>,
         usk: &UserSecretKey<Bls12_381>,

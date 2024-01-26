@@ -7,6 +7,7 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
+use core::mem;
 use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
 };
@@ -79,10 +80,10 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     }
 
     pub fn gen_proof(
-        self,
+        mut self,
         challenge: &E::ScalarField,
     ) -> Result<PoKOfSignatureG1<E>, ShortGroupSigError> {
-        let sc = self.sc.clone().gen_proof(challenge);
+        let sc = mem::take(&mut self.sc).gen_proof(challenge);
         Ok(PoKOfSignatureG1 {
             A_prime: self.A_prime,
             A_bar: self.A_bar,

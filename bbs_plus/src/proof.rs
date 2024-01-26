@@ -72,6 +72,7 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
+use core::mem;
 use dock_crypto_utils::{
     misc::rand,
     randomized_pairing_check::RandomizedPairingChecker,
@@ -229,9 +230,9 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
             .map(|(idx, blinding)| (params.h[idx], blinding, messages[idx]));
 
         let (bases_2, randomness_2, wits_2): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(
-            [(d_affine, rand(rng), -r3), (params.h_0, rand(rng), s_prime)]
+            h_blinding_message
                 .into_iter()
-                .chain(h_blinding_message),
+                .chain([(d_affine, rand(rng), -r3), (params.h_0, rand(rng), s_prime)]),
         );
 
         // Commit to randomness, i.e. `bases_2[0]*randomness_2[0] + bases_2[1]*randomness_2[1] + .... bases_2[j]*randomness_2[j]`
@@ -240,7 +241,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         Ok(Self {
             A_prime: A_prime_affine,
             A_bar: A_bar.into_affine(),
-            d: bases_2[0],
+            d: d_affine,
             sc_comm_1,
             sc_comm_2,
             sc_wits_2: wits_2,
@@ -268,11 +269,11 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
 
     /// Generate proof. Post-challenge phase of the protocol.
     pub fn gen_proof(
-        self,
+        mut self,
         challenge: &E::ScalarField,
     ) -> Result<PoKOfSignatureG1Proof<E>, BBSPlusError> {
         // Schnorr response for relation `A_bar - d == A'*{-e} + h_0*r2`
-        let sc_resp_1 = self.sc_comm_1.clone().gen_proof(challenge);
+        let sc_resp_1 = mem::take(&mut self.sc_comm_1).gen_proof(challenge);
         // Schnorr response for relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + \sum_{j not in D}(h_j*{-m_j})`
         let sc_resp_2 = self.sc_comm_2.response(&self.sc_wits_2, challenge)?;
 
@@ -405,8 +406,7 @@ where
                 adjusted_idx -= 1;
             }
         }
-        // 2 added to the index, since 0th and 1st index are reserved for `s'` and `r2`
-        Ok(self.sc_resp_2.get_response(2 + adjusted_idx)?)
+        Ok(self.sc_resp_2.get_response(adjusted_idx)?)
     }
 
     pub fn verify_schnorr_proofs(
@@ -429,8 +429,6 @@ where
 
         // Verify the 2nd Schnorr proof
         let mut bases_2 = Vec::with_capacity(2 + h.len() - revealed_msgs.len());
-        bases_2.push(self.d);
-        bases_2.push(h_0);
 
         let mut bases_revealed = Vec::with_capacity(revealed_msgs.len());
         let mut exponents = Vec::with_capacity(revealed_msgs.len());
@@ -443,6 +441,8 @@ where
                 bases_2.push(h[i]);
             }
         }
+        bases_2.push(self.d);
+        bases_2.push(h_0);
         // pr = -g1 + \sum_{i in D}(h_i*{-m_i}) = -(g1 + \sum_{i in D}(h_i*{m_i}))
         let pr = -E::G1::msm_unchecked(&bases_revealed, &exponents) - g1;
         let pr = pr.into_affine();
@@ -924,7 +924,7 @@ mod tests {
                 *proof_1
                     .get_resp_for_message(i, &revealed_indices_1)
                     .unwrap(),
-                proof_1.sc_resp_2.0[i + 2]
+                proof_1.sc_resp_2.0[i]
             );
         }
 
@@ -964,19 +964,19 @@ mod tests {
             *proof_2
                 .get_resp_for_message(1, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_2.0[2]
+            proof_2.sc_resp_2.0[0]
         );
         assert_eq!(
             *proof_2
                 .get_resp_for_message(3, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_2.0[2 + 1]
+            proof_2.sc_resp_2.0[1]
         );
         assert_eq!(
             *proof_2
                 .get_resp_for_message(4, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_2.0[2 + 2]
+            proof_2.sc_resp_2.0[2]
         );
 
         let mut revealed_indices_3 = BTreeSet::new();
@@ -1010,25 +1010,25 @@ mod tests {
             *proof_3
                 .get_resp_for_message(1, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_2.0[2]
+            proof_3.sc_resp_2.0[0]
         );
         assert_eq!(
             *proof_3
                 .get_resp_for_message(2, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_2.0[2 + 1]
+            proof_3.sc_resp_2.0[1]
         );
         assert_eq!(
             *proof_3
                 .get_resp_for_message(4, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_2.0[2 + 2]
+            proof_3.sc_resp_2.0[2]
         );
         assert_eq!(
             *proof_3
                 .get_resp_for_message(5, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_2.0[2 + 3]
+            proof_3.sc_resp_2.0[3]
         );
 
         // Reveal one message only
@@ -1055,12 +1055,12 @@ mod tests {
                 } else if i < j {
                     assert_eq!(
                         *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                        proof.sc_resp_2.0[j + 2 - 1]
+                        proof.sc_resp_2.0[j - 1]
                     );
                 } else {
                     assert_eq!(
                         *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                        proof.sc_resp_2.0[j + 2]
+                        proof.sc_resp_2.0[j]
                     );
                 }
             }

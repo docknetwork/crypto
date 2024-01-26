@@ -20,6 +20,7 @@ use ark_ec::{
     pairing::{Pairing, PairingOutput},
     AffineRepr, CurveGroup,
 };
+use core::mem;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
@@ -205,15 +206,15 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     }
 
     pub fn gen_proof(
-        self,
+        mut self,
         challenge: &E::ScalarField,
     ) -> Result<PoKOfSignatureG1<E>, ShortGroupSigError> {
-        let sc_T1 = self.sc_T1.clone().gen_proof(challenge);
-        let sc_T2 = self.sc_T2.clone().gen_proof(challenge);
-        let sc_T1_x = self.sc_T1_x.clone().gen_proof(challenge);
-        let sc_T2_x = self.sc_T2_x.clone().gen_proof(challenge);
-        let sc_T1_e = self.sc_T1_e.clone().gen_proof(challenge);
-        let sc_T2_e = self.sc_T2_e.clone().gen_proof(challenge);
+        let sc_T1 = mem::take(&mut self.sc_T1).gen_proof(challenge);
+        let sc_T2 = mem::take(&mut self.sc_T2).gen_proof(challenge);
+        let sc_T1_x = mem::take(&mut self.sc_T1_x).gen_proof(challenge);
+        let sc_T2_x = mem::take(&mut self.sc_T2_x).gen_proof(challenge);
+        let sc_T1_e = mem::take(&mut self.sc_T1_e).gen_proof(challenge);
+        let sc_T2_e = mem::take(&mut self.sc_T2_e).gen_proof(challenge);
         Ok(PoKOfSignatureG1 {
             T1: self.T1,
             T2: self.T2,

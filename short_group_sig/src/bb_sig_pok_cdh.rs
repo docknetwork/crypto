@@ -18,6 +18,7 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
+use core::mem;
 
 use schnorr_pok::discrete_log::{
     PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
@@ -119,11 +120,11 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     }
 
     pub fn gen_proof(
-        self,
+        mut self,
         challenge: &E::ScalarField,
     ) -> Result<PoKOfSignatureG1<E>, ShortGroupSigError> {
-        let sc_resp_1 = self.sc_1.clone().gen_proof(challenge);
-        let sc_2 = self.sc_2.clone().gen_proof(challenge);
+        let sc_resp_1 = mem::take(&mut self.sc_1).gen_proof(challenge);
+        let sc_2 = mem::take(&mut self.sc_2).gen_proof(challenge);
         Ok(PoKOfSignatureG1 {
             A_prime: self.A_prime,
             A_hat: self.A_hat,

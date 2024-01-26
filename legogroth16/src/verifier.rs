@@ -24,7 +24,7 @@ pub fn prepare_verifying_key<E: Pairing>(vk: &VerifyingKey<E>) -> PreparedVerify
     }
 }
 
-/// Prepare proof inputs for use with [`verify_proof_with_prepared_inputs`], wrt the prepared
+/// Prepare proof inputs for use with [`verify_proof`], wrt the prepared
 /// verification key `pvk` and instance public inputs.
 pub fn prepare_inputs<E: Pairing>(
     pvk: &PreparedVerifyingKey<E>,

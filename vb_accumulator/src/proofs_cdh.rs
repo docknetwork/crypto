@@ -21,6 +21,7 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
+use core::mem;
 use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
 };
@@ -233,7 +234,7 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
     }
 
     pub fn gen_proof(
-        self,
+        mut self,
         challenge: &E::ScalarField,
     ) -> Result<NonMembershipProof<E>, VBAccumulatorError> {
         Ok(NonMembershipProof {
@@ -245,7 +246,7 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
                 &[self.sc_wits_1.0, self.sc_wits_1.1, self.sc_wits_1.2],
                 challenge,
             )?,
-            sc_2: self.sc_comm_2.clone().gen_proof(challenge),
+            sc_2: mem::take(&mut self.sc_comm_2).gen_proof(challenge),
         })
     }
 

@@ -40,7 +40,7 @@ different from BBS+ but public key is same.
 3. BBS+ proof of knowledge of signature module - [`proof`]
 4. BBS signature module - [`signature_23`]
 5. BBS proof of knowledge of signature module - [`proof_23`]
-6. BBS proof of knowledge of signature module, alternate implementation - [`proof_23_alternate`]
+6. BBS proof of knowledge of signature module, alternate implementation - [`proof_23_cdl`]
 7. Threshold BBS and BBS+ signatures - [`threshold`]
 
 The implementation tries to use the same variable names as the paper and thus violate Rust's naming conventions at places.
@@ -50,7 +50,7 @@ The implementation tries to use the same variable names as the paper and thus vi
 [`proof`]: https://docs.rs/bbs_plus/latest/bbs_plus/proof/
 [`signature_23`]: https://docs.rs/bbs_plus/latest/bbs_plus/signature_23/
 [`proof_23`]: https://docs.rs/bbs_plus/latest/bbs_plus/proof_23/
-[`proof_23_alternate`]: https://docs.rs/bbs_plus/latest/bbs_plus/proof_23_alternate/
+[`proof_23_cdl`]: https://docs.rs/bbs_plus/latest/bbs_plus/proof_23_alternate/
 [`threshold`]: https://docs.rs/bbs_plus/latest/bbs_plus/threshold/
 
 <!-- cargo-rdme end -->

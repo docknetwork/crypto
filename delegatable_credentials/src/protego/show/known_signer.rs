@@ -2,7 +2,6 @@
 
 use crate::{
     accumulator::{NonMembershipWitness, RandomizedNonMembershipWitness},
-    auditor::{AuditorPublicKey, Ciphertext},
     error::DelegationError,
     mercurial_sig::Signature,
     protego::{
@@ -22,7 +21,7 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
-
+use dock_crypto_utils::elgamal::{Ciphertext as ElgamalCiphertext, PublicKey as AuditorPublicKey};
 use schnorr_pok::discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol};
 
 /// Proof that ciphertext is correct, i.e. it encrypts the user's public key and the auditor can decrypt it.
@@ -45,7 +44,7 @@ pub struct CiphertextProofProtocol<E: Pairing> {
     pub C7: E::G1Affine,
     pub alpha: E::ScalarField,
     /// Encrypts the user's public key
-    pub ct: Ciphertext<E>,
+    pub ct: ElgamalCiphertext<E::G1Affine>,
     pub r1: E::ScalarField,
     pub r2: E::ScalarField,
     pub com1: E::G1Affine,
@@ -120,7 +119,7 @@ pub struct CredentialShow<E: Pairing> {
     pub rev: Option<RevocationShow<E>>,
     pub ct_proof: Option<CiphertextProof<E>>,
     /// The ciphertext encrypting the user key which can be given to the auditor to decrypt
-    pub ct: Option<Ciphertext<E>>,
+    pub ct: Option<ElgamalCiphertext<E::G1Affine>>,
 }
 
 impl<E: Pairing> CredentialShowProtocol<E> {
@@ -130,7 +129,7 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         credential: Credential<E>,
         disclosed_attributes: Vec<E::ScalarField>,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<Self, DelegationError> {
         Self::_init(
@@ -157,7 +156,7 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         non_mem_wit: &NonMembershipWitness<E>,
         user_sk: &UserSecretKey<E>,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         Q: &E::G1Affine,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<Self, DelegationError> {
@@ -185,7 +184,7 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         non_mem_wit: Option<&NonMembershipWitness<E>>,
         user_sk: Option<&UserSecretKey<E>>,
         user_pk: Option<&UserPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         Q: Option<&E::G1Affine>,
         set_comm_srs: &SetCommitmentSRS<E>,
     ) -> Result<Self, DelegationError> {
@@ -298,7 +297,7 @@ impl<E: Pairing> CredentialShowProtocol<E> {
             let upk = user_pk.ok_or(DelegationError::NeedUserPublicKey)?;
             let apk = auditor_pk.ok_or(DelegationError::NeedAuditorPublicKey)?;
 
-            let (ct, alpha) = Ciphertext::<E>::new(rng, &upk.0, &apk.0, P1);
+            let (ct, alpha) = ElgamalCiphertext::<E::G1Affine>::new(rng, &upk.0, &apk.0, P1);
 
             let com1 = P1.mul(r1).add(&apk.0.mul(r2)).into_affine();
             let ciphertext_rand_protocol = PokDiscreteLogProtocol::init(alpha, r2, P1);
@@ -343,7 +342,7 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         &self,
         accumulated: Option<&E::G1Affine>,
         Q: Option<&E::G1Affine>,
-        apk: Option<&AuditorPublicKey<E>>,
+        apk: Option<&AuditorPublicKey<E::G1Affine>>,
         P1: &E::G1Affine,
         context: &[u8],
         mut writer: W,
@@ -465,7 +464,7 @@ impl<E: Pairing> CredentialShow<E> {
         challenge: &E::ScalarField,
         disclosed_attributes: Vec<E::ScalarField>,
         issuer_pk: impl Into<PreparedIssuerPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         self._verify(
@@ -488,7 +487,7 @@ impl<E: Pairing> CredentialShow<E> {
         accumulated: &E::G1Affine,
         Q: &E::G1Affine,
         accumulator_pk: impl Into<crate::accumulator::PreparedPublicKey<E>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         self._verify(
@@ -511,7 +510,7 @@ impl<E: Pairing> CredentialShow<E> {
         accumulated: Option<&E::G1Affine>,
         Q: Option<&E::G1Affine>,
         accumulator_pk: Option<impl Into<crate::accumulator::PreparedPublicKey<E>>>,
-        auditor_pk: Option<&AuditorPublicKey<E>>,
+        auditor_pk: Option<&AuditorPublicKey<E::G1Affine>>,
         set_comm_srs: impl Into<PreparedSetCommitmentSRS<E>>,
     ) -> Result<(), DelegationError> {
         let set_comm_srs = set_comm_srs.into();

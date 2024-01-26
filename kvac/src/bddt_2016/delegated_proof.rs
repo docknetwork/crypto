@@ -37,7 +37,7 @@ pub struct DelegatedProof<G: AffineRepr> {
 }
 
 /// A public key to verify a `DelegatedProof`. The secret key can be used to create any number of delegated public
-/// keys and the delegated. Its a tuple of the form `(P, Q=P*i/y)` where `P` and `Q` are elements in group G2 and `y`
+/// keys and the delegated. It's a tuple of the form `(P, Q=P*1/y)` where `P` and `Q` are elements in group G2 and `y`
 /// is the secret key.
 #[serde_as]
 #[derive(
@@ -57,14 +57,14 @@ pub struct PreparedDelegatedPublicKey<E: Pairing>(
     #[serde_as(as = "ArkObjectBytes")] pub E::G2Prepared,
 );
 
-/// A Pedersen commitment to the secret key, `Comm = G * y + H * r`
+/// A Pedersen commitment `Comm` to the secret key `y`, `Comm = G * y + H * r`
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct SecretKeyCommitment<G: AffineRepr>(pub G);
 
-/// A proof that the `DelegatedProof` can be verified correctly. It proves secret key `y` is same in the
+/// A proof that the `DelegatedProof` can be verified successfully. It proves that secret key `y` is same in the
 /// `DelegatedProof` and the `SecretKeyCommitment`, i.e. `C = B_0 * y, Comm = G * y + H * r`
 #[serde_as]
 #[derive(
@@ -156,6 +156,7 @@ impl<G: AffineRepr> DelegatedProof<G> {
 }
 
 impl<G: AffineRepr> SecretKeyCommitment<G> {
+    /// Commit to the secret key with given randomness
     pub fn new(
         secret_key: &SecretKey<G::ScalarField>,
         randomness: &G::ScalarField,

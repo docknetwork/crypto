@@ -29,6 +29,7 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
+use core::mem;
 use dock_crypto_utils::{
     misc::rand,
     serde_utils::ArkObjectBytes,
@@ -189,8 +190,8 @@ impl<G: AffineRepr> PoKOfMACProtocol<G> {
         )
     }
 
-    pub fn gen_proof(self, challenge: &G::ScalarField) -> Result<PoKOfMAC<G>, KVACError> {
-        let sc_C = self.sc_C.clone().gen_proof(challenge);
+    pub fn gen_proof(mut self, challenge: &G::ScalarField) -> Result<PoKOfMAC<G>, KVACError> {
+        let sc_C = mem::take(&mut self.sc_C).gen_proof(challenge);
         let sc_resp_msgs = self.sc_comm_msgs.response(&self.sc_wits_msgs, challenge)?;
         Ok(PoKOfMAC {
             B_0: self.B_0,

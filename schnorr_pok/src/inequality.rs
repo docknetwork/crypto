@@ -23,6 +23,7 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
+use core::mem;
 use dock_crypto_utils::misc::n_rand;
 
 use dock_crypto_utils::commitment::PedersenCommitmentKey;
@@ -158,11 +159,14 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         )
     }
 
-    pub fn gen_proof(self, challenge: &G::ScalarField) -> Result<InequalityProof<G>, SchnorrError> {
+    pub fn gen_proof(
+        mut self,
+        challenge: &G::ScalarField,
+    ) -> Result<InequalityProof<G>, SchnorrError> {
         let sc_c = self
             .sc_c
             .response(&[self.value, self.randomness], challenge)?;
-        let sc_b = self.sc_b.clone().gen_proof(challenge);
+        let sc_b = mem::take(&mut self.sc_b).gen_proof(challenge);
         let sc_b_ped = self.sc_b_ped.response(&[self.a, self.k], challenge)?;
         Ok(InequalityProof {
             b: self.b,

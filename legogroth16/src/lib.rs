@@ -1,5 +1,4 @@
-//! An implementation of the [`LegoGroth16`] zkSNARK.
-//! An implementation of the LegoGroth16, the [`LegoSNARK`] variant of [`Groth16`] zkSNARK proof system.
+//! An implementation of the LegoGroth16 zkSNARK, the [`LegoSNARK`] variant of [`Groth16`] zkSNARK proof system.
 //!
 //! [`LegoSNARK`]: https://eprint.iacr.org/2019/142.pdf
 //! [`Groth16`]: https://eprint.iacr.org/2016/260.pdf

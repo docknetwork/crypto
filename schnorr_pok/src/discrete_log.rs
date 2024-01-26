@@ -1,11 +1,15 @@
 //! Schnorr protocol for proving knowledge of discrete logs
+//!
+//! The following are specializations of the Schnorr protocol implemented using `SchnorrCommitment` and `SchnorrResponse`.
+//! Proving knowledge of 1 or 2 discrete logs is quite common and the following avoid creating vectors.
+//!
 //! To prove knowledge of a single discrete log, i.e. given public `y` and `g`, prove knowledge of `x` in `g * x = y`:
 //! 1. Prover chooses a random `r` and computes `t = g * r`
 //! 2. Hashes `t` towards getting a challenge `c`.
 //! 3. Computes response `s = r + c*x` and sends it to the verifier.
 //! 4. Verifier checks if `g * s = t + y*c`
 //!
-//! To prove knowledge of a 2 discrete logs, i.e. given public `y`, `g1` and `g2`, prove knowledge of `x1` and `x2` in `g1 * x1 + g2 * x2 = y`.
+//! To prove knowledge of 2 discrete logs, i.e. given public `y`, `g1` and `g2`, prove knowledge of `x1` and `x2` in `g1 * x1 + g2 * x2 = y`.
 //! 1. Prover chooses 2 random `r1` and `r2` and computes `t = g1 * r1 + g2 * r2`
 //! 2. Hashes `t` towards getting a challenge `c`.
 //! 3. Computes 2 responses `s1 = r1 + c*x1` and `s2 = r2 + c*x2` and sends them to the verifier.
@@ -24,6 +28,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 /// Protocol for proving knowledge of discrete log, i.e given public `y` and `g`, prove knowledge of `x` in `g * x = y`
 #[serde_as]
 #[derive(
+    Default,
     Clone,
     PartialEq,
     Eq,
@@ -63,6 +68,7 @@ pub struct PokDiscreteLog<G: AffineRepr> {
 /// Protocol for proving knowledge of 2 discrete logs, i.e given public `y`, `g1` and `g2`, prove knowledge of `x1` and `x2` in `g1 * x1 + g2 * x2 = y`
 #[serde_as]
 #[derive(
+    Default,
     Clone,
     PartialEq,
     Eq,

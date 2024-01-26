@@ -28,7 +28,7 @@
 //! in threshold signing, phase 1 and 2 support batching meaning that to generate `n` signatures only a single execution
 //! of phase 1 and 2 needs to done, although with larger inputs. Then `n` executions of phase 3 are done to generate
 //! the signature.
-//! Also its assumed that parties have done the DKG as well as the base OT and stored their results.
+//! Also, its assumed that parties have done the DKG as well as the base OT and stored their results.
 //! Both BBS and BBS+ implementations share the same multiplication phase and the base OT phase but their phase 1 is slightly different.
 //!
 //! ## Modules
@@ -39,7 +39,7 @@
 //! 3. BBS+ proof of knowledge of signature module - [`proof`]
 //! 4. BBS signature module - [`signature_23`]
 //! 5. BBS proof of knowledge of signature module - [`proof_23`]
-//! 6. BBS proof of knowledge of signature module, alternate implementation - [`proof_23_alternate`]
+//! 6. BBS proof of knowledge of signature module, alternate implementation - [`proof_23_cdl`]
 //! 7. Threshold BBS and BBS+ signatures - [`threshold`]
 //!
 //! The implementation tries to use the same variable names as the paper and thus violate Rust's naming conventions at places.
@@ -50,7 +50,7 @@
 //! [`proof`]: crate::proof
 //! [`signature_23`]: crate::signature_23
 //! [`proof_23`]: crate::proof_23
-//! [`proof_23_alternate`]: crate::proof_23_cdl
+//! [`proof_23_cdl`]: crate::proof_23_cdl
 //! [`threshold`]: crate::threshold
 
 pub mod error;
