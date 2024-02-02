@@ -9,7 +9,9 @@ use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{serde_utils::ArkObjectBytes, signature::MultiMessageSignatureParams};
+use dock_crypto_utils::{
+    expect_equality, serde_utils::ArkObjectBytes, signature::MultiMessageSignatureParams,
+};
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
@@ -66,12 +68,11 @@ impl<G: AffineRepr> MAC<G> {
         if messages.is_empty() {
             return Err(KVACError::NoMessageGiven);
         }
-        if messages.len() != params.supported_message_count() {
-            return Err(KVACError::MessageCountIncompatibleWithMACParams(
-                messages.len(),
-                params.supported_message_count(),
-            ));
-        }
+        expect_equality!(
+            messages.len(),
+            params.supported_message_count(),
+            KVACError::MessageCountIncompatibleWithMACParams
+        );
         let s = G::ScalarField::rand(rng);
         let mut e = G::ScalarField::rand(rng);
         while (e + secret_key.0).is_zero() {
@@ -140,12 +141,11 @@ impl<G: AffineRepr> MAC<G> {
         if messages.is_empty() {
             return Err(KVACError::NoMessageGiven);
         }
-        if messages.len() != params.supported_message_count() {
-            return Err(KVACError::MessageCountIncompatibleWithMACParams(
-                messages.len(),
-                params.supported_message_count(),
-            ));
-        }
+        expect_equality!(
+            messages.len(),
+            params.supported_message_count(),
+            KVACError::MessageCountIncompatibleWithMACParams
+        );
         let b = params.b(messages.iter().enumerate(), &self.s)?;
         let e_plus_x_inv = (self.e + sk.0).inverse().ok_or(KVACError::CannotInvert0)?;
         if (b * e_plus_x_inv).into_affine() != self.A {

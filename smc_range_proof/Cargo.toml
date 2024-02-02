@@ -17,13 +17,13 @@ zeroize.workspace = true
 dock_crypto_utils = { version = "0.16.0", default-features = false, path = "../utils" }
 short_group_sig = { version = "0.1.0", default-features = false, path = "../short_group_sig" }
 rayon = {workspace = true, optional = true}
+schnorr_pok = { version = "0.16.0", default-features = false, path = "../schnorr_pok" }
 
 [dev-dependencies]
 blake2.workspace = true
 ark-bls12-381.workspace = true
-schnorr_pok = { version = "0.16.0", default-features = false, path = "../schnorr_pok" }
 
 [features]
 default = [ "parallel"]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "short_group_sig/std"]
-parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "short_group_sig/parallel"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "short_group_sig/std", "schnorr_pok/std"]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "short_group_sig/parallel", "schnorr_pok/parallel"]

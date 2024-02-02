@@ -88,30 +88,28 @@ pub mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
         let g1 = G1::rand(&mut rng);
         let g2 = G2::rand(&mut rng);
-        fn get_bytes_g1(g: &G1, compressed: bool) -> Vec<u8> {
-            let mut b = vec![];
-            if compressed {
-                g.serialize_compressed(&mut b).unwrap();
-            } else {
-                g.serialize_uncompressed(&mut b).unwrap();
-            }
-            return b;
+        let gt = <Bls12_381 as Pairing>::pairing(g1, g2);
+
+        macro_rules! get_bytes {
+            ($g:expr, $compressed:expr) => {{
+                let mut b = vec![];
+                if $compressed {
+                    $g.serialize_compressed(&mut b).unwrap();
+                } else {
+                    $g.serialize_uncompressed(&mut b).unwrap();
+                }
+                b
+            }};
         }
-        fn get_bytes_g2(g: &G2, compressed: bool) -> Vec<u8> {
-            let mut b = vec![];
-            if compressed {
-                g.serialize_compressed(&mut b).unwrap();
-            } else {
-                g.serialize_uncompressed(&mut b).unwrap();
-            }
-            return b;
-        }
-        println!("g1 compressed {:?}", get_bytes_g1(&g1, true));
-        println!("g1 uncompressed {:?}", get_bytes_g1(&g1, false));
-        println!("g2 compressed {:?}", get_bytes_g2(&g2, true));
-        println!("g2 uncompressed {:?}", get_bytes_g2(&g2, false));
-        println!("g1 zero compressed {:?}", get_bytes_g1(&G1::zero(), true));
-        println!("g2 zero compressed {:?}", get_bytes_g2(&G2::zero(), true));
+
+        println!("g1 compressed {:?}", get_bytes!(g1, true).len());
+        println!("g1 uncompressed {:?}", get_bytes!(g1, false).len());
+        println!("g2 compressed {:?}", get_bytes!(g2, true).len());
+        println!("g2 uncompressed {:?}", get_bytes!(g2, false).len());
+        println!("gt compressed {:?}", get_bytes!(gt, true).len());
+        println!("gt uncompressed {:?}", get_bytes!(gt, false).len());
+        println!("g1 zero compressed {:?}", get_bytes!(G1::zero(), true));
+        println!("g2 zero compressed {:?}", get_bytes!(G2::zero(), true));
     }
 
     #[test]

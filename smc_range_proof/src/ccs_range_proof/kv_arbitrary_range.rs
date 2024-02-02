@@ -1,54 +1,46 @@
-//! Same as CCS arbitrary range proof protocol but does Keyed-Verification, i.e the verifies knows the
+//! Same as CCS arbitrary range proof protocol but does Keyed-Verification, i.e. the verifies knows the
 //! secret key of the BB-sig
 
 use crate::{
     ccs_set_membership::setup::SetMembershipCheckParams, common::MemberCommitmentKey,
     error::SmcRangeProofError,
 };
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_ec::pairing::Pairing;
 
 use crate::ccs_range_proof::util::{check_commitment_for_arbitrary_range, find_l_greater_than};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, format, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::{misc::n_rand, msm::multiply_field_elems_with_same_group_elem};
+use ark_std::{cfg_into_iter, cfg_iter, format, io::Write, rand::RngCore, vec::Vec, UniformRand};
+use dock_crypto_utils::{expect_equality, misc::n_rand};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use short_group_sig::weak_bb_sig::SecretKey;
+use short_group_sig::{
+    weak_bb_sig::SecretKey,
+    weak_bb_sig_pok_kv::{PoKOfSignatureG1KV, PoKOfSignatureG1KVProtocol},
+};
 
 use crate::common::padded_base_n_digits_as_field_elements;
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CCSArbitraryRangeProofWithKVProtocol<E: Pairing> {
     pub base: u16,
-    pub digits_min: Vec<E::ScalarField>,
-    pub digits_max: Vec<E::ScalarField>,
     pub r: E::ScalarField,
-    pub v_min: Vec<E::ScalarField>,
-    pub v_max: Vec<E::ScalarField>,
-    pub V_min: Vec<E::G1Affine>,
-    pub V_max: Vec<E::G1Affine>,
-    pub a_min: Vec<E::G1Affine>,
-    pub a_max: Vec<E::G1Affine>,
-    pub D: E::G1Affine,
-    pub m: E::ScalarField,
-    pub s: Vec<E::ScalarField>,
-    pub t_min: Vec<E::ScalarField>,
-    pub t_max: Vec<E::ScalarField>,
+    pub pok_sigs_min: Vec<PoKOfSignatureG1KVProtocol<E::G1Affine>>,
+    pub pok_sigs_max: Vec<PoKOfSignatureG1KVProtocol<E::G1Affine>>,
+    pub D_min: E::G1Affine,
+    pub m_min: E::ScalarField,
+    pub D_max: E::G1Affine,
+    pub m_max: E::ScalarField,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CCSArbitraryRangeWithKVProof<E: Pairing> {
     pub base: u16,
-    pub V_min: Vec<E::G1Affine>,
-    pub V_max: Vec<E::G1Affine>,
-    pub a_min: Vec<E::G1Affine>,
-    pub a_max: Vec<E::G1Affine>,
-    pub D: E::G1Affine,
-    pub z_v_min: Vec<E::ScalarField>,
-    pub z_v_max: Vec<E::ScalarField>,
-    pub z_sigma_min: Vec<E::ScalarField>,
-    pub z_sigma_max: Vec<E::ScalarField>,
-    pub z_r: E::ScalarField,
+    pub D_min: E::G1Affine,
+    pub D_max: E::G1Affine,
+    pub pok_sigs_min: Vec<PoKOfSignatureG1KV<E::G1Affine>>,
+    pub pok_sigs_max: Vec<PoKOfSignatureG1KV<E::G1Affine>>,
+    pub resp_r_min: E::ScalarField,
+    pub resp_r_max: E::ScalarField,
 }
 
 impl<E: Pairing> CCSArbitraryRangeProofWithKVProtocol<E> {
@@ -100,9 +92,12 @@ impl<E: Pairing> CCSArbitraryRangeProofWithKVProtocol<E> {
 
         let l = find_l_greater_than(max, base) as usize;
 
-        let m = E::ScalarField::rand(rng);
-        let s = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
-        let D = comm_key.commit_decomposed(base, &s, &m);
+        let m_min = E::ScalarField::rand(rng);
+        let msg_blindings_min = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
+        let D_min = comm_key.commit_decomposed(base, &msg_blindings_min, &m_min);
+        let m_max = E::ScalarField::rand(rng);
+        let msg_blindings_max = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
+        let D_max = comm_key.commit_decomposed(base, &msg_blindings_max, &m_max);
 
         let digits_min = padded_base_n_digits_as_field_elements(value - min, base, l);
         let digits_max = padded_base_n_digits_as_field_elements(
@@ -111,49 +106,66 @@ impl<E: Pairing> CCSArbitraryRangeProofWithKVProtocol<E> {
             l,
         );
 
-        let t_min = n_rand(rng, l).collect::<Vec<_>>();
-        let t_max = n_rand(rng, l).collect::<Vec<_>>();
-        let v_min = n_rand(rng, l).collect::<Vec<_>>();
-        let v_max = n_rand(rng, l).collect::<Vec<_>>();
+        let mut sigs = Vec::with_capacity(2 * l);
+        for d in &digits_min {
+            sigs.push(params.get_sig_for_member(d)?);
+        }
+        for d in &digits_max {
+            sigs.push(params.get_sig_for_member(d)?);
+        }
 
-        // Randomize all signatures. Different randomizer vectors `v_min` and `v_max` are chosen to avoid leaking
-        // the information that some digits are potentially same at the same indices, i.e
-        // `V_min_i = V_max_i` if same `v_min` and `v_min` were used when `A_min_i = A_max_i`
+        let sig_randomizers_min = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
+        let sig_randomizers_max = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
+        let sc_blindings_min = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
+        let sc_blindings_max = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
 
-        // V_min_i = A_min * v_min_i
-        let V_min = randomize_sigs!(&digits_min, &v_min, &params);
-        // V_max_i = A_max * v_max_i
-        let V_max = randomize_sigs!(&digits_max, &v_max, &params);
-
-        let g = params.bb_sig_params.g1.into_group();
-        // g * t_min_i
-        let g1t_min = multiply_field_elems_with_same_group_elem(g.clone(), &t_min);
-        // g * t_max_i
-        let g1t_max = multiply_field_elems_with_same_group_elem(g, &t_max);
-
-        let a_min = cfg_into_iter!(0..l)
-            .map(|i| (V_min[i] * -s[i]) + g1t_min[i])
+        let pok_sigs_min = cfg_into_iter!(sig_randomizers_min)
+            .zip(cfg_into_iter!(msg_blindings_min))
+            .zip(cfg_into_iter!(sc_blindings_min))
+            .zip(cfg_into_iter!(sigs[..l]))
+            .zip(cfg_into_iter!(digits_min))
+            .map(
+                |((((sig_randomizer_i, msg_blinding_i), sc_blinding_i), sig_i), msg_i)| {
+                    PoKOfSignatureG1KVProtocol::init_with_given_randomness(
+                        sig_randomizer_i,
+                        msg_blinding_i,
+                        sc_blinding_i,
+                        sig_i,
+                        msg_i,
+                        &params.bb_sig_params.g1,
+                    )
+                },
+            )
             .collect::<Vec<_>>();
-        let a_max = cfg_into_iter!(0..l)
-            .map(|i| (V_max[i] * -s[i]) + g1t_max[i])
+
+        let pok_sigs_max = cfg_into_iter!(sig_randomizers_max)
+            .zip(cfg_into_iter!(msg_blindings_max))
+            .zip(cfg_into_iter!(sc_blindings_max))
+            .zip(cfg_into_iter!(sigs[l..]))
+            .zip(cfg_into_iter!(digits_max))
+            .map(
+                |((((sig_randomizer_i, msg_blinding_i), sc_blinding_i), sig_i), msg_i)| {
+                    PoKOfSignatureG1KVProtocol::init_with_given_randomness(
+                        sig_randomizer_i,
+                        msg_blinding_i,
+                        sc_blinding_i,
+                        sig_i,
+                        msg_i,
+                        &params.bb_sig_params.g1,
+                    )
+                },
+            )
             .collect::<Vec<_>>();
 
         Ok(Self {
             base,
-            digits_min,
-            digits_max,
             r: randomness,
-            v_min,
-            v_max,
-            V_min: E::G1::normalize_batch(&V_min),
-            V_max: E::G1::normalize_batch(&V_max),
-            a_min: E::G1::normalize_batch(&a_min),
-            a_max: E::G1::normalize_batch(&a_max),
-            D,
-            m,
-            s,
-            t_min,
-            t_max,
+            pok_sigs_min,
+            pok_sigs_max,
+            D_min,
+            m_min,
+            D_max,
+            m_max,
         })
     }
 
@@ -162,56 +174,37 @@ impl<E: Pairing> CCSArbitraryRangeProofWithKVProtocol<E> {
         commitment: &E::G1Affine,
         comm_key: &MemberCommitmentKey<E::G1Affine>,
         params: &SetMembershipCheckParams<E>,
-        writer: W,
+        mut writer: W,
     ) -> Result<(), SmcRangeProofError> {
-        Self::compute_challenge_contribution(
-            &self.V_min,
-            &self.V_max,
-            &self.a_min,
-            &self.a_max,
-            &self.D,
-            commitment,
-            comm_key,
-            params,
-            writer,
-        )
+        for sig in &self.pok_sigs_min {
+            sig.challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
+        }
+        for sig in &self.pok_sigs_max {
+            sig.challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
+        }
+        comm_key.serialize_compressed(&mut writer)?;
+        commitment.serialize_compressed(&mut writer)?;
+        self.D_min.serialize_compressed(&mut writer)?;
+        self.D_max.serialize_compressed(&mut writer)?;
+        Ok(())
     }
 
     pub fn gen_proof(self, challenge: &E::ScalarField) -> CCSArbitraryRangeWithKVProof<E> {
-        gen_proof_arbitrary_range!(self, challenge, CCSArbitraryRangeWithKVProof)
-    }
-
-    pub fn compute_challenge_contribution<W: Write>(
-        V_min: &[E::G1Affine],
-        V_max: &[E::G1Affine],
-        a_min: &[E::G1Affine],
-        a_max: &[E::G1Affine],
-        D: &E::G1Affine,
-        commitment: &E::G1Affine,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
-        mut writer: W,
-    ) -> Result<(), SmcRangeProofError> {
-        params.serialize_for_schnorr_protocol_for_kv(&mut writer)?;
-        comm_key.serialize_compressed(&mut writer)?;
-        for sig in &params.sigs {
-            sig.0.serialize_compressed(&mut writer)?;
+        let pok_sigs_min = cfg_into_iter!(self.pok_sigs_min)
+            .map(|p| p.gen_proof(challenge))
+            .collect::<Vec<_>>();
+        let pok_sigs_max = cfg_into_iter!(self.pok_sigs_max)
+            .map(|p| p.gen_proof(challenge))
+            .collect::<Vec<_>>();
+        CCSArbitraryRangeWithKVProof {
+            base: self.base,
+            pok_sigs_min,
+            pok_sigs_max,
+            D_min: self.D_min,
+            D_max: self.D_max,
+            resp_r_min: self.m_min + self.r * challenge,
+            resp_r_max: self.m_max + self.r * challenge,
         }
-        commitment.serialize_compressed(&mut writer)?;
-        for V_i in V_min {
-            V_i.serialize_compressed(&mut writer)?;
-        }
-        for V_i in V_max {
-            V_i.serialize_compressed(&mut writer)?;
-        }
-        for a_i in a_min {
-            a_i.serialize_compressed(&mut writer)?;
-        }
-        for a_i in a_max {
-            a_i.serialize_compressed(&mut writer)?;
-        }
-        D.serialize_compressed(&mut writer)?;
-        Ok(())
     }
 }
 
@@ -226,37 +219,50 @@ impl<E: Pairing> CCSArbitraryRangeWithKVProof<E> {
         params: &SetMembershipCheckParams<E>,
         secret_key: &SecretKey<E::ScalarField>,
     ) -> Result<(), SmcRangeProofError> {
-        self.non_crypto_validate(min, max, &params)?;
+        params.validate_base(self.base)?;
+        let l = find_l_greater_than(max, self.base) as usize;
+        expect_equality!(
+            self.pok_sigs_min.len(),
+            l,
+            SmcRangeProofError::ProofShorterThanExpected
+        );
+        expect_equality!(
+            self.pok_sigs_max.len(),
+            l,
+            SmcRangeProofError::ProofShorterThanExpected
+        );
+
+        let resp_d_min = cfg_iter!(self.pok_sigs_min)
+            .map(|p| *p.get_resp_for_message())
+            .collect::<Vec<_>>();
+        let resp_d_max = cfg_iter!(self.pok_sigs_max)
+            .map(|p| *p.get_resp_for_message())
+            .collect::<Vec<_>>();
         check_commitment_for_arbitrary_range::<E>(
             self.base,
-            &self.z_sigma_min,
-            &self.z_sigma_max,
-            &self.z_r,
-            &self.D,
+            &resp_d_min,
+            &resp_d_max,
+            &self.resp_r_min,
+            &self.resp_r_max,
+            &self.D_min,
+            &self.D_max,
             min,
             max,
             commitment,
             challenge,
             comm_key,
         )?;
-
-        let g1 = params.bb_sig_params.g1.into_group();
-        let g1v_min = multiply_field_elems_with_same_group_elem(g1.clone(), &self.z_v_min);
-        let g1v_max = multiply_field_elems_with_same_group_elem(g1, &self.z_v_max);
-
-        for i in 0..self.V_min.len() {
-            if self.a_min[i]
-                != (self.V_min[i] * (secret_key.0 * challenge - self.z_sigma_min[i]) + g1v_min[i])
-                    .into_affine()
-            {
-                return Err(SmcRangeProofError::InvalidRangeProof);
-            }
-            if self.a_max[i]
-                != (self.V_max[i] * (secret_key.0 * challenge - self.z_sigma_max[i]) + g1v_max[i])
-                    .into_affine()
-            {
-                return Err(SmcRangeProofError::InvalidRangeProof);
-            }
+        let results = cfg_iter!(self.pok_sigs_min)
+            .chain(cfg_iter!(self.pok_sigs_max))
+            .map(|p| {
+                if let Err(e) = p.verify(challenge, secret_key, &params.bb_sig_params.g1) {
+                    return Err(SmcRangeProofError::ShortGroupSig(e));
+                }
+                Ok(())
+            })
+            .collect::<Vec<_>>();
+        for r in results {
+            r?;
         }
         Ok(())
     }
@@ -266,41 +272,18 @@ impl<E: Pairing> CCSArbitraryRangeWithKVProof<E> {
         commitment: &E::G1Affine,
         comm_key: &MemberCommitmentKey<E::G1Affine>,
         params: &SetMembershipCheckParams<E>,
-        writer: W,
+        mut writer: W,
     ) -> Result<(), SmcRangeProofError> {
-        CCSArbitraryRangeProofWithKVProtocol::compute_challenge_contribution(
-            &self.V_min,
-            &self.V_max,
-            &self.a_min,
-            &self.a_max,
-            &self.D,
-            commitment,
-            comm_key,
-            params,
-            writer,
-        )
-    }
-
-    fn non_crypto_validate(
-        &self,
-        min: u64,
-        max: u64,
-        params: &SetMembershipCheckParams<E>,
-    ) -> Result<(), SmcRangeProofError> {
-        if min >= max {
-            return Err(SmcRangeProofError::IncorrectBounds(format!(
-                "min={} should be < max={}",
-                min, max
-            )));
+        for sig in &self.pok_sigs_min {
+            sig.challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
         }
-        params.validate_base(self.base)?;
-        let l = find_l_greater_than(max, self.base) as usize;
-        assert_eq!(self.V_min.len(), l);
-        assert_eq!(self.V_max.len(), l);
-        assert_eq!(self.a_min.len(), l);
-        assert_eq!(self.a_max.len(), l);
-        assert_eq!(self.z_sigma_min.len(), l);
-        assert_eq!(self.z_sigma_max.len(), l);
+        for sig in &self.pok_sigs_max {
+            sig.challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
+        }
+        comm_key.serialize_compressed(&mut writer)?;
+        commitment.serialize_compressed(&mut writer)?;
+        self.D_min.serialize_compressed(&mut writer)?;
+        self.D_max.serialize_compressed(&mut writer)?;
         Ok(())
     }
 }

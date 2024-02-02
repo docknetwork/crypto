@@ -335,11 +335,9 @@ impl<ConstraintF: PrimeField> ConstraintSynthesizer<ConstraintF>
 
 /// Generate SNARK proving key and verification key for a circuit that checks that given a witness
 /// `w` and public inputs `min` and `max`, `min <= w < max`
-pub fn generate_snark_srs_bound_check<E, R>(rng: &mut R) -> Result<ProvingKey<E>, ProofSystemError>
-where
-    E: Pairing,
-    R: Rng,
-{
+pub fn generate_snark_srs_bound_check<E: Pairing, R: Rng>(
+    rng: &mut R,
+) -> Result<ProvingKey<E>, ProofSystemError> {
     let circuit = BoundCheckCircuit::<E::ScalarField> {
         min: None,
         max: None,

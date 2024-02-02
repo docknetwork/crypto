@@ -10,7 +10,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::BTreeMap, fmt::Debug, ops::Mul, rand::RngCore, vec::Vec, UniformRand, Zero,
 };
-use dock_crypto_utils::{serde_utils::*, signature::MultiMessageSignatureParams};
+use dock_crypto_utils::{expect_equality, serde_utils::*, signature::MultiMessageSignatureParams};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -47,12 +47,11 @@ impl<E: Pairing> Signature23G1<E> {
         if messages.is_empty() {
             return Err(BBSPlusError::NoMessageToSign);
         }
-        if messages.len() != params.supported_message_count() {
-            return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
-                messages.len(),
-                params.supported_message_count(),
-            ));
-        }
+        expect_equality!(
+            messages.len(),
+            params.supported_message_count(),
+            BBSPlusError::MessageCountIncompatibleWithSigParams
+        );
         // Create map of msg index (0-based) -> message
         let msg_map: BTreeMap<usize, &E::ScalarField> =
             messages.iter().enumerate().map(|(i, e)| (i, e)).collect();
@@ -122,12 +121,11 @@ impl<E: Pairing> Signature23G1<E> {
         if messages.is_empty() {
             return Err(BBSPlusError::NoMessageToSign);
         }
-        if messages.len() != params.supported_message_count() {
-            return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
-                messages.len(),
-                params.supported_message_count(),
-            ));
-        }
+        expect_equality!(
+            messages.len(),
+            params.supported_message_count(),
+            BBSPlusError::MessageCountIncompatibleWithSigParams
+        );
         if !self.is_non_zero() {
             return Err(BBSPlusError::ZeroSignature);
         }

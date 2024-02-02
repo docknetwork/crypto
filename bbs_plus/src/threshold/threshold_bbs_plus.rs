@@ -9,6 +9,7 @@ use ark_std::{
     vec::Vec,
 };
 use digest::DynDigest;
+use dock_crypto_utils::expect_equality;
 use oblivious_transfer_protocols::ParticipantId;
 
 use super::{multiplication_phase::Phase2Output, utils::compute_R_and_u};
@@ -115,12 +116,11 @@ impl<E: Pairing> BBSPlusSignatureShare<E> {
         if messages.is_empty() {
             return Err(BBSPlusError::NoMessageToSign);
         }
-        if messages.len() != sig_params.supported_message_count() {
-            return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
-                messages.len(),
-                sig_params.supported_message_count(),
-            ));
-        }
+        expect_equality!(
+            messages.len(),
+            sig_params.supported_message_count(),
+            BBSPlusError::MessageCountIncompatibleWithSigParams
+        );
         // Create map of msg index (0-based) -> message
         let msg_map: BTreeMap<usize, &E::ScalarField> =
             messages.iter().enumerate().map(|(i, e)| (i, e)).collect();

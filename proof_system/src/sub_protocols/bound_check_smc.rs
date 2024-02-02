@@ -10,9 +10,7 @@ use crate::{
     sub_protocols::{enforce_and_get_u64, schnorr::SchnorrProtocol, should_use_cls},
 };
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
-use smc_range_proof::prelude::{
-    CCSArbitraryRangeProofProtocol, CLSRangeProofProtocol, SetMembershipCheckParamsWithPairing,
-};
+use smc_range_proof::prelude::{CCSArbitraryRangeProofProtocol, CLSRangeProofProtocol};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SmcProtocol<E: Pairing> {
@@ -58,8 +56,6 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
         }
         let msg_as_u64 = enforce_and_get_u64::<E::ScalarField>(&message)?;
         let randomness = E::ScalarField::rand(rng);
-        let params_with_pairing =
-            SetMembershipCheckParamsWithPairing::from(self.params_and_comm_key.params.clone());
         let comm_key = &self.params_and_comm_key.comm_key;
         self.comm = Some(comm_key.commit(&message, &randomness));
         let smc_protocol = if should_use_cls(self.min, self.max) {
@@ -70,7 +66,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
                 self.min,
                 self.max,
                 comm_key,
-                params_with_pairing,
+                &self.params_and_comm_key.params,
             )?;
             SmcProtocol::CLS(p)
         } else {
@@ -81,7 +77,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
                 self.min,
                 self.max,
                 comm_key,
-                params_with_pairing,
+                &self.params_and_comm_key.params,
             )?;
             SmcProtocol::CCS(p)
         };
@@ -118,20 +114,18 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
                 self.id,
             ));
         }
-        let params_with_pairing =
-            SetMembershipCheckParamsWithPairing::from(self.params_and_comm_key.params.clone());
         let comm_key = &self.params_and_comm_key.comm_key;
         match &self.smc_protocol {
             Some(SmcProtocol::CCS(c)) => c.challenge_contribution(
                 self.comm.as_ref().unwrap(),
                 comm_key,
-                params_with_pairing,
+                &self.params_and_comm_key.params,
                 &mut writer,
             )?,
             Some(SmcProtocol::CLS(c)) => c.challenge_contribution(
                 self.comm.as_ref().unwrap(),
                 comm_key,
-                params_with_pairing,
+                &self.params_and_comm_key.params,
                 &mut writer,
             )?,
             None => {
@@ -253,16 +247,16 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
     pub fn compute_challenge_contribution<W: Write>(
         comm_key_as_slice: &[E::G1Affine],
         proof: &BoundCheckSmcProof<E>,
-        params: SmcParamsWithPairingAndCommitmentKey<E>,
+        params: &SmcParamsAndCommitmentKey<E>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
         let comm_key = &params.comm_key;
         match &proof.proof {
             BoundCheckSmcInnerProof::CCS(c) => {
-                c.challenge_contribution(&proof.comm, comm_key, params.params, &mut writer)?
+                c.challenge_contribution(&proof.comm, comm_key, &params.params, &mut writer)?
             }
             BoundCheckSmcInnerProof::CLS(c) => {
-                c.challenge_contribution(&proof.comm, comm_key, params.params, &mut writer)?
+                c.challenge_contribution(&proof.comm, comm_key, &params.params, &mut writer)?
             }
         }
         comm_key_as_slice.serialize_compressed(&mut writer)?;

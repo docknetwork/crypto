@@ -37,6 +37,12 @@ pub struct SecretKey<F: PrimeField>(pub F);
 )]
 pub struct PublicKeyG2<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub <E as Pairing>::G2Affine);
 
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct PublicKeyG1<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PreparedPublicKeyG2<E: Pairing>(pub E::G2Prepared);
 
@@ -52,10 +58,13 @@ impl<F: PrimeField> SecretKey<F> {
     }
 }
 
-impl<E: Pairing> PublicKeyG2<E>
-where
-    E: Pairing,
-{
+impl<F: PrimeField> AsRef<F> for SecretKey<F> {
+    fn as_ref(&self) -> &F {
+        &self.0
+    }
+}
+
+impl<E: Pairing> PublicKeyG2<E> {
     pub fn generate_using_secret_key(
         secret_key: &SecretKey<E::ScalarField>,
         params: &SignatureParams<E>,
@@ -67,6 +76,15 @@ where
     /// valid and only then use it for any signature or proof of knowledge of signature verification.
     pub fn is_valid(&self) -> bool {
         !self.0.is_zero()
+    }
+}
+
+impl<G: AffineRepr> PublicKeyG1<G> {
+    pub fn generate_using_secret_key<E: Pairing<G1Affine = G>>(
+        secret_key: &SecretKey<G::ScalarField>,
+        params: &SignatureParams<E>,
+    ) -> Self {
+        Self((params.g1 * secret_key.0).into())
     }
 }
 

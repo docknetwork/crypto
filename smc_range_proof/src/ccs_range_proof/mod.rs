@@ -3,9 +3,11 @@
 #[macro_use]
 pub mod util;
 pub mod arbitrary_range;
+pub mod arbitrary_range_cdh;
 pub mod kv_arbitrary_range;
 pub mod kv_perfect_range;
 pub mod perfect_range;
+pub mod perfect_range_cdh;
 
-pub use arbitrary_range::{CCSArbitraryRangeProof, CCSArbitraryRangeProofProtocol};
+pub use arbitrary_range_cdh::{CCSArbitraryRangeProof, CCSArbitraryRangeProofProtocol};
 pub use kv_arbitrary_range::{CCSArbitraryRangeProofWithKVProtocol, CCSArbitraryRangeWithKVProof};

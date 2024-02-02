@@ -118,10 +118,13 @@ impl<F: PrimeField> SecretKey<F> {
     }
 }
 
-impl<E> SetupParams<E>
-where
-    E: Pairing,
-{
+impl<F: PrimeField> AsRef<F> for SecretKey<F> {
+    fn as_ref(&self) -> &F {
+        &self.0
+    }
+}
+
+impl<E: Pairing> SetupParams<E> {
     /// Generate params using a random number generator
     pub fn generate_using_rng<R: RngCore>(rng: &mut R) -> Self {
         Self {
@@ -154,10 +157,7 @@ impl<E: Pairing> AsRef<E::G1Affine> for SetupParams<E> {
     }
 }
 
-impl<E> Keypair<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> Keypair<E> {
     /// Create a secret key and corresponding public key using seed
     pub fn generate_using_seed<D>(seed: &[u8], setup_params: &SetupParams<E>) -> Self
     where

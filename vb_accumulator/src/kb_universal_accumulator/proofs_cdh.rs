@@ -42,7 +42,7 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {
         rng: &mut R,
         element: E::ScalarField,
         element_blinding: Option<E::ScalarField>,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         witness: &KBUniversalAccumulatorMembershipWitness<E::G1Affine>,
     ) -> Self {
         Self(MembershipProofProtocol::init(
@@ -56,7 +56,7 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
         self.0.challenge_contribution(accumulator_value, writer)
@@ -75,7 +75,7 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {
 impl<E: Pairing> KBUniversalAccumulatorMembershipProof<E> {
     pub fn challenge_contribution<W: Write>(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
         self.0.challenge_contribution(accumulator_value, writer)
@@ -83,7 +83,7 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProof<E> {
 
     pub fn verify(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
@@ -93,7 +93,7 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProof<E> {
 
     pub fn verify_with_randomized_pairing_checker(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
@@ -118,7 +118,7 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProofProtocol<E> {
         rng: &mut R,
         element: E::ScalarField,
         element_blinding: Option<E::ScalarField>,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         witness: &KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
     ) -> Self {
         Self(MembershipProofProtocol::init(
@@ -132,7 +132,7 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProofProtocol<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
         self.0.challenge_contribution(accumulator_value, writer)
@@ -151,7 +151,7 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProofProtocol<E> {
 impl<E: Pairing> KBUniversalAccumulatorNonMembershipProof<E> {
     pub fn verify(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
@@ -161,7 +161,7 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProof<E> {
 
     pub fn verify_with_randomized_pairing_checker(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
@@ -178,7 +178,7 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProof<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
         self.0.challenge_contribution(accumulator_value, writer)
@@ -273,14 +273,14 @@ mod tests {
                 &mut rng,
                 members[i],
                 None,
-                *accumulator.mem_value(),
+                accumulator.mem_value(),
                 &mem_witnesses[i],
             );
             mem_proof_create_duration += start.elapsed();
 
             let mut chal_bytes_prover = vec![];
             protocol
-                .challenge_contribution(*accumulator.mem_value(), &mut chal_bytes_prover)
+                .challenge_contribution(accumulator.mem_value(), &mut chal_bytes_prover)
                 .unwrap();
             let challenge_prover =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
@@ -291,7 +291,7 @@ mod tests {
 
             let mut chal_bytes_verifier = vec![];
             proof
-                .challenge_contribution(*accumulator.mem_value(), &mut chal_bytes_verifier)
+                .challenge_contribution(accumulator.mem_value(), &mut chal_bytes_verifier)
                 .unwrap();
             let challenge_verifier =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
@@ -301,7 +301,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    *accumulator.mem_value(),
+                    accumulator.mem_value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
@@ -312,7 +312,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    *accumulator.mem_value(),
+                    accumulator.mem_value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
@@ -323,7 +323,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify_with_randomized_pairing_checker(
-                    *accumulator.mem_value(),
+                    accumulator.mem_value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
@@ -335,7 +335,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify_with_randomized_pairing_checker(
-                    *accumulator.mem_value(),
+                    accumulator.mem_value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
@@ -349,14 +349,14 @@ mod tests {
                 &mut rng,
                 non_members[i],
                 None,
-                *accumulator.non_mem_value(),
+                accumulator.non_mem_value(),
                 &non_mem_witnesses[i],
             );
             non_mem_proof_create_duration += start.elapsed();
 
             let mut chal_bytes_prover = vec![];
             protocol
-                .challenge_contribution(*accumulator.non_mem_value(), &mut chal_bytes_prover)
+                .challenge_contribution(accumulator.non_mem_value(), &mut chal_bytes_prover)
                 .unwrap();
             let challenge_prover =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
@@ -367,7 +367,7 @@ mod tests {
 
             let mut chal_bytes_verifier = vec![];
             proof
-                .challenge_contribution(*accumulator.non_mem_value(), &mut chal_bytes_verifier)
+                .challenge_contribution(accumulator.non_mem_value(), &mut chal_bytes_verifier)
                 .unwrap();
             let challenge_verifier =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
@@ -377,7 +377,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    *accumulator.non_mem_value(),
+                    accumulator.non_mem_value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
@@ -388,7 +388,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    *accumulator.non_mem_value(),
+                    accumulator.non_mem_value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
@@ -399,7 +399,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify_with_randomized_pairing_checker(
-                    *accumulator.non_mem_value(),
+                    accumulator.non_mem_value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
@@ -411,7 +411,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify_with_randomized_pairing_checker(
-                    *accumulator.non_mem_value(),
+                    accumulator.non_mem_value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),

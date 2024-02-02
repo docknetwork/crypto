@@ -17,15 +17,14 @@
 use crate::{
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
     error::SchnorrError,
-    SchnorrCommitment, SchnorrResponse,
 };
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
-use dock_crypto_utils::misc::n_rand;
 
+use crate::discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol};
 use dock_crypto_utils::commitment::PedersenCommitmentKey;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -35,25 +34,27 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
     Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
 pub struct DiscreteLogInequalityProtocol<G: AffineRepr> {
-    pub value: G::ScalarField,
-    pub randomness: G::ScalarField,
-    pub a: G::ScalarField,
-    pub k: G::ScalarField,
+    /// `B = g * (m - v) * a`
     pub b: G,
-    pub sc_c: SchnorrCommitment<G>,
+    /// For proving knowledge of `m` and `r` in `C = g * m + h * r`
+    pub sc_c: PokTwoDiscreteLogsProtocol<G>,
+    /// For proving knowledge of `(m - v) * a` in `B = g * (m - v) * a`.
     pub sc_b: PokDiscreteLogProtocol<G>,
-    pub sc_b_ped: SchnorrCommitment<G>,
+    /// For proving knowledge of `a` and `k` in `B = (C  - g * v) * a + h * k`
+    pub sc_b_ped: PokTwoDiscreteLogsProtocol<G>,
 }
 
 /// Proof created using `DiscreteLogInequalityProtocol`
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct InequalityProof<G: AffineRepr> {
+    /// `B = g * (m - v) * a`
     pub b: G,
-    pub sc_c: SchnorrResponse<G>,
-    pub t_c: G,
+    /// For proving knowledge of `m` and `r` in `C = g * m + h * r`
+    pub sc_c: PokTwoDiscreteLogs<G>,
+    /// For proving knowledge of `(m - v) * a` in `B = g * (m - v) * a`.
     pub sc_b: PokDiscreteLog<G>,
-    pub sc_b_ped: SchnorrResponse<G>,
-    pub t_b_ped: G,
+    /// For proving knowledge of `a` and `k` in `B = (C  - g * v) * a + h * k`
+    pub sc_b_ped: PokTwoDiscreteLogs<G>,
 }
 
 impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
@@ -72,22 +73,26 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         }
         let a = G::ScalarField::rand(rng);
         let k = -(randomness * a);
-        let sc_c = SchnorrCommitment::new(&[comm_key.g, comm_key.h], n_rand(rng, 2).collect());
+        let sc_c = PokTwoDiscreteLogsProtocol::init(
+            value,
+            G::ScalarField::rand(rng),
+            &comm_key.g,
+            randomness,
+            G::ScalarField::rand(rng),
+            &comm_key.h,
+        );
         let w = (value - inequal_to) * a;
         let b = comm_key.g * w;
         let sc_b = PokDiscreteLogProtocol::init(w, G::ScalarField::rand(rng), &comm_key.g);
-        let sc_b_ped = SchnorrCommitment::new(
-            &[
-                Self::base_for_b(commitment, inequal_to, comm_key),
-                comm_key.h,
-            ],
-            n_rand(rng, 2).collect(),
+        let sc_b_ped = PokTwoDiscreteLogsProtocol::init(
+            a,
+            G::ScalarField::rand(rng),
+            &Self::base_for_b(commitment, inequal_to, comm_key),
+            k,
+            G::ScalarField::rand(rng),
+            &comm_key.h,
         );
         Ok(Self {
-            value,
-            randomness,
-            a,
-            k,
             b: b.into_affine(),
             sc_c,
             sc_b,
@@ -159,23 +164,16 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         )
     }
 
-    pub fn gen_proof(
-        mut self,
-        challenge: &G::ScalarField,
-    ) -> Result<InequalityProof<G>, SchnorrError> {
-        let sc_c = self
-            .sc_c
-            .response(&[self.value, self.randomness], challenge)?;
+    pub fn gen_proof(mut self, challenge: &G::ScalarField) -> InequalityProof<G> {
+        let sc_c = mem::take(&mut self.sc_c).gen_proof(challenge);
         let sc_b = mem::take(&mut self.sc_b).gen_proof(challenge);
-        let sc_b_ped = self.sc_b_ped.response(&[self.a, self.k], challenge)?;
-        Ok(InequalityProof {
+        let sc_b_ped = mem::take(&mut self.sc_b_ped).gen_proof(challenge);
+        InequalityProof {
             b: self.b,
             sc_c,
-            t_c: self.sc_c.t,
             sc_b,
             sc_b_ped,
-            t_b_ped: self.sc_b_ped.t,
-        })
+        }
     }
 
     pub fn compute_challenge_contribution<W: Write>(
@@ -203,6 +201,7 @@ impl<G: AffineRepr> DiscreteLogInequalityProtocol<G> {
         (commitment1.into_group() - commitment2.into_group()).into()
     }
 
+    /// commitment - (g * v)
     fn base_for_b(
         commitment: &G,
         inequal_to: &G::ScalarField,
@@ -223,23 +222,23 @@ impl<G: AffineRepr> InequalityProof<G> {
         if self.b.is_zero() {
             return Err(SchnorrError::InvalidProofOfEquality);
         }
-        self.sc_c
-            .is_valid(&[comm_key.g, comm_key.h], commitment, &self.t_c, challenge)
-            .map_err(|_| SchnorrError::InvalidProofOfEquality)?;
+        if !self
+            .sc_c
+            .verify(commitment, &comm_key.g, &comm_key.h, challenge)
+        {
+            return Err(SchnorrError::InvalidProofOfEquality);
+        }
         if !self.sc_b.verify(&self.b, &comm_key.g, challenge) {
             return Err(SchnorrError::InvalidProofOfEquality);
         }
-        self.sc_b_ped
-            .is_valid(
-                &[
-                    DiscreteLogInequalityProtocol::base_for_b(commitment, inequal_to, comm_key),
-                    comm_key.h,
-                ],
-                &self.b,
-                &self.t_b_ped,
-                challenge,
-            )
-            .map_err(|_| SchnorrError::InvalidProofOfEquality)?;
+        if !self.sc_b_ped.verify(
+            &self.b,
+            &DiscreteLogInequalityProtocol::base_for_b(commitment, inequal_to, comm_key),
+            &comm_key.h,
+            challenge,
+        ) {
+            return Err(SchnorrError::InvalidProofOfEquality);
+        }
         Ok(())
     }
 
@@ -272,9 +271,9 @@ impl<G: AffineRepr> InequalityProof<G> {
             &self.b,
             commitment,
             inequal_to,
-            &self.t_c,
+            &self.sc_c.t,
             &self.sc_b.t,
-            &self.t_b_ped,
+            &self.sc_b_ped.t,
             comm_key,
             writer,
         )
@@ -294,9 +293,9 @@ impl<G: AffineRepr> InequalityProof<G> {
                 commitment2,
             ),
             &G::ScalarField::zero(),
-            &self.t_c,
+            &self.sc_c.t,
             &self.sc_b.t,
-            &self.t_b_ped,
+            &self.sc_b_ped.t,
             comm_key,
             writer,
         )
@@ -349,7 +348,7 @@ mod tests {
             .unwrap();
         let challenge_prover = prover_transcript.challenge_scalar(b"chal");
 
-        let proof = protocol.gen_proof(&challenge_prover).unwrap();
+        let proof = protocol.gen_proof(&challenge_prover);
 
         let mut verifier_transcript = MerlinTranscript::new(b"test");
         proof
@@ -396,7 +395,7 @@ mod tests {
             .unwrap();
         let challenge_prover = prover_transcript.challenge_scalar(b"chal");
 
-        let proof = protocol.gen_proof(&challenge_prover).unwrap();
+        let proof = protocol.gen_proof(&challenge_prover);
 
         let mut verifier_transcript = MerlinTranscript::new(b"test1");
         proof

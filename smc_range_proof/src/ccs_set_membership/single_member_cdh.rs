@@ -1,32 +1,33 @@
-//! Check membership of a single element in the set using keyed-verification, i.e. verifier knows
-//! the secret key for BB sig
+//! Check membership of a single element in the set. This is based on an optimized protocol for proof of knowledge of
+//! weak-BB signature described in the CDH paper.
 
 use crate::{
-    ccs_set_membership::setup::SetMembershipCheckParams, common::MemberCommitmentKey,
-    error::SmcRangeProofError,
+    ccs_set_membership::setup::SetMembershipCheckParamsWithPairing, common::MemberCommitmentKey,
+    error::SmcRangeProofError, prelude::SetMembershipCheckParams,
 };
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
 use schnorr_pok::discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol};
-use short_group_sig::{
-    weak_bb_sig::SecretKey,
-    weak_bb_sig_pok_kv::{PoKOfSignatureG1KV, PoKOfSignatureG1KVProtocol},
-};
+use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct SetMembershipCheckWithKVProtocol<E: Pairing> {
-    pub pok_sig: PoKOfSignatureG1KVProtocol<E::G1Affine>,
+pub struct SetMembershipCheckProtocol<E: Pairing> {
+    /// Protocol for proving knowledge of the weak-BB signature on the set member
+    pub pok_sig: PoKOfSignatureG1Protocol<E>,
+    /// Protocol for proving knowledge of the opening to commitment to the set member
     pub sc: PokTwoDiscreteLogsProtocol<E::G1Affine>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SetMembershipCheckWithKVProof<E: Pairing> {
-    pub pok_sig: PoKOfSignatureG1KV<E::G1Affine>,
+pub struct SetMembershipCheckProof<E: Pairing> {
+    /// Proof of knowledge of the weak-BB signature on the set member
+    pub pok_sig: PoKOfSignatureG1<E>,
+    /// Proof of knowledge of the opening to commitment to the set member
     pub sc: PokTwoDiscreteLogs<E::G1Affine>,
 }
 
-impl<E: Pairing> SetMembershipCheckWithKVProtocol<E> {
+impl<E: Pairing> SetMembershipCheckProtocol<E> {
     pub fn init<R: RngCore>(
         rng: &mut R,
         member: E::ScalarField,
@@ -35,16 +36,17 @@ impl<E: Pairing> SetMembershipCheckWithKVProtocol<E> {
         params: &SetMembershipCheckParams<E>,
     ) -> Result<Self, SmcRangeProofError> {
         let sig = params.get_sig_for_member(&member)?;
-        let blinding = E::ScalarField::rand(rng);
-        let m = E::ScalarField::rand(rng);
-        let pok_sig = PoKOfSignatureG1KVProtocol::init(
-            rng,
-            sig,
+        let s = E::ScalarField::rand(rng);
+        let pok_sig =
+            PoKOfSignatureG1Protocol::init(rng, sig, member, Some(s), &params.bb_sig_params.g1);
+        let sc = PokTwoDiscreteLogsProtocol::init(
             member,
-            Some(blinding),
-            &params.bb_sig_params.g1,
+            s,
+            &comm_key.g,
+            r,
+            E::ScalarField::rand(rng),
+            &comm_key.h,
         );
-        let sc = PokTwoDiscreteLogsProtocol::init(member, blinding, &comm_key.g, r, m, &comm_key.h);
         Ok(Self { pok_sig, sc })
     }
 
@@ -58,36 +60,40 @@ impl<E: Pairing> SetMembershipCheckWithKVProtocol<E> {
         self.pok_sig
             .challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
         self.sc
-            .challenge_contribution(&comm_key.g, &comm_key.h, commitment, writer)?;
+            .challenge_contribution(&comm_key.g, &comm_key.h, commitment, &mut writer)?;
         Ok(())
     }
 
-    pub fn gen_proof(self, challenge: &E::ScalarField) -> SetMembershipCheckWithKVProof<E> {
-        SetMembershipCheckWithKVProof {
+    pub fn gen_proof(self, challenge: &E::ScalarField) -> SetMembershipCheckProof<E> {
+        SetMembershipCheckProof {
             pok_sig: self.pok_sig.gen_proof(challenge),
             sc: self.sc.gen_proof(challenge),
         }
     }
 }
 
-impl<E: Pairing> SetMembershipCheckWithKVProof<E> {
+impl<E: Pairing> SetMembershipCheckProof<E> {
     pub fn verify(
         &self,
         commitment: &E::G1Affine,
         challenge: &E::ScalarField,
         comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
-        secret_key: &SecretKey<E::ScalarField>,
+        params: impl Into<SetMembershipCheckParamsWithPairing<E>>,
     ) -> Result<(), SmcRangeProofError> {
-        // Check commitment * challenge + g * z_sigma + h * z_r == D
-        self.pok_sig
-            .verify(challenge, secret_key, &params.bb_sig_params.g1)?;
+        let params = params.into();
+        self.pok_sig.verify(
+            challenge,
+            E::G2Prepared::from(params.bb_pk.0),
+            &params.bb_sig_params.g1,
+            params.bb_sig_params.g2_prepared,
+        )?;
         if !self
             .sc
             .verify(commitment, &comm_key.g, &comm_key.h, challenge)
         {
             return Err(SmcRangeProofError::InvalidSetMembershipProof);
         }
+        // Note: The following check could be avoided if the abstraction PokTwoDiscreteLogsProtocol wasnt used
         if *self.pok_sig.get_resp_for_message() != self.sc.response1 {
             return Err(SmcRangeProofError::InvalidSetMembershipProof);
         }
@@ -98,13 +104,13 @@ impl<E: Pairing> SetMembershipCheckWithKVProof<E> {
         &self,
         commitment: &E::G1Affine,
         comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
+        params: &SetMembershipCheckParamsWithPairing<E>,
         mut writer: W,
     ) -> Result<(), SmcRangeProofError> {
         self.pok_sig
             .challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
         self.sc
-            .challenge_contribution(&comm_key.g, &comm_key.h, commitment, writer)?;
+            .challenge_contribution(&comm_key.g, &comm_key.h, commitment, &mut writer)?;
         Ok(())
     }
 }
@@ -112,7 +118,9 @@ impl<E: Pairing> SetMembershipCheckWithKVProof<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ccs_set_membership::setup::SetMembershipCheckParams;
+    use crate::ccs_set_membership::setup::{
+        SetMembershipCheckParams, SetMembershipCheckParamsWithPairing,
+    };
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
@@ -122,6 +130,7 @@ mod tests {
     use dock_crypto_utils::misc::n_rand;
     use schnorr_pok::compute_random_oracle_challenge;
     use short_group_sig::common::SignatureParams;
+    use std::time::Instant;
 
     #[test]
     fn membership_check() {
@@ -131,19 +140,22 @@ mod tests {
         let sig_params = SignatureParams::<Bls12_381>::generate_using_rng(&mut rng);
 
         let set = n_rand(&mut rng, set_size).collect::<Vec<_>>();
-        let (params, sk) =
+        let (params, _) =
             SetMembershipCheckParams::new_given_sig_params(&mut rng, set.clone(), sig_params);
         params.verify().unwrap();
+
+        let params_with_pairing = SetMembershipCheckParamsWithPairing::from(params.clone());
+        params_with_pairing.verify().unwrap();
 
         let comm_key = MemberCommitmentKey::generate_using_rng(&mut rng);
         let member = set[3].clone();
         let randomness = Fr::rand(&mut rng);
         let commitment = comm_key.commit(&member, &randomness);
 
-        let protocol = SetMembershipCheckWithKVProtocol::init(
-            &mut rng, member, randomness, &comm_key, &params,
-        )
-        .unwrap();
+        let start = Instant::now();
+        let protocol =
+            SetMembershipCheckProtocol::init(&mut rng, member, randomness, &comm_key, &params)
+                .unwrap();
 
         let mut chal_bytes_prover = vec![];
         protocol
@@ -153,17 +165,46 @@ mod tests {
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
         let proof = protocol.gen_proof(&challenge_prover);
+        println!(
+            "Time to prove membership in a set of size {}: {:?}",
+            set_size,
+            start.elapsed()
+        );
 
+        let start = Instant::now();
         let mut chal_bytes_verifier = vec![];
         proof
-            .challenge_contribution(&commitment, &comm_key, &params, &mut chal_bytes_verifier)
+            .challenge_contribution(
+                &commitment,
+                &comm_key,
+                &params_with_pairing,
+                &mut chal_bytes_verifier,
+            )
             .unwrap();
         let challenge_verifier =
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
         assert_eq!(challenge_prover, challenge_verifier);
 
         proof
-            .verify(&commitment, &challenge_verifier, &comm_key, &params, &sk)
+            .verify(
+                &commitment,
+                &challenge_verifier,
+                &comm_key,
+                params_with_pairing.clone(),
+            )
             .unwrap();
+        println!(
+            "Time to verify membership in a set of size {}: {:?}",
+            set_size,
+            start.elapsed()
+        );
+
+        let mut bytes = vec![];
+        proof.serialize_compressed(&mut bytes).unwrap();
+        println!(
+            "Membership proof size for a set of size {}: {} bytes",
+            set_size,
+            bytes.len()
+        );
     }
 }

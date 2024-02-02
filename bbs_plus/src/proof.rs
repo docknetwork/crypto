@@ -316,10 +316,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     }
 }
 
-impl<E> PoKOfSignatureG1Proof<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> PoKOfSignatureG1Proof<E> {
     /// Verify if the proof is valid. Assumes that the public key and parameters have been
     /// validated already.
     pub fn verify(

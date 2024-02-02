@@ -32,7 +32,7 @@ use schnorr_pok::discrete_log::{
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Protocol to prove knowledge of a BB signature in group G1
-#[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
+#[derive(Default, Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     /// `u * alpha`
     #[zeroize(skip)]

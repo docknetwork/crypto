@@ -11,6 +11,7 @@ pub enum ShortGroupSigError {
     #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
     InvalidProof,
+    InvalidMembershipCorrectnessProof,
 }
 
 impl From<SchnorrError> for ShortGroupSigError {

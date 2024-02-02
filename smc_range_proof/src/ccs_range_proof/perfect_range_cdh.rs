@@ -1,26 +1,25 @@
-//! Range proof protocol as described in Fig.3 of the paper [Efficient Protocols for Set Membership and Range Proofs](https://link.springer.com/chapter/10.1007/978-3-540-89255-7_15).
+//! Range proof protocol based on Fig.3 of the paper [Efficient Protocols for Set Membership and Range Proofs](https://link.springer.com/chapter/10.1007/978-3-540-89255-7_15).
 //! Considers a perfect-range, i.e. range of the form `[0, u^l)` where `u` is the base and the upper bound is a power of the base.
-//! The calculations are changed a bit to be consistent with other instances of Schnorr protocol in this project.
+//! The difference with the paper is the protocol used to prove knowledge of weak-BB sig which is taken from the CDH paper.
 
 use crate::{
     ccs_set_membership::setup::SetMembershipCheckParamsWithPairing, common::MemberCommitmentKey,
     error::SmcRangeProofError,
 };
-use ark_ec::{
-    pairing::{Pairing, PairingOutput},
-    AffineRepr, CurveGroup,
-};
+use ark_ec::pairing::Pairing;
+use ark_std::io::Write;
 
+use crate::{
+    ccs_range_proof::util::find_l, ccs_set_membership::setup::SetMembershipCheckParams,
+    common::padded_base_n_digits_as_field_elements,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, io::Write, ops::Mul, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::{
-    expect_equality, misc::n_rand, msm::multiply_field_elems_with_same_group_elem,
-};
+use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec::Vec, UniformRand};
+use dock_crypto_utils::misc::n_rand;
+use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol};
 
-use crate::common::padded_base_n_digits_as_field_elements;
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
-
-use crate::ccs_range_proof::util::{check_commitment_for_prefect_range, find_l};
+use crate::ccs_range_proof::util::check_commitment_for_prefect_range;
+use dock_crypto_utils::{expect_equality, randomized_pairing_check::RandomizedPairingChecker};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -28,26 +27,21 @@ use rayon::prelude::*;
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CCSPerfectRangeProofProtocol<E: Pairing> {
     pub base: u16,
-    pub digits: Vec<E::ScalarField>,
+    /// Protocols to prove knowledge of signature on digits. One protocol for each digit
+    pub pok_sigs: Vec<PoKOfSignatureG1Protocol<E>>,
+    /// Randomness used in the commitment to the value
     pub r: E::ScalarField,
-    pub v: Vec<E::ScalarField>,
-    pub V: Vec<E::G1Affine>,
-    pub a: Vec<PairingOutput<E>>,
     pub D: E::G1Affine,
     pub m: E::ScalarField,
-    pub s: Vec<E::ScalarField>,
-    pub t: Vec<E::ScalarField>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CCSPerfectRangeProof<E: Pairing> {
     pub base: u16,
-    pub V: Vec<E::G1Affine>,
-    pub a: Vec<PairingOutput<E>>,
+    /// Proof of knowledge of signature on digits. One proof for each digit
+    pub pok_sigs: Vec<PoKOfSignatureG1<E>>,
     pub D: E::G1Affine,
-    pub z_v: Vec<E::ScalarField>,
-    pub z_sigma: Vec<E::ScalarField>,
-    pub z_r: E::ScalarField,
+    pub resp_r: E::ScalarField,
 }
 
 impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
@@ -57,9 +51,8 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
         randomness: E::ScalarField,
         max: u64,
         comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: impl Into<SetMembershipCheckParamsWithPairing<E>>,
+        params: &SetMembershipCheckParams<E>,
     ) -> Result<Self, SmcRangeProofError> {
-        let params = params.into();
         Self::init_given_base(
             rng,
             value,
@@ -78,43 +71,48 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
         max: u64,
         base: u16,
         comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: impl Into<SetMembershipCheckParamsWithPairing<E>>,
+        params: &SetMembershipCheckParams<E>,
     ) -> Result<Self, SmcRangeProofError> {
-        let params = params.into();
-
         params.validate_base(base)?;
 
         let l = find_l(max, base) as usize;
-
-        // Note: This is different from the paper as only a single `m` needs to be created.
+        let msg_blindings = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
         let m = E::ScalarField::rand(rng);
-        let s = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
-        let D = comm_key.commit_decomposed(base, &s, &m);
-
         let digits = padded_base_n_digits_as_field_elements(value, base, l);
-        let t = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
-        let v = n_rand(rng, l).collect::<Vec<_>>();
-        let V = randomize_sigs!(&digits, &v, &params);
-        // Following is different from the paper, the paper has `-s` and `t` but here its opposite
-        let a = cfg_into_iter!(0..l)
-            .map(|i| {
-                E::pairing(
-                    E::G1Prepared::from(V[i] * s[i]),
-                    params.bb_sig_params.g2_prepared.clone(),
-                ) + params.bb_sig_params.g1g2.mul(-t[i])
-            })
+        let mut sigs = Vec::with_capacity(l);
+        for d in &digits {
+            sigs.push(params.get_sig_for_member(d)?);
+        }
+        let sig_randomizers = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
+        let sc_blindings = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
+
+        let D = comm_key.commit_decomposed(base, &msg_blindings, &m);
+
+        let pok_sigs = cfg_into_iter!(sig_randomizers)
+            .zip(cfg_into_iter!(msg_blindings))
+            .zip(cfg_into_iter!(sc_blindings))
+            .zip(cfg_into_iter!(sigs))
+            .zip(cfg_into_iter!(digits))
+            .map(
+                |((((sig_randomizer_i, msg_blinding_i), sc_blinding_i), sig_i), msg_i)| {
+                    PoKOfSignatureG1Protocol::init_with_given_randomness(
+                        sig_randomizer_i,
+                        msg_blinding_i,
+                        sc_blinding_i,
+                        sig_i,
+                        msg_i,
+                        &params.bb_sig_params.g1,
+                    )
+                },
+            )
             .collect::<Vec<_>>();
+
         Ok(Self {
             base,
-            digits,
+            pok_sigs,
             r: randomness,
-            v,
-            V: E::G1::normalize_batch(&V),
-            a,
             D,
             m,
-            s,
-            t,
         })
     }
 
@@ -122,39 +120,28 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
         &self,
         commitment: &E::G1Affine,
         comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: impl Into<SetMembershipCheckParamsWithPairing<E>>,
-        writer: W,
+        params: &SetMembershipCheckParams<E>,
+        mut writer: W,
     ) -> Result<(), SmcRangeProofError> {
-        Self::compute_challenge_contribution(
-            &self.V, &self.a, &self.D, commitment, comm_key, params, writer,
-        )
+        for sig in &self.pok_sigs {
+            sig.challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
+        }
+        comm_key.serialize_compressed(&mut writer)?;
+        commitment.serialize_compressed(&mut writer)?;
+        self.D.serialize_compressed(&mut writer)?;
+        Ok(())
     }
 
     pub fn gen_proof(self, challenge: &E::ScalarField) -> CCSPerfectRangeProof<E> {
-        gen_proof_perfect_range!(self, challenge, CCSPerfectRangeProof)
-    }
-
-    pub fn compute_challenge_contribution<W: Write>(
-        V: &[E::G1Affine],
-        a: &[PairingOutput<E>],
-        D: &E::G1Affine,
-        commitment: &E::G1Affine,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: impl Into<SetMembershipCheckParamsWithPairing<E>>,
-        mut writer: W,
-    ) -> Result<(), SmcRangeProofError> {
-        let params = params.into();
-        params.serialize_for_schnorr_protocol(&mut writer)?;
-        comm_key.serialize_compressed(&mut writer)?;
-        commitment.serialize_compressed(&mut writer)?;
-        for V_i in V {
-            V_i.serialize_compressed(&mut writer)?;
+        let pok_sigs = cfg_into_iter!(self.pok_sigs)
+            .map(|p| p.gen_proof(challenge))
+            .collect::<Vec<_>>();
+        CCSPerfectRangeProof {
+            base: self.base,
+            D: self.D,
+            pok_sigs,
+            resp_r: self.m + self.r * challenge,
         }
-        for a_i in a {
-            a_i.serialize_compressed(&mut writer)?;
-        }
-        D.serialize_compressed(&mut writer)?;
-        Ok(())
     }
 }
 
@@ -168,21 +155,22 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         params: impl Into<SetMembershipCheckParamsWithPairing<E>>,
     ) -> Result<(), SmcRangeProofError> {
         let params = params.into();
+
         self.verify_except_pairings(commitment, challenge, max, comm_key, &params)?;
 
-        let (yc_sigma, lhs) = self.compute_for_pairing_check(challenge, &params);
-        if cfg_into_iter!(0..self.V.len())
-            .map(|i| {
-                let rhs = E::pairing(
-                    E::G1Prepared::from(self.V[i]),
-                    E::G2Prepared::from(yc_sigma[i]),
-                );
-                lhs[i] == rhs
+        let pk = E::G2Prepared::from(params.bb_pk.0);
+        let g2 = params.bb_sig_params.g2_prepared;
+
+        let results = cfg_iter!(self.pok_sigs)
+            .map(|p| {
+                p.verify(challenge, pk.clone(), &params.bb_sig_params.g1, g2.clone())
+                    .map_err(|e| SmcRangeProofError::ShortGroupSig(e))
             })
-            .any(|r| r == false)
-        {
-            return Err(SmcRangeProofError::InvalidRangeProof);
+            .collect::<Vec<_>>();
+        for r in results {
+            r?;
         }
+
         Ok(())
     }
 
@@ -196,13 +184,29 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), SmcRangeProofError> {
         let params = params.into();
+
         self.verify_except_pairings(commitment, challenge, max, comm_key, &params)?;
 
-        let (yc_sigma, lhs) = self.compute_for_pairing_check(challenge, &params);
+        let pk = E::G2Prepared::from(params.bb_pk.0);
+        let g2 = params.bb_sig_params.g2_prepared;
 
-        for i in 0..self.V.len() {
-            pairing_checker.add_multiple_sources_and_target(&[self.V[i]], &[yc_sigma[i]], &lhs[i]);
+        let results = cfg_iter!(self.pok_sigs)
+            .map(|p| {
+                let r = p.verify_except_pairings(challenge, &params.bb_sig_params.g1);
+                if let Err(e) = r {
+                    return Err(SmcRangeProofError::ShortGroupSig(e));
+                }
+                Ok(())
+            })
+            .collect::<Vec<_>>();
+        for r in results {
+            r?;
         }
+
+        for p in &self.pok_sigs {
+            pairing_checker.add_sources(&p.A_prime, pk.clone(), &p.A_bar, g2.clone());
+        }
+
         Ok(())
     }
 
@@ -217,29 +221,18 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         params.validate_base(self.base)?;
         let l = find_l(max, self.base) as usize;
         expect_equality!(
-            self.V.len(),
+            self.pok_sigs.len(),
             l,
             SmcRangeProofError::ProofShorterThanExpected
         );
-        expect_equality!(
-            self.a.len(),
-            l,
-            SmcRangeProofError::ProofShorterThanExpected
-        );
-        expect_equality!(
-            self.z_v.len(),
-            l,
-            SmcRangeProofError::ProofShorterThanExpected
-        );
-        expect_equality!(
-            self.z_sigma.len(),
-            l,
-            SmcRangeProofError::ProofShorterThanExpected
-        );
+
+        let resp_d = cfg_iter!(self.pok_sigs)
+            .map(|p| *p.get_resp_for_message())
+            .collect::<Vec<_>>();
         check_commitment_for_prefect_range::<E>(
             self.base,
-            &self.z_sigma,
-            &self.z_r,
+            &resp_d,
+            &self.resp_r,
             &self.D,
             commitment,
             challenge,
@@ -251,35 +244,16 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         &self,
         commitment: &E::G1Affine,
         comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: impl Into<SetMembershipCheckParamsWithPairing<E>>,
-        writer: W,
+        params: &SetMembershipCheckParams<E>,
+        mut writer: W,
     ) -> Result<(), SmcRangeProofError> {
-        CCSPerfectRangeProofProtocol::compute_challenge_contribution(
-            &self.V, &self.a, &self.D, commitment, comm_key, params, writer,
-        )
-    }
-
-    fn compute_for_pairing_check(
-        &self,
-        challenge: &E::ScalarField,
-        params: &SetMembershipCheckParamsWithPairing<E>,
-    ) -> (Vec<E::G2>, Vec<PairingOutput<E>>) {
-        // y * c
-        let yc = params.bb_pk.0 * challenge;
-        // g2_z_sigma_i = g2 * z_sigma_i
-        let g2_z_sigma = multiply_field_elems_with_same_group_elem(
-            params.bb_sig_params.g2.into_group(),
-            &self.z_sigma,
-        );
-        // lhs_i = a_i + e(g1, g2) * z_v_i
-        let lhs = cfg_into_iter!(0..self.V.len())
-            .map(|i| self.a[i] + (params.bb_sig_params.g1g2 * self.z_v[i]))
-            .collect::<Vec<_>>();
-        // yc_sigma_i = yc + g2_z_sigma_i
-        let yc_sigma = cfg_into_iter!(0..g2_z_sigma.len())
-            .map(|i| yc + g2_z_sigma[i])
-            .collect::<Vec<_>>();
-        (yc_sigma, lhs)
+        for sig in &self.pok_sigs {
+            sig.challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
+        }
+        comm_key.serialize_compressed(&mut writer)?;
+        commitment.serialize_compressed(&mut writer)?;
+        self.D.serialize_compressed(&mut writer)?;
+        Ok(())
     }
 }
 
@@ -287,7 +261,7 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
 mod tests {
     use super::*;
     use crate::ccs_set_membership::setup::SetMembershipCheckParams;
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -326,13 +300,7 @@ mod tests {
                     let commitment = comm_key.commit(&Fr::from(value), &randomness);
                     let start = Instant::now();
                     let protocol = CCSPerfectRangeProofProtocol::init_given_base(
-                        &mut rng,
-                        value,
-                        randomness,
-                        max,
-                        base,
-                        &comm_key,
-                        params_with_pairing.clone(),
+                        &mut rng, value, randomness, max, base, &comm_key, &params,
                     )
                     .unwrap();
 
@@ -341,7 +309,7 @@ mod tests {
                         .challenge_contribution(
                             &commitment,
                             &comm_key,
-                            params_with_pairing.clone(),
+                            &params,
                             &mut chal_bytes_prover,
                         )
                         .unwrap();
@@ -357,7 +325,7 @@ mod tests {
                         .challenge_contribution(
                             &commitment,
                             &comm_key,
-                            params_with_pairing.clone(),
+                            &params,
                             &mut chal_bytes_verifier,
                         )
                         .unwrap();
@@ -365,7 +333,6 @@ mod tests {
                         compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
                     assert_eq!(challenge_prover, challenge_verifier);
 
-                    assert_eq!(proof.V.len(), l as usize);
                     proof
                         .verify(
                             &commitment,
@@ -376,6 +343,23 @@ mod tests {
                         )
                         .unwrap();
                     verifying_time += start.elapsed();
+
+                    // TODO: Temp fix error
+                    let mut temp = params_with_pairing.clone();
+                    temp.bb_pk.0 = G2Affine::rand(&mut rng);
+                    assert!(proof
+                        .verify(&commitment, &challenge_verifier, max, &comm_key, temp,)
+                        .is_err());
+
+                    // assert!(proof
+                    //     .verify(
+                    //         &commitment,
+                    //         &challenge_verifier,
+                    //         value - 1,
+                    //         &comm_key,
+                    //         params_with_pairing.clone(),
+                    //     )
+                    //     .is_err());
 
                     let mut pairing_checker =
                         RandomizedPairingChecker::new_using_rng(&mut rng, true);

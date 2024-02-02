@@ -9,14 +9,20 @@ use ark_ec::{
     AffineRepr, CurveGroup,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, io::Write, ops::Mul, rand::RngCore, vec::Vec};
+use ark_std::{
+    cfg_into_iter,
+    io::Write,
+    ops::{Mul, Neg},
+    rand::RngCore,
+    vec::Vec,
+};
 use dock_crypto_utils::misc::n_rand;
 
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SetMembershipBatchCheckProtocol<E: Pairing> {
     pub members: Vec<E::ScalarField>,
     pub r: Vec<E::ScalarField>,
@@ -62,9 +68,9 @@ impl<E: Pairing> SetMembershipBatchCheckProtocol<E> {
         let a = cfg_into_iter!(0..members.len())
             .map(|i| {
                 E::pairing(
-                    E::G1Prepared::from(V[i] * -s[i]),
+                    E::G1Prepared::from(V[i] * s[i]),
                     params.bb_sig_params.g2_prepared.clone(),
-                ) + params.bb_sig_params.g1g2.mul(t[i])
+                ) + params.bb_sig_params.g1g2.mul(-t[i])
             })
             .collect::<Vec<_>>();
         Ok(Self {
@@ -100,13 +106,13 @@ impl<E: Pairing> SetMembershipBatchCheckProtocol<E> {
 
     pub fn gen_proof(self, challenge: &E::ScalarField) -> SetMembershipBatchCheckProof<E> {
         let z_v = cfg_into_iter!(0..self.V.len())
-            .map(|i| self.t[i] - (self.v[i] * challenge))
+            .map(|i| self.t[i] + (self.v[i] * challenge))
             .collect::<Vec<_>>();
         let z_sigma = cfg_into_iter!(0..self.V.len())
-            .map(|i| self.s[i] - (self.members[i] * challenge))
+            .map(|i| self.s[i] + (self.members[i] * challenge))
             .collect::<Vec<_>>();
         let z_r = cfg_into_iter!(0..self.V.len())
-            .map(|i| self.m[i] - (self.r[i] * challenge))
+            .map(|i| self.m[i] + (self.r[i] * challenge))
             .collect::<Vec<_>>();
         SetMembershipBatchCheckProof {
             V: self.V,
@@ -164,7 +170,8 @@ impl<E: Pairing> SetMembershipBatchCheckProof<E> {
 
         // Note: Following can be optimized for larger batches by taking a random linear combination of the following
         for i in 0..commitments.len() {
-            if (commitments[i] * challenge + comm_key.commit(&self.z_sigma[i], &self.z_r[i]))
+            if (comm_key.commit(&self.z_sigma[i], &self.z_r[i])
+                + (commitments[i].into_group().neg() * challenge))
                 .into_affine()
                 != self.D[i]
             {
@@ -182,10 +189,10 @@ impl<E: Pairing> SetMembershipBatchCheckProof<E> {
 
         // TODO: Allow verifying with randomized pairing checker
         for i in 0..commitments.len() {
-            let lhs = self.a[i] - (params.bb_sig_params.g1g2 * self.z_v[i]);
+            let lhs = self.a[i] + (params.bb_sig_params.g1g2 * self.z_v[i]);
             let rhs = E::pairing(
                 E::G1Prepared::from(self.V[i]),
-                E::G2Prepared::from(yc - g2_z_sigma[i]),
+                E::G2Prepared::from(yc + g2_z_sigma[i]),
             );
             if lhs != rhs {
                 return Err(SmcRangeProofError::InvalidSetMembershipProof);

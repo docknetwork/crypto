@@ -19,9 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[derive(
-    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
-)]
+#[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct KBUniversalAccumulatorMembershipProofProtocol<G: AffineRepr>(
     pub MembershipProofProtocol<G>,
 );
@@ -40,9 +38,7 @@ pub struct KBUniversalAccumulatorDelegatedMembershipProof<G: AffineRepr>(
     pub DelegatedMembershipProof<G>,
 );
 
-#[derive(
-    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
-)]
+#[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct KBUniversalAccumulatorNonMembershipProofProtocol<G: AffineRepr>(
     pub MembershipProofProtocol<G>,
 );
@@ -68,7 +64,7 @@ impl<G: AffineRepr> KBUniversalAccumulatorMembershipProofProtocol<G> {
         element: G::ScalarField,
         element_blinding: Option<G::ScalarField>,
         witness: &KBUniversalAccumulatorMembershipWitness<G>,
-        accumulator: G,
+        accumulator: &G,
     ) -> Self {
         Self(MembershipProofProtocol::init(
             rng,
@@ -100,7 +96,7 @@ impl<G: AffineRepr> KBUniversalAccumulatorMembershipProofProtocol<G> {
 impl<G: AffineRepr> KBUniversalAccumulatorMembershipProof<G> {
     pub fn verify(
         &self,
-        accumulator: G,
+        accumulator: &G,
         secret_key: &SecretKey<G::ScalarField>,
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
@@ -117,7 +113,7 @@ impl<G: AffineRepr> KBUniversalAccumulatorMembershipProof<G> {
 
     pub fn verify_schnorr_proof(
         &self,
-        accumulator: G,
+        accumulator: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
         self.0.verify_schnorr_proof(accumulator, challenge)
@@ -139,7 +135,7 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipProofProtocol<G> {
         element: G::ScalarField,
         element_blinding: Option<G::ScalarField>,
         witness: &KBUniversalAccumulatorNonMembershipWitness<G>,
-        accumulator: G,
+        accumulator: &G,
     ) -> Self {
         Self(MembershipProofProtocol::init(
             rng,
@@ -171,7 +167,7 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipProofProtocol<G> {
 impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipProof<G> {
     pub fn verify(
         &self,
-        accumulator: G,
+        accumulator: &G,
         secret_key: &SecretKey<G::ScalarField>,
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
@@ -188,7 +184,7 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipProof<G> {
 
     pub fn verify_schnorr_proof(
         &self,
-        accumulator: G,
+        accumulator: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
         self.0.verify_schnorr_proof(accumulator, challenge)
@@ -316,7 +312,7 @@ mod tests {
                 members[i].clone(),
                 None,
                 &mem_witnesses[i],
-                accumulator.mem_value().clone(),
+                accumulator.mem_value(),
             );
             mem_proof_create_duration += start.elapsed();
 
@@ -341,16 +337,12 @@ mod tests {
 
             let start = Instant::now();
             proof
-                .verify(
-                    accumulator.mem_value().clone(),
-                    &secret_key,
-                    &challenge_verifier,
-                )
+                .verify(accumulator.mem_value(), &secret_key, &challenge_verifier)
                 .unwrap();
             mem_proof_verif_duration += start.elapsed();
 
             proof
-                .verify_schnorr_proof(accumulator.mem_value().clone(), &challenge_verifier)
+                .verify_schnorr_proof(accumulator.mem_value(), &challenge_verifier)
                 .unwrap();
             let delegated_proof = proof.to_delegated_proof();
             delegated_proof.verify(&secret_key).unwrap();
@@ -361,7 +353,7 @@ mod tests {
                 non_members[i].clone(),
                 None,
                 &non_mem_witnesses[i],
-                accumulator.non_mem_value().clone(),
+                accumulator.non_mem_value(),
             );
             non_mem_proof_create_duration += start.elapsed();
 
@@ -387,7 +379,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    accumulator.non_mem_value().clone(),
+                    accumulator.non_mem_value(),
                     &secret_key,
                     &challenge_verifier,
                 )
@@ -395,7 +387,7 @@ mod tests {
             non_mem_proof_verif_duration += start.elapsed();
 
             proof
-                .verify_schnorr_proof(accumulator.non_mem_value().clone(), &challenge_verifier)
+                .verify_schnorr_proof(accumulator.non_mem_value(), &challenge_verifier)
                 .unwrap();
             let delegated_proof = proof.to_delegated_proof();
             delegated_proof.verify(&secret_key).unwrap();

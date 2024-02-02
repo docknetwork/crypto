@@ -38,10 +38,7 @@ pub struct RandomizedPairingChecker<E: Pairing> {
     current_random: E::ScalarField,
 }
 
-impl<E> RandomizedPairingChecker<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> RandomizedPairingChecker<E> {
     /// Create a checker using given random number. If `lazy` is set to true, delays the computation
     /// of miller loops till the end (unless overridden) trading off memory for CPU time.
     pub fn new(random: E::ScalarField, lazy: bool) -> Self {
@@ -167,16 +164,19 @@ where
         lazy: bool,
     ) {
         let m = self.current_random.into_bigint();
-        let mut g1 = vec![
-            E::G1Prepared::from(a.mul_bigint(m)),
-            E::G1Prepared::from(-c.mul_bigint(m)),
-        ];
-        let mut g2 = vec![b.into(), d.into()];
+        let am = E::G1Prepared::from(a.mul_bigint(m));
+        let cm = E::G1Prepared::from(-c.mul_bigint(m));
+        let b = b.into();
+        let d = d.into();
         if lazy {
-            self.pending.0.append(&mut g1);
-            self.pending.1.append(&mut g2);
+            self.pending.0.push(am);
+            self.pending.0.push(cm);
+            self.pending.1.push(b);
+            self.pending.1.push(d);
         } else {
-            self.left.0.mul_assign(E::multi_miller_loop(g1, g2).0);
+            self.left
+                .0
+                .mul_assign(E::multi_miller_loop([am, cm], [b, d]).0);
         }
         self.current_random *= self.random;
     }

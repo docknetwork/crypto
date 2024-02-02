@@ -94,7 +94,7 @@ use crate::{
     prelude::PreparedSignatureParamsG1,
     setup::{PreparedPublicKeyG2, PublicKeyG1, SecretKey, SignatureParamsG1, SignatureParamsG2},
 };
-use dock_crypto_utils::{serde_utils::*, signature::MultiMessageSignatureParams};
+use dock_crypto_utils::{expect_equality, serde_utils::*, signature::MultiMessageSignatureParams};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -143,12 +143,11 @@ macro_rules! impl_signature_alg {
                 if messages.is_empty() {
                     return Err(BBSPlusError::NoMessageToSign);
                 }
-                if messages.len() != params.supported_message_count() {
-                    return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
-                        messages.len(),
-                        params.supported_message_count(),
-                    ));
-                }
+                expect_equality!(
+                    messages.len(),
+                    params.supported_message_count(),
+                    BBSPlusError::MessageCountIncompatibleWithSigParams
+                );
                 // Create map of msg index (0-based) -> message
                 let msg_map: BTreeMap<usize, &E::ScalarField> =
                     messages.iter().enumerate().map(|(i, e)| (i, e)).collect();
@@ -235,12 +234,11 @@ macro_rules! impl_signature_alg {
                 if messages.is_empty() {
                     return Err(BBSPlusError::NoMessageToSign);
                 }
-                if messages.len() != params.supported_message_count() {
-                    return Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
-                        messages.len(),
-                        params.supported_message_count(),
-                    ));
-                }
+                expect_equality!(
+                    messages.len(),
+                    params.supported_message_count(),
+                    BBSPlusError::MessageCountIncompatibleWithSigParams
+                );
                 if !self.is_non_zero() {
                     return Err(BBSPlusError::ZeroSignature);
                 }

@@ -124,7 +124,7 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
             .inequality_protocol
             .take()
             .unwrap()
-            .gen_proof(challenge)?;
+            .gen_proof(challenge);
         Ok(StatementProof::Inequality(InequalityProof {
             proof,
             comm: self.comm.take().unwrap(),

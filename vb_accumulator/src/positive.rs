@@ -438,10 +438,7 @@ pub trait Accumulator<E: Pairing> {
     }
 }
 
-impl<E> Accumulator<E> for PositiveAccumulator<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> Accumulator<E> for PositiveAccumulator<E> {
     fn value(&self) -> &E::G1Affine {
         &self.0
     }
@@ -459,10 +456,7 @@ impl<E: Pairing> AsRef<E::G1Affine> for PositiveAccumulator<E> {
     }
 }
 
-impl<E> PositiveAccumulator<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> PositiveAccumulator<E> {
     /// Create a new positive accumulator
     pub fn initialize(params_gen: impl AsRef<E::G1Affine>) -> Self {
         Self(*params_gen.as_ref())

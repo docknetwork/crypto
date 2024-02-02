@@ -107,17 +107,13 @@ where
 
 /// Randomize the Groth16 proof as per algorithm 2 of the paper. Can alternatively use
 /// `rerandomize_proof` from `ark_groth16`
-pub fn randomize_proof<E, R>(
+pub fn randomize_proof<E: Pairing, R: Rng>(
     mut proof: Proof<E>,
     r_prime: &E::ScalarField,
     vk: &VerifyingKey<E>,
     encryption_key: &EncryptionKey<E>,
     rng: &mut R,
-) -> Result<Proof<E>, SaverError>
-where
-    E: Pairing,
-    R: Rng,
-{
+) -> Result<Proof<E>, SaverError> {
     let (z1, z2) = (
         non_zero_random::<E::ScalarField, R>(rng),
         non_zero_random::<E::ScalarField, R>(rng),

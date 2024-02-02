@@ -402,7 +402,7 @@ where
                             responses_for_equalities
                         );
                         transcript.set_label(VB_ACCUM_CDH_MEM_LABEL);
-                        p.challenge_contribution(s.accumulator_value, &mut transcript)?;
+                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -438,7 +438,7 @@ where
                             responses_for_equalities
                         );
                         transcript.set_label(KB_UNI_ACCUM_CDH_MEM_LABEL);
-                        p.challenge_contribution(s.accumulator_value, &mut transcript)?;
+                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -453,7 +453,7 @@ where
                             responses_for_equalities
                         );
                         transcript.set_label(KB_UNI_ACCUM_CDH_NON_MEM_LABEL);
-                        p.challenge_contribution(s.accumulator_value, &mut transcript)?;
+                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -496,7 +496,7 @@ where
                         let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
                         transcript.set_label(KB_POS_ACCUM_CDH_MEM_LABEL);
                         p.challenge_contribution(
-                            s.accumulator_value,
+                            &s.accumulator_value,
                             pk,
                             params,
                             prk,
@@ -727,7 +727,8 @@ where
                         BoundCheckSmcProtocol::compute_challenge_contribution(
                             comm_key_slice.as_slice(),
                             p,
-                            derived_smc_param.get(s_idx).unwrap().clone(),
+                            s.get_params_and_comm_key(&proof_spec.setup_params, s_idx)
+                                .unwrap(),
                             &mut transcript,
                         )?;
                     }

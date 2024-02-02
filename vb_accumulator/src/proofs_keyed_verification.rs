@@ -29,38 +29,22 @@ use digest::Digest;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
     compute_random_oracle_challenge,
-    discrete_log::{
-        PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
-    },
+    discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
     SchnorrCommitment, SchnorrResponse,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use short_group_sig::weak_bb_sig_pok_kv::{PoKOfSignatureG1KV, PoKOfSignatureG1KVProtocol};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[derive(
-    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
-)]
-pub struct MembershipProofProtocol<G: AffineRepr> {
-    #[zeroize(skip)]
-    pub C_prime: G,
-    #[zeroize(skip)]
-    pub C_bar: G,
-    pub sc: PokTwoDiscreteLogsProtocol<G>,
-}
+#[derive(Default, Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
+pub struct MembershipProofProtocol<G: AffineRepr>(pub PoKOfSignatureG1KVProtocol<G>);
 
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
-    pub C_prime: G,
-    #[serde_as(as = "ArkObjectBytes")]
-    pub C_bar: G,
-    #[serde_as(as = "ArkObjectBytes")]
-    pub sc: PokTwoDiscreteLogs<G>,
-}
+pub struct MembershipProof<G: AffineRepr>(pub PoKOfSignatureG1KV<G>);
 
 /// The part of membership proof whose verification requires knowledge of secret key.
 #[serde_as]
@@ -74,9 +58,7 @@ pub struct DelegatedMembershipProof<G: AffineRepr> {
     pub C_bar: G,
 }
 
-#[derive(
-    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
-)]
+#[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct NonMembershipProofProtocol<G: AffineRepr> {
     #[zeroize(skip)]
     pub C_prime: G,
@@ -278,121 +260,73 @@ impl<G: AffineRepr> MembershipProofProtocol<G> {
         element: G::ScalarField,
         element_blinding: Option<G::ScalarField>,
         witness: &MembershipWitness<G>,
-        accumulator: G,
+        accumulator: &G,
     ) -> Self {
-        let l = G::ScalarField::rand(rng);
-        let C_prime = witness.0 * l;
-        let C_prime_neg = C_prime.neg();
-        let C_bar = (accumulator * l + C_prime_neg * element).into_affine();
-        let element_blinding = element_blinding.unwrap_or_else(|| G::ScalarField::rand(rng));
-        let sc = PokTwoDiscreteLogsProtocol::init(
-            l,
-            G::ScalarField::rand(rng),
-            &accumulator,
+        Self(PoKOfSignatureG1KVProtocol::init(
+            rng,
+            &witness,
             element,
             element_blinding,
-            &C_prime_neg.into(),
-        );
-        Self {
-            C_prime: C_prime.into(),
-            C_bar,
-            sc,
-        }
+            accumulator,
+        ))
     }
 
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &G,
-        mut writer: W,
+        writer: W,
     ) -> Result<(), VBAccumulatorError> {
-        Self::compute_challenge_contribution(
-            accumulator_value,
-            &self.C_prime,
-            &self.C_bar,
-            &self.sc.t,
-            &mut writer,
-        )
+        self.0.challenge_contribution(accumulator_value, writer)?;
+        Ok(())
     }
 
     pub fn gen_proof(
         mut self,
         challenge: &G::ScalarField,
     ) -> Result<MembershipProof<G>, VBAccumulatorError> {
-        let sc = mem::take(&mut self.sc).gen_proof(challenge);
-        Ok(MembershipProof {
-            C_prime: self.C_prime,
-            C_bar: self.C_bar,
-            sc,
-        })
-    }
-
-    fn compute_challenge_contribution<W: Write>(
-        accumulator_value: &G,
-        C_prime: &G,
-        C_bar: &G,
-        t: &G,
-        mut writer: W,
-    ) -> Result<(), VBAccumulatorError> {
-        accumulator_value.serialize_compressed(&mut writer)?;
-        C_prime.serialize_compressed(&mut writer)?;
-        C_bar.serialize_compressed(&mut writer)?;
-        t.serialize_compressed(&mut writer)?;
-        Ok(())
+        let p = mem::take(&mut self.0).gen_proof(challenge);
+        Ok(MembershipProof(p))
     }
 }
 
 impl<G: AffineRepr> MembershipProof<G> {
     pub fn verify(
         &self,
-        accumulator: G,
+        accumulator: &G,
         secret_key: &SecretKey<G::ScalarField>,
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
-        if self.C_bar != (self.C_prime * secret_key.0).into() {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
-        }
-        self.verify_schnorr_proof(accumulator, challenge)
+        self.0.verify(challenge, &secret_key, accumulator)?;
+        Ok(())
     }
 
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &G,
-        mut writer: W,
+        writer: W,
     ) -> Result<(), VBAccumulatorError> {
-        MembershipProofProtocol::compute_challenge_contribution(
-            accumulator_value,
-            &self.C_prime,
-            &self.C_bar,
-            &self.sc.t,
-            &mut writer,
-        )
+        self.0.challenge_contribution(accumulator_value, writer)?;
+        Ok(())
     }
 
     pub fn verify_schnorr_proof(
         &self,
-        accumulator: G,
+        accumulator: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
-        if !self.sc.verify(
-            &self.C_bar,
-            &accumulator,
-            &self.C_prime.into_group().neg().into(),
-            challenge,
-        ) {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
-        }
+        self.0.verify_schnorr_proof(accumulator, challenge)?;
         Ok(())
     }
 
     pub fn to_delegated_proof(&self) -> DelegatedMembershipProof<G> {
         DelegatedMembershipProof {
-            C_prime: self.C_prime,
-            C_bar: self.C_bar,
+            C_prime: self.0.A_prime,
+            C_bar: self.0.A_bar,
         }
     }
 
     pub fn get_schnorr_response_for_element(&self) -> &G::ScalarField {
-        &self.sc.response2
+        self.0.get_resp_for_message()
     }
 }
 
@@ -696,7 +630,7 @@ mod tests {
                 elems[i].clone(),
                 None,
                 &witnesses[i],
-                accumulator.value().clone(),
+                accumulator.value(),
             );
             proof_create_duration += start.elapsed();
 
@@ -725,16 +659,12 @@ mod tests {
 
             let start = Instant::now();
             proof
-                .verify(
-                    accumulator.value().clone(),
-                    &secret_key,
-                    &challenge_verifier,
-                )
+                .verify(accumulator.value(), &secret_key, &challenge_verifier)
                 .unwrap();
             proof_verif_duration += start.elapsed();
 
             proof
-                .verify_schnorr_proof(accumulator.value().clone(), &challenge_verifier)
+                .verify_schnorr_proof(accumulator.value(), &challenge_verifier)
                 .unwrap();
             let delegated_proof = proof.to_delegated_proof();
             delegated_proof.verify(&secret_key).unwrap();

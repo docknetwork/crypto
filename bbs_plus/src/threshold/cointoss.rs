@@ -11,6 +11,7 @@ use oblivious_transfer_protocols::ParticipantId;
 
 use crate::error::BBSPlusError;
 
+use dock_crypto_utils::expect_equality;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -77,12 +78,11 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
                 sender_id,
             ));
         }
-        if self.own_shares_and_salts.len() != commitments.0.len() {
-            return Err(BBSPlusError::IncorrectNoOfCommitments(
-                self.own_shares_and_salts.len(),
-                commitments.0.len(),
-            ));
-        }
+        expect_equality!(
+            self.own_shares_and_salts.len(),
+            commitments.0.len(),
+            BBSPlusError::IncorrectNoOfCommitments
+        );
         self.other_commitments.insert(sender_id, commitments);
         Ok(())
     }
@@ -103,12 +103,11 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         if self.other_shares.contains_key(&sender_id) {
             return Err(BBSPlusError::AlreadyHaveSharesFromParticipant(sender_id));
         }
-        if self.own_shares_and_salts.len() != shares_and_salts.len() {
-            return Err(BBSPlusError::IncorrectNoOfShares(
-                self.own_shares_and_salts.len(),
-                shares_and_salts.len(),
-            ));
-        }
+        expect_equality!(
+            self.own_shares_and_salts.len(),
+            shares_and_salts.len(),
+            BBSPlusError::IncorrectNoOfShares
+        );
         let expected_commitments = Self::compute_commitments(&shares_and_salts, &self.protocol_id);
         if expected_commitments != self.other_commitments.get(&sender_id).unwrap().0 {
             return Err(BBSPlusError::IncorrectCommitment);

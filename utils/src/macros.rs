@@ -216,6 +216,15 @@ macro_rules! try_pairs {
     };
 }
 
+#[macro_export]
+macro_rules! expect_equality {
+    ($left: expr, $right: expr, $error: expr) => {
+        if $left != $right {
+            return Err($error($left, $right));
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -249,5 +258,21 @@ mod tests {
         assert_eq!([a, b, c, d, e], [1, 2, 3, 4, 5]);
         let (a, b, c, d, e, f) = join!(1, 2, 3, 4, 5, 6);
         assert_eq!([a, b, c, d, e, f], [1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn equality() {
+        enum Errr {
+            Unequal(usize, usize),
+        }
+
+        fn test_fn(s: usize) -> Result<usize, Errr> {
+            let v = vec![1, 2, 4];
+            expect_equality!(v.len(), s, Errr::Unequal);
+            Ok(s)
+        }
+
+        assert!(test_fn(3).is_ok());
+        assert!(test_fn(2).is_err());
     }
 }

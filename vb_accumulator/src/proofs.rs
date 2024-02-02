@@ -472,10 +472,7 @@ where
     }
 }
 
-impl<E> SchnorrChallengeContributor for SchnorrCommit<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> SchnorrChallengeContributor for SchnorrCommit<E> {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
         self.R_E.serialize_compressed(&mut writer)?;
         self.R_sigma.serialize_compressed(&mut writer)?;
@@ -496,10 +493,7 @@ where
     }
 }
 
-impl<E> SchnorrChallengeContributor for MembershipSchnorrCommit<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> SchnorrChallengeContributor for MembershipSchnorrCommit<E> {
     fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), SchnorrError> {
         self.0.challenge_contribution(writer)
     }
@@ -518,10 +512,7 @@ where
     }
 }
 
-impl<E> SchnorrChallengeContributor for NonMembershipSchnorrCommit<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> SchnorrChallengeContributor for NonMembershipSchnorrCommit<E> {
     fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), SchnorrError> {
         self.C.challenge_contribution(&mut writer)?;
         self.R_A.serialize_compressed(&mut writer)?;
@@ -968,12 +959,9 @@ pub(crate) trait ProofProtocol<E: Pairing> {
     }
 }
 
-impl<E> ProofProtocol<E> for MembershipProofProtocol<E> where E: Pairing {}
+impl<E: Pairing> ProofProtocol<E> for MembershipProofProtocol<E> {}
 
-impl<E> MembershipProofProtocol<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> MembershipProofProtocol<E> {
     /// Initialize a membership proof protocol. Delegates to [`randomize_witness_and_compute_commitments`]
     ///
     /// [`randomize_witness_and_compute_commitments`]: ProofProtocol::randomize_witness_and_compute_commitments
@@ -1043,12 +1031,9 @@ where
     }
 }
 
-impl<E> ProofProtocol<E> for NonMembershipProofProtocol<E> where E: Pairing {}
+impl<E: Pairing> ProofProtocol<E> for NonMembershipProofProtocol<E> {}
 
-impl<E> NonMembershipProofProtocol<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> NonMembershipProofProtocol<E> {
     /// Initialize a non-membership proof protocol. Create blindings for proving `witness.d != 0` and
     /// then delegates to [`randomize_witness_and_compute_commitments`]
     ///
@@ -1186,10 +1171,7 @@ where
     }
 }
 
-impl<E> MembershipProof<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> MembershipProof<E> {
     /// Challenge contribution for this proof
     pub fn challenge_contribution<W: Write>(
         &self,
@@ -1264,10 +1246,7 @@ where
     }
 }
 
-impl<E> NonMembershipProof<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> NonMembershipProof<E> {
     /// Challenge contribution for this proof
     pub fn challenge_contribution<W: Write>(
         &self,

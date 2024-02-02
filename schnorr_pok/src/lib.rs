@@ -51,6 +51,7 @@ use dock_crypto_utils::serde_utils::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+use dock_crypto_utils::expect_equality;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -105,12 +106,11 @@ where
         witnesses: &[G::ScalarField],
         challenge: &G::ScalarField,
     ) -> Result<SchnorrResponse<G>, SchnorrError> {
-        if self.blindings.len() != witnesses.len() {
-            return Err(SchnorrError::ExpectedSameSizeSequences(
-                self.blindings.len(),
-                witnesses.len(),
-            ));
-        }
+        expect_equality!(
+            self.blindings.len(),
+            witnesses.len(),
+            SchnorrError::ExpectedSameSizeSequences
+        );
         let responses = cfg_iter!(self.blindings)
             .zip(cfg_iter!(witnesses))
             .map(|(b, w)| *b + (*w * *challenge))
@@ -154,12 +154,11 @@ where
         t: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), SchnorrError> {
-        if self.0.len() != bases.len() {
-            return Err(SchnorrError::ExpectedSameSizeSequences(
-                self.0.len(),
-                bases.len(),
-            ));
-        }
+        expect_equality!(
+            self.0.len(),
+            bases.len(),
+            SchnorrError::ExpectedSameSizeSequences
+        );
         if (G::Group::msm_unchecked(bases, &self.0).add(y.mul_bigint((-*challenge).into_bigint())))
             .into_affine()
             == *t

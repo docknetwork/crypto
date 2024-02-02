@@ -82,7 +82,7 @@ macro_rules! impl_cdh_protocol_struct_and_funcs {
                     rng,
                     witness.element,
                     blinding,
-                    self.accumulator_value,
+                    &self.accumulator_value,
                     &witness.witness,
                 ));
                 Ok(())
@@ -100,7 +100,7 @@ macro_rules! impl_cdh_protocol_struct_and_funcs {
                 self.protocol
                     .as_ref()
                     .unwrap()
-                    .challenge_contribution(self.accumulator_value, writer)?;
+                    .challenge_contribution(&self.accumulator_value, writer)?;
                 Ok(())
             }
 
@@ -128,13 +128,13 @@ macro_rules! impl_cdh_protocol_struct_and_funcs {
             ) -> Result<(), ProofSystemError> {
                 match pairing_checker {
                     Some(c) => proof.verify_with_randomized_pairing_checker(
-                        self.accumulator_value,
+                        &self.accumulator_value,
                         challenge,
                         pk,
                         params,
                         c,
                     ),
-                    None => proof.verify(self.accumulator_value, challenge, pk, params),
+                    None => proof.verify(&self.accumulator_value, challenge, pk, params),
                 }
                 .map_err(|e| ProofSystemError::$error_type(self.id as u32, e))
             }
@@ -328,7 +328,7 @@ impl<'a, E: Pairing> KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E> {
             witness.element,
             blinding,
             &witness.witness,
-            self.accumulator_value,
+            &self.accumulator_value,
             self.public_key,
             self.params,
             self.proving_key,
@@ -344,7 +344,7 @@ impl<'a, E: Pairing> KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E> {
             ));
         }
         self.protocol.as_ref().unwrap().challenge_contribution(
-            self.accumulator_value,
+            &self.accumulator_value,
             self.public_key,
             self.params,
             self.proving_key,
@@ -377,7 +377,7 @@ impl<'a, E: Pairing> KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E> {
     ) -> Result<(), ProofSystemError> {
         match pairing_checker {
             Some(c) => proof.verify_with_randomized_pairing_checker(
-                self.accumulator_value,
+                &self.accumulator_value,
                 challenge,
                 pk,
                 params,
@@ -385,7 +385,7 @@ impl<'a, E: Pairing> KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E> {
                 c,
             ),
             None => proof.verify(
-                self.accumulator_value,
+                &self.accumulator_value,
                 challenge,
                 pk,
                 params,

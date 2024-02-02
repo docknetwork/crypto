@@ -319,10 +319,7 @@ impl<E: Pairing> Drop for R1CSCircomWitness<E> {
     }
 }
 
-impl<E> Witnesses<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> Witnesses<E> {
     pub fn new() -> Self {
         Self(Vec::new())
     }

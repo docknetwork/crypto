@@ -1,5 +1,6 @@
 use ark_serialize::SerializationError;
 use ark_std::string::String;
+use schnorr_pok::error::SchnorrError;
 use short_group_sig::error::ShortGroupSigError;
 
 #[derive(Debug)]
@@ -15,6 +16,8 @@ pub enum SmcRangeProofError {
     IncorrectBounds(String),
     Serialization(SerializationError),
     ShortGroupSig(ShortGroupSigError),
+    Schnorr(SchnorrError),
+    ProofShorterThanExpected(usize, usize),
 }
 
 impl From<SerializationError> for SmcRangeProofError {
@@ -26,5 +29,11 @@ impl From<SerializationError> for SmcRangeProofError {
 impl From<ShortGroupSigError> for SmcRangeProofError {
     fn from(e: ShortGroupSigError) -> Self {
         Self::ShortGroupSig(e)
+    }
+}
+
+impl From<SchnorrError> for SmcRangeProofError {
+    fn from(e: SchnorrError) -> Self {
+        Self::Schnorr(e)
     }
 }

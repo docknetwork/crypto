@@ -97,7 +97,15 @@ pub struct PokTwoDiscreteLogsProtocol<G: AffineRepr> {
 /// Proof of knowledge of 2 discrete logs
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct PokTwoDiscreteLogs<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]

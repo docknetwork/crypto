@@ -12,12 +12,12 @@ use dock_crypto_utils::ff::inner_product;
 macro_rules! gen_proof {
     ($self: ident, $challenge: ident, $proof: ident) => {{
         let z_v = cfg_into_iter!(0..$self.V.len())
-            .map(|i| $self.t[i] - ($self.v[i] * $challenge))
+            .map(|i| $self.t[i] + ($self.v[i] * $challenge))
             .collect::<Vec<_>>();
         let z_sigma = cfg_into_iter!(0..$self.V.len())
-            .map(|i| $self.s[i] - ($self.digits[i] * $challenge))
+            .map(|i| $self.s[i] + ($self.digits[i] * $challenge))
             .collect::<Vec<_>>();
-        let z_r = $self.m - ($self.r * $challenge);
+        let z_r = $self.m + ($self.r * $challenge);
         $proof {
             base: $self.base,
             V: $self.V,
@@ -57,8 +57,8 @@ pub(super) fn check_commitment<E: Pairing>(
     let l = find_number_of_digits(range, base);
     let G = find_sumset_boundaries(range, base, l);
 
-    if (*commitment * (E::ScalarField::from(randomness_multiple) * challenge)
-        - comm_key.g * (E::ScalarField::from(min * randomness_multiple as u64) * challenge)
+    if (-(*commitment * (E::ScalarField::from(randomness_multiple) * challenge))
+        + comm_key.g * (E::ScalarField::from(min * randomness_multiple as u64) * challenge)
         + comm_key.commit(
             &inner_product(
                 z_sigma,

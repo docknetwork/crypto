@@ -36,6 +36,7 @@ use itertools::{multiunzip, MultiUnzip};
 
 use crate::setup::PreparedSignatureParams23G1;
 use dock_crypto_utils::{
+    expect_equality,
     extend_some::ExtendSome,
     misc::rand,
     randomized_pairing_check::RandomizedPairingChecker,
@@ -131,12 +132,11 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
                 ),
             })
             .multiunzip();
-        if messages.len() != params.supported_message_count() {
-            Err(BBSPlusError::MessageCountIncompatibleWithSigParams(
-                messages.len(),
-                params.supported_message_count(),
-            ))?
-        }
+        expect_equality!(
+            messages.len(),
+            params.supported_message_count(),
+            BBSPlusError::MessageCountIncompatibleWithSigParams
+        );
 
         let signature_randomizer = signature_randomizer.unwrap_or_else(|| rand(rng));
         let blinding_for_known_message_commitment =
@@ -252,10 +252,7 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
     }
 }
 
-impl<E> PoKOfSignature23G1Proof<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> PoKOfSignature23G1Proof<E> {
     /// Verify if the proof is valid. Assumes that the public key and parameters have been
     /// validated already.
     pub fn verify(

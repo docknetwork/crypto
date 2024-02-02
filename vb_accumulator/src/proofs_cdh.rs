@@ -36,7 +36,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A wrapper over the protocol for proof of knowledge of weak-BB signature. The accumulator witness is the weak-BB signature and the
 /// accumulator value becomes g1 in that protocol
-#[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
+#[derive(Default, Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct MembershipProofProtocol<E: Pairing>(pub PoKOfSignatureG1Protocol<E>);
 
 /// A wrapper over the proof of knowledge of weak-BB signature
@@ -93,7 +93,7 @@ impl<E: Pairing> MembershipProofProtocol<E> {
         rng: &mut R,
         element: E::ScalarField,
         element_blinding: Option<E::ScalarField>,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         witness: &MembershipWitness<E::G1Affine>,
     ) -> Self {
         Self(PoKOfSignatureG1Protocol::init(
@@ -107,7 +107,7 @@ impl<E: Pairing> MembershipProofProtocol<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
         self.0.challenge_contribution(accumulator_value, writer)?;
@@ -118,14 +118,15 @@ impl<E: Pairing> MembershipProofProtocol<E> {
         self,
         challenge: &E::ScalarField,
     ) -> Result<MembershipProof<E>, VBAccumulatorError> {
-        Ok(MembershipProof(self.0.clone().gen_proof(challenge)?))
+        let proof = self.0.clone().gen_proof(challenge);
+        Ok(MembershipProof(proof))
     }
 }
 
 impl<E: Pairing> MembershipProof<E> {
     pub fn verify(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
@@ -138,7 +139,7 @@ impl<E: Pairing> MembershipProof<E> {
 
     pub fn verify_with_randomized_pairing_checker(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
@@ -157,7 +158,7 @@ impl<E: Pairing> MembershipProof<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         writer: W,
     ) -> Result<(), VBAccumulatorError> {
         self.0.challenge_contribution(accumulator_value, writer)?;
@@ -424,12 +425,12 @@ mod tests {
                 &mut rng,
                 elems[i],
                 None,
-                *accumulator.value(),
+                accumulator.value(),
                 &witnesses[i],
             );
             let mut chal_bytes_prover = vec![];
             protocol
-                .challenge_contribution(*accumulator.value(), &mut chal_bytes_prover)
+                .challenge_contribution(accumulator.value(), &mut chal_bytes_prover)
                 .unwrap();
             let challenge_prover =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
@@ -439,13 +440,13 @@ mod tests {
             let start = Instant::now();
             let mut chal_bytes_verifier = vec![];
             proof
-                .challenge_contribution(*accumulator.value(), &mut chal_bytes_verifier)
+                .challenge_contribution(accumulator.value(), &mut chal_bytes_verifier)
                 .unwrap();
             let challenge_verifier =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
             proof
                 .verify(
-                    *accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),

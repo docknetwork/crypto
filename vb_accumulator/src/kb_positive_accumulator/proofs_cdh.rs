@@ -39,7 +39,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProofProtocol<E> {
         element: E::ScalarField,
         element_blinding: Option<E::ScalarField>,
         witness: &KBPositiveAccumulatorWitness<E>,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
         proving_key: &ProvingKey<E::G1Affine>,
@@ -70,7 +70,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProofProtocol<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
         proving_key: &ProvingKey<E::G1Affine>,
@@ -99,7 +99,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProofProtocol<E> {
 impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
     pub fn verify(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
@@ -122,7 +122,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
 
     pub fn verify_with_randomized_pairing_checker(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
@@ -157,7 +157,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        accumulator_value: E::G1Affine,
+        accumulator_value: &E::G1Affine,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
         proving_key: &ProvingKey<E::G1Affine>,
@@ -225,7 +225,7 @@ mod tests {
                 members[i],
                 None,
                 &mem_witnesses[i],
-                *accumulator.value(),
+                accumulator.value(),
                 &pk,
                 &params,
                 &prk,
@@ -235,7 +235,7 @@ mod tests {
             let mut chal_bytes_prover = vec![];
             protocol
                 .challenge_contribution(
-                    *accumulator.value(),
+                    accumulator.value(),
                     &pk,
                     &params,
                     &prk,
@@ -251,7 +251,7 @@ mod tests {
             let mut chal_bytes_verifier = vec![];
             proof
                 .challenge_contribution(
-                    *accumulator.value(),
+                    accumulator.value(),
                     &pk,
                     &params,
                     &prk,
@@ -264,7 +264,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify(
-                    *accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
@@ -276,7 +276,7 @@ mod tests {
             let start = Instant::now();
             proof
                 .verify_with_randomized_pairing_checker(
-                    *accumulator.value(),
+                    accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),

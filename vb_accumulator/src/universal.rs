@@ -113,10 +113,7 @@ impl<E: Pairing> AsRef<E::G1Affine> for UniversalAccumulator<E> {
     }
 }
 
-impl<E> Accumulator<E> for UniversalAccumulator<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> Accumulator<E> for UniversalAccumulator<E> {
     fn value(&self) -> &E::G1Affine {
         &self.V
     }
@@ -132,10 +129,7 @@ where
     }
 }
 
-impl<E> UniversalAccumulator<E>
-where
-    E: Pairing,
-{
+impl<E: Pairing> UniversalAccumulator<E> {
     /// Create a new universal accumulator. Given the max size, it generates `max_size-n+1` initial elements
     /// as mentioned in the paper. `n` elements are passed as argument `xs`. These are generated
     /// once for each curve as they depend on the order of the scalar field and then reused.

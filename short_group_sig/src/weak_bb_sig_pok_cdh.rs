@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
+#[derive(Default, Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     /// Randomized signature. Called `sigma'` in the paper
     #[zeroize(skip)]
@@ -30,7 +30,15 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
 
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct PoKOfSignatureG1<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
@@ -46,22 +54,42 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         signature: impl AsRef<E::G1Affine>,
         message: E::ScalarField,
         blinding: Option<E::ScalarField>,
-        g1: impl Into<E::G1Affine>,
+        g1: &E::G1Affine,
     ) -> Self {
-        let r = E::ScalarField::rand(rng);
-        let blinding = blinding.unwrap_or_else(|| E::ScalarField::rand(rng));
-        // A * r
-        let A_prime = signature.as_ref().mul_bigint(r.into_bigint());
-        let A_prime_neg = A_prime.neg();
-        let g1 = g1.into();
-        // A_bar = g1 * r - A_prime * m
-        let A_bar = g1 * r + A_prime_neg * message;
-        let sc = PokTwoDiscreteLogsProtocol::init(
-            r,
-            E::ScalarField::rand(rng),
-            &g1,
+        let sig_randomizer = E::ScalarField::rand(rng);
+        let sc_blinding = E::ScalarField::rand(rng);
+        let msg_blinding = blinding.unwrap_or_else(|| E::ScalarField::rand(rng));
+        Self::init_with_given_randomness(
+            sig_randomizer,
+            msg_blinding,
+            sc_blinding,
+            signature,
             message,
-            blinding,
+            g1,
+        )
+    }
+
+    /// Same as `Self::init` but uses the given randomness
+    pub fn init_with_given_randomness(
+        sig_randomizer: E::ScalarField,
+        msg_blinding: E::ScalarField,
+        sc_blinding: E::ScalarField,
+        signature: impl AsRef<E::G1Affine>,
+        message: E::ScalarField,
+        g1: &E::G1Affine,
+    ) -> Self {
+        let sig_r = sig_randomizer.into_bigint();
+        // A * r
+        let A_prime = signature.as_ref().mul_bigint(sig_r);
+        let A_prime_neg = A_prime.neg();
+        // A_bar = g1 * r - A_prime * m
+        let A_bar = g1.mul_bigint(sig_r) + A_prime_neg * message;
+        let sc = PokTwoDiscreteLogsProtocol::init(
+            sig_randomizer,
+            sc_blinding,
+            g1,
+            message,
+            msg_blinding,
             &A_prime_neg.into(),
         );
         Self {
@@ -73,34 +101,31 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        g1: impl Into<E::G1Affine>,
+        g1: &E::G1Affine,
         writer: W,
     ) -> Result<(), ShortGroupSigError> {
         Self::compute_challenge_contribution(&self.A_bar, &self.A_prime, g1, &self.sc.t, writer)
     }
 
-    pub fn gen_proof(
-        mut self,
-        challenge: &E::ScalarField,
-    ) -> Result<PoKOfSignatureG1<E>, ShortGroupSigError> {
+    pub fn gen_proof(mut self, challenge: &E::ScalarField) -> PoKOfSignatureG1<E> {
         let sc = mem::take(&mut self.sc).gen_proof(challenge);
-        Ok(PoKOfSignatureG1 {
+        PoKOfSignatureG1 {
             A_prime: self.A_prime,
             A_bar: self.A_bar,
             sc,
-        })
+        }
     }
 
     pub fn compute_challenge_contribution<W: Write>(
         A_prime: &E::G1Affine,
         A_bar: &E::G1Affine,
-        g1: impl Into<E::G1Affine>,
+        g1: &E::G1Affine,
         t: &E::G1Affine,
         mut writer: W,
     ) -> Result<(), ShortGroupSigError> {
         A_bar.serialize_compressed(&mut writer)?;
         A_prime.serialize_compressed(&mut writer)?;
-        g1.into().serialize_compressed(&mut writer)?;
+        g1.serialize_compressed(&mut writer)?;
         t.serialize_compressed(&mut writer)?;
         Ok(())
     }
@@ -111,7 +136,7 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         &self,
         challenge: &E::ScalarField,
         pk: impl Into<E::G2Prepared>,
-        g1: impl Into<E::G1Affine>,
+        g1: &E::G1Affine,
         g2: impl Into<E::G2Prepared>,
     ) -> Result<(), ShortGroupSigError> {
         self.verify_except_pairings(challenge, g1)?;
@@ -133,7 +158,7 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         &self,
         challenge: &E::ScalarField,
         pk: impl Into<E::G2Prepared>,
-        g1: impl Into<E::G1Affine>,
+        g1: &E::G1Affine,
         g2: impl Into<E::G2Prepared>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), ShortGroupSigError> {
@@ -145,14 +170,14 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
     pub fn verify_except_pairings(
         &self,
         challenge: &E::ScalarField,
-        g1: impl Into<E::G1Affine>,
+        g1: &E::G1Affine,
     ) -> Result<(), ShortGroupSigError> {
         if self.A_prime.is_zero() {
             return Err(ShortGroupSigError::InvalidProof);
         }
         if !self.sc.verify(
             &self.A_bar,
-            &g1.into(),
+            g1,
             &self.A_prime.into_group().neg().into(),
             challenge,
         ) {
@@ -163,7 +188,7 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        g1: impl Into<E::G1Affine>,
+        g1: &E::G1Affine,
         writer: W,
     ) -> Result<(), ShortGroupSigError> {
         PoKOfSignatureG1Protocol::<E>::compute_challenge_contribution(
@@ -207,20 +232,20 @@ mod tests {
         let sig = SignatureG1::new(&message, &sk, &params);
 
         let protocol =
-            PoKOfSignatureG1Protocol::<Bls12_381>::init(&mut rng, sig, message, None, params.g1);
+            PoKOfSignatureG1Protocol::<Bls12_381>::init(&mut rng, sig, message, None, &params.g1);
 
         let mut chal_bytes_prover = vec![];
         protocol
-            .challenge_contribution(params.g1, &mut chal_bytes_prover)
+            .challenge_contribution(&params.g1, &mut chal_bytes_prover)
             .unwrap();
         let challenge_prover =
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
-        let proof = protocol.gen_proof(&challenge_prover).unwrap();
+        let proof = protocol.gen_proof(&challenge_prover);
 
         let mut chal_bytes_verifier = vec![];
         proof
-            .challenge_contribution(params.g1, &mut chal_bytes_verifier)
+            .challenge_contribution(&params.g1, &mut chal_bytes_verifier)
             .unwrap();
         let challenge_verifier =
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
@@ -229,7 +254,7 @@ mod tests {
             .verify(
                 &challenge_verifier,
                 prepared_pk.0.clone(),
-                params.g1,
+                &params.g1,
                 params.g2,
             )
             .unwrap();
@@ -239,7 +264,7 @@ mod tests {
             .verify_with_randomized_pairing_checker(
                 &challenge_verifier,
                 prepared_pk.0,
-                params.g1,
+                &params.g1,
                 params.g2,
                 &mut pairing_checker,
             )
