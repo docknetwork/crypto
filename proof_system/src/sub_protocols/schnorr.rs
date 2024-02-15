@@ -1,24 +1,23 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
-use ark_std::{
-    cfg_iter_mut, collections::BTreeMap, io::Write, rand::RngCore, vec::Vec, UniformRand,
-};
+use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use schnorr_pok::{SchnorrChallengeContributor, SchnorrCommitment};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
     error::ProofSystemError,
     statement_proof::{PedersenCommitmentProof, StatementProof},
 };
 
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 use schnorr_pok::error::SchnorrError;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct SchnorrProtocol<'a, G: AffineRepr> {
+    #[zeroize(skip)]
     pub id: usize,
+    #[zeroize(skip)]
     pub commitment_key: &'a [G],
+    #[zeroize(skip)]
     pub commitment: G,
     pub commitment_to_randomness: Option<SchnorrCommitment<G>>,
     pub witnesses: Option<Vec<G::ScalarField>>,
@@ -73,11 +72,20 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<E: Pairing>(
+    pub fn gen_proof_contribution<E: Pairing<G1Affine = G>>(
         &mut self,
         challenge: &G::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         Ok(StatementProof::PedersenCommitment(
+            self.gen_proof_contribution_as_struct(challenge)?,
+        ))
+    }
+
+    pub fn gen_proof_contribution_g2<E: Pairing<G2Affine = G>>(
+        &mut self,
+        challenge: &G::ScalarField,
+    ) -> Result<StatementProof<E>, ProofSystemError> {
+        Ok(StatementProof::PedersenCommitmentG2(
             self.gen_proof_contribution_as_struct(challenge)?,
         ))
     }
@@ -116,22 +124,5 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
         y.serialize_compressed(&mut writer)?;
         t.serialize_compressed(writer)?;
         Ok(())
-    }
-}
-
-impl<'a, G: AffineRepr> Zeroize for SchnorrProtocol<'a, G> {
-    fn zeroize(&mut self) {
-        if let Some(c) = self.commitment_to_randomness.as_mut() {
-            c.zeroize()
-        }
-        if let Some(w) = self.witnesses.as_mut() {
-            cfg_iter_mut!(w).for_each(|v| v.zeroize())
-        }
-    }
-}
-
-impl<'a, G: AffineRepr> Drop for SchnorrProtocol<'a, G> {
-    fn drop(&mut self) {
-        self.zeroize();
     }
 }

@@ -5,7 +5,7 @@ use crate::{
     setup_params::SetupParams,
     statement::{Statement, Statements},
 };
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
@@ -66,10 +66,10 @@ pub enum SnarkpackSRS<E: Pairing> {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct ProofSpec<E: Pairing, G: AffineRepr> {
-    pub statements: Statements<E, G>,
+pub struct ProofSpec<E: Pairing> {
+    pub statements: Statements<E>,
     pub meta_statements: MetaStatements,
-    pub setup_params: Vec<SetupParams<E, G>>,
+    pub setup_params: Vec<SetupParams<E>>,
     /// `context` is any arbitrary data that needs to be hashed into the proof and it must be kept
     /// same while creating and verifying the proof. Eg of `context` are the purpose of
     /// the proof or the verifier's identity or some verifier-specific identity of the holder
@@ -86,16 +86,12 @@ pub struct ProofSpec<E: Pairing, G: AffineRepr> {
     pub snark_aggregation_srs: Option<SnarkpackSRS<E>>,
 }
 
-impl<E, G> ProofSpec<E, G>
-where
-    E: Pairing,
-    G: AffineRepr,
-{
+impl<E: Pairing> ProofSpec<E> {
     /// Create a new `ProofSpec`
     pub fn new(
-        statements: Statements<E, G>,
+        statements: Statements<E>,
         meta_statements: MetaStatements,
-        setup_params: Vec<SetupParams<E, G>>,
+        setup_params: Vec<SetupParams<E>>,
         context: Option<Vec<u8>>,
     ) -> Self {
         Self {
@@ -111,9 +107,9 @@ where
 
     /// Same as `Self::new` but specifies which proofs should be aggregated.
     pub fn new_with_aggregation(
-        statements: Statements<E, G>,
+        statements: Statements<E>,
         meta_statements: MetaStatements,
-        setup_params: Vec<SetupParams<E, G>>,
+        setup_params: Vec<SetupParams<E>>,
         context: Option<Vec<u8>>,
         aggregate_groth16: Option<Vec<BTreeSet<usize>>>,
         aggregate_legogroth16: Option<Vec<BTreeSet<usize>>>,
@@ -130,7 +126,7 @@ where
         }
     }
 
-    pub fn add_statement(&mut self, statement: Statement<E, G>) -> usize {
+    pub fn add_statement(&mut self, statement: Statement<E>) -> usize {
         self.statements.add(statement)
     }
 
@@ -238,9 +234,9 @@ where
             StatementDerivedParams<Vec<E::G1Affine>>,
             StatementDerivedParams<(Vec<E::G1Affine>, Vec<E::G1Affine>)>,
             StatementDerivedParams<Vec<E::G1Affine>>,
-            StatementDerivedParams<[G; 2]>,
             StatementDerivedParams<[E::G1Affine; 2]>,
-            StatementDerivedParams<[G; 2]>,
+            StatementDerivedParams<[E::G1Affine; 2]>,
+            StatementDerivedParams<[E::G1Affine; 2]>,
         ),
         ProofSystemError,
     > {
@@ -255,11 +251,12 @@ where
         >::new();
         let mut derived_r1cs_comm =
             DerivedParamsTracker::<LegoVerifyingKey<E>, Vec<E::G1Affine>, E>::new();
-        let mut derived_bound_check_bpp_comm = DerivedParamsTracker::<(G, G), [G; 2], E>::new();
+        let mut derived_bound_check_bpp_comm =
+            DerivedParamsTracker::<(E::G1Affine, E::G1Affine), [E::G1Affine; 2], E>::new();
         let mut derived_bound_check_smc_comm =
             DerivedParamsTracker::<MemberCommitmentKey<E::G1Affine>, [E::G1Affine; 2], E>::new();
         let mut derived_ineq_comm =
-            DerivedParamsTracker::<PedersenCommitmentKey<G>, [G; 2], E>::new();
+            DerivedParamsTracker::<PedersenCommitmentKey<E::G1Affine>, [E::G1Affine; 2], E>::new();
 
         // To avoid creating variable with short lifetime
         let mut saver_comm_keys = BTreeMap::new();
@@ -437,14 +434,14 @@ where
         for (s_idx, statement) in self.statements.0.iter().enumerate() {
             match statement {
                 Statement::PoKBBSSignatureG1(s) => {
-                    let params = s.get_sig_params(&self.setup_params, s_idx)?;
+                    let params = s.get_params(&self.setup_params, s_idx)?;
                     derived_bbs_p.on_new_statement_idx(params, s_idx);
 
                     let pk = s.get_public_key(&self.setup_params, s_idx)?;
                     derived_bbs_pk.on_new_statement_idx(pk, s_idx);
                 }
                 Statement::PoKBBSSignature23G1(s) => {
-                    let params = s.get_sig_params(&self.setup_params, s_idx)?;
+                    let params = s.get_params(&self.setup_params, s_idx)?;
                     derived_bbs.on_new_statement_idx(params, s_idx);
 
                     let pk = s.get_public_key(&self.setup_params, s_idx)?;
@@ -499,7 +496,7 @@ where
                     derived_lego_vk.on_new_statement_idx(verifying_key, s_idx);
                 }
                 Statement::PoKPSSignature(s) => {
-                    let params = s.get_sig_params(&self.setup_params, s_idx)?;
+                    let params = s.get_params(&self.setup_params, s_idx)?;
                     derived_ps_p.on_new_statement_idx(params, s_idx);
 
                     let pk = s.get_public_key(&self.setup_params, s_idx)?;
@@ -531,11 +528,7 @@ where
     }
 }
 
-impl<E, G> Default for ProofSpec<E, G>
-where
-    E: Pairing,
-    G: AffineRepr,
-{
+impl<E: Pairing> Default for ProofSpec<E> {
     fn default() -> Self {
         Self {
             statements: Statements::new(),

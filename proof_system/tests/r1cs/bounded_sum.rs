@@ -1,5 +1,5 @@
 use crate::r1cs::get_r1cs_and_wasm_bytes;
-use ark_bls12_381::Bls12_381;
+use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::{One, Zero};
 use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
@@ -15,6 +15,7 @@ use proof_system::{
         EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, Statements,
         Witness, WitnessRef, Witnesses,
     },
+    proof::Proof,
     statement::{
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
         r1cs_legogroth16::{
@@ -27,7 +28,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     time::Instant,
 };
-use test_utils::{Fr, ProofG1, G1};
 
 #[test]
 fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
@@ -82,7 +82,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     );
 
     let start = Instant::now();
-    let mut prover_setup_params = Vec::<SetupParams<Bls12_381, G1>>::new();
+    let mut prover_setup_params = Vec::<SetupParams<Bls12_381>>::new();
     prover_setup_params.push(SetupParams::BBSPlusSignatureParams(params.clone()));
     prover_setup_params.push(SetupParams::BBSPlusPublicKey(keypair.public_key.clone()));
     prover_setup_params.push(SetupParams::R1CS(sum_r1cs));
@@ -138,7 +138,7 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     r1cs_wit.set_public("max".to_string(), vec![sum_bound]);
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover,
         witnesses.clone(),

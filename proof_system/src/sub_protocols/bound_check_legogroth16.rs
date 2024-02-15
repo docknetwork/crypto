@@ -5,7 +5,7 @@ use crate::{
     },
     sub_protocols::schnorr::SchnorrProtocol,
 };
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     fields::fp::FpVar,
@@ -151,10 +151,10 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
     }
 
     /// Generate responses for the Schnorr protocol
-    pub fn gen_proof_contribution<G: AffineRepr>(
+    pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.sp.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,

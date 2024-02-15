@@ -1,4 +1,4 @@
-use ark_bls12_381::{Bls12_381, G1Affine};
+use ark_bls12_381::{Bls12_381, Fr, G1Affine};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
     rand::{prelude::StdRng, SeedableRng},
@@ -10,6 +10,7 @@ use proof_system::{
         generate_snark_srs_bound_check, EqualWitnesses, MetaStatements, ProofSpec, SnarkpackSRS,
         VerifierConfig, Witness, WitnessRef, Witnesses,
     },
+    proof::Proof,
     setup_params::SetupParams,
     statement::{
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
@@ -25,7 +26,7 @@ use proof_system::{
 use saver::setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens};
 use std::time::Instant;
 
-use test_utils::{bbs::*, Fr, ProofG1};
+use test_utils::bbs::*;
 
 #[test]
 fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
@@ -142,7 +143,7 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
         witnesses.add(Witness::Saver(m));
     }
 
-    let (proof, _) = ProofG1::new::<StdRng, Blake2b512>(
+    let (proof, _) = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec,
         witnesses.clone(),
@@ -344,7 +345,7 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
         witnesses.add(Witness::BoundCheckLegoGroth16(m));
     }
 
-    let (proof, _) = ProofG1::new::<StdRng, Blake2b512>(
+    let (proof, _) = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         prover_proof_spec,
         witnesses.clone(),

@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
 
 use dock_crypto_utils::{
@@ -106,10 +106,10 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<G: AffineRepr>(
+    pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         let proof = self
             .protocol
             .take()
@@ -128,26 +128,21 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSignatureParams<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
-    ) -> Result<(), ProofSystemError> {
+    ) -> Result<(), SignaturePoKError> {
         match pairing_checker {
-            Some(c) => proof
-                .verify_with_randomized_pairing_checker(
-                    challenge,
-                    self.revealed_messages.iter().map(|(idx, msg)| (*idx, msg)),
-                    &pk.into(),
-                    &params.into(),
-                    c,
-                )
-                .map_err(|e| ProofSystemError::PSProofContributionFailed(self.id as u32, e))?,
-            None => proof
-                .verify(
-                    challenge,
-                    self.revealed_messages.iter().map(|(idx, msg)| (*idx, msg)),
-                    &pk.into(),
-                    &params.into(),
-                )
-                .map_err(|e| ProofSystemError::PSProofContributionFailed(self.id as u32, e))?,
+            Some(c) => proof.verify_with_randomized_pairing_checker(
+                challenge,
+                self.revealed_messages.iter().map(|(idx, msg)| (*idx, msg)),
+                &pk.into(),
+                &params.into(),
+                c,
+            ),
+            None => proof.verify(
+                challenge,
+                self.revealed_messages.iter().map(|(idx, msg)| (*idx, msg)),
+                &pk.into(),
+                &params.into(),
+            ),
         }
-        Ok(())
     }
 }

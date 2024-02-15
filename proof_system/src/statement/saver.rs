@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use serde::{Deserialize, Serialize};
@@ -50,13 +50,13 @@ pub struct SaverVerifier<E: Pairing> {
 }
 
 impl<E: Pairing> SaverProver<E> {
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         chunk_bit_size: u8,
         encryption_gens: EncryptionGens<E>,
         chunked_commitment_gens: ChunkedCommitmentGens<E::G1Affine>,
         encryption_key: EncryptionKey<E>,
         snark_proving_key: ProvingKey<E>,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         SaverProtocol::validate_encryption_key(chunk_bit_size, &encryption_key)?;
         Ok(Statement::SaverProver(Self {
             chunk_bit_size,
@@ -71,13 +71,13 @@ impl<E: Pairing> SaverProver<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         chunk_bit_size: u8,
         encryption_gens: usize,
         chunked_commitment_gens: usize,
         encryption_key: usize,
         snark_proving_key: usize,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::SaverProver(Self {
             chunk_bit_size,
             encryption_gens: None,
@@ -91,9 +91,9 @@ impl<E: Pairing> SaverProver<E> {
         })
     }
 
-    pub fn get_encryption_gens<'a, G: AffineRepr>(
+    pub fn get_encryption_gens<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a EncryptionGens<E>, ProofSystemError> {
         extract_param!(
@@ -106,9 +106,9 @@ impl<E: Pairing> SaverProver<E> {
         )
     }
 
-    pub fn get_chunked_commitment_gens<'a, G: AffineRepr>(
+    pub fn get_chunked_commitment_gens<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a ChunkedCommitmentGens<E::G1Affine>, ProofSystemError> {
         extract_param!(
@@ -121,9 +121,9 @@ impl<E: Pairing> SaverProver<E> {
         )
     }
 
-    pub fn get_encryption_key<'a, G: AffineRepr>(
+    pub fn get_encryption_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a EncryptionKey<E>, ProofSystemError> {
         extract_param!(
@@ -136,9 +136,9 @@ impl<E: Pairing> SaverProver<E> {
         )
     }
 
-    pub fn get_snark_proving_key<'a, G: AffineRepr>(
+    pub fn get_snark_proving_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a ProvingKey<E>, ProofSystemError> {
         extract_param!(
@@ -153,13 +153,13 @@ impl<E: Pairing> SaverProver<E> {
 }
 
 impl<E: Pairing> SaverVerifier<E> {
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         chunk_bit_size: u8,
         encryption_gens: EncryptionGens<E>,
         chunked_commitment_gens: ChunkedCommitmentGens<E::G1Affine>,
         encryption_key: EncryptionKey<E>,
         snark_verifying_key: VerifyingKey<E>,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         SaverProtocol::validate_encryption_key(chunk_bit_size, &encryption_key)?;
         Ok(Statement::SaverVerifier(Self {
             chunk_bit_size,
@@ -174,13 +174,13 @@ impl<E: Pairing> SaverVerifier<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         chunk_bit_size: u8,
         encryption_gens: usize,
         chunked_commitment_gens: usize,
         encryption_key: usize,
         snark_verifying_key: usize,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::SaverVerifier(Self {
             chunk_bit_size,
             encryption_gens: None,
@@ -194,9 +194,9 @@ impl<E: Pairing> SaverVerifier<E> {
         })
     }
 
-    pub fn get_encryption_gens<'a, G: AffineRepr>(
+    pub fn get_encryption_gens<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a EncryptionGens<E>, ProofSystemError> {
         extract_param!(
@@ -209,9 +209,9 @@ impl<E: Pairing> SaverVerifier<E> {
         )
     }
 
-    pub fn get_chunked_commitment_gens<'a, G: AffineRepr>(
+    pub fn get_chunked_commitment_gens<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a ChunkedCommitmentGens<E::G1Affine>, ProofSystemError> {
         extract_param!(
@@ -224,9 +224,9 @@ impl<E: Pairing> SaverVerifier<E> {
         )
     }
 
-    pub fn get_encryption_key<'a, G: AffineRepr>(
+    pub fn get_encryption_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a EncryptionKey<E>, ProofSystemError> {
         extract_param!(
@@ -239,9 +239,9 @@ impl<E: Pairing> SaverVerifier<E> {
         )
     }
 
-    pub fn get_snark_verifying_key<'a, G: AffineRepr>(
+    pub fn get_snark_verifying_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a VerifyingKey<E>, ProofSystemError> {
         extract_param!(

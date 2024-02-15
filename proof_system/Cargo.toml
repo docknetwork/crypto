@@ -35,6 +35,7 @@ legogroth16 = { version = "0.11.0", default-features = false, features = ["circo
 bulletproofs_plus_plus = { version = "0.2.0", default-features = false, path = "../bulletproofs_plus_plus" }
 smc_range_proof = { version = "0.2.0", default-features = false, path = "../smc_range_proof" }
 short_group_sig = { version = "0.1.0", default-features = false, path = "../short_group_sig" }
+kvac = { version = "0.1.0", default-features = false, path = "../kvac" }
 itertools.workspace = true
 aead = {version = "0.5.2", default-features = false, features = [ "alloc" ]}
 chacha20poly1305 = {version = "0.10.1", default-features = false}
@@ -48,8 +49,8 @@ test_utils = { default-features = false, path = "../test_utils" }
 
 [features]
 default = ["parallel"]
-std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "merlin/std", "coconut-crypto/std", "bulletproofs_plus_plus/std", "smc_range_proof/std", "short_group_sig/std"]
+std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "merlin/std", "coconut-crypto/std", "bulletproofs_plus_plus/std", "smc_range_proof/std", "short_group_sig/std", "kvac/std"]
 print-trace = ["ark-std/print-trace", "schnorr_pok/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace", "dock_crypto_utils/print-trace"]
-parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel", "legogroth16/parallel", "ark-r1cs-std/parallel", "dock_crypto_utils/parallel", "coconut-crypto/parallel", "bulletproofs_plus_plus/parallel", "smc_range_proof/parallel", "short_group_sig/parallel"]
+parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel", "legogroth16/parallel", "ark-r1cs-std/parallel", "dock_crypto_utils/parallel", "coconut-crypto/parallel", "bulletproofs_plus_plus/parallel", "smc_range_proof/parallel", "short_group_sig/parallel", "kvac/parallel"]
 wasmer-js = ["legogroth16/wasmer-js"]
 wasmer-sys = ["legogroth16/wasmer-sys"]

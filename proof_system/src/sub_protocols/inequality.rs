@@ -111,10 +111,10 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<E: Pairing>(
+    pub fn gen_proof_contribution<E: Pairing<G1Affine = G>>(
         &mut self,
         challenge: &G::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.sp.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,

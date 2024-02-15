@@ -4,7 +4,7 @@ use crate::{
     statement::{bound_check_smc::SmcParamsAndCommitmentKey, Statement},
     sub_protocols::validate_bounds,
 };
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec};
 use digest::Digest;
@@ -74,11 +74,11 @@ pub struct BoundCheckSmcWithKVVerifier<E: Pairing> {
 }
 
 impl<E: Pairing> BoundCheckSmcWithKVProver<E> {
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         min: u64,
         max: u64,
         params: SmcParamsAndCommitmentKey<E>,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         validate_bounds(min, max)?;
 
         Ok(Statement::BoundCheckSmcWithKVProver(Self {
@@ -89,11 +89,11 @@ impl<E: Pairing> BoundCheckSmcWithKVProver<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         min: u64,
         max: u64,
         params_ref: usize,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         validate_bounds(min, max)?;
         Ok(Statement::BoundCheckSmcWithKVProver(Self {
             min,
@@ -103,9 +103,9 @@ impl<E: Pairing> BoundCheckSmcWithKVProver<E> {
         }))
     }
 
-    pub fn get_params_and_comm_key<'a, G: AffineRepr>(
+    pub fn get_params_and_comm_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a SmcParamsAndCommitmentKey<E>, ProofSystemError> {
         extract_param!(
@@ -118,9 +118,9 @@ impl<E: Pairing> BoundCheckSmcWithKVProver<E> {
         )
     }
 
-    pub fn get_comm_key<'a, G: AffineRepr>(
+    pub fn get_comm_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a MemberCommitmentKey<E::G1Affine>, ProofSystemError> {
         Ok(&self.get_params_and_comm_key(setup_params, st_idx)?.comm_key)
@@ -128,11 +128,11 @@ impl<E: Pairing> BoundCheckSmcWithKVProver<E> {
 }
 
 impl<E: Pairing> BoundCheckSmcWithKVVerifier<E> {
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         min: u64,
         max: u64,
         params: SmcParamsAndCommitmentKeyAndSecretKey<E>,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         validate_bounds(min, max)?;
 
         Ok(Statement::BoundCheckSmcWithKVVerifier(Self {
@@ -143,11 +143,11 @@ impl<E: Pairing> BoundCheckSmcWithKVVerifier<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         min: u64,
         max: u64,
         params_ref: usize,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         validate_bounds(min, max)?;
         Ok(Statement::BoundCheckSmcWithKVVerifier(Self {
             min,
@@ -157,9 +157,9 @@ impl<E: Pairing> BoundCheckSmcWithKVVerifier<E> {
         }))
     }
 
-    pub fn get_params_and_comm_key_and_sk<'a, G: AffineRepr>(
+    pub fn get_params_and_comm_key_and_sk<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a SmcParamsAndCommitmentKeyAndSecretKey<E>, ProofSystemError> {
         extract_param!(
@@ -172,9 +172,9 @@ impl<E: Pairing> BoundCheckSmcWithKVVerifier<E> {
         )
     }
 
-    pub fn get_comm_key<'a, G: AffineRepr>(
+    pub fn get_comm_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a MemberCommitmentKey<E::G1Affine>, ProofSystemError> {
         Ok(self

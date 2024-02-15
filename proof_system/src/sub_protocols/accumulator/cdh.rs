@@ -2,7 +2,7 @@
 //! Membership and non-membership protocols using CDH approach with BB and weak-BB signatures
 
 use crate::{error::ProofSystemError, statement_proof::StatementProof};
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_std::{io::Write, rand::RngCore};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use short_group_sig::common::ProvingKey;
@@ -33,7 +33,7 @@ use vb_accumulator::{
 
 macro_rules! impl_cdh_protocol_struct_and_funcs {
     ($(#[$doc:meta])*
-    $name:ident, $statement_proof_variant: ident, $witness_type: ident, $protocol: ident, $proof: ident, $error_type: ident) => {
+    $name:ident, $statement_proof_variant: ident, $witness_type: ident, $wit_group:path, $protocol: ident, $proof: ident, $error_type: ident) => {
         #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct $name<'a, E: Pairing> {
             pub id: usize,
@@ -73,7 +73,7 @@ macro_rules! impl_cdh_protocol_struct_and_funcs {
                 &mut self,
                 rng: &mut R,
                 blinding: Option<E::ScalarField>,
-                witness: crate::witness::$witness_type<E>,
+                witness: crate::witness::$witness_type<$wit_group>,
             ) -> Result<(), ProofSystemError> {
                 if self.protocol.is_some() {
                     return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -104,10 +104,10 @@ macro_rules! impl_cdh_protocol_struct_and_funcs {
                 Ok(())
             }
 
-            pub fn gen_proof_contribution<G: AffineRepr>(
+            pub fn gen_proof_contribution(
                 &mut self,
                 challenge: &E::ScalarField,
-            ) -> Result<StatementProof<E, G>, ProofSystemError> {
+            ) -> Result<StatementProof<E>, ProofSystemError> {
                 if self.protocol.is_none() {
                     return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                         self.id,
@@ -146,6 +146,7 @@ impl_cdh_protocol_struct_and_funcs!(
     VBAccumulatorMembershipCDHSubProtocol,
     VBAccumulatorMembershipCDH,
     Membership,
+    E::G1Affine,
     VBMemProtocol,
     VBMemProof,
     VBAccumProofContributionFailed
@@ -155,6 +156,7 @@ impl_cdh_protocol_struct_and_funcs!(
     KBUniversalAccumulatorMembershipCDHSubProtocol,
     KBUniversalAccumulatorMembershipCDH,
     KBUniMembership,
+    E::G1Affine,
     KBUniMemProtocol,
     KBUniMemProof,
     KBAccumProofContributionFailed
@@ -164,6 +166,7 @@ impl_cdh_protocol_struct_and_funcs!(
     KBUniversalAccumulatorNonMembershipCDHSubProtocol,
     KBUniversalAccumulatorNonMembershipCDH,
     KBUniNonMembership,
+    E::G1Affine,
     KBUniNonMemProtocol,
     KBUniNonMemProof,
     KBAccumProofContributionFailed
@@ -217,7 +220,7 @@ impl<'a, E: Pairing> VBAccumulatorNonMembershipCDHSubProtocol<'a, E> {
         &mut self,
         rng: &mut R,
         blinding: Option<E::ScalarField>,
-        witness: crate::witness::NonMembership<E>,
+        witness: crate::witness::NonMembership<E::G1Affine>,
     ) -> Result<(), ProofSystemError> {
         if self.protocol.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -249,10 +252,10 @@ impl<'a, E: Pairing> VBAccumulatorNonMembershipCDHSubProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<G: AffineRepr>(
+    pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,
@@ -353,10 +356,10 @@ impl<'a, E: Pairing> KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<G: AffineRepr>(
+    pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,

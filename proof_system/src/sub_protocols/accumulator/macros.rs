@@ -1,10 +1,10 @@
 macro_rules! impl_common_funcs {
-    ( $prepared_params_type: ident, $prepared_pk_type: ident, $wit_type:ident, $wit_protocol:ident, $proof_enum_variant:ident, $proof_typ: ident, $error_typ: ident) => {
+    ( $prepared_params_type: ident, $prepared_pk_type: ident, $wit_type:ident, $wit_group:path, $wit_protocol:ident, $proof_enum_variant:ident, $proof_typ: ident, $error_typ: ident) => {
         pub fn init<R: RngCore>(
             &mut self,
             rng: &mut R,
             blinding: Option<E::ScalarField>,
-            witness: crate::witness::$wit_type<E>,
+            witness: crate::witness::$wit_type<$wit_group>,
         ) -> Result<(), ProofSystemError> {
             if self.protocol.is_some() {
                 return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -38,10 +38,10 @@ macro_rules! impl_common_funcs {
             Ok(())
         }
 
-        pub fn gen_proof_contribution<G: AffineRepr>(
+        pub fn gen_proof_contribution(
             &mut self,
             challenge: &E::ScalarField,
-        ) -> Result<StatementProof<E, G>, ProofSystemError> {
+        ) -> Result<StatementProof<E>, ProofSystemError> {
             if self.protocol.is_none() {
                 return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                     self.id,
@@ -84,7 +84,7 @@ macro_rules! impl_common_funcs {
 
 macro_rules! impl_struct_and_funcs {
     ($(#[$doc:meta])*
-    $name:ident, $param_type:ident, $pk_type:ident, $prepared_params_type: ident, $prepared_pk_type: ident, $prk_type:ident, $protocol:ident, $wit_type:ident, $proof_enum_variant:ident, $proof_typ: ident, $error_typ: ident) => {
+    $name:ident, $param_type:ident, $pk_type:ident, $prepared_params_type: ident, $prepared_pk_type: ident, $prk_type:ident, $protocol:ident, $wit_type:ident, $wit_group:path, $proof_enum_variant:ident, $proof_typ: ident, $error_typ: ident) => {
         #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct $name<'a, E: Pairing> {
             pub id: usize,
@@ -117,6 +117,7 @@ macro_rules! impl_struct_and_funcs {
                 $prepared_params_type,
                 $prepared_pk_type,
                 $wit_type,
+                $wit_group,
                 $protocol,
                 $proof_enum_variant,
                 $proof_typ,

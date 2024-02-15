@@ -1,10 +1,8 @@
-use ark_bls12_381::Bls12_381;
+use ark_bls12_381::{Bls12_381, Fr};
 use ark_std::{rand::RngCore, UniformRand};
 use bbs_plus::prelude::{
     KeypairG2, Signature23G1, SignatureG1, SignatureParams23G1, SignatureParamsG1,
 };
-
-use crate::Fr;
 
 pub fn bbs_plus_sig_setup<R: RngCore>(
     rng: &mut R,

@@ -394,23 +394,14 @@ macro_rules! impl_keypair {
             CanonicalDeserialize,
             Serialize,
             Deserialize,
+            Zeroize,
+            ZeroizeOnDrop,
         )]
         #[serde(bound = "")]
         pub struct $name<E: Pairing> {
             pub secret_key: SecretKey<E::ScalarField>,
+            #[zeroize(skip)]
             pub public_key: $pk<E>,
-        }
-
-        impl<E: Pairing> Zeroize for $name<E> {
-            fn zeroize(&mut self) {
-                self.secret_key.zeroize();
-            }
-        }
-
-        impl<E: Pairing> Drop for $name<E> {
-            fn drop(&mut self) {
-                self.zeroize();
-            }
         }
 
         /// Create a secret key and corresponding public key

@@ -1,5 +1,5 @@
-use ark_bls12_381::{Bls12_381, G1Affine, G1Projective};
-use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
+use ark_bls12_381::{Bls12_381, Fr, G1Projective};
+use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -27,6 +27,7 @@ use proof_system::{
         EqualWitnesses, MetaStatement, MetaStatements, VerifierConfig, Witness, WitnessRef,
         Witnesses,
     },
+    proof::Proof,
     proof_spec::ProofSpec,
     setup_params::SetupParams,
     statement::{
@@ -40,7 +41,7 @@ use proof_system::{
     },
     witness::{Membership as MembershipWit, NonMembership as NonMembershipWit, PoKPSSignature},
 };
-use test_utils::{accumulators::*, test_serialization, Fr, ProofG1};
+use test_utils::{accumulators::*, test_serialization};
 
 #[test]
 fn pok_of_3_ps_sig_and_message_equality() {
@@ -157,12 +158,12 @@ fn pok_of_3_ps_sig_and_message_equality() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
     meta_statements.add_witness_equality(EqualWitnesses(
-        vec![(2, 5), (2, 7)] // 0th statement's 1th witness is equal to 2nd statement's 9th witness
+        vec![(2, 5), (2, 7)]
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
     // Create a proof spec, this is shared between prover and verifier
@@ -171,7 +172,7 @@ fn pok_of_3_ps_sig_and_message_equality() {
     let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context);
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     // Prover now creates/loads it witnesses corresponding to the proof spec
     let mut witnesses = Witnesses::new();
@@ -189,7 +190,7 @@ fn pok_of_3_ps_sig_and_message_equality() {
 
     // Prover now creates the proof using the proof spec and witnesses. This will be sent to the verifier
     let nonce = Some(b"some nonce".to_vec());
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses,
@@ -238,7 +239,7 @@ fn pok_of_3_ps_sig_and_message_equality() {
         )
         .is_err());
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     // Verifier verifies the proof
     let start = Instant::now();
@@ -334,14 +335,14 @@ fn pok_of_ps_sig_and_accumulator() {
         .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let context = Some(b"test".to_vec());
     let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKPSSignature::new_as_witness(
@@ -356,7 +357,7 @@ fn pok_of_ps_sig_and_accumulator() {
 
     let nonce = Some(b"test-nonce".to_vec());
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -366,7 +367,7 @@ fn pok_of_ps_sig_and_accumulator() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let start = Instant::now();
     proof
@@ -409,7 +410,7 @@ fn pok_of_ps_sig_and_accumulator() {
         vec![],
         context.clone(),
     );
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_incorrect.clone(),
         witnesses,
@@ -460,7 +461,7 @@ fn pok_of_ps_sig_and_accumulator() {
     ));
     let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context.clone());
     proof_spec.validate().unwrap();
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses_incorrect,
@@ -545,16 +546,16 @@ fn pok_of_ps_sig_and_accumulator() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -564,7 +565,7 @@ fn pok_of_ps_sig_and_accumulator() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let start = Instant::now();
     proof
@@ -643,16 +644,16 @@ fn pok_of_ps_sig_and_accumulator() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -662,7 +663,7 @@ fn pok_of_ps_sig_and_accumulator() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let start = Instant::now();
     proof
@@ -746,7 +747,7 @@ fn pok_of_ps_sig_and_accumulator() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let mut witnesses = Witnesses::new();
@@ -777,9 +778,9 @@ fn pok_of_ps_sig_and_accumulator() {
     );
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -789,7 +790,7 @@ fn pok_of_ps_sig_and_accumulator() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let start = Instant::now();
     proof
@@ -849,7 +850,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_ps_sig() {
         bases, commitment,
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
 
     let mut meta_statements = MetaStatements::new();
     meta_statements.add_witness_equality(EqualWitnesses(
@@ -867,7 +868,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_ps_sig() {
     let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKPSSignature::new_as_witness(
@@ -879,7 +880,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_ps_sig() {
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let nonce = Some(b"test nonce".to_vec());
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -889,7 +890,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_ps_sig() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     proof
         .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce.clone(), Default::default())
@@ -911,7 +912,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_ps_sig() {
     let proof_spec_invalid =
         ProofSpec::new(statements.clone(), meta_statements_wrong, vec![], context);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_invalid.clone(),
         witnesses.clone(),
@@ -978,7 +979,7 @@ fn requesting_partially_blind_ps_sig() {
         *multi_message_commitment,
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
 
     let context = Some(b"test".to_vec());
     let wit_eq = commit_msgs
@@ -991,7 +992,7 @@ fn requesting_partially_blind_ps_sig() {
     let proof_spec = ProofSpec::new(statements.clone(), MetaStatements(wit_eq), vec![], context);
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     for (&blinding, &msg) in blinding_m_pairs.iter() {
@@ -1004,7 +1005,7 @@ fn requesting_partially_blind_ps_sig() {
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let nonce = Some(b"test nonce".to_vec());
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -1014,7 +1015,7 @@ fn requesting_partially_blind_ps_sig() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     proof
         .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce, Default::default())
@@ -1071,7 +1072,7 @@ fn proof_spec_modification() {
         Signature::<Bls12_381>::new(&mut rng, &msgs_2, &secret_key_2, &sig_params_2).unwrap();
     sig_2.verify(&msgs_2, &public_key_2, &sig_params_2).unwrap();
 
-    let mut statements = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
+    let mut statements = Statements::<Bls12_381>::new();
     statements.add(PoKPSSignatureStatement::new_statement_from_params(
         sig_params_1.clone(),
         public_key_1.clone(),
@@ -1109,7 +1110,7 @@ fn proof_spec_modification() {
             .collect::<BTreeMap<usize, Fr>>(),
     ));
 
-    assert!(ProofG1::new::<StdRng, Blake2b512>(
+    assert!(Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         invalid_proof_spec,
         witnesses.clone(),
@@ -1125,7 +1126,7 @@ fn proof_spec_modification() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
     let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
-    assert!(ProofG1::new::<StdRng, Blake2b512>(
+    assert!(Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         invalid_proof_spec,
         witnesses.clone(),
@@ -1141,7 +1142,7 @@ fn proof_spec_modification() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
     let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
-    assert!(ProofG1::new::<StdRng, Blake2b512>(
+    assert!(Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         invalid_proof_spec,
         witnesses.clone(),
@@ -1168,7 +1169,7 @@ fn proof_spec_modification() {
         ProofSpec::new(statements.clone(), MetaStatements::new(), vec![], None);
 
     // Proof created using modified proof spec wont be a valid
-    let invalid_proof = ProofG1::new::<StdRng, Blake2b512>(
+    let invalid_proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         modified_proof_spec.clone(),
         witnesses.clone(),
@@ -1188,7 +1189,7 @@ fn proof_spec_modification() {
         .is_err());
 
     // Proof created using original proof spec will be valid
-    let valid_proof = ProofG1::new::<StdRng, Blake2b512>(
+    let valid_proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         orig_proof_spec.clone(),
         witnesses.clone(),
@@ -1205,7 +1206,7 @@ fn proof_spec_modification() {
     let orig_proof_spec = ProofSpec::new(statements.clone(), MetaStatements::new(), vec![], None);
 
     // Prover's modified proof spec
-    let mut only_1_statement = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
+    let mut only_1_statement = Statements::<Bls12_381>::new();
     only_1_statement.add(PoKPSSignatureStatement::new_statement_from_params(
         sig_params_1.clone(),
         public_key_1,
@@ -1228,7 +1229,7 @@ fn proof_spec_modification() {
     ));
 
     // Proof created using modified proof spec wont be a valid
-    let invalid_proof = ProofG1::new::<StdRng, Blake2b512>(
+    let invalid_proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         modified_proof_spec.clone(),
         only_1_witness.clone(),
@@ -1248,7 +1249,7 @@ fn proof_spec_modification() {
         .is_err());
 
     // Proof created using original proof spec will be valid
-    let valid_proof = ProofG1::new::<StdRng, Blake2b512>(
+    let valid_proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         orig_proof_spec.clone(),
         witnesses.clone(),
@@ -1352,7 +1353,7 @@ fn verifier_local_linkability() {
     ));
     witnesses_1.add(Witness::PedersenCommitment(vec![msgs[1], blinding_1]));
 
-    let proof_1 = ProofG1::new::<StdRng, Blake2b512>(
+    let proof_1 = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_1.clone(),
         witnesses_1.clone(),
@@ -1401,7 +1402,7 @@ fn verifier_local_linkability() {
     ));
     witnesses_2.add(Witness::PedersenCommitment(vec![msgs[1], blinding_2]));
 
-    let proof_2 = ProofG1::new::<StdRng, Blake2b512>(
+    let proof_2 = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_2.clone(),
         witnesses_2.clone(),
@@ -1461,7 +1462,7 @@ fn verifier_local_linkability() {
     witnesses_3.add(PoKPSSignature::new_as_witness(sig, unrevealed_msgs));
     witnesses_3.add(Witness::PedersenCommitment(vec![msgs[1], blinding_1]));
 
-    let proof_3 = ProofG1::new::<StdRng, Blake2b512>(
+    let proof_3 = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_3.clone(),
         witnesses_3.clone(),
@@ -1502,7 +1503,7 @@ fn pok_of_ps_sig_with_reusing_setup_params() {
     all_setup_params.push(SetupParams::PSSignatureParams(sig_params_2.clone()));
     all_setup_params.push(SetupParams::PSSignaturePublicKey(public_key_2));
 
-    test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, all_setup_params);
+    test_serialization!(Vec<SetupParams<Bls12_381>>, all_setup_params);
 
     let mut statements = Statements::new();
     statements.add(PoKPSSignatureStatement::new_statement_from_params_ref(
@@ -1526,12 +1527,12 @@ fn pok_of_ps_sig_with_reusing_setup_params() {
         BTreeMap::new(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
 
     let proof_spec = ProofSpec::new(statements, MetaStatements::new(), all_setup_params, None);
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKPSSignature::new_as_witness(
@@ -1568,7 +1569,7 @@ fn pok_of_ps_sig_with_reusing_setup_params() {
     ));
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses,
@@ -1616,7 +1617,7 @@ fn proof_spec_validation() {
     let (_secret_key_2, public_key_2, sig_params_2, msgs_2) =
         test_setup::<Bls12_381, Blake2b512, _>(&mut rng, 6);
 
-    let mut statements_1 = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
+    let mut statements_1 = Statements::<Bls12_381>::new();
     statements_1.add(PoKPSSignatureStatement::new_statement_from_params(
         sig_params_1.clone(),
         public_key_1.clone(),
@@ -1634,7 +1635,7 @@ fn proof_spec_validation() {
 
     let mut revealed = BTreeMap::new();
     revealed.insert(1, msgs_1[1]);
-    let mut statements_2 = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
+    let mut statements_2 = Statements::<Bls12_381>::new();
     statements_2.add(PoKPSSignatureStatement::new_statement_from_params(
         sig_params_1.clone(),
         public_key_1.clone(),
@@ -1656,7 +1657,7 @@ fn proof_spec_validation() {
 
     let mut revealed_1 = BTreeMap::new();
     revealed_1.insert(3, msgs_2[3]);
-    let mut statements_3 = Statements::<Bls12_381, <Bls12_381 as Pairing>::G1Affine>::new();
+    let mut statements_3 = Statements::<Bls12_381>::new();
     statements_3.add(PoKPSSignatureStatement::new_statement_from_params(
         sig_params_1,
         public_key_1,

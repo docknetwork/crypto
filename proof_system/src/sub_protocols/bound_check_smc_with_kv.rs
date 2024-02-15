@@ -5,7 +5,7 @@ use crate::{
     statement_proof::{BoundCheckSmcWithKVInnerProof, BoundCheckSmcWithKVProof, StatementProof},
     sub_protocols::{enforce_and_get_u64, schnorr::SchnorrProtocol, should_use_cls},
 };
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::CanonicalSerialize;
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, UniformRand};
 use smc_range_proof::{
@@ -173,10 +173,10 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<G: AffineRepr>(
+    pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.sp.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,

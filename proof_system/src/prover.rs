@@ -1,6 +1,6 @@
 //! Code for the prover to generate a `Proof`
 
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec, UniformRand};
 
@@ -15,10 +15,10 @@ use legogroth16::aggregation::srs::PreparedProverSRS;
 
 use crate::{
     constants::{
-        BBS_23_LABEL, BBS_PLUS_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL, COMPOSITE_PROOF_LABEL,
-        CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
+        BBS_23_LABEL, BBS_PLUS_LABEL, BDDT16_KVAC_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL,
+        COMPOSITE_PROOF_LABEL, CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_CDH_MEM_LABEL, KB_UNI_ACCUM_CDH_NON_MEM_LABEL, KB_UNI_ACCUM_MEM_LABEL,
-        KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, VB_ACCUM_CDH_MEM_LABEL,
+        KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, PS_LABEL, VB_ACCUM_CDH_MEM_LABEL,
         VB_ACCUM_CDH_NON_MEM_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL,
     },
     meta_statement::WitnessRef,
@@ -38,6 +38,7 @@ use crate::{
                 DetachedAccumulatorMembershipSubProtocol,
                 DetachedAccumulatorNonMembershipSubProtocol,
             },
+            keyed_verification::VBAccumulatorMembershipKVSubProtocol,
             KBPositiveAccumulatorMembershipSubProtocol,
             KBUniversalAccumulatorMembershipSubProtocol,
             KBUniversalAccumulatorNonMembershipSubProtocol, VBAccumulatorMembershipSubProtocol,
@@ -45,6 +46,7 @@ use crate::{
         },
         bbs_23::PoKBBSSigG1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol as PoKBBSPlusSigG1SubProtocol,
+        bddt16_kvac::PoKOfMACSubProtocol,
         bound_check_bpp::BoundCheckBppProtocol,
         bound_check_legogroth16::BoundCheckLegoGrothProtocol,
         bound_check_smc::BoundCheckSmcProtocol,
@@ -56,6 +58,7 @@ use crate::{
     },
 };
 use dock_crypto_utils::{
+    expect_equality,
     hashing_utils::field_elem_from_try_and_incr,
     transcript::{MerlinTranscript, Transcript},
 };
@@ -116,11 +119,7 @@ macro_rules! err_incompat_witness {
     };
 }
 
-impl<E, G> Proof<E, G>
-where
-    E: Pairing,
-    G: AffineRepr<ScalarField = E::ScalarField>,
-{
+impl<E: Pairing> Proof<E> {
     /// Create a new proof. `nonce` is random data that needs to be hashed into the proof and
     /// it must be kept same while creating and verifying the proof. One use of `nonce` is for replay
     /// protection, here the prover might have chosen its nonce to prevent the verifier from reusing
@@ -130,7 +129,7 @@ where
     /// creating fresh proofs.
     pub fn new<R: RngCore, D: Digest>(
         rng: &mut R,
-        proof_spec: ProofSpec<E, G>,
+        proof_spec: ProofSpec<E>,
         witnesses: Witnesses<E>,
         nonce: Option<Vec<u8>>,
         mut config: ProverConfig<E>,
@@ -138,12 +137,11 @@ where
         proof_spec.validate()?;
 
         // There should be a witness for each statement
-        if proof_spec.statements.len() != witnesses.len() {
-            return Err(ProofSystemError::UnequalWitnessAndStatementCount(
-                proof_spec.statements.len(),
-                witnesses.len(),
-            ));
-        }
+        expect_equality!(
+            proof_spec.statements.len(),
+            witnesses.len(),
+            ProofSystemError::UnequalWitnessAndStatementCount
+        );
 
         // Keep blinding for each witness reference that is part of an equality. This means that for
         // any 2 witnesses that are equal, same blinding will be stored. This will be drained during
@@ -173,8 +171,7 @@ where
             ineq_comm,
         ) = proof_spec.derive_commitment_keys()?;
 
-        let mut sub_protocols =
-            Vec::<SubProtocol<E, G>>::with_capacity(proof_spec.statements.0.len());
+        let mut sub_protocols = Vec::<SubProtocol<E>>::with_capacity(proof_spec.statements.0.len());
 
         // Randomness used by SAVER and LegoGroth16 proofs. This is tracked and returned so subsequent proofs for
         // the same public params and witness can reuse this randomness
@@ -202,6 +199,50 @@ where
             }};
         }
 
+        macro_rules! sig_protocol_init {
+            ($s: ident, $s_idx: ident, $w: ident, $protocol: ident, $protocol_variant: ident, $label: ident) => {{
+                // Prepare blindings for this signature proof
+                let blindings_map = build_blindings_map::<E>(
+                    &mut blindings,
+                    $s_idx,
+                    $w.unrevealed_messages.keys().cloned(),
+                );
+                let sig_params = $s.get_params(&proof_spec.setup_params, $s_idx)?;
+                let pk = $s.get_public_key(&proof_spec.setup_params, $s_idx)?;
+                let mut sp = $protocol::new($s_idx, &$s.revealed_messages, sig_params, pk);
+                sp.init(rng, blindings_map, $w)?;
+                transcript.set_label($label);
+                sp.challenge_contribution(&mut transcript)?;
+                sub_protocols.push(SubProtocol::$protocol_variant(sp));
+            }};
+        }
+
+        macro_rules! ped_comm_protocol_init {
+            ($s: ident, $s_idx: ident, $w: ident, $cm_key_func: ident, $protocol_variant: ident) => {{
+                let blindings_map = build_blindings_map::<E>(&mut blindings, $s_idx, 0..$w.len());
+                let comm_key = $s.$cm_key_func(&proof_spec.setup_params, $s_idx)?;
+                let mut sp = SchnorrProtocol::new($s_idx, comm_key, $s.commitment);
+                sp.init(rng, blindings_map, $w)?;
+                sp.challenge_contribution(&mut transcript)?;
+                sub_protocols.push(SubProtocol::$protocol_variant(sp));
+            }};
+        }
+
+        fn build_blindings_map<E: Pairing>(
+            blindings: &mut BTreeMap<WitnessRef, E::ScalarField>,
+            s_idx: usize,
+            wit_idx: impl Iterator<Item = usize>,
+        ) -> BTreeMap<usize, E::ScalarField> {
+            let mut blindings_map = BTreeMap::new();
+            for k in wit_idx {
+                match blindings.remove(&(s_idx, k)) {
+                    Some(b) => blindings_map.insert(k, b),
+                    None => None,
+                };
+            }
+            blindings_map
+        }
+
         // Initialize sub-protocols for each statement
         for (s_idx, (statement, witness)) in proof_spec
             .statements
@@ -213,51 +254,27 @@ where
             match statement {
                 Statement::PoKBBSSignatureG1(s) => match witness {
                     Witness::PoKBBSSignatureG1(w) => {
-                        // Prepare blindings for this BBS+ signature proof
-                        let mut blindings_map = BTreeMap::new();
-                        for k in w.unrevealed_messages.keys() {
-                            match blindings.remove(&(s_idx, *k)) {
-                                Some(b) => blindings_map.insert(*k, b),
-                                None => None,
-                            };
-                        }
-                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let mut sp = PoKBBSPlusSigG1SubProtocol::new(
+                        sig_protocol_init!(
+                            s,
                             s_idx,
-                            &s.revealed_messages,
-                            sig_params,
-                            pk,
+                            w,
+                            PoKBBSPlusSigG1SubProtocol,
+                            PoKBBSSignatureG1,
+                            BBS_PLUS_LABEL
                         );
-                        sp.init(rng, blindings_map, w)?;
-                        transcript.set_label(BBS_PLUS_LABEL);
-                        sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::PoKBBSSignatureG1(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::PoKBBSSignature23G1(s) => match witness {
                     Witness::PoKBBSSignature23G1(w) => {
-                        // Prepare blindings for this BBS+ signature proof
-                        let mut blindings_map = BTreeMap::new();
-                        for k in w.unrevealed_messages.keys() {
-                            match blindings.remove(&(s_idx, *k)) {
-                                Some(b) => blindings_map.insert(*k, b),
-                                None => None,
-                            };
-                        }
-                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let mut sp = PoKBBSSigG1SubProtocol::new(
+                        sig_protocol_init!(
+                            s,
                             s_idx,
-                            &s.revealed_messages,
-                            sig_params,
-                            pk,
+                            w,
+                            PoKBBSSigG1SubProtocol,
+                            PoKBBSSignature23G1,
+                            BBS_23_LABEL
                         );
-                        sp.init(rng, blindings_map, w)?;
-                        transcript.set_label(BBS_23_LABEL);
-                        sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::PoKBBSSignature23G1(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
@@ -401,18 +418,19 @@ where
                 },
                 Statement::PedersenCommitment(s) => match witness {
                     Witness::PedersenCommitment(w) => {
-                        let mut blindings_map = BTreeMap::new();
-                        for i in 0..w.len() {
-                            match blindings.remove(&(s_idx, i)) {
-                                Some(b) => blindings_map.insert(i, b),
-                                None => None,
-                            };
-                        }
-                        let comm_key = s.get_commitment_key(&proof_spec.setup_params, s_idx)?;
-                        let mut sp = SchnorrProtocol::new(s_idx, comm_key, s.commitment);
-                        sp.init(rng, blindings_map, w)?;
-                        sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::PoKDiscreteLogs(sp));
+                        ped_comm_protocol_init!(s, s_idx, w, get_commitment_key, PoKDiscreteLogs);
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::PedersenCommitmentG2(s) => match witness {
+                    Witness::PedersenCommitment(w) => {
+                        ped_comm_protocol_init!(
+                            s,
+                            s_idx,
+                            w,
+                            get_commitment_key_g2,
+                            PoKDiscreteLogsG2
+                        );
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
@@ -554,21 +572,7 @@ where
                 },
                 Statement::PoKPSSignature(s) => match witness {
                     Witness::PoKPSSignature(w) => {
-                        // Prepare blindings for this BBS+ signature proof
-                        let mut blindings_map = BTreeMap::new();
-                        for k in w.unrevealed_messages.keys() {
-                            match blindings.remove(&(s_idx, *k)) {
-                                Some(b) => blindings_map.insert(*k, b),
-                                None => None,
-                            };
-                        }
-                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let mut sp =
-                            PSSignaturePoK::new(s_idx, &s.revealed_messages, sig_params, pk);
-                        sp.init(rng, blindings_map, w)?;
-                        sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::PSSignaturePoK(sp));
+                        sig_protocol_init!(s, s_idx, w, PSSignaturePoK, PSSignaturePoK, PS_LABEL);
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
@@ -661,6 +665,35 @@ where
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
+                Statement::PoKBDDT16MAC(s) => match witness {
+                    Witness::PoKOfBDDT16MAC(w) => {
+                        // Prepare blindings for this BDDT16 MAC proof
+                        let blindings_map = build_blindings_map::<E>(
+                            &mut blindings,
+                            s_idx,
+                            w.unrevealed_messages.keys().cloned(),
+                        );
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = PoKOfMACSubProtocol::new(s_idx, &s.revealed_messages, params);
+                        sp.init::<R>(rng, blindings_map, w)?;
+                        transcript.set_label(BDDT16_KVAC_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
+                        sub_protocols.push(SubProtocol::PoKOfBDDT16MAC(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::VBAccumulatorMembershipKV(s) => match witness {
+                    Witness::VBAccumulatorMembership(w) => {
+                        let blinding = blindings.remove(&(s_idx, 0));
+                        let mut sp =
+                            VBAccumulatorMembershipKVSubProtocol::new(s_idx, s.accumulator_value);
+                        sp.init(rng, blinding, w)?;
+                        transcript.set_label(VB_ACCUM_MEM_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
+                        sub_protocols.push(SubProtocol::VBAccumulatorMembershipKV(sp));
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -688,6 +721,9 @@ where
                     sp.gen_proof_contribution(&challenge)?
                 }
                 SubProtocol::PoKDiscreteLogs(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::PoKDiscreteLogsG2(mut sp) => {
+                    sp.gen_proof_contribution_g2(&challenge)?
+                }
                 SubProtocol::Saver(mut sp) => sp.gen_proof_contribution(&challenge)?,
                 SubProtocol::BoundCheckLegoGroth16(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
@@ -735,6 +771,10 @@ where
                     sp.gen_proof_contribution(&challenge)?
                 }
                 SubProtocol::KBPositiveAccumulatorMembershipCDH(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::PoKOfBDDT16MAC(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::VBAccumulatorMembershipKV(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
             });
@@ -828,13 +868,13 @@ where
         ))
     }
 
-    pub fn statement_proof(&self, index: usize) -> Result<&StatementProof<E, G>, ProofSystemError> {
+    pub fn statement_proof(&self, index: usize) -> Result<&StatementProof<E>, ProofSystemError> {
         self.statement_proofs()
             .get(index)
             .ok_or(ProofSystemError::InvalidStatementProofIndex(index))
     }
 
-    pub fn statement_proofs(&self) -> &[StatementProof<E, G>] {
+    pub fn statement_proofs(&self) -> &[StatementProof<E>] {
         &self.statement_proofs
     }
 

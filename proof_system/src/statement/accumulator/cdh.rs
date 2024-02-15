@@ -3,7 +3,7 @@
 //! Membership and non-membership protocols using CDH approach with BB and weak-BB signatures
 
 use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
@@ -57,17 +57,17 @@ macro_rules! impl_cdh_struct_and_funcs {
         }
 
         impl<E: Pairing> $prover_name<E> {
-            pub fn new<G: AffineRepr>(accumulator_value: E::G1Affine) -> Statement<E, G> {
+            pub fn new(accumulator_value: E::G1Affine) -> Statement<E> {
                 Statement::$prover_statement_type(Self { accumulator_value })
             }
         }
 
         impl<E: Pairing> $verifier_name<E> {
-            pub fn new_statement_from_params<G: AffineRepr>(
+            pub fn new_statement_from_params(
                 params: AccumParams<E>,
                 public_key: PublicKey<E>,
                 accumulator_value: E::G1Affine,
-            ) -> Statement<E, G> {
+            ) -> Statement<E> {
                 Statement::$verifier_statement_type(Self {
                     accumulator_value,
                     params: Some(params),
@@ -77,11 +77,11 @@ macro_rules! impl_cdh_struct_and_funcs {
                 })
             }
 
-            pub fn new_statement_from_params_ref<G: AffineRepr>(
+            pub fn new_statement_from_params_ref(
                 params_ref: usize,
                 public_key_ref: usize,
                 accumulator_value: E::G1Affine,
-            ) -> Statement<E, G> {
+            ) -> Statement<E> {
                 Statement::$verifier_statement_type(Self {
                     accumulator_value,
                     params: None,
@@ -156,11 +156,11 @@ pub struct VBAccumulatorNonMembershipCDHVerifier<E: Pairing> {
 }
 
 impl<E: Pairing> VBAccumulatorNonMembershipCDHProver<E> {
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         accumulator_value: E::G1Affine,
         Q: E::G1Affine,
         params: AccumParams<E>,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::VBAccumulatorNonMembershipCDHProver(Self {
             accumulator_value,
             Q,
@@ -169,11 +169,11 @@ impl<E: Pairing> VBAccumulatorNonMembershipCDHProver<E> {
         })
     }
 
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         params_ref: usize,
         accumulator_value: E::G1Affine,
         Q: E::G1Affine,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::VBAccumulatorNonMembershipCDHProver(Self {
             accumulator_value,
             Q,
@@ -182,9 +182,9 @@ impl<E: Pairing> VBAccumulatorNonMembershipCDHProver<E> {
         })
     }
 
-    pub fn get_params<'a, G: AffineRepr>(
+    pub fn get_params<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a AccumParams<E>, ProofSystemError> {
         extract_param!(
@@ -199,12 +199,12 @@ impl<E: Pairing> VBAccumulatorNonMembershipCDHProver<E> {
 }
 
 impl<E: Pairing> VBAccumulatorNonMembershipCDHVerifier<E> {
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         params: AccumParams<E>,
         public_key: PublicKey<E>,
         accumulator_value: E::G1Affine,
         Q: E::G1Affine,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::VBAccumulatorNonMembershipCDHVerifier(Self {
             accumulator_value,
             Q,
@@ -215,12 +215,12 @@ impl<E: Pairing> VBAccumulatorNonMembershipCDHVerifier<E> {
         })
     }
 
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         params_ref: usize,
         public_key_ref: usize,
         accumulator_value: E::G1Affine,
         Q: E::G1Affine,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::VBAccumulatorNonMembershipCDHVerifier(Self {
             accumulator_value,
             Q,

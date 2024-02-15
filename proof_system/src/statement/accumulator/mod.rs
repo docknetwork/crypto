@@ -3,9 +3,10 @@ mod macros;
 #[macro_use]
 pub mod cdh;
 pub mod detached;
+pub mod keyed_verification;
 
 use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use dock_crypto_utils::serde_utils::*;

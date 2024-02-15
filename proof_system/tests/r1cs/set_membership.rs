@@ -1,4 +1,4 @@
-use ark_bls12_381::Bls12_381;
+use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::{One, Zero};
 use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
@@ -11,6 +11,7 @@ use proof_system::{
         EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, Statements, Witness,
         WitnessRef, Witnesses,
     },
+    proof::Proof,
     statement::{
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
         r1cs_legogroth16::{
@@ -22,7 +23,7 @@ use proof_system::{
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::r1cs::abs_path;
-use test_utils::{bbs::*, Fr, ProofG1};
+use test_utils::bbs::*;
 
 #[test]
 fn pok_of_bbs_plus_sig_and_set_membership() {
@@ -85,7 +86,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     r1cs_wit.set_public("set".to_string(), public_set.clone());
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -135,7 +136,7 @@ fn pok_of_bbs_plus_sig_and_set_membership() {
     r1cs_wit.set_public("set".to_string(), public_set.clone());
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover,
         witnesses.clone(),

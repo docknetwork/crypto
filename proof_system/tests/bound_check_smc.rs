@@ -1,4 +1,4 @@
-use ark_bls12_381::{Bls12_381, G1Affine};
+use ark_bls12_381::{Bls12_381, Fr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::{prelude::StdRng, SeedableRng};
 use bbs_plus::prelude::{KeypairG2, SignatureG1, SignatureParamsG1};
@@ -9,10 +9,11 @@ use proof_system::prelude::{
     BoundCheckSmcInnerProof, EqualWitnesses, MetaStatements, ProofSpec, StatementProof, Statements,
     Witness, WitnessRef, Witnesses,
 };
-use test_utils::{test_serialization, Fr, ProofG1};
+use test_utils::test_serialization;
 
 use proof_system::{
     prelude::bound_check_smc::SmcParamsAndCommitmentKey,
+    proof::Proof,
     statement::{
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
         bound_check_smc::BoundCheckSmc as BoundCheckStmt,
@@ -67,7 +68,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         ));
 
         if valid_proof {
-            test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
+            test_serialization!(Statements<Bls12_381>, prover_statements);
             test_serialization!(MetaStatements, meta_statements);
         }
 
@@ -80,7 +81,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         proof_spec_prover.validate().unwrap();
 
         if valid_proof {
-            test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec_prover);
+            test_serialization!(ProofSpec<Bls12_381>, proof_spec_prover);
         }
 
         let mut witnesses = Witnesses::new();
@@ -94,7 +95,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
             test_serialization!(Witnesses<Bls12_381>, witnesses);
         }
 
-        let proof = ProofG1::new::<StdRng, Blake2b512>(
+        let proof = Proof::new::<StdRng, Blake2b512>(
             rng,
             proof_spec_prover,
             witnesses.clone(),
@@ -105,7 +106,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         .0;
 
         if valid_proof {
-            test_serialization!(ProofG1, proof);
+            test_serialization!(Proof<Bls12_381>, proof);
         }
 
         if is_cls {

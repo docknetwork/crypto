@@ -18,6 +18,7 @@ pub type ParticipantId = u16;
 /// Share used in Shamir secret sharing and Feldman verifiable secret sharing
 #[serde_as]
 #[derive(
+    Default,
     Clone,
     Debug,
     PartialEq,
@@ -49,6 +50,7 @@ pub struct Shares<F: PrimeField>(pub Vec<Share<F>>);
 /// Share used in Pedersen verifiable secret sharing
 #[serde_as]
 #[derive(
+    Default,
     Clone,
     Debug,
     PartialEq,
@@ -85,7 +87,15 @@ pub struct VerifiableShares<F: PrimeField>(pub Vec<VerifiableShare<F>>);
 /// in Pedersen secret sharing and the latter in Feldman
 #[serde_as]
 #[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Default,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct CommitmentToCoefficients<G: AffineRepr>(
     #[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G>,

@@ -1,5 +1,5 @@
 use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
@@ -27,12 +27,12 @@ pub struct DetachedAccumulatorMembershipProver<E: Pairing> {
 
 impl<E: Pairing> DetachedAccumulatorMembershipProver<E> {
     /// Create a statement by passing the accumulator params, public key and proving key directly.
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         params: AccumParams<E>,
         public_key: PublicKey<E>,
         proving_key: MembershipProvingKey<E::G1Affine>,
         accumulator_value: E::G1Affine,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::DetachedAccumulatorMembershipProver(Self {
             accumulator_value,
             params: Some(params),
@@ -45,12 +45,12 @@ impl<E: Pairing> DetachedAccumulatorMembershipProver<E> {
     }
 
     /// Create a statement by passing the indices of accumulator params, public key and proving key in `SetupParams`.
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         params_ref: usize,
         public_key_ref: usize,
         proving_key_ref: usize,
         accumulator_value: E::G1Affine,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::DetachedAccumulatorMembershipProver(Self {
             accumulator_value,
             params: None,
@@ -88,11 +88,11 @@ pub struct DetachedAccumulatorMembershipVerifier<E: Pairing> {
 
 impl<E: Pairing> DetachedAccumulatorMembershipVerifier<E> {
     /// Create a statement by passing the accumulator params, public key and proving key directly.
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         params: AccumParams<E>,
         public_key: PublicKey<E>,
         proving_key: MembershipProvingKey<E::G1Affine>,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::DetachedAccumulatorMembershipVerifier(Self {
             params: Some(params),
             public_key: Some(public_key),
@@ -104,11 +104,11 @@ impl<E: Pairing> DetachedAccumulatorMembershipVerifier<E> {
     }
 
     /// Create a statement by passing the indices of accumulator params, public key and proving key in `SetupParams`.
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         params_ref: usize,
         public_key_ref: usize,
         proving_key_ref: usize,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::DetachedAccumulatorMembershipVerifier(Self {
             params: None,
             public_key: None,
@@ -147,12 +147,12 @@ pub struct DetachedAccumulatorNonMembershipProver<E: Pairing> {
 
 impl<E: Pairing> DetachedAccumulatorNonMembershipProver<E> {
     /// Create a statement by passing the accumulator params, public key and proving key directly.
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         params: AccumParams<E>,
         public_key: PublicKey<E>,
         proving_key: NonMembershipProvingKey<E::G1Affine>,
         accumulator_value: E::G1Affine,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::DetachedAccumulatorNonMembershipProver(Self {
             accumulator_value,
             params: Some(params),
@@ -165,12 +165,12 @@ impl<E: Pairing> DetachedAccumulatorNonMembershipProver<E> {
     }
 
     /// Create a statement by passing the indices of accumulator params, public key and proving key in `SetupParams`.
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         params_ref: usize,
         public_key_ref: usize,
         proving_key_ref: usize,
         accumulator_value: E::G1Affine,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::DetachedAccumulatorNonMembershipProver(Self {
             accumulator_value,
             params: None,
@@ -208,11 +208,11 @@ pub struct DetachedAccumulatorNonMembershipVerifier<E: Pairing> {
 
 impl<E: Pairing> DetachedAccumulatorNonMembershipVerifier<E> {
     /// Create a statement by passing the accumulator params, public key and proving key directly.
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         params: AccumParams<E>,
         public_key: PublicKey<E>,
         proving_key: NonMembershipProvingKey<E::G1Affine>,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::DetachedAccumulatorNonMembershipVerifier(Self {
             params: Some(params),
             public_key: Some(public_key),
@@ -224,11 +224,11 @@ impl<E: Pairing> DetachedAccumulatorNonMembershipVerifier<E> {
     }
 
     /// Create a statement by passing the indices of accumulator params, public key and proving key in `SetupParams`.
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         params_ref: usize,
         public_key_ref: usize,
         proving_key_ref: usize,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::DetachedAccumulatorNonMembershipVerifier(Self {
             params: None,
             public_key: None,

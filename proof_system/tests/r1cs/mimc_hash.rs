@@ -1,4 +1,4 @@
-use ark_bls12_381::Bls12_381;
+use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::Zero;
 use ark_std::{
     rand::{rngs::StdRng, SeedableRng},
@@ -11,6 +11,7 @@ use proof_system::{
         EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, Statements, Witness,
         WitnessRef, Witnesses,
     },
+    proof::Proof,
     statement::{
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
         r1cs_legogroth16::{
@@ -25,7 +26,7 @@ use std::{
 };
 
 use crate::r1cs::abs_path;
-use test_utils::{bbs::*, Fr, ProofG1};
+use test_utils::bbs::*;
 
 #[test]
 fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
@@ -122,7 +123,7 @@ fn pok_of_bbs_plus_sig_and_knowledge_of_hash_preimage() {
     r1cs_wit.set_private("k".to_string(), vec![k]);
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover,
         witnesses.clone(),

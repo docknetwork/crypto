@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
@@ -39,11 +39,11 @@ pub struct R1CSCircomVerifier<E: Pairing> {
 }
 
 impl<E: Pairing> R1CSCircomProver<E> {
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         r1cs: R1CS<E>,
         wasm_bytes: Vec<u8>,
         snark_proving_key: ProvingKey<E>,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         Ok(Statement::R1CSCircomProver(Self {
             r1cs: Some(r1cs),
             r1cs_ref: None,
@@ -54,11 +54,11 @@ impl<E: Pairing> R1CSCircomProver<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         r1cs_ref: usize,
         wasm_bytes_ref: usize,
         snark_proving_key_ref: usize,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         Ok(Statement::R1CSCircomProver(Self {
             r1cs: None,
             r1cs_ref: Some(r1cs_ref),
@@ -69,9 +69,9 @@ impl<E: Pairing> R1CSCircomProver<E> {
         }))
     }
 
-    pub fn new_statement_from_params_when_reusing_proof<G: AffineRepr>(
+    pub fn new_statement_from_params_when_reusing_proof(
         snark_proving_key: ProvingKey<E>,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         Ok(Statement::R1CSCircomProver(Self {
             r1cs: None,
             r1cs_ref: None,
@@ -82,9 +82,9 @@ impl<E: Pairing> R1CSCircomProver<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref_when_reusing_proof<G: AffineRepr>(
+    pub fn new_statement_from_params_ref_when_reusing_proof(
         snark_proving_key_ref: usize,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         Ok(Statement::R1CSCircomProver(Self {
             r1cs: None,
             r1cs_ref: None,
@@ -95,9 +95,9 @@ impl<E: Pairing> R1CSCircomProver<E> {
         }))
     }
 
-    pub fn get_r1cs<'a, G: AffineRepr>(
+    pub fn get_r1cs<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a R1CS<E>, ProofSystemError> {
         extract_param!(
@@ -110,9 +110,9 @@ impl<E: Pairing> R1CSCircomProver<E> {
         )
     }
 
-    pub fn get_wasm_bytes<'a, G: AffineRepr>(
+    pub fn get_wasm_bytes<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a Vec<u8>, ProofSystemError> {
         extract_param!(
@@ -125,9 +125,9 @@ impl<E: Pairing> R1CSCircomProver<E> {
         )
     }
 
-    pub fn get_proving_key<'a, G: AffineRepr>(
+    pub fn get_proving_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a ProvingKey<E>, ProofSystemError> {
         extract_param!(
@@ -142,10 +142,10 @@ impl<E: Pairing> R1CSCircomProver<E> {
 }
 
 impl<E: Pairing> R1CSCircomVerifier<E> {
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         public_inputs: Vec<E::ScalarField>,
         snark_verifying_key: VerifyingKey<E>,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         Ok(Statement::R1CSCircomVerifier(Self {
             public_inputs: Some(public_inputs),
             public_inputs_ref: None,
@@ -154,10 +154,10 @@ impl<E: Pairing> R1CSCircomVerifier<E> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         public_inputs_ref: usize,
         snark_verifying_key_ref: usize,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         Ok(Statement::R1CSCircomVerifier(Self {
             public_inputs: None,
             public_inputs_ref: Some(public_inputs_ref),
@@ -166,9 +166,9 @@ impl<E: Pairing> R1CSCircomVerifier<E> {
         }))
     }
 
-    pub fn get_public_inputs<'a, G: AffineRepr>(
+    pub fn get_public_inputs<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a Vec<E::ScalarField>, ProofSystemError> {
         extract_param!(
@@ -181,9 +181,9 @@ impl<E: Pairing> R1CSCircomVerifier<E> {
         )
     }
 
-    pub fn get_verifying_key<'a, G: AffineRepr>(
+    pub fn get_verifying_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a VerifyingKey<E>, ProofSystemError> {
         extract_param!(

@@ -1,4 +1,4 @@
-use ark_bls12_381::Bls12_381;
+use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::{One, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -16,6 +16,7 @@ use proof_system::{
         EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, Statements,
         Witness, WitnessRef, Witnesses,
     },
+    proof::Proof,
     statement::{
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
         r1cs_legogroth16::{
@@ -27,7 +28,7 @@ use proof_system::{
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::r1cs::get_r1cs_and_wasm_bytes;
-use test_utils::{bbs::*, test_serialization, Fr, ProofG1, G1};
+use test_utils::{bbs::*, test_serialization};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
@@ -71,7 +72,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1>, prover_statements);
+    test_serialization!(Statements<Bls12_381>, prover_statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let proof_spec_prover = ProofSpec::new(
@@ -81,7 +82,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         None,
     );
     proof_spec_prover.validate().unwrap();
-    test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec_prover);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -95,7 +96,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -105,7 +106,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -123,7 +124,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
         .unwrap(),
     );
 
-    test_serialization!(Statements<Bls12_381, G1>, verifier_statements);
+    test_serialization!(Statements<Bls12_381>, verifier_statements);
 
     let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
@@ -133,7 +134,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     );
     verifier_proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, verifier_proof_spec);
 
     proof
         .clone()
@@ -187,7 +188,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     );
     proof_spec_prover_1.validate().unwrap();
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover_1,
         witnesses.clone(),
@@ -275,7 +276,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
                 .collect::<BTreeSet<WitnessRef>>(),
         ));
 
-        test_serialization!(Statements<Bls12_381, G1>, prover_statements);
+        test_serialization!(Statements<Bls12_381>, prover_statements);
         test_serialization!(MetaStatements, meta_statements);
 
         let proof_spec_prover = ProofSpec::new(
@@ -285,7 +286,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
             None,
         );
         proof_spec_prover.validate().unwrap();
-        test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
+        test_serialization!(ProofSpec<Bls12_381>, proof_spec_prover);
 
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -299,7 +300,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-        let proof = ProofG1::new::<StdRng, Blake2b512>(
+        let proof = Proof::new::<StdRng, Blake2b512>(
             rng,
             proof_spec_prover.clone(),
             witnesses.clone(),
@@ -309,7 +310,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         .unwrap()
         .0;
 
-        test_serialization!(ProofG1, proof);
+        test_serialization!(Proof<Bls12_381>, proof);
 
         let mut verifier_statements = Statements::new();
         verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -322,7 +323,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
                 .unwrap(),
         );
 
-        test_serialization!(Statements<Bls12_381, G1>, verifier_statements);
+        test_serialization!(Statements<Bls12_381>, verifier_statements);
 
         let verifier_proof_spec = ProofSpec::new(
             verifier_statements.clone(),
@@ -332,7 +333,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         );
         verifier_proof_spec.validate().unwrap();
 
-        test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
+        test_serialization!(ProofSpec<Bls12_381>, verifier_proof_spec);
 
         proof
             .clone()
@@ -399,7 +400,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         r1cs_wit.set_private("b".to_string(), vec![msgs[l_msg_idx]]);
         witnesses_1.add(Witness::R1CSLegoGroth16(r1cs_wit));
 
-        let proof_1 = ProofG1::new::<StdRng, Blake2b512>(
+        let proof_1 = Proof::new::<StdRng, Blake2b512>(
             rng,
             proof_spec_prover_1,
             witnesses_1.clone(),
@@ -485,7 +486,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk.clone()));
     prover_setup_params.push(SetupParams::R1CS(r1cs));
     prover_setup_params.push(SetupParams::Bytes(wasm_bytes));
-    test_serialization!(Vec<SetupParams<Bls12_381, G1>>, prover_setup_params);
+    test_serialization!(Vec<SetupParams<Bls12_381>>, prover_setup_params);
 
     let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -551,7 +552,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     r1cs_wit_2.set_private("b".to_string(), vec![msgs_1[3]]);
     witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit_2));
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover,
         witnesses.clone(),
@@ -564,7 +565,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     let mut verifier_setup_params = vec![];
     verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk.clone()));
     verifier_setup_params.push(SetupParams::FieldElemVec(vec![Fr::one()]));
-    test_serialization!(Vec<SetupParams<Bls12_381, G1>>, verifier_setup_params);
+    test_serialization!(Vec<SetupParams<Bls12_381>>, verifier_setup_params);
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -687,7 +688,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1>, prover_statements);
+    test_serialization!(Statements<Bls12_381>, prover_statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let proof_spec_prover = ProofSpec::new(
@@ -697,7 +698,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         None,
     );
     proof_spec_prover.validate().unwrap();
-    test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec_prover);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -711,7 +712,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -721,7 +722,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -735,7 +736,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         R1CSVerifierStmt::new_statement_from_params(vec![product_1], snark_pk.vk.clone()).unwrap(),
     );
 
-    test_serialization!(Statements<Bls12_381, G1>, verifier_statements);
+    test_serialization!(Statements<Bls12_381>, verifier_statements);
 
     let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
@@ -745,7 +746,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     verifier_proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, verifier_proof_spec);
 
     proof
         .clone()
@@ -801,7 +802,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     proof_spec_prover_1.validate().unwrap();
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover_1,
         witnesses.clone(),
@@ -840,7 +841,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1>, prover_statements);
+    test_serialization!(Statements<Bls12_381>, prover_statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let proof_spec_prover = ProofSpec::new(
@@ -850,7 +851,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         None,
     );
     proof_spec_prover.validate().unwrap();
-    test_serialization!(ProofSpec<Bls12_381, G1>, proof_spec_prover);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec_prover);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -864,7 +865,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover.clone(),
         witnesses.clone(),
@@ -874,7 +875,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -888,7 +889,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
         R1CSVerifierStmt::new_statement_from_params(vec![product_2], snark_pk.vk.clone()).unwrap(),
     );
 
-    test_serialization!(Statements<Bls12_381, G1>, verifier_statements);
+    test_serialization!(Statements<Bls12_381>, verifier_statements);
 
     let verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
@@ -898,7 +899,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     verifier_proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1>, verifier_proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, verifier_proof_spec);
 
     proof
         .clone()
@@ -948,7 +949,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     );
     proof_spec_prover_1.validate().unwrap();
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover_1,
         witnesses.clone(),

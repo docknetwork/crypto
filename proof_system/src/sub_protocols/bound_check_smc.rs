@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::CanonicalSerialize;
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, UniformRand};
 
@@ -141,10 +141,10 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<G: AffineRepr>(
+    pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.sp.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,

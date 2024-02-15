@@ -207,10 +207,10 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
     }
 
     /// Generate responses for the 3 Schnorr protocols
-    pub fn gen_proof_contribution<G: AffineRepr>(
+    pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.ciphertext.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,

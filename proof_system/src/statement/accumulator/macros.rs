@@ -1,9 +1,9 @@
 macro_rules! impl_pk_and_param_getters {
     ($param_type: ident, $param_variant: ident, $pk_type: ident, $pk_variant: ident) => {
         /// Get accumulator params for the statement index `s_idx` either from `self` or from given `setup_params`
-        pub fn get_params<'a, G: AffineRepr>(
+        pub fn get_params<'a>(
             &'a self,
-            setup_params: &'a [SetupParams<E, G>],
+            setup_params: &'a [SetupParams<E>],
             st_idx: usize,
         ) -> Result<&'a $param_type<E>, ProofSystemError> {
             extract_param!(
@@ -17,9 +17,9 @@ macro_rules! impl_pk_and_param_getters {
         }
 
         /// Get public key for the statement index `s_idx` either from `self` or from given `setup_params`
-        pub fn get_public_key<'a, G: AffineRepr>(
+        pub fn get_public_key<'a>(
             &'a self,
-            setup_params: &'a [SetupParams<E, G>],
+            setup_params: &'a [SetupParams<E>],
             st_idx: usize,
         ) -> Result<&'a $pk_type<E>, ProofSystemError> {
             extract_param!(
@@ -39,9 +39,9 @@ macro_rules! impl_getters {
         impl_pk_and_param_getters!($param_type, $param_variant, $pk_type, $pk_variant);
 
         /// Get membership proving key for the statement index `s_idx` either from `self` or from given `setup_params`
-        pub fn get_proving_key<'a, G: AffineRepr>(
+        pub fn get_proving_key<'a>(
             &'a self,
-            setup_params: &'a [SetupParams<E, G>],
+            setup_params: &'a [SetupParams<E>],
             st_idx: usize,
         ) -> Result<&'a $prk_type<E::G1Affine>, ProofSystemError> {
             extract_param!(
@@ -84,12 +84,12 @@ macro_rules! impl_struct_and_funcs {
 
         impl<E: Pairing> $name<E> {
             /// Create a statement by passing the accumulator params, public key and proving key directly.
-            pub fn new_statement_from_params<G: AffineRepr>(
+            pub fn new_statement_from_params(
                 params: $param_type<E>,
                 public_key: $pk_type<E>,
                 proving_key: $prk_type<E::G1Affine>,
                 accumulator_value: E::G1Affine,
-            ) -> Statement<E, G> {
+            ) -> Statement<E> {
                 Statement::$statement_variant(Self {
                     accumulator_value,
                     params: Some(params),
@@ -102,12 +102,12 @@ macro_rules! impl_struct_and_funcs {
             }
 
             /// Create a statement by passing the indices of accumulator params, public key and proving key in `SetupParams`.
-            pub fn new_statement_from_params_ref<G: AffineRepr>(
+            pub fn new_statement_from_params_ref(
                 params_ref: usize,
                 public_key_ref: usize,
                 proving_key_ref: usize,
                 accumulator_value: E::G1Affine,
-            ) -> Statement<E, G> {
+            ) -> Statement<E> {
                 Statement::$statement_variant(Self {
                     accumulator_value,
                     params: None,

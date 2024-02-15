@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
     io::{Read, Write},
@@ -10,6 +10,7 @@ pub mod accumulator;
 pub mod bbs_23;
 #[macro_use]
 pub mod bbs_plus;
+pub mod bddt16_kvac;
 pub mod bound_check_bpp;
 pub mod bound_check_legogroth16;
 pub mod bound_check_smc;
@@ -23,11 +24,11 @@ pub mod saver;
 /// Type of relation being proved and the public values for the relation
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub enum Statement<E: Pairing, G: AffineRepr> {
+pub enum Statement<E: Pairing> {
     /// For proof of knowledge of BBS+ signature
     PoKBBSSignatureG1(bbs_plus::PoKBBSSignatureG1<E>),
-    /// For proof of knowledge of committed elements in a Pedersen commitment
-    PedersenCommitment(ped_comm::PedersenCommitment<G>),
+    /// For proof of knowledge of committed elements in a Pedersen commitment in group G1
+    PedersenCommitment(ped_comm::PedersenCommitment<E::G1Affine>),
     /// For proof of knowledge of an accumulator member and its corresponding witness
     VBAccumulatorMembership(accumulator::VBAccumulatorMembership<E>),
     /// For proof of knowledge of an accumulator non-member and its corresponding witness
@@ -49,7 +50,7 @@ pub enum Statement<E: Pairing, G: AffineRepr> {
     /// For proof of knowledge of BBS signature
     PoKBBSSignature23G1(bbs_23::PoKBBSSignature23G1<E>),
     /// For bound check using Bulletproofs++ protocol
-    BoundCheckBpp(bound_check_bpp::BoundCheckBpp<G>),
+    BoundCheckBpp(bound_check_bpp::BoundCheckBpp<E::G1Affine>),
     /// For bound check using set-membership check based protocols
     BoundCheckSmc(bound_check_smc::BoundCheckSmc<E>),
     /// Used by the prover for bound check using set-membership check with keyed verification based protocols
@@ -57,7 +58,7 @@ pub enum Statement<E: Pairing, G: AffineRepr> {
     /// Used by the verifier for bound check using set-membership check with keyed verification based protocols
     BoundCheckSmcWithKVVerifier(bound_check_smc_with_kv::BoundCheckSmcWithKVVerifier<E>),
     /// To prove inequality of a signed message with a public value
-    PublicInequality(inequality::PublicInequality<G>),
+    PublicInequality(inequality::PublicInequality<E::G1Affine>),
     DetachedAccumulatorMembershipProver(accumulator::DetachedAccumulatorMembershipProver<E>),
     DetachedAccumulatorMembershipVerifier(accumulator::DetachedAccumulatorMembershipVerifier<E>),
     DetachedAccumulatorNonMembershipProver(accumulator::DetachedAccumulatorNonMembershipProver<E>),
@@ -86,6 +87,15 @@ pub enum Statement<E: Pairing, G: AffineRepr> {
     ),
     KBPositiveAccumulatorMembership(accumulator::KBPositiveAccumulatorMembership<E>),
     KBPositiveAccumulatorMembershipCDH(accumulator::cdh::KBPositiveAccumulatorMembershipCDH<E>),
+    PoKBDDT16MAC(bddt16_kvac::PoKOfMAC<E::G1Affine>),
+    PoKBDDT16MACFullVerifier(bddt16_kvac::PoKOfMACFullVerifier<E::G1Affine>),
+    PedersenCommitmentG2(ped_comm::PedersenCommitment<E::G2Affine>),
+    VBAccumulatorMembershipKV(
+        accumulator::keyed_verification::VBAccumulatorMembershipKV<E::G1Affine>,
+    ),
+    VBAccumulatorMembershipKVFullVerifier(
+        accumulator::keyed_verification::VBAccumulatorMembershipKVFullVerifier<E::G1Affine>,
+    ),
 }
 
 /// A collection of statements
@@ -93,21 +103,14 @@ pub enum Statement<E: Pairing, G: AffineRepr> {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct Statements<E, G>(pub Vec<Statement<E, G>>)
-where
-    E: Pairing,
-    G: AffineRepr;
+pub struct Statements<E: Pairing>(pub Vec<Statement<E>>);
 
-impl<E, G> Statements<E, G>
-where
-    E: Pairing,
-    G: AffineRepr,
-{
+impl<E: Pairing> Statements<E> {
     pub fn new() -> Self {
         Self(Vec::new())
     }
 
-    pub fn add(&mut self, item: Statement<E, G>) -> usize {
+    pub fn add(&mut self, item: Statement<E>) -> usize {
         self.0.push(item);
         self.0.len() - 1
     }
@@ -157,7 +160,12 @@ macro_rules! delegate {
                 KBUniversalAccumulatorNonMembershipCDHProver,
                 KBUniversalAccumulatorNonMembershipCDHVerifier,
                 KBPositiveAccumulatorMembership,
-                KBPositiveAccumulatorMembershipCDH
+                KBPositiveAccumulatorMembershipCDH,
+                PoKBDDT16MAC,
+                PoKBDDT16MACFullVerifier,
+                PedersenCommitmentG2,
+                VBAccumulatorMembershipKV,
+                VBAccumulatorMembershipKVFullVerifier
             : $($tt)+
         }
     }}
@@ -199,7 +207,12 @@ macro_rules! delegate_reverse {
                 KBUniversalAccumulatorNonMembershipCDHProver,
                 KBUniversalAccumulatorNonMembershipCDHVerifier,
                 KBPositiveAccumulatorMembership,
-                KBPositiveAccumulatorMembershipCDH
+                KBPositiveAccumulatorMembershipCDH,
+                PoKBDDT16MAC,
+                PoKBDDT16MACFullVerifier,
+                PedersenCommitmentG2,
+                VBAccumulatorMembershipKV,
+                VBAccumulatorMembershipKVFullVerifier
             : $($tt)+
         }
 
@@ -211,13 +224,13 @@ mod serialization {
     use super::*;
     use ark_serialize::{Compress, Valid, Validate};
 
-    impl<E: Pairing, G: AffineRepr> Valid for Statement<E, G> {
+    impl<E: Pairing> Valid for Statement<E> {
         fn check(&self) -> Result<(), SerializationError> {
             delegate!(self.check())
         }
     }
 
-    impl<E: Pairing, G: AffineRepr> CanonicalSerialize for Statement<E, G> {
+    impl<E: Pairing> CanonicalSerialize for Statement<E> {
         fn serialize_with_mode<W: Write>(
             &self,
             mut writer: W,
@@ -238,7 +251,7 @@ mod serialization {
         }
     }
 
-    impl<E: Pairing, G: AffineRepr> CanonicalDeserialize for Statement<E, G> {
+    impl<E: Pairing> CanonicalDeserialize for Statement<E> {
         fn deserialize_with_mode<R: Read>(
             mut reader: R,
             compress: Compress,
@@ -286,44 +299,39 @@ mod tests {
                 &mut rng,
             );
 
-        let mut statements: Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine> =
-            Statements::new();
+        let mut statements: Statements<Bls12_381> = Statements::new();
 
         let stmt_1 = bbs_plus::PoKBBSSignatureG1::new_statement_from_params(
             params_1,
             keypair_1.public_key.clone(),
             BTreeMap::new(),
         );
-        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_1);
+        test_serialization!(Statement<Bls12_381>, stmt_1);
 
         statements.add(stmt_1);
-        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
+        test_serialization!(Statements<Bls12_381>, statements);
 
-        let stmt_2 = accumulator::VBAccumulatorMembership::new_statement_from_params::<
-            <Bls12_381 as Pairing>::G1Affine,
-        >(
+        let stmt_2 = accumulator::VBAccumulatorMembership::new_statement_from_params(
             pos_params,
             pos_keypair.public_key.clone(),
             mem_prk,
             *pos_accumulator.value(),
         );
-        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_2);
+        test_serialization!(Statement<Bls12_381>, stmt_2);
 
         statements.add(stmt_2);
-        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
+        test_serialization!(Statements<Bls12_381>, statements);
 
-        let stmt_3 = accumulator::VBAccumulatorNonMembership::new_statement_from_params::<
-            <Bls12_381 as Pairing>::G1Affine,
-        >(
+        let stmt_3 = accumulator::VBAccumulatorNonMembership::new_statement_from_params(
             uni_params,
             uni_keypair.public_key.clone(),
             non_mem_prk,
             *uni_accumulator.value(),
         );
-        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_3);
+        test_serialization!(Statement<Bls12_381>, stmt_3);
 
         statements.add(stmt_3);
-        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
+        test_serialization!(Statements<Bls12_381>, statements);
 
         let bases = (0..5)
             .map(|_| G1Proj::rand(&mut rng).into_affine())
@@ -331,19 +339,19 @@ mod tests {
         let scalars = (0..5).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
         let commitment = G1Proj::msm_unchecked(&bases, &scalars).into_affine();
         let stmt_4 = ped_comm::PedersenCommitment::new_statement_from_params(bases, commitment);
-        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_4);
+        test_serialization!(Statement<Bls12_381>, stmt_4);
 
         statements.add(stmt_4);
-        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
+        test_serialization!(Statements<Bls12_381>, statements);
 
         let stmt_5 = bbs_23::PoKBBSSignature23G1::new_statement_from_params(
             params_23,
             keypair_23.public_key.clone(),
             BTreeMap::new(),
         );
-        test_serialization!(Statement<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, stmt_5);
+        test_serialization!(Statement<Bls12_381>, stmt_5);
 
         statements.add(stmt_5);
-        test_serialization!(Statements<Bls12_381, <Bls12_381 as Pairing>::G1Affine>, statements);
+        test_serialization!(Statements<Bls12_381>, statements);
     }
 }

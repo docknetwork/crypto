@@ -35,6 +35,7 @@ pub struct PoKOfSignatureG1KVProtocol<G: AffineRepr> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct PoKOfSignatureG1KV<G: AffineRepr> {
     /// The randomized signature
     #[serde_as(as = "ArkObjectBytes")]

@@ -40,6 +40,12 @@ impl<G: AffineRepr> Zeroize for SharesAccumulator<G> {
     }
 }
 
+impl<G: AffineRepr> Drop for SharesAccumulator<G> {
+    fn drop(&mut self) {
+        self.zeroize()
+    }
+}
+
 impl<G: AffineRepr> SharesAccumulator<G> {
     pub fn new(id: ParticipantId, threshold: ShareId) -> Self {
         Self {
@@ -82,7 +88,7 @@ impl<G: AffineRepr> SharesAccumulator<G> {
     /// Called by a participant when it has received shares from all participants. Computes the final
     /// share of the distributed secret
     pub fn finalize(
-        self,
+        mut self,
         comm_key: &PedersenCommitmentKey<G>,
     ) -> Result<VerifiableShare<G::ScalarField>, SSError> {
         // Check early that sufficient shares present
@@ -95,12 +101,15 @@ impl<G: AffineRepr> SharesAccumulator<G> {
         let mut final_t_share = G::ScalarField::zero();
         let mut final_comm_coeffs = vec![G::Group::zero(); self.threshold as usize];
 
-        for (_, share) in self.shares {
+        let shares = core::mem::take(&mut self.shares);
+        let comms = core::mem::take(&mut self.coeff_comms);
+
+        for (_, share) in shares {
             final_s_share += share.secret_share;
             final_t_share += share.blinding_share;
         }
 
-        for (_, comm) in self.coeff_comms {
+        for (_, comm) in comms {
             for i in 0..self.threshold as usize {
                 final_comm_coeffs[i] += comm.0[i];
             }

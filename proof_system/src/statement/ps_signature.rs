@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, vec::Vec};
 use serde::{Deserialize, Serialize};
@@ -30,11 +30,11 @@ pub struct PoKPSSignatureStatement<E: Pairing> {
 
 impl<E: Pairing> PoKPSSignatureStatement<E> {
     /// Create a statement by passing the signature parameters and public key directly.
-    pub fn new_statement_from_params<G: AffineRepr>(
+    pub fn new_statement_from_params(
         signature_params: SignatureParams<E>,
         public_key: PublicKey<E>,
         revealed_messages: BTreeMap<usize, E::ScalarField>,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::PoKPSSignature(Self {
             revealed_messages,
             signature_params: Some(signature_params),
@@ -45,11 +45,11 @@ impl<E: Pairing> PoKPSSignatureStatement<E> {
     }
 
     /// Create a statement by passing the indices of signature parameters and public key in `SetupParams`.
-    pub fn new_statement_from_params_ref<G: AffineRepr>(
+    pub fn new_statement_from_params_ref(
         signature_params_ref: usize,
         public_key_ref: usize,
         revealed_messages: BTreeMap<usize, E::ScalarField>,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::PoKPSSignature(Self {
             revealed_messages,
             signature_params: None,
@@ -60,9 +60,9 @@ impl<E: Pairing> PoKPSSignatureStatement<E> {
     }
 
     /// Get signature params for the statement index `s_idx` either from `self` or from given `setup_params`.
-    pub fn get_sig_params<'a, G: AffineRepr>(
+    pub fn get_params<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a SignatureParams<E>, ProofSystemError> {
         extract_param!(
@@ -76,9 +76,9 @@ impl<E: Pairing> PoKPSSignatureStatement<E> {
     }
 
     /// Get public key for the statement index `s_idx` either from `self` or from given `setup_params`.
-    pub fn get_public_key<'a, G: AffineRepr>(
+    pub fn get_public_key<'a>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a PublicKey<E>, ProofSystemError> {
         extract_param!(

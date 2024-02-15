@@ -2,6 +2,7 @@ pub mod accumulator;
 #[macro_use]
 pub mod bbs_plus;
 pub mod bbs_23;
+pub mod bddt16_kvac;
 pub mod bound_check_bpp;
 pub mod bound_check_legogroth16;
 pub mod bound_check_smc;
@@ -15,7 +16,7 @@ pub mod schnorr;
 use core::borrow::Borrow;
 
 use crate::error::ProofSystemError;
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_ff::PrimeField;
 use ark_std::{format, io::Write};
 use itertools::{EitherOrBoth, Itertools};
@@ -28,9 +29,11 @@ use crate::sub_protocols::{
             KBUniversalAccumulatorNonMembershipCDHSubProtocol,
             VBAccumulatorMembershipCDHSubProtocol, VBAccumulatorNonMembershipCDHSubProtocol,
         },
+        keyed_verification::VBAccumulatorMembershipKVSubProtocol,
         KBPositiveAccumulatorMembershipSubProtocol, KBUniversalAccumulatorMembershipSubProtocol,
         KBUniversalAccumulatorNonMembershipSubProtocol,
     },
+    bddt16_kvac::PoKOfMACSubProtocol,
     bound_check_bpp::BoundCheckBppProtocol,
     bound_check_legogroth16::BoundCheckLegoGrothProtocol,
     bound_check_smc::BoundCheckSmcProtocol,
@@ -48,12 +51,12 @@ use accumulator::{
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to
 /// form a `Proof`
 #[derive(Clone, Debug, PartialEq)]
-pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
+pub enum SubProtocol<'a, E: Pairing> {
     /// For BBS+ signature in group G1
-    PoKBBSSignatureG1(self::bbs_plus::PoKBBSSigG1SubProtocol<'a, E>),
+    PoKBBSSignatureG1(bbs_plus::PoKBBSSigG1SubProtocol<'a, E>),
     VBAccumulatorMembership(VBAccumulatorMembershipSubProtocol<'a, E>),
     VBAccumulatorNonMembership(VBAccumulatorNonMembershipSubProtocol<'a, E>),
-    PoKDiscreteLogs(self::schnorr::SchnorrProtocol<'a, G>),
+    PoKDiscreteLogs(schnorr::SchnorrProtocol<'a, E::G1Affine>),
     /// For verifiable encryption using SAVER
     Saver(saver::SaverProtocol<'a, E>),
     /// For range proof using LegoGroth16
@@ -63,13 +66,13 @@ pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
     /// For BBS signature in group G1
     PoKBBSSignature23G1(bbs_23::PoKBBSSigG1SubProtocol<'a, E>),
     /// For range proof using Bulletproofs++
-    BoundCheckBpp(BoundCheckBppProtocol<'a, G>),
+    BoundCheckBpp(BoundCheckBppProtocol<'a, E::G1Affine>),
     /// For range proof using set-membership check
     BoundCheckSmc(BoundCheckSmcProtocol<'a, E>),
     /// For range proof using set-membership check with keyed verification
     BoundCheckSmcWithKV(BoundCheckSmcWithKVProtocol<'a, E>),
     /// To prove inequality of a signed message with a public value
-    Inequality(InequalityProtocol<'a, G>),
+    Inequality(InequalityProtocol<'a, E::G1Affine>),
     DetachedAccumulatorMembership(DetachedAccumulatorMembershipSubProtocol<'a, E>),
     DetachedAccumulatorNonMembership(DetachedAccumulatorNonMembershipSubProtocol<'a, E>),
     KBUniversalAccumulatorMembership(KBUniversalAccumulatorMembershipSubProtocol<'a, E>),
@@ -82,6 +85,9 @@ pub enum SubProtocol<'a, E: Pairing, G: AffineRepr> {
     ),
     KBPositiveAccumulatorMembership(KBPositiveAccumulatorMembershipSubProtocol<'a, E>),
     KBPositiveAccumulatorMembershipCDH(KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E>),
+    PoKOfBDDT16MAC(PoKOfMACSubProtocol<'a, E::G1Affine>),
+    PoKDiscreteLogsG2(schnorr::SchnorrProtocol<'a, E::G2Affine>),
+    VBAccumulatorMembershipKV(VBAccumulatorMembershipKVSubProtocol<E::G1Affine>),
 }
 
 macro_rules! delegate {
@@ -110,13 +116,16 @@ macro_rules! delegate {
                 KBUniversalAccumulatorMembershipCDH,
                 KBUniversalAccumulatorNonMembershipCDH,
                 KBPositiveAccumulatorMembership,
-                KBPositiveAccumulatorMembershipCDH
+                KBPositiveAccumulatorMembershipCDH,
+                PoKOfBDDT16MAC,
+                PoKDiscreteLogsG2,
+                VBAccumulatorMembershipKV
             : $($tt)+
         }
     }};
 }
 
-impl<'a, E: Pairing, G: AffineRepr<ScalarField = E::ScalarField>> SubProtocol<'a, E, G> {
+impl<'a, E: Pairing> SubProtocol<'a, E> {
     pub fn challenge_contribution<W: Write>(&self, writer: W) -> Result<(), ProofSystemError> {
         delegate!(self.challenge_contribution(writer))
     }

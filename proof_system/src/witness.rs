@@ -1,4 +1,4 @@
-use ark_ec::pairing::Pairing;
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cmp, collections::BTreeMap, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::{
@@ -6,6 +6,7 @@ use bbs_plus::{
 };
 use coconut_crypto::Signature;
 use dock_crypto_utils::serde_utils::*;
+use kvac::bddt_2016::mac::MAC;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
@@ -19,8 +20,8 @@ use crate::error::ProofSystemError;
 #[serde(bound = "")]
 pub enum Witness<E: Pairing> {
     PoKBBSSignatureG1(PoKBBSSignatureG1<E>),
-    VBAccumulatorMembership(Membership<E>),
-    VBAccumulatorNonMembership(NonMembership<E>),
+    VBAccumulatorMembership(Membership<E::G1Affine>),
+    VBAccumulatorNonMembership(NonMembership<E::G1Affine>),
     PedersenCommitment(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
     /// Message being encrypted
     Saver(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
@@ -34,9 +35,10 @@ pub enum Witness<E: Pairing> {
     BoundCheckSmc(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     BoundCheckSmcWithKV(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
     PublicInequality(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
-    KBUniAccumulatorMembership(KBUniMembership<E>),
-    KBUniAccumulatorNonMembership(KBUniNonMembership<E>),
+    KBUniAccumulatorMembership(KBUniMembership<E::G1Affine>),
+    KBUniAccumulatorNonMembership(KBUniNonMembership<E::G1Affine>),
     KBPosAccumulatorMembership(KBPosMembership<E>),
+    PoKOfBDDT16MAC(PoKOfBDDT16MAC<E::G1Affine>),
 }
 
 macro_rules! delegate {
@@ -58,7 +60,8 @@ macro_rules! delegate {
                 PublicInequality,
                 KBUniAccumulatorMembership,
                 KBUniAccumulatorNonMembership,
-                KBPosAccumulatorMembership
+                KBPosAccumulatorMembership,
+                PoKOfBDDT16MAC
             : $($tt)+
         }
     }}
@@ -83,7 +86,8 @@ macro_rules! delegate_reverse {
                 PublicInequality,
                 KBUniAccumulatorMembership,
                 KBUniAccumulatorNonMembership,
-                KBPosAccumulatorMembership
+                KBPosAccumulatorMembership,
+                PoKOfBDDT16MAC
             : $($tt)+
         }
 
@@ -95,9 +99,7 @@ macro_rules! delegate_reverse {
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct Witnesses<E>(pub Vec<Witness<E>>)
-where
-    E: Pairing;
+pub struct Witnesses<E: Pairing>(pub Vec<Witness<E>>);
 
 /// Secret data when proving knowledge of PS sig
 #[serde_as]
@@ -193,10 +195,10 @@ impl<E: Pairing> Drop for PoKBBSSignature23G1<E> {
     Deserialize,
 )]
 #[serde(bound = "")]
-pub struct Membership<E: Pairing> {
+pub struct Membership<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
-    pub element: E::ScalarField,
-    pub witness: MembershipWitness<E::G1Affine>,
+    pub element: G::ScalarField,
+    pub witness: MembershipWitness<G>,
 }
 
 /// Secret data when proving VB accumulator non-membership
@@ -214,10 +216,10 @@ pub struct Membership<E: Pairing> {
     Deserialize,
 )]
 #[serde(bound = "")]
-pub struct NonMembership<E: Pairing> {
+pub struct NonMembership<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
-    pub element: E::ScalarField,
-    pub witness: NonMembershipWitness<E::G1Affine>,
+    pub element: G::ScalarField,
+    pub witness: NonMembershipWitness<G>,
 }
 
 /// Secret data when proving KB universal accumulator membership
@@ -235,12 +237,12 @@ pub struct NonMembership<E: Pairing> {
     Deserialize,
 )]
 #[serde(bound = "")]
-pub struct KBUniMembership<E: Pairing> {
+pub struct KBUniMembership<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
-    pub element: E::ScalarField,
+    pub element: G::ScalarField,
     pub witness:
         vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorMembershipWitness<
-            E::G1Affine,
+            G,
         >,
 }
 
@@ -259,10 +261,10 @@ pub struct KBUniMembership<E: Pairing> {
     Deserialize,
 )]
 #[serde(bound = "")]
-pub struct KBUniNonMembership<E: Pairing> {
+pub struct KBUniNonMembership<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
-    pub element: E::ScalarField,
-    pub witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
+    pub element: G::ScalarField,
+    pub witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorNonMembershipWitness<G>,
 }
 
 /// Secret data when proving KB universal accumulator membership
@@ -364,41 +366,41 @@ impl<E: Pairing> PoKBBSSignature23G1<E> {
     }
 }
 
-impl<E: Pairing> Membership<E> {
+impl<G: AffineRepr> Membership<G> {
     /// Create a `Witness` variant for proving membership in VB accumulator
-    pub fn new_as_witness(
-        element: E::ScalarField,
-        witness: MembershipWitness<E::G1Affine>,
+    pub fn new_as_witness<E: Pairing<G1Affine = G>>(
+        element: G::ScalarField,
+        witness: MembershipWitness<G>,
     ) -> Witness<E> {
         Witness::VBAccumulatorMembership(Self { element, witness })
     }
 }
 
-impl<E: Pairing> NonMembership<E> {
+impl<G: AffineRepr> NonMembership<G> {
     /// Create a `Witness` variant for proving non-membership in VB accumulator
-    pub fn new_as_witness(
-        element: E::ScalarField,
-        witness: NonMembershipWitness<E::G1Affine>,
+    pub fn new_as_witness<E: Pairing<G1Affine = G>>(
+        element: G::ScalarField,
+        witness: NonMembershipWitness<G>,
     ) -> Witness<E> {
         Witness::VBAccumulatorNonMembership(Self { element, witness })
     }
 }
 
-impl<E: Pairing> KBUniMembership<E> {
+impl<G: AffineRepr> KBUniMembership<G> {
     /// Create a `Witness` variant for proving membership in KB universal accumulator
-    pub fn new_as_witness(
-        element: E::ScalarField,
-        witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorMembershipWitness<E::G1Affine>,
+    pub fn new_as_witness<E: Pairing<G1Affine = G>>(
+        element: G::ScalarField,
+        witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorMembershipWitness<G>,
     ) -> Witness<E> {
         Witness::KBUniAccumulatorMembership(Self { element, witness })
     }
 }
 
-impl<E: Pairing> KBUniNonMembership<E> {
+impl<G: AffineRepr> KBUniNonMembership<G> {
     /// Create a `Witness` variant for proving non-membership in KB universal accumulator
-    pub fn new_as_witness(
-        element: E::ScalarField,
-        witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
+    pub fn new_as_witness<E: Pairing<G1Affine = G>>(
+        element: G::ScalarField,
+        witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorNonMembershipWitness<G>,
     ) -> Witness<E> {
         Witness::KBUniAccumulatorNonMembership(Self { element, witness })
     }
@@ -464,6 +466,29 @@ impl<E: Pairing> R1CSCircomWitness<E> {
             inputs.extend_from_slice(&vals[0..m]);
         }
         Ok(inputs)
+    }
+}
+
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct PoKOfBDDT16MAC<G: AffineRepr> {
+    pub mac: MAC<G>,
+    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    pub unrevealed_messages: BTreeMap<usize, G::ScalarField>,
+}
+
+impl<G: AffineRepr> PoKOfBDDT16MAC<G> {
+    pub fn new_as_witness<E: Pairing<G1Affine = G>>(
+        mac: MAC<G>,
+        unrevealed_messages: BTreeMap<usize, G::ScalarField>,
+    ) -> Witness<E> {
+        Witness::PoKOfBDDT16MAC(PoKOfBDDT16MAC {
+            mac,
+            unrevealed_messages,
+        })
     }
 }
 

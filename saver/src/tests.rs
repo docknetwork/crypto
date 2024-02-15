@@ -38,7 +38,6 @@ use std::{
 };
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
-type ProofG1 = Proof<Bls12_381, G1Affine>;
 
 fn sig_setup<R: RngCore>(
     rng: &mut R,
@@ -197,7 +196,7 @@ fn bbs_plus_verifiably_encrypt_message() {
         witnesses.add(Witness::PedersenCommitment(wit_comm_ct));
 
         println!("Timing for {}-bit chunks", chunk_bit_size);
-        let proof = ProofG1::new::<StdRng, Blake2b512>(
+        let proof = Proof::new::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             witnesses.clone(),
@@ -546,7 +545,7 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         witnesses.add(Witness::PedersenCommitment(wit_comm_chunks_3));
         witnesses.add(Witness::PedersenCommitment(wit_comm_ct_3));
 
-        let proof = ProofG1::new::<StdRng, Blake2b512>(
+        let proof = Proof::new::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             witnesses.clone(),
@@ -878,7 +877,7 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         witnesses.add(Witness::PedersenCommitment(wit_comm_chunks_2));
         witnesses.add(Witness::PedersenCommitment(wit_comm_ct_2));
 
-        let proof = ProofG1::new::<StdRng, Blake2b512>(
+        let proof = Proof::new::<StdRng, Blake2b512>(
             &mut rng,
             proof_spec.clone(),
             witnesses.clone(),

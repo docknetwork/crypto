@@ -44,6 +44,7 @@ pub struct MembershipProofProtocol<G: AffineRepr>(pub PoKOfSignatureG1KVProtocol
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct MembershipProof<G: AffineRepr>(pub PoKOfSignatureG1KV<G>);
 
 /// The part of membership proof whose verification requires knowledge of secret key.

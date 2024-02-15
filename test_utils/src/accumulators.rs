@@ -1,5 +1,4 @@
-use crate::Fr;
-use ark_bls12_381::Bls12_381;
+use ark_bls12_381::{Bls12_381, Fr};
 use ark_std::{rand::rngs::StdRng, UniformRand};
 use blake2::Blake2b512;
 use std::{collections::HashSet, hash::Hash};
@@ -62,10 +61,10 @@ pub fn setup_kb_positive_accum(
     rng: &mut StdRng,
 ) -> (
     vb_accumulator::kb_positive_accumulator::setup::SetupParams<Bls12_381>,
-    SecretKey<ark_bls12_381::Fr>,
+    SecretKey<Fr>,
     PublicKey<Bls12_381>,
     KBPositiveAccumulator<Bls12_381>,
-    InMemoryState<ark_bls12_381::Fr>,
+    InMemoryState<Fr>,
 ) {
     let params = vb_accumulator::kb_positive_accumulator::setup::SetupParams::<Bls12_381>::new::<
         Blake2b512,
@@ -85,8 +84,8 @@ pub fn setup_kb_universal_accum(
     Keypair<Bls12_381>,
     KBUniversalAccumulator<Bls12_381>,
     Vec<Fr>,
-    InMemoryState<ark_bls12_381::Fr>,
-    InMemoryState<ark_bls12_381::Fr>,
+    InMemoryState<Fr>,
+    InMemoryState<Fr>,
 ) {
     let domain = (0..size).map(|_| Fr::rand(rng)).collect::<Vec<Fr>>();
     let (p, kp, a, ms, nms) = setup_kb_universal_accum_given_domain(rng, domain.clone());
@@ -100,8 +99,8 @@ pub fn setup_kb_universal_accum_given_domain(
     SetupParams<Bls12_381>,
     Keypair<Bls12_381>,
     KBUniversalAccumulator<Bls12_381>,
-    InMemoryState<ark_bls12_381::Fr>,
-    InMemoryState<ark_bls12_381::Fr>,
+    InMemoryState<Fr>,
+    InMemoryState<Fr>,
 ) {
     let params = SetupParams::<Bls12_381>::generate_using_rng(rng);
     let keypair = Keypair::<Bls12_381>::generate_using_rng(rng, &params);

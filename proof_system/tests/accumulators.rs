@@ -1,4 +1,4 @@
-use ark_bls12_381::{Bls12_381, G1Affine};
+use ark_bls12_381::{Bls12_381, Fr, G1Affine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     rand::{prelude::StdRng, SeedableRng},
@@ -7,6 +7,7 @@ use ark_std::{
 use blake2::Blake2b512;
 use proof_system::{
     meta_statement::{EqualWitnesses, MetaStatements, WitnessRef},
+    proof::Proof,
     proof_spec::ProofSpec,
     setup_params::SetupParams,
     statement::{
@@ -34,7 +35,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     time::Instant,
 };
-use test_utils::{accumulators::*, bbs::*, test_serialization, Fr, ProofG1};
+use test_utils::{accumulators::*, bbs::*, test_serialization};
 use vb_accumulator::positive::Accumulator;
 
 #[test]
@@ -114,14 +115,14 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
         .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let context = Some(b"test".to_vec());
     let proof_spec = ProofSpec::new(statements, meta_statements.clone(), vec![], context.clone());
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -136,7 +137,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
 
     let nonce = Some(b"test-nonce".to_vec());
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -146,7 +147,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -165,7 +166,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context.clone());
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let start = Instant::now();
     proof
@@ -244,7 +245,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
@@ -256,9 +257,9 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     );
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -268,7 +269,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -365,7 +366,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
@@ -377,9 +378,9 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     );
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -389,7 +390,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -409,7 +410,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let start = Instant::now();
     proof
@@ -488,7 +489,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
@@ -500,12 +501,12 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     );
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let proof_spec = ProofSpec::new(statements, meta_statements.clone(), vec![], context.clone());
     proof_spec.validate().unwrap();
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -515,7 +516,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -609,7 +610,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
     test_serialization!(Witnesses<Bls12_381>, witnesses);
 
@@ -621,9 +622,9 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     );
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -633,7 +634,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -728,14 +729,14 @@ start.elapsed()
         .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let context = Some(b"test".to_vec());
     let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let mut witnesses = Witnesses::new();
     witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -750,7 +751,7 @@ start.elapsed()
 
     let nonce = Some(b"test-nonce".to_vec());
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec.clone(),
         witnesses.clone(),
@@ -760,7 +761,7 @@ start.elapsed()
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let start = Instant::now();
     proof
@@ -880,7 +881,7 @@ start.elapsed()
             .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381, G1Affine>, statements);
+    test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let mut witnesses = Witnesses::new();
@@ -925,9 +926,9 @@ start.elapsed()
     );
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec,
         witnesses,
@@ -937,7 +938,7 @@ start.elapsed()
     .unwrap()
     .0;
 
-    test_serialization!(ProofG1, proof);
+    test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
     statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -993,7 +994,7 @@ start.elapsed()
     let proof_spec = ProofSpec::new(statements, meta_statements, all_setup_params, context);
     proof_spec.validate().unwrap();
 
-    test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec);
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let start = Instant::now();
     proof

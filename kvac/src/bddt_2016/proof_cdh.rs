@@ -84,6 +84,7 @@ pub struct PoKOfMACProtocol<G: AffineRepr> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct PoKOfMAC<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub B_0: G,

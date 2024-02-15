@@ -8,6 +8,7 @@ use bbs_plus::prelude::{PoKOfSignature23G1Proof, PoKOfSignatureG1Proof};
 use bulletproofs_plus_plus::prelude::ProofArbitraryRange;
 use coconut_crypto::SignaturePoK as PSSignaturePoK;
 use dock_crypto_utils::{ecies, serde_utils::ArkObjectBytes};
+use kvac::bddt_2016::proof_cdh::PoKOfMAC;
 use saver::encryption::Ciphertext;
 use schnorr_pok::SchnorrResponse;
 use serde::{Deserialize, Serialize};
@@ -29,11 +30,11 @@ use crate::error::ProofSystemError;
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub enum StatementProof<E: Pairing, G: AffineRepr> {
+pub enum StatementProof<E: Pairing> {
     PoKBBSSignatureG1(PoKOfSignatureG1Proof<E>),
     VBAccumulatorMembership(MembershipProof<E>),
     VBAccumulatorNonMembership(NonMembershipProof<E>),
-    PedersenCommitment(PedersenCommitmentProof<G>),
+    PedersenCommitment(PedersenCommitmentProof<E::G1Affine>),
     Saver(SaverProof<E>),
     BoundCheckLegoGroth16(BoundCheckLegoGroth16Proof<E>),
     R1CSLegoGroth16(R1CSLegoGroth16Proof<E>),
@@ -42,10 +43,10 @@ pub enum StatementProof<E: Pairing, G: AffineRepr> {
     R1CSLegoGroth16WithAggregation(R1CSLegoGroth16ProofWhenAggregatingSnarks<E>),
     PoKPSSignature(PSSignaturePoK<E>),
     PoKBBSSignature23G1(PoKOfSignature23G1Proof<E>),
-    BoundCheckBpp(BoundCheckBppProof<G>),
+    BoundCheckBpp(BoundCheckBppProof<E::G1Affine>),
     BoundCheckSmc(BoundCheckSmcProof<E>),
     BoundCheckSmcWithKV(BoundCheckSmcWithKVProof<E>),
-    Inequality(InequalityProof<G>),
+    Inequality(InequalityProof<E::G1Affine>),
     DetachedAccumulatorMembership(DetachedAccumulatorMembershipProof<E>),
     DetachedAccumulatorNonMembership(DetachedAccumulatorNonMembershipProof<E>),
     KBUniversalAccumulatorMembership(KBUniversalAccumulatorMembershipProof<E>),
@@ -56,6 +57,9 @@ pub enum StatementProof<E: Pairing, G: AffineRepr> {
     KBUniversalAccumulatorNonMembershipCDH(vb_accumulator::kb_universal_accumulator::proofs_cdh::KBUniversalAccumulatorNonMembershipProof<E>),
     KBPositiveAccumulatorMembership(#[serde_as(as = "ArkObjectBytes")] KBPositiveAccumulatorMembershipProof<E>),
     KBPositiveAccumulatorMembershipCDH(#[serde_as(as = "ArkObjectBytes")] KBPositiveAccumulatorMembershipProofCDH<E>),
+    PoKOfBDDT16MAC(PoKOfMAC<E::G1Affine>),
+    PedersenCommitmentG2(PedersenCommitmentProof<E::G2Affine>),
+    VBAccumulatorMembershipKV(vb_accumulator::proofs_keyed_verification::MembershipProof<E::G1Affine>)
 
 }
 
@@ -88,7 +92,10 @@ macro_rules! delegate {
                 KBUniversalAccumulatorMembershipCDH,
                 KBUniversalAccumulatorNonMembershipCDH,
                 KBPositiveAccumulatorMembership,
-                KBPositiveAccumulatorMembershipCDH
+                KBPositiveAccumulatorMembershipCDH,
+                PoKOfBDDT16MAC,
+                PedersenCommitmentG2,
+                VBAccumulatorMembershipKV
             : $($tt)+
         }
     }};
@@ -123,7 +130,10 @@ macro_rules! delegate_reverse {
                 KBUniversalAccumulatorMembershipCDH,
                 KBUniversalAccumulatorNonMembershipCDH,
                 KBPositiveAccumulatorMembership,
-                KBPositiveAccumulatorMembershipCDH
+                KBPositiveAccumulatorMembershipCDH,
+                PoKOfBDDT16MAC,
+                PedersenCommitmentG2,
+                VBAccumulatorMembershipKV
             : $($tt)+
         }
 
@@ -432,19 +442,19 @@ pub struct DetachedAccumulatorNonMembershipProof<E: Pairing> {
 
 mod serialization {
     use super::{
-        AffineRepr, CanonicalDeserialize, CanonicalSerialize, Pairing, Read, SerializationError,
+        CanonicalDeserialize, CanonicalSerialize, Pairing, Read, SerializationError,
         StatementProof, Write,
     };
     use crate::statement_proof::{BoundCheckSmcInnerProof, BoundCheckSmcWithKVInnerProof};
     use ark_serialize::{Compress, Valid, Validate};
 
-    impl<E: Pairing, G: AffineRepr> Valid for StatementProof<E, G> {
+    impl<E: Pairing> Valid for StatementProof<E> {
         fn check(&self) -> Result<(), SerializationError> {
             delegate!(self.check())
         }
     }
 
-    impl<E: Pairing, G: AffineRepr> CanonicalSerialize for StatementProof<E, G> {
+    impl<E: Pairing> CanonicalSerialize for StatementProof<E> {
         fn serialize_with_mode<W: Write>(
             &self,
             mut writer: W,
@@ -463,7 +473,7 @@ mod serialization {
         }
     }
 
-    impl<E: Pairing, G: AffineRepr> CanonicalDeserialize for StatementProof<E, G> {
+    impl<E: Pairing> CanonicalDeserialize for StatementProof<E> {
         fn deserialize_with_mode<R: Read>(
             mut reader: R,
             compress: Compress,

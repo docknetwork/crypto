@@ -70,7 +70,7 @@ impl<'a, E: Pairing> DetachedAccumulatorMembershipSubProtocol<'a, E> {
         rng: &mut R,
         accumulator_value: E::G1Affine,
         blinding: Option<E::ScalarField>,
-        witness: crate::witness::Membership<E>,
+        witness: crate::witness::Membership<E::G1Affine>,
     ) -> Result<(), ProofSystemError> {
         if self.protocol.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -111,11 +111,11 @@ impl<'a, E: Pairing> DetachedAccumulatorMembershipSubProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<G: AffineRepr, R: RngCore>(
+    pub fn gen_proof_contribution<R: RngCore>(
         &mut self,
         rng: &mut R,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,
@@ -208,7 +208,7 @@ impl<'a, E: Pairing> DetachedAccumulatorNonMembershipSubProtocol<'a, E> {
         rng: &mut R,
         accumulator_value: E::G1Affine,
         blinding: Option<E::ScalarField>,
-        witness: crate::witness::NonMembership<E>,
+        witness: crate::witness::NonMembership<E::G1Affine>,
     ) -> Result<(), ProofSystemError> {
         if self.protocol.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -249,11 +249,11 @@ impl<'a, E: Pairing> DetachedAccumulatorNonMembershipSubProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution<G: AffineRepr, R: RngCore>(
+    pub fn gen_proof_contribution<R: RngCore>(
         &mut self,
         rng: &mut R,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.protocol.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,

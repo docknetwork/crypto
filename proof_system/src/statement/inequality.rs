@@ -22,10 +22,10 @@ pub struct PublicInequality<G: AffineRepr> {
 }
 
 impl<G: AffineRepr> PublicInequality<G> {
-    pub fn new_statement_from_params<E: Pairing>(
+    pub fn new_statement_from_params<E: Pairing<G1Affine = G>>(
         inequal_to: G::ScalarField,
         comm_key: PedersenCommitmentKey<G>,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::PublicInequality(Self {
             inequal_to,
             comm_key: Some(comm_key),
@@ -33,10 +33,10 @@ impl<G: AffineRepr> PublicInequality<G> {
         })
     }
 
-    pub fn new_statement_from_params_ref<E: Pairing>(
+    pub fn new_statement_from_params_ref<E: Pairing<G1Affine = G>>(
         inequal_to: G::ScalarField,
         comm_key_ref: usize,
-    ) -> Statement<E, G> {
+    ) -> Statement<E> {
         Statement::PublicInequality(Self {
             inequal_to,
             comm_key: None,
@@ -44,9 +44,9 @@ impl<G: AffineRepr> PublicInequality<G> {
         })
     }
 
-    pub fn get_comm_key<'a, E: Pairing>(
+    pub fn get_comm_key<'a, E: Pairing<G1Affine = G>>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a PedersenCommitmentKey<G>, ProofSystemError> {
         extract_param!(

@@ -95,12 +95,13 @@
 //! call other [`SubProtocol`]s, eg [`SaverProtocol`] invokes several [`SchnorrProtocol`]s
 //!
 //! Currently supports
-//! - proof of knowledge of a BBS or BBS+ signature and signed messages
-//! - proof of knowledge of multiple BBS or BBS+ signature and equality of certain messages
+//! - proof of knowledge of a BBS or BBS+ or PS signature and signed messages
+//! - proof of knowledge of multiple BBS or BBS+ or PS signature and equality of certain messages
+//! - proof of knowledge of multiple BBS or BBS+ or PS signature and inequality of certain messages with public values
 //! - proof of knowledge of accumulator membership and non-membership
 //! - proof of knowledge of Pedersen commitment opening.
-//! - proof of knowledge of BBS or BBS+ signature(s) and that certain message(s) satisfy given bounds (range proof)
-//! - verifiable encryption of messages in a BBS or BBS+ signature
+//! - proof of knowledge of BBS or BBS+ or PS signature(s) and that certain message(s) satisfy given bounds (range proof)
+//! - verifiable encryption of messages in a BBS or BBS+ or PS signature
 //! - proof of knowledge of BBS or BBS+ signature(s) and that certain message(s) satisfy given R1CS. The R1CS is generated
 //!   from [Circom](https://github.com/iden3/circom) and the proof system used is [LegoGroth16](https://github.com/lovesh/legogro16).
 //!   LegoGroth16 is similar to Groth16 but in addition to the zero knowledge proof, it provides a Pedersen
@@ -138,6 +139,10 @@
 //! *Note*: This design is largely inspired from my work at Hyperledger Ursa.
 //!
 //! *Note*: The design is tentative and will likely change as more protocols are integrated.
+//!
+//! *TODO*: Each of the above protocol uses a Schnorr protocol and the response for that protocol's witness is compared for
+//! equality with the response for Schnorr protocol used in BBS+/PS signatures (see `check_resp_for_equalities`). This cost (verify time and proof size)
+//! can be avoided by making protocols except the ones proving knowledge of BBS+/PS signatures not generate Schnorr responses.
 //!
 //! [`Statement`]: crate::statement::Statement
 //! [`MetaStatement`]: crate::meta_statement::MetaStatement

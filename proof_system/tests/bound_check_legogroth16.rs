@@ -1,4 +1,4 @@
-use ark_bls12_381::{Bls12_381, G1Affine};
+use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use proof_system::{
     prelude::{
-        EqualWitnesses, MetaStatements, ProofSpec, ProverConfig, VerifierConfig, Witness,
+        EqualWitnesses, MetaStatements, Proof, ProofSpec, ProverConfig, VerifierConfig, Witness,
         WitnessRef, Witnesses,
     },
     prover::OldLegoGroth16Proof,
@@ -30,7 +30,7 @@ use proof_system::{
     },
 };
 
-use test_utils::{bbs::*, test_serialization, Fr, ProofG1};
+use test_utils::{bbs::*, test_serialization};
 
 macro_rules! gen_tests {
     ($test1_name: ident, $test2_name: ident, $setup_fn_name: ident, $stmt: ident, $wit: ident) => {
@@ -71,7 +71,7 @@ macro_rules! gen_tests {
                     .collect::<BTreeSet<WitnessRef>>(),
             ));
 
-            test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
+            test_serialization!(Statements<Bls12_381>, prover_statements);
             test_serialization!(MetaStatements, meta_statements);
 
             let proof_spec_prover = ProofSpec::new(
@@ -82,7 +82,7 @@ macro_rules! gen_tests {
             );
             proof_spec_prover.validate().unwrap();
             let start = Instant::now();
-            test_serialization!(ProofSpec<Bls12_381, G1Affine>, proof_spec_prover);
+            test_serialization!(ProofSpec<Bls12_381>, proof_spec_prover);
             println!(
                 "Testing serialization for 1 bound check takes {:?}",
                 start.elapsed()
@@ -98,7 +98,7 @@ macro_rules! gen_tests {
             test_serialization!(Witnesses<Bls12_381>, witnesses);
 
             let start = Instant::now();
-            let (proof, comm_rand) = ProofG1::new::<StdRng, Blake2b512>(
+            let (proof, comm_rand) = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec_prover.clone(),
                 witnesses.clone(),
@@ -112,7 +112,7 @@ macro_rules! gen_tests {
                 start.elapsed()
             );
 
-            test_serialization!(ProofG1, proof);
+            test_serialization!(Proof<Bls12_381>, proof);
 
             let mut verifier_statements = Statements::new();
             verifier_statements.add($stmt::new_statement_from_params(
@@ -123,7 +123,7 @@ macro_rules! gen_tests {
             verifier_statements
                 .add(BoundCheckVerifierStmt::new_statement_from_params(min, max, snark_pk.vk).unwrap());
 
-            test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
+            test_serialization!(Statements<Bls12_381>, verifier_statements);
 
             let verifier_proof_spec = ProofSpec::new(
                 verifier_statements.clone(),
@@ -133,7 +133,7 @@ macro_rules! gen_tests {
             );
             verifier_proof_spec.validate().unwrap();
 
-            test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
+            test_serialization!(ProofSpec<Bls12_381>, verifier_proof_spec);
 
             let start = Instant::now();
             proof
@@ -173,7 +173,7 @@ macro_rules! gen_tests {
                 reuse_saver_proofs: None,
                 reuse_legogroth16_proofs: Some(m),
             };
-            let proof = ProofG1::new::<StdRng, Blake2b512>(
+            let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec_prover.clone(),
                 witnesses.clone(),
@@ -222,7 +222,7 @@ macro_rules! gen_tests {
             );
             proof_spec_prover.validate().unwrap();
 
-            let proof = ProofG1::new::<StdRng, Blake2b512>(
+            let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec_prover,
                 witnesses.clone(),
@@ -271,7 +271,7 @@ macro_rules! gen_tests {
                 ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
             proof_spec_prover.validate().unwrap();
 
-            let proof = ProofG1::new::<StdRng, Blake2b512>(
+            let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec_prover,
                 witnesses_wrong,
@@ -336,7 +336,7 @@ macro_rules! gen_tests {
                 let mut prover_setup_params = vec![];
                 if reuse_key {
                     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk.clone()));
-                    test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, prover_setup_params);
+                    test_serialization!(Vec<SetupParams<Bls12_381>>, prover_setup_params);
                 }
 
                 let mut prover_statements = Statements::new();
@@ -367,7 +367,7 @@ macro_rules! gen_tests {
                     );
                 }
 
-                test_serialization!(Statements<Bls12_381, G1Affine>, prover_statements);
+                test_serialization!(Statements<Bls12_381>, prover_statements);
 
                 let mut meta_statements = MetaStatements::new();
                 meta_statements.add_witness_equality(EqualWitnesses(
@@ -394,7 +394,7 @@ macro_rules! gen_tests {
                 );
                 prover_proof_spec.validate().unwrap();
 
-                test_serialization!(ProofSpec<Bls12_381, G1Affine>, prover_proof_spec);
+                test_serialization!(ProofSpec<Bls12_381>, prover_proof_spec);
 
                 let mut witnesses = Witnesses::new();
                 witnesses.add($wit::new_as_witness(
@@ -406,7 +406,7 @@ macro_rules! gen_tests {
                 witnesses.add(Witness::BoundCheckLegoGroth16(msg_3));
 
                 let start = Instant::now();
-                let (proof, comm_rand) = ProofG1::new::<StdRng, Blake2b512>(
+                let (proof, comm_rand) = Proof::new::<StdRng, Blake2b512>(
                     &mut rng,
                     prover_proof_spec.clone(),
                     witnesses.clone(),
@@ -420,12 +420,12 @@ macro_rules! gen_tests {
                     start.elapsed()
                 );
 
-                test_serialization!(ProofG1, proof);
+                test_serialization!(Proof<Bls12_381>, proof);
 
                 let mut verifier_setup_params = vec![];
                 if reuse_key {
                     verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk.clone()));
-                    test_serialization!(Vec<SetupParams<Bls12_381, G1Affine>>, verifier_setup_params);
+                    test_serialization!(Vec<SetupParams<Bls12_381>>, verifier_setup_params);
                 }
 
                 let mut verifier_statements = Statements::new();
@@ -467,7 +467,7 @@ macro_rules! gen_tests {
                     );
                 }
 
-                test_serialization!(Statements<Bls12_381, G1Affine>, verifier_statements);
+                test_serialization!(Statements<Bls12_381>, verifier_statements);
 
                 let verifier_proof_spec = ProofSpec::new(
                     verifier_statements.clone(),
@@ -477,7 +477,7 @@ macro_rules! gen_tests {
                 );
                 verifier_proof_spec.validate().unwrap();
 
-                test_serialization!(ProofSpec<Bls12_381, G1Affine>, verifier_proof_spec);
+                test_serialization!(ProofSpec<Bls12_381>, verifier_proof_spec);
 
                 let start = Instant::now();
                 proof
@@ -525,7 +525,7 @@ macro_rules! gen_tests {
                     reuse_saver_proofs: None,
                     reuse_legogroth16_proofs: Some(m),
                 };
-                let proof = ProofG1::new::<StdRng, Blake2b512>(
+                let proof = Proof::new::<StdRng, Blake2b512>(
                     &mut rng,
                     prover_proof_spec.clone(),
                     witnesses.clone(),
@@ -628,7 +628,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     ));
     witnesses.add(Witness::BoundCheckLegoGroth16(msg));
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover,
         witnesses.clone(),

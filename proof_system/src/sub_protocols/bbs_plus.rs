@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
 use bbs_plus::{
     error::BBSPlusError,
@@ -9,6 +9,7 @@ use bbs_plus::{
     proof::PoKOfSignatureG1Protocol,
 };
 use dock_crypto_utils::{
+    expect_equality,
     iter::take_while_satisfy,
     misc::seq_inc_by_n_from,
     randomized_pairing_check::RandomizedPairingChecker,
@@ -59,12 +60,11 @@ macro_rules! impl_bbs_subprotocol {
             }
             let total_message_count =
                 self.revealed_messages.len() + witness.unrevealed_messages.len();
-            if total_message_count != self.signature_params.supported_message_count() {
-                Err(ProofSystemError::BBSPlusProtocolInvalidMessageCount(
-                    total_message_count,
-                    self.signature_params.supported_message_count(),
-                ))?
-            }
+            expect_equality!(
+                total_message_count,
+                self.signature_params.supported_message_count(),
+                ProofSystemError::BBSPlusProtocolInvalidMessageCount
+            );
 
             // Create messages from revealed messages in statement and unrevealed in witness
             let mut invalid_blinding_idx = None;
@@ -91,11 +91,11 @@ macro_rules! impl_bbs_subprotocol {
             let protocol =
                 $protocol::init(rng, &witness.signature, self.signature_params, all_messages);
             if let Some(idx) = invalid_blinding_idx {
-                Err(ProofSystemError::BBSProtocolInvalidBlindingIndex(idx))?
+                Err(ProofSystemError::SigProtocolInvalidBlindingIndex(idx))?
             } else if let Some(invalid) = non_seq_idx {
                 Err(invalid.over(
-                    ProofSystemError::BBSProtocolMessageIndicesMustStartFromZero,
-                    ProofSystemError::BBSProtocolNonSequentialMessageIndices,
+                    ProofSystemError::SigProtocolMessageIndicesMustStartFromZero,
+                    ProofSystemError::SigProtocolNonSequentialMessageIndices,
                 ))?
             }
 
@@ -117,10 +117,10 @@ macro_rules! impl_bbs_subprotocol {
             Ok(())
         }
 
-        pub fn gen_proof_contribution<G: AffineRepr>(
+        pub fn gen_proof_contribution(
             &mut self,
             challenge: &E::ScalarField,
-        ) -> Result<StatementProof<E, G>, ProofSystemError> {
+        ) -> Result<StatementProof<E>, ProofSystemError> {
             if self.protocol.is_none() {
                 return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                     self.id,

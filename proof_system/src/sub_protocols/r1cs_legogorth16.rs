@@ -5,7 +5,7 @@ use crate::{
     },
     sub_protocols::schnorr::SchnorrProtocol,
 };
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::CanonicalSerialize;
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
@@ -141,10 +141,10 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
     }
 
     /// Generate responses for the Schnorr protocol
-    pub fn gen_proof_contribution<G: AffineRepr>(
+    pub fn gen_proof_contribution(
         &mut self,
         challenge: &E::ScalarField,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.sp.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,

@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, vec::Vec};
 use serde::{Deserialize, Serialize};
@@ -32,11 +32,11 @@ pub struct PoKBBSSignatureG1<E: Pairing> {
 macro_rules! impl_bbs_statement {
     ($params: ident, $stmt: ident, $setup_param_name: ident) => {
         /// Create a statement by passing the signature parameters and public key directly.
-        pub fn new_statement_from_params<G: AffineRepr>(
+        pub fn new_statement_from_params(
             signature_params: $params<E>,
             public_key: PublicKeyG2<E>,
             revealed_messages: BTreeMap<usize, E::ScalarField>,
-        ) -> Statement<E, G> {
+        ) -> Statement<E> {
             Statement::$stmt(Self {
                 revealed_messages,
                 signature_params: Some(signature_params),
@@ -47,11 +47,11 @@ macro_rules! impl_bbs_statement {
         }
 
         /// Create a statement by passing the indices of signature parameters and public key in `SetupParams`.
-        pub fn new_statement_from_params_ref<G: AffineRepr>(
+        pub fn new_statement_from_params_ref(
             signature_params_ref: usize,
             public_key_ref: usize,
             revealed_messages: BTreeMap<usize, E::ScalarField>,
-        ) -> Statement<E, G> {
+        ) -> Statement<E> {
             Statement::$stmt(Self {
                 revealed_messages,
                 signature_params: None,
@@ -62,9 +62,9 @@ macro_rules! impl_bbs_statement {
         }
 
         /// Get signature params for the statement index `s_idx` either from `self` or from given `setup_params`.
-        pub fn get_sig_params<'a, G: AffineRepr>(
+        pub fn get_params<'a>(
             &'a self,
-            setup_params: &'a [SetupParams<E, G>],
+            setup_params: &'a [SetupParams<E>],
             st_idx: usize,
         ) -> Result<&'a $params<E>, ProofSystemError> {
             extract_param!(
@@ -78,9 +78,9 @@ macro_rules! impl_bbs_statement {
         }
 
         /// Get public key for the statement index `s_idx` either from `self` or from given `setup_params`.
-        pub fn get_public_key<'a, G: AffineRepr>(
+        pub fn get_public_key<'a>(
             &'a self,
-            setup_params: &'a [SetupParams<E, G>],
+            setup_params: &'a [SetupParams<E>],
             st_idx: usize,
         ) -> Result<&'a PublicKeyG2<E>, ProofSystemError> {
             extract_param!(

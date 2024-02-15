@@ -3,6 +3,7 @@ use ark_std::{collections::BTreeSet, fmt::Debug, string::String, vec::Vec};
 use bbs_plus::error::BBSPlusError;
 use bulletproofs_plus_plus::error::BulletproofsPlusPlusError;
 use dock_crypto_utils::try_iter::InvalidPair;
+use kvac::error::KVACError;
 use legogroth16::{circom::CircomError, error::Error as LegoGroth16Error};
 use saver::error::SaverError;
 use schnorr_pok::error::SchnorrError;
@@ -21,9 +22,9 @@ pub enum ProofSystemError {
     ProofIncompatibleWithSaverProtocol,
     ProofIncompatibleWithBoundCheckProtocol,
     BBSPlusProtocolInvalidMessageCount(usize, usize),
-    BBSProtocolInvalidBlindingIndex(usize),
-    BBSProtocolNonSequentialMessageIndices(InvalidPair<usize>),
-    BBSProtocolMessageIndicesMustStartFromZero(usize),
+    SigProtocolInvalidBlindingIndex(usize),
+    SigProtocolNonSequentialMessageIndices(InvalidPair<usize>),
+    SigProtocolMessageIndicesMustStartFromZero(usize),
     PSProtocolInvalidMessageCount(usize, usize),
     PSProtocolNonSequentialMessageIndices(InvalidPair<usize>),
     PSProtocolInvalidBlindingIndex(usize),
@@ -103,6 +104,9 @@ pub enum ProofSystemError {
     DetachedVBAccumProofContributionFailed(u32, VBAccumulatorError),
     IncorrectEncryptedAccumulator,
     KBAccumProofContributionFailed(u32, VBAccumulatorError),
+    KVACError(KVACError),
+    BDDT16KVACProtocolInvalidMessageCount(usize, usize),
+    BDDT16KVACProofContributionFailed(u32, KVACError),
 }
 
 impl From<SchnorrError> for ProofSystemError {
@@ -162,5 +166,11 @@ impl From<BulletproofsPlusPlusError> for ProofSystemError {
 impl From<SmcRangeProofError> for ProofSystemError {
     fn from(e: SmcRangeProofError) -> Self {
         Self::SetMembershipBasedRangeProof(e)
+    }
+}
+
+impl From<KVACError> for ProofSystemError {
+    fn from(e: KVACError) -> Self {
+        Self::KVACError(e)
     }
 }

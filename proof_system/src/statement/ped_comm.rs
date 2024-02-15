@@ -23,39 +23,61 @@ pub struct PedersenCommitment<G: AffineRepr> {
     pub key_ref: Option<usize>,
 }
 
+macro_rules! impl_common_funcs {
+    ($fn_from_params: ident, $fn_from_params_refs: ident, $fn_get_comm_key: ident, $group: ident, $stmt_variant: ident, $setup_param_variant: ident) => {
+        pub fn $fn_from_params<E: Pairing<$group = G>>(key: Vec<G>, commitment: G) -> Statement<E> {
+            Statement::$stmt_variant(Self {
+                commitment,
+                key: Some(key),
+                key_ref: None,
+            })
+        }
+
+        pub fn $fn_from_params_refs<E: Pairing<$group = G>>(
+            key_ref: usize,
+            commitment: G,
+        ) -> Statement<E> {
+            Statement::$stmt_variant(Self {
+                commitment,
+                key: None,
+                key_ref: Some(key_ref),
+            })
+        }
+
+        pub fn $fn_get_comm_key<'a, E: Pairing<$group = G>>(
+            &'a self,
+            setup_params: &'a [SetupParams<E>],
+            st_idx: usize,
+        ) -> Result<&'a Vec<G>, ProofSystemError> {
+            extract_param!(
+                setup_params,
+                &self.key,
+                self.key_ref,
+                $setup_param_variant,
+                IncompatiblePedCommSetupParamAtIndex,
+                st_idx
+            )
+        }
+    };
+}
+
 /// Create a `Statement` variant for proving knowledge of committed elements in a Pedersen commitment
 impl<G: AffineRepr> PedersenCommitment<G> {
-    pub fn new_statement_from_params<E: Pairing>(key: Vec<G>, commitment: G) -> Statement<E, G> {
-        Statement::PedersenCommitment(Self {
-            commitment,
-            key: Some(key),
-            key_ref: None,
-        })
-    }
+    impl_common_funcs!(
+        new_statement_from_params,
+        new_statement_from_params_refs,
+        get_commitment_key,
+        G1Affine,
+        PedersenCommitment,
+        PedersenCommitmentKey
+    );
 
-    pub fn new_statement_from_params_refs<E: Pairing>(
-        key_ref: usize,
-        commitment: G,
-    ) -> Statement<E, G> {
-        Statement::PedersenCommitment(Self {
-            commitment,
-            key: None,
-            key_ref: Some(key_ref),
-        })
-    }
-
-    pub fn get_commitment_key<'a, E: Pairing>(
-        &'a self,
-        setup_params: &'a [SetupParams<E, G>],
-        st_idx: usize,
-    ) -> Result<&'a Vec<G>, ProofSystemError> {
-        extract_param!(
-            setup_params,
-            &self.key,
-            self.key_ref,
-            PedersenCommitmentKey,
-            IncompatiblePedCommSetupParamAtIndex,
-            st_idx
-        )
-    }
+    impl_common_funcs!(
+        new_statement_from_params_g2,
+        new_statement_from_params_refs_g2,
+        get_commitment_key_g2,
+        G2Affine,
+        PedersenCommitmentG2,
+        PedersenCommitmentKeyG2
+    );
 }

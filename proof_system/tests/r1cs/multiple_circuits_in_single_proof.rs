@@ -1,4 +1,4 @@
-use ark_bls12_381::Bls12_381;
+use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::One;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -11,6 +11,7 @@ use proof_system::{
         EqualWitnesses, MetaStatements, ProofSpec, R1CSCircomWitness, SetupParams, Statements,
         Witness, WitnessRef, Witnesses,
     },
+    proof::Proof,
     statement::{
         bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
         r1cs_legogroth16::{
@@ -22,7 +23,7 @@ use proof_system::{
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::r1cs::get_r1cs_and_wasm_bytes;
-use test_utils::{bbs::*, test_serialization, Fr, ProofG1, G1};
+use test_utils::{bbs::*, test_serialization};
 
 #[test]
 fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_values() {
@@ -72,7 +73,7 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     prover_setup_params.push(SetupParams::R1CS(r1cs_2));
     prover_setup_params.push(SetupParams::Bytes(wasm_bytes_2));
 
-    test_serialization!(Vec<SetupParams<Bls12_381, G1>>, prover_setup_params);
+    test_serialization!(Vec<SetupParams<Bls12_381>>, prover_setup_params);
 
     let mut prover_statements = Statements::new();
     prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
@@ -139,7 +140,7 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
         witnesses.add(Witness::R1CSLegoGroth16(r1cs_wit));
     }
 
-    let proof = ProofG1::new::<StdRng, Blake2b512>(
+    let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         proof_spec_prover,
         witnesses.clone(),
@@ -157,7 +158,7 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
         Fr::one(),
         Fr::from(u64::MAX),
     ]));
-    test_serialization!(Vec<SetupParams<Bls12_381, G1>>, verifier_setup_params);
+    test_serialization!(Vec<SetupParams<Bls12_381>>, verifier_setup_params);
 
     let mut verifier_statements = Statements::new();
     verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(

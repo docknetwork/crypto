@@ -25,11 +25,11 @@ pub struct BoundCheckBpp<G: AffineRepr> {
 }
 
 impl<G: AffineRepr> BoundCheckBpp<G> {
-    pub fn new_statement_from_params<E: Pairing>(
+    pub fn new_statement_from_params<E: Pairing<G1Affine = G>>(
         min: u64,
         max: u64,
         params: BppSetupParams<G>,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         validate_bounds(min, max)?;
         Ok(Statement::BoundCheckBpp(Self {
             min,
@@ -39,11 +39,11 @@ impl<G: AffineRepr> BoundCheckBpp<G> {
         }))
     }
 
-    pub fn new_statement_from_params_ref<E: Pairing>(
+    pub fn new_statement_from_params_ref<E: Pairing<G1Affine = G>>(
         min: u64,
         max: u64,
         params_ref: usize,
-    ) -> Result<Statement<E, G>, ProofSystemError> {
+    ) -> Result<Statement<E>, ProofSystemError> {
         Ok(Statement::BoundCheckBpp(Self {
             min,
             max,
@@ -52,9 +52,9 @@ impl<G: AffineRepr> BoundCheckBpp<G> {
         }))
     }
 
-    pub fn get_setup_params<'a, E: Pairing>(
+    pub fn get_setup_params<'a, E: Pairing<G1Affine = G>>(
         &'a self,
-        setup_params: &'a [SetupParams<E, G>],
+        setup_params: &'a [SetupParams<E>],
         st_idx: usize,
     ) -> Result<&'a BppSetupParams<G>, ProofSystemError> {
         extract_param!(

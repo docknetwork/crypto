@@ -9,7 +9,7 @@ use crate::{
     prelude::bound_check_smc::SmcParamsAndCommitmentKey,
     statement::bound_check_smc_with_kv::SmcParamsAndCommitmentKeyAndSecretKey,
 };
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_std::vec::Vec;
 use bbs_plus::prelude::{
     PublicKeyG2 as BBSPublicKeyG2, SignatureParams23G1 as BBSSignatureParams23G1,
@@ -17,6 +17,7 @@ use bbs_plus::prelude::{
 };
 use bulletproofs_plus_plus::setup::SetupParams as BppSetupParams;
 use dock_crypto_utils::{commitment::PedersenCommitmentKey, serde_utils::ArkObjectBytes};
+use kvac::bddt_2016::setup::MACParams;
 use legogroth16::{
     circom::R1CS,
     data_structures::{ProvingKey as LegoSnarkProvingKey, VerifyingKey as LegoSnarkVerifyingKey},
@@ -40,14 +41,14 @@ use vb_accumulator::{
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub enum SetupParams<E: Pairing, G: AffineRepr> {
+pub enum SetupParams<E: Pairing> {
     BBSPlusSignatureParams(BBSSignatureParamsG1<E>),
     BBSPlusPublicKey(BBSPublicKeyG2<E>),
     VbAccumulatorParams(AccumParams<E>),
     VbAccumulatorPublicKey(AccumPublicKey<E>),
     VbAccumulatorMemProvingKey(MembershipProvingKey<E::G1Affine>),
     VbAccumulatorNonMemProvingKey(NonMembershipProvingKey<E::G1Affine>),
-    PedersenCommitmentKey(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<G>),
+    PedersenCommitmentKey(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::G1Affine>),
     SaverEncryptionGens(EncryptionGens<E>),
     SaverCommitmentGens(ChunkedCommitmentGens<E::G1Affine>),
     SaverEncryptionKey(EncryptionKey<E>),
@@ -61,15 +62,18 @@ pub enum SetupParams<E: Pairing, G: AffineRepr> {
     PSSignatureParams(coconut_crypto::setup::SignatureParams<E>),
     PSSignaturePublicKey(coconut_crypto::setup::PublicKey<E>),
     BBSSignatureParams23(BBSSignatureParams23G1<E>),
-    BppSetupParams(#[serde_as(as = "ArkObjectBytes")] BppSetupParams<G>),
+    BppSetupParams(#[serde_as(as = "ArkObjectBytes")] BppSetupParams<E::G1Affine>),
     SmcParamsAndCommKey(#[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKey<E>),
     SmcParamsAndCommKeyAndSk(
         #[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKeyAndSecretKey<E>,
     ),
-    CommitmentKey(#[serde_as(as = "ArkObjectBytes")] PedersenCommitmentKey<G>),
+    CommitmentKey(#[serde_as(as = "ArkObjectBytes")] PedersenCommitmentKey<E::G1Affine>),
     BBSigProvingKey(ProvingKey<E::G1Affine>),
     KBPositiveAccumulatorParams(KBAccumParams<E>),
     KBPositiveAccumulatorPublicKey(KBAccumPublicKey<E>),
+    BDDT16MACParams(MACParams<E::G1Affine>),
+    PedersenCommitmentKeyG2(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::G2Affine>),
+    CommitmentKeyG2(#[serde_as(as = "ArkObjectBytes")] PedersenCommitmentKey<E::G2Affine>),
 }
 
 macro_rules! delegate {
@@ -102,7 +106,10 @@ macro_rules! delegate {
                 CommitmentKey,
                 BBSigProvingKey,
                 KBPositiveAccumulatorParams,
-                KBPositiveAccumulatorPublicKey
+                KBPositiveAccumulatorPublicKey,
+                BDDT16MACParams,
+                PedersenCommitmentKeyG2,
+                CommitmentKeyG2
             : $($tt)+
         }
     }};
@@ -138,7 +145,10 @@ macro_rules! delegate_reverse {
                 CommitmentKey,
                 BBSigProvingKey,
                 KBPositiveAccumulatorParams,
-                KBPositiveAccumulatorPublicKey
+                KBPositiveAccumulatorPublicKey,
+                BDDT16MACParams,
+                PedersenCommitmentKeyG2,
+                CommitmentKeyG2
             : $($tt)+
         }
 
@@ -173,13 +183,13 @@ mod serialization {
     };
     use ark_std::io::{Read, Write};
 
-    impl<E: Pairing, G: AffineRepr> Valid for SetupParams<E, G> {
+    impl<E: Pairing> Valid for SetupParams<E> {
         fn check(&self) -> Result<(), SerializationError> {
             delegate!(self.check())
         }
     }
 
-    impl<E: Pairing, G: AffineRepr> CanonicalSerialize for SetupParams<E, G> {
+    impl<E: Pairing> CanonicalSerialize for SetupParams<E> {
         fn serialize_with_mode<W: Write>(
             &self,
             mut writer: W,
@@ -198,7 +208,7 @@ mod serialization {
         }
     }
 
-    impl<E: Pairing, G: AffineRepr> CanonicalDeserialize for SetupParams<E, G> {
+    impl<E: Pairing> CanonicalDeserialize for SetupParams<E> {
         fn deserialize_with_mode<R: Read>(
             mut reader: R,
             compress: Compress,

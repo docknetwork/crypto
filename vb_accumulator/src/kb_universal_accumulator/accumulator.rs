@@ -1,8 +1,8 @@
 //! A universal accumulator contructed from 2 positive accumulators where one accumulator accumulates all the members, say *Acc_M*,
-//! and the other accumulates all the non-members, say *Acc_N*. Thus in an empty accumulator, all possible elements, called
-//! the *domain* are present in the accumulator *Acc_N*. Adding an element to the accumulator results in adding the element to *Acc_M* and
-//! removing it from *Acc_N* and removing an element results in adding it to *Acc_N* and removing from *Acc_M*. A membership
-//! witness is a membership witness in *Acc_M* and a non-membership witness is a membership witness in *Acc_N*
+//! and the other accumulates all the non-members, say *Acc_N*. Thus in an empty universal accumulator, all possible elements, called
+//! the *domain* are present in the accumulator *Acc_N*. Adding an element to the universal accumulator results in adding the element to *Acc_M* and
+//! removing it from *Acc_N* and removing an element from the universal accumulator results in adding it to *Acc_N* and removing from *Acc_M*.
+//! A membership witness in the universal accumulator is a membership witness in *Acc_M* and a non-membership witness is a membership witness in *Acc_N*
 
 use crate::{
     batch_utils::Poly_d,
@@ -29,7 +29,7 @@ pub struct KBUniversalAccumulator<E: Pairing> {
 
 impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Initialize a new accumulator. `domain` is the set of all possible accumulator members. Initialization includes adding
-    /// the `domain` to the accumulator accumulating all non-members
+    /// the `domain` to the accumulator, accumulating all non-members
     pub fn initialize(
         params_gen: impl AsRef<E::G1Affine>,
         sk: &SecretKey<E::ScalarField>,

@@ -32,6 +32,12 @@ impl<G: AffineRepr> Zeroize for SharesAccumulator<G> {
     }
 }
 
+impl<G: AffineRepr> Drop for SharesAccumulator<G> {
+    fn drop(&mut self) {
+        self.zeroize()
+    }
+}
+
 impl<G: AffineRepr> SharesAccumulator<G> {
     pub fn new(id: ParticipantId, threshold: ShareId) -> Self {
         Self {
@@ -74,16 +80,12 @@ impl<G: AffineRepr> SharesAccumulator<G> {
     /// Called by a participant when it has received shares from all participants. Computes the final
     /// share of the distributed secret, own public key and the threshold public key
     pub fn finalize<'a>(
-        self,
+        mut self,
         ck: impl Into<&'a G> + Clone,
     ) -> Result<(Share<G::ScalarField>, G, G), SSError> {
-        Self::gen_final_share_and_public_key(
-            self.participant_id,
-            self.threshold,
-            self.shares,
-            self.coeff_comms,
-            ck,
-        )
+        let shares = core::mem::take(&mut self.shares);
+        let comms = core::mem::take(&mut self.coeff_comms);
+        Self::gen_final_share_and_public_key(self.participant_id, self.threshold, shares, comms, ck)
     }
 
     /// Compute the final share after receiving shares from all other participants. Also returns

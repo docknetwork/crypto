@@ -16,6 +16,7 @@ ark-bls12-381.workspace = true
 ark-serialize.workspace = true
 blake2.workspace = true
 proof_system = { default-features = false, path = "../proof_system"}
+kvac = { default-features = false, path = "../kvac"}
 
 [features]
 default = ["parallel"]

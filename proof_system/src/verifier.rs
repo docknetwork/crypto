@@ -1,9 +1,9 @@
 use crate::{
     constants::{
-        BBS_23_LABEL, BBS_PLUS_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL, COMPOSITE_PROOF_LABEL,
-        CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
+        BBS_23_LABEL, BBS_PLUS_LABEL, BDDT16_KVAC_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL,
+        COMPOSITE_PROOF_LABEL, CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_CDH_MEM_LABEL, KB_UNI_ACCUM_CDH_NON_MEM_LABEL, KB_UNI_ACCUM_MEM_LABEL,
-        KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, VB_ACCUM_CDH_MEM_LABEL,
+        KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, PS_LABEL, VB_ACCUM_CDH_MEM_LABEL,
         VB_ACCUM_CDH_NON_MEM_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL,
     },
     error::ProofSystemError,
@@ -19,6 +19,7 @@ use crate::{
                 KBUniversalAccumulatorNonMembershipCDHSubProtocol,
                 VBAccumulatorMembershipCDHSubProtocol, VBAccumulatorNonMembershipCDHSubProtocol,
             },
+            keyed_verification::VBAccumulatorMembershipKVSubProtocol,
             KBPositiveAccumulatorMembershipSubProtocol,
             KBUniversalAccumulatorMembershipSubProtocol,
             KBUniversalAccumulatorNonMembershipSubProtocol, VBAccumulatorMembershipSubProtocol,
@@ -26,6 +27,7 @@ use crate::{
         },
         bbs_23::PoKBBSSigG1SubProtocol as PoKBBSSig23G1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol,
+        bddt16_kvac::PoKOfMACSubProtocol,
         bound_check_bpp::BoundCheckBppProtocol,
         bound_check_legogroth16::BoundCheckLegoGrothProtocol,
         bound_check_smc::BoundCheckSmcProtocol,
@@ -37,11 +39,12 @@ use crate::{
         schnorr::SchnorrProtocol,
     },
 };
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec};
 use digest::Digest;
 use dock_crypto_utils::{
+    expect_equality,
     randomized_pairing_check::RandomizedPairingChecker,
     signature::MultiMessageSignatureParams,
     transcript::{MerlinTranscript, Transcript},
@@ -104,16 +107,12 @@ macro_rules! check_resp_for_equalities_with_err {
     };
 }
 
-impl<E, G> Proof<E, G>
-where
-    E: Pairing,
-    G: AffineRepr<ScalarField = E::ScalarField>,
-{
+impl<E: Pairing> Proof<E> {
     /// Verify the `Proof` given the `ProofSpec`, `nonce` and `config`
     pub fn verify<R: RngCore, D: Digest>(
         self,
         rng: &mut R,
-        proof_spec: ProofSpec<E, G>,
+        proof_spec: ProofSpec<E>,
         nonce: Option<Vec<u8>>,
         config: VerifierConfig,
     ) -> Result<(), ProofSystemError> {
@@ -129,7 +128,7 @@ where
     fn _verify<R: RngCore, D: Digest>(
         self,
         rng: &mut R,
-        proof_spec: ProofSpec<E, G>,
+        proof_spec: ProofSpec<E>,
         nonce: Option<Vec<u8>>,
         mut pairing_checker: Option<RandomizedPairingChecker<E>>,
     ) -> Result<(), ProofSystemError> {
@@ -228,6 +227,59 @@ where
             transcript.append_message(CONTEXT_LABEL, ctx);
         }
 
+        macro_rules! sig_protocol_chal_gen {
+            ($s: ident, $s_idx: ident, $p: ident, $label: ident) => {{
+                let revealed_msg_ids = $s.revealed_messages.keys().copied().collect();
+                let params = $s.get_params(&proof_spec.setup_params, $s_idx)?;
+                // Check witness equalities for this statement.
+                for i in 0..params.supported_message_count() {
+                    let w_ref = ($s_idx, i);
+                    for j in 0..witness_equalities.len() {
+                        if witness_equalities[j].contains(&w_ref) {
+                            let resp = $p.get_resp_for_message(i, &revealed_msg_ids)?;
+                            Self::check_response_for_equality(
+                                $s_idx,
+                                i,
+                                j,
+                                &mut responses_for_equalities,
+                                resp,
+                            )?;
+                        }
+                    }
+                }
+                transcript.set_label($label);
+                $p.challenge_contribution(&$s.revealed_messages, params, &mut transcript)?;
+            }};
+        }
+
+        macro_rules! ped_comm_protocol_chal_gen {
+            ($s: ident, $s_idx: ident, $p: ident, $com_key_func: ident) => {{
+                let comm_key = $s.$com_key_func(&proof_spec.setup_params, $s_idx)?;
+                for i in 0..comm_key.len() {
+                    // Check witness equalities for this statement.
+                    for j in 0..witness_equalities.len() {
+                        if witness_equalities[j].contains(&($s_idx, i)) {
+                            let r = $p.response.get_response(i)?;
+                            Self::check_response_for_equality(
+                                $s_idx,
+                                i,
+                                j,
+                                &mut responses_for_equalities,
+                                r,
+                            )?;
+                        }
+                    }
+                }
+
+                SchnorrProtocol::compute_challenge_contribution(
+                    comm_key,
+                    &$s.commitment,
+                    &$p.t,
+                    &mut transcript,
+                )?;
+            }};
+        }
+
         // Get challenge contribution for each statement and check if response is equal for all witnesses.
         for (s_idx, (statement, proof)) in proof_spec
             .statements
@@ -239,59 +291,13 @@ where
             match statement {
                 Statement::PoKBBSSignatureG1(s) => match proof {
                     StatementProof::PoKBBSSignatureG1(p) => {
-                        let revealed_msg_ids = s.revealed_messages.keys().copied().collect();
-                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
-                        // Check witness equalities for this statement.
-                        for i in 0..sig_params.supported_message_count() {
-                            let w_ref = (s_idx, i);
-                            for j in 0..witness_equalities.len() {
-                                if witness_equalities[j].contains(&w_ref) {
-                                    let resp = p.get_resp_for_message(i, &revealed_msg_ids)?;
-                                    Self::check_response_for_equality(
-                                        s_idx,
-                                        i,
-                                        j,
-                                        &mut responses_for_equalities,
-                                        resp,
-                                    )?;
-                                }
-                            }
-                        }
-                        transcript.set_label(BBS_PLUS_LABEL);
-                        p.challenge_contribution(
-                            &s.revealed_messages,
-                            sig_params,
-                            &mut transcript,
-                        )?;
+                        sig_protocol_chal_gen!(s, s_idx, p, BBS_PLUS_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::PoKBBSSignature23G1(s) => match proof {
                     StatementProof::PoKBBSSignature23G1(p) => {
-                        let revealed_msg_ids = s.revealed_messages.keys().copied().collect();
-                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
-                        // Check witness equalities for this statement.
-                        for i in 0..sig_params.supported_message_count() {
-                            let w_ref = (s_idx, i);
-                            for j in 0..witness_equalities.len() {
-                                if witness_equalities[j].contains(&w_ref) {
-                                    let resp = p.get_resp_for_message(i, &revealed_msg_ids)?;
-                                    Self::check_response_for_equality(
-                                        s_idx,
-                                        i,
-                                        j,
-                                        &mut responses_for_equalities,
-                                        resp,
-                                    )?;
-                                }
-                            }
-                        }
-                        transcript.set_label(BBS_23_LABEL);
-                        p.challenge_contribution(
-                            &s.revealed_messages,
-                            sig_params,
-                            &mut transcript,
-                        )?;
+                        sig_protocol_chal_gen!(s, s_idx, p, BBS_23_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -507,29 +513,13 @@ where
                 },
                 Statement::PedersenCommitment(s) => match proof {
                     StatementProof::PedersenCommitment(p) => {
-                        let comm_key = s.get_commitment_key(&proof_spec.setup_params, s_idx)?;
-                        for i in 0..comm_key.len() {
-                            // Check witness equalities for this statement.
-                            for j in 0..witness_equalities.len() {
-                                if witness_equalities[j].contains(&(s_idx, i)) {
-                                    let r = p.response.get_response(i)?;
-                                    Self::check_response_for_equality(
-                                        s_idx,
-                                        i,
-                                        j,
-                                        &mut responses_for_equalities,
-                                        r,
-                                    )?;
-                                }
-                            }
-                        }
-
-                        SchnorrProtocol::compute_challenge_contribution(
-                            comm_key,
-                            &s.commitment,
-                            &p.t,
-                            &mut transcript,
-                        )?;
+                        ped_comm_protocol_chal_gen!(s, s_idx, p, get_commitment_key);
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::PedersenCommitmentG2(s) => match proof {
+                    StatementProof::PedersenCommitmentG2(p) => {
+                        ped_comm_protocol_chal_gen!(s, s_idx, p, get_commitment_key_g2);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -665,7 +655,7 @@ where
                     StatementProof::PoKPSSignature(p) => {
                         let revealed_msg_ids: Vec<_> =
                             s.revealed_messages.keys().copied().collect();
-                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
+                        let sig_params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
                         // Check witness equalities for this statement.
                         for i in 0..sig_params.supported_message_count() {
@@ -686,6 +676,7 @@ where
                                 }
                             }
                         }
+                        transcript.set_label(PS_LABEL);
                         p.challenge_contribution(&mut transcript, pk, sig_params)?;
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -702,7 +693,7 @@ where
                         );
 
                         let comm_key = bound_check_bpp_comm.get(s_idx).unwrap();
-                        BoundCheckBppProtocol::<G>::compute_challenge_contribution(
+                        BoundCheckBppProtocol::<E::G1Affine>::compute_challenge_contribution(
                             s.min,
                             s.max,
                             comm_key.as_slice(),
@@ -825,6 +816,48 @@ where
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
+                Statement::PoKBDDT16MAC(s) => match proof {
+                    StatementProof::PoKOfBDDT16MAC(p) => {
+                        sig_protocol_chal_gen!(s, s_idx, p, BDDT16_KVAC_LABEL);
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::PoKBDDT16MACFullVerifier(s) => match proof {
+                    StatementProof::PoKOfBDDT16MAC(p) => {
+                        sig_protocol_chal_gen!(s, s_idx, p, BDDT16_KVAC_LABEL);
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::VBAccumulatorMembershipKV(s) => match proof {
+                    StatementProof::VBAccumulatorMembershipKV(p) => {
+                        check_resp_for_equalities!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_element,
+                            Self,
+                            responses_for_equalities
+                        );
+                        transcript.set_label(VB_ACCUM_MEM_LABEL);
+                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::VBAccumulatorMembershipKVFullVerifier(s) => match proof {
+                    StatementProof::VBAccumulatorMembershipKV(p) => {
+                        check_resp_for_equalities!(
+                            witness_equalities,
+                            s_idx,
+                            p,
+                            get_schnorr_response_for_element,
+                            Self,
+                            responses_for_equalities
+                        );
+                        transcript.set_label(VB_ACCUM_MEM_LABEL);
+                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -847,6 +880,22 @@ where
         // Verifier independently generates challenge
         let challenge = transcript.challenge_scalar(COMPOSITE_PROOF_CHALLENGE_LABEL);
 
+        macro_rules! sig_protocol_verify {
+            ($s: ident, $s_idx: ident, $protocol: ident, $p: ident, $derived_pk: ident, $derived_param: ident, $error_variant: ident) => {{
+                let params = $s.get_params(&proof_spec.setup_params, $s_idx)?;
+                let pk = $s.get_public_key(&proof_spec.setup_params, $s_idx)?;
+                let sp = $protocol::new($s_idx, &$s.revealed_messages, params, pk);
+                sp.verify_proof_contribution(
+                    &challenge,
+                    $p,
+                    $derived_pk.get($s_idx).unwrap().clone(),
+                    $derived_param.get($s_idx).unwrap().clone(),
+                    &mut pairing_checker,
+                )
+                .map_err(|e| ProofSystemError::$error_variant($s_idx as u32, e))?
+            }};
+        }
+
         // Verify the proof for each statement
         for (s_idx, (statement, proof)) in proof_spec
             .statements
@@ -858,47 +907,29 @@ where
             match statement {
                 Statement::PoKBBSSignatureG1(s) => match proof {
                     StatementProof::PoKBBSSignatureG1(ref p) => {
-                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let sp = PoKBBSSigG1SubProtocol::new(
+                        sig_protocol_verify!(
+                            s,
                             s_idx,
-                            &s.revealed_messages,
-                            sig_params,
-                            pk,
-                        );
-                        sp.verify_proof_contribution(
-                            &challenge,
+                            PoKBBSSigG1SubProtocol,
                             p,
-                            derived_bbs_pk.get(s_idx).unwrap().clone(),
-                            derived_bbs_plus_param.get(s_idx).unwrap().clone(),
-                            &mut pairing_checker,
-                        )
-                        .map_err(|e| {
-                            ProofSystemError::BBSPlusProofContributionFailed(s_idx as u32, e)
-                        })?
+                            derived_bbs_pk,
+                            derived_bbs_plus_param,
+                            BBSPlusProofContributionFailed
+                        );
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::PoKBBSSignature23G1(s) => match proof {
                     StatementProof::PoKBBSSignature23G1(ref p) => {
-                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let sp = PoKBBSSig23G1SubProtocol::new(
+                        sig_protocol_verify!(
+                            s,
                             s_idx,
-                            &s.revealed_messages,
-                            sig_params,
-                            pk,
-                        );
-                        sp.verify_proof_contribution(
-                            &challenge,
+                            PoKBBSSig23G1SubProtocol,
                             p,
-                            derived_bbs_pk.get(s_idx).unwrap().clone(),
-                            derived_bbs_param.get(s_idx).unwrap().clone(),
-                            &mut pairing_checker,
-                        )
-                        .map_err(|e| {
-                            ProofSystemError::BBSProofContributionFailed(s_idx as u32, e)
-                        })?
+                            derived_bbs_pk,
+                            derived_bbs_param,
+                            BBSProofContributionFailed
+                        );
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -1126,6 +1157,16 @@ where
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
+                Statement::PedersenCommitmentG2(s) => match proof {
+                    StatementProof::PedersenCommitmentG2(ref p) => {
+                        let comm_key = s.get_commitment_key_g2(&proof_spec.setup_params, s_idx)?;
+                        let sp = SchnorrProtocol::new(s_idx, comm_key, s.commitment);
+                        sp.verify_proof_contribution(&challenge, p).map_err(|e| {
+                            ProofSystemError::SchnorrProofContributionFailed(s_idx as u32, e)
+                        })?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
                 Statement::SaverVerifier(s) => {
                     let enc_gens = s.get_encryption_gens(&proof_spec.setup_params, s_idx)?;
                     let comm_gens =
@@ -1262,17 +1303,15 @@ where
                 }
                 Statement::PoKPSSignature(s) => match proof {
                     StatementProof::PoKPSSignature(ref p) => {
-                        let sig_params = s.get_sig_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let sp = PSSignaturePoK::new(s_idx, &s.revealed_messages, sig_params, pk);
-
-                        sp.verify_proof_contribution(
-                            &challenge,
+                        sig_protocol_verify!(
+                            s,
+                            s_idx,
+                            PSSignaturePoK,
                             p,
-                            derived_ps_pk.get(s_idx).unwrap().clone(),
-                            derived_ps_param.get(s_idx).unwrap().clone(),
-                            &mut pairing_checker,
-                        )?
+                            derived_ps_pk,
+                            derived_ps_param,
+                            PSProofContributionFailed
+                        );
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -1336,6 +1375,43 @@ where
                 },
                 Statement::DetachedAccumulatorMembershipVerifier(_s) => (),
                 Statement::DetachedAccumulatorNonMembershipVerifier(_s) => (),
+                Statement::PoKBDDT16MAC(s) => match proof {
+                    StatementProof::PoKOfBDDT16MAC(ref p) => {
+                        let mac_params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let sp = PoKOfMACSubProtocol::new(s_idx, &s.revealed_messages, mac_params);
+                        sp.verify_proof_contribution(&challenge, p).map_err(|e| {
+                            ProofSystemError::BDDT16KVACProofContributionFailed(s_idx as u32, e)
+                        })?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::PoKBDDT16MACFullVerifier(s) => match proof {
+                    StatementProof::PoKOfBDDT16MAC(ref p) => {
+                        let mac_params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let sp = PoKOfMACSubProtocol::new(s_idx, &s.revealed_messages, mac_params);
+                        sp.verify_full_proof_contribution(&challenge, p, &s.secret_key)
+                            .map_err(|e| {
+                                ProofSystemError::BDDT16KVACProofContributionFailed(s_idx as u32, e)
+                            })?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::VBAccumulatorMembershipKV(s) => match proof {
+                    StatementProof::VBAccumulatorMembershipKV(ref p) => {
+                        let sp =
+                            VBAccumulatorMembershipKVSubProtocol::new(s_idx, s.accumulator_value);
+                        sp.verify_proof_contribution(&challenge, p)?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::VBAccumulatorMembershipKVFullVerifier(s) => match proof {
+                    StatementProof::VBAccumulatorMembershipKV(ref p) => {
+                        let sp =
+                            VBAccumulatorMembershipKVSubProtocol::new(s_idx, s.accumulator_value);
+                        sp.verify_full_proof_contribution(&challenge, p, &s.secret_key)?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -1350,12 +1426,11 @@ where
 
             if let Some(to_aggregate) = proof_spec.aggregate_groth16 {
                 if let Some(aggr_proofs) = self.aggregated_groth16 {
-                    if to_aggregate.len() != aggr_proofs.len() {
-                        return Err(ProofSystemError::InvalidNumberOfAggregateGroth16Proofs(
-                            to_aggregate.len(),
-                            aggr_proofs.len(),
-                        ));
-                    }
+                    expect_equality!(
+                        to_aggregate.len(),
+                        aggr_proofs.len(),
+                        ProofSystemError::InvalidNumberOfAggregateGroth16Proofs
+                    );
                     for (i, a) in aggr_proofs.into_iter().enumerate() {
                         if to_aggregate[i] != a.statements {
                             return Err(
@@ -1392,12 +1467,11 @@ where
 
             if let Some(to_aggregate) = proof_spec.aggregate_legogroth16 {
                 if let Some(aggr_proofs) = self.aggregated_legogroth16 {
-                    if to_aggregate.len() != aggr_proofs.len() {
-                        return Err(ProofSystemError::InvalidNumberOfAggregateLegoGroth16Proofs(
-                            to_aggregate.len(),
-                            aggr_proofs.len(),
-                        ));
-                    }
+                    expect_equality!(
+                        to_aggregate.len(),
+                        aggr_proofs.len(),
+                        ProofSystemError::InvalidNumberOfAggregateLegoGroth16Proofs
+                    );
                     for (i, a) in aggr_proofs.into_iter().enumerate() {
                         if to_aggregate[i] != a.statements {
                             return Err(ProofSystemError::NotFoundAggregateLegoGroth16ProofForRequiredStatements(i, to_aggregate[i].clone()));

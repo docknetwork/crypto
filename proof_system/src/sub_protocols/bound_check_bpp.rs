@@ -24,7 +24,6 @@ pub struct BoundCheckBppProtocol<'a, G: AffineRepr> {
     pub commitments: Option<Vec<G>>,
     pub bpp_randomness: Option<Vec<G::ScalarField>>,
     pub values: Option<Vec<u64>>,
-    // pub bpp_proof: Option<ProofArbitraryRange<G>>,
     pub sp1: Option<SchnorrProtocol<'a, G>>,
     pub sp2: Option<SchnorrProtocol<'a, G>>,
 }
@@ -51,7 +50,6 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         comm_key: &'a [G],
         message: G::ScalarField,
         blinding: Option<G::ScalarField>,
-        // transcript: &mut impl Transcript,
     ) -> Result<(), ProofSystemError> {
         if self.sp1.is_some() || self.sp2.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -100,7 +98,6 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         blindings.insert(0, blinding);
 
         let (r1, r2) = blindings_for_bpp;
-        // let (comm_1, comm_2) = self.get_commitments_to_values(&bpp_proof)?;
         let (comm_1, comm_2) =
             (ProofArbitraryRange::get_commitments_to_values_given_transformed_commitments_and_g(
                 commitments,
@@ -113,7 +110,6 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         let mut sp2 = SchnorrProtocol::new(10000, comm_key, comm_2);
         sp1.init(rng, blindings.clone(), vec![message, r1])?;
         sp2.init(rng, blindings, vec![message, -r2])?;
-        // self.bpp_proof = Some(bpp_proof);
         self.sp1 = Some(sp1);
         self.sp2 = Some(sp2);
         Ok(())
@@ -138,12 +134,12 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
     }
 
     /// Generate responses for both the Schnorr protocols
-    pub fn gen_proof_contribution<E: Pairing, R: RngCore>(
+    pub fn gen_proof_contribution<E: Pairing<G1Affine = G>, R: RngCore>(
         &mut self,
         rng: &mut R,
         challenge: &G::ScalarField,
         transcript: &mut impl Transcript,
-    ) -> Result<StatementProof<E, G>, ProofSystemError> {
+    ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.sp1.is_none() || self.sp2.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                 self.id,

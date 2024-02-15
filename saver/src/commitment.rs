@@ -147,7 +147,7 @@ impl<G: AffineRepr> ChunkedCommitment<G> {
 mod tests {
     use super::*;
 
-    use ark_bls12_381::{Bls12_381, G1Affine};
+    use ark_bls12_381::{Bls12_381, Fr};
     use ark_ec::pairing::Pairing;
 
     use ark_std::{
@@ -169,9 +169,6 @@ mod tests {
         },
         statement::ped_comm::PedersenCommitment as PedersenCommitmentStmt,
     };
-
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
-    type ProofG1 = Proof<Bls12_381, G1Affine>;
 
     #[test]
     fn commitment_key_creation() {
@@ -256,7 +253,7 @@ mod tests {
                 wit2[n as usize] = r;
 
                 let start = Instant::now();
-                let mut statements = Statements::new();
+                let mut statements = Statements::<Bls12_381>::new();
                 statements.add(PedersenCommitmentStmt::new_statement_from_params(
                     gs.clone(),
                     comm_2.clone(),
@@ -282,7 +279,7 @@ mod tests {
                 witnesses.add(Witness::PedersenCommitment(decomposed));
                 witnesses.add(Witness::PedersenCommitment(wit2));
 
-                let proof = ProofG1::new::<StdRng, Blake2b512>(
+                let proof = Proof::new::<StdRng, Blake2b512>(
                     &mut rng,
                     proof_spec.clone(),
                     witnesses.clone(),
