@@ -25,7 +25,7 @@ pub struct SignatureParams<E: Pairing> {
     pub g2: E::G2Affine,
 }
 
-/// `SignatureParams` with pre-computation done for protocols more efficient
+/// `SignatureParams` with pre-computation done for protocols to be more efficient
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SignatureParamsWithPairing<E: Pairing> {
     pub g1: E::G1Affine,

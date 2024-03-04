@@ -27,14 +27,30 @@ pub struct PoKBBSSigG1SubProtocol<'a, E: Pairing> {
     pub id: usize,
     pub revealed_messages: &'a BTreeMap<usize, E::ScalarField>,
     pub signature_params: &'a SignatureParamsG1<E>,
-    pub public_key: &'a PublicKeyG2<E>,
+    pub public_key: Option<&'a PublicKeyG2<E>>,
     pub protocol: Option<PoKOfSignatureG1Protocol<E>>,
 }
 
 #[macro_export]
 macro_rules! impl_bbs_subprotocol {
     ($params: ident, $wit: ident, $protocol: ident, $stmt_proof: ident, $proof: ident, $prepared_params: ident) => {
-        pub fn new(
+        /// Create new protocol for prover
+        pub fn new_for_prover(
+            id: usize,
+            revealed_messages: &'a BTreeMap<usize, E::ScalarField>,
+            signature_params: &'a $params<E>,
+        ) -> Self {
+            Self {
+                id,
+                revealed_messages,
+                signature_params,
+                public_key: None,
+                protocol: None,
+            }
+        }
+
+        /// Create new protocol for verifier.
+        pub fn new_for_verifier(
             id: usize,
             revealed_messages: &'a BTreeMap<usize, E::ScalarField>,
             signature_params: &'a $params<E>,
@@ -44,7 +60,7 @@ macro_rules! impl_bbs_subprotocol {
                 id,
                 revealed_messages,
                 signature_params,
-                public_key,
+                public_key: Some(public_key),
                 protocol: None,
             }
         }

@@ -18,7 +18,10 @@ use proof_system::{
     },
     proof::Proof,
     statement::{
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         r1cs_legogroth16::{
             R1CSCircomProver as R1CSProverStmt, R1CSCircomVerifier as R1CSVerifierStmt,
         },
@@ -57,9 +60,8 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     );
 
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     prover_statements.add(
@@ -109,7 +111,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -148,7 +150,7 @@ fn pok_of_bbs_plus_sig_and_attributes_not_equals_check() {
 
     // Proof with wrong public input fails
     let mut verifier_statements_1 = Statements::new();
-    verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements_1.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -254,9 +256,8 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         snark_pk: ProvingKey<Bls12_381>,
     ) {
         let mut prover_statements = Statements::new();
-        prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params.clone(),
-            pk.clone(),
             BTreeMap::new(),
         ));
         prover_statements.add(
@@ -313,7 +314,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         test_serialization!(Proof<Bls12_381>, proof);
 
         let mut verifier_statements = Statements::new();
-        verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
             sig_params.clone(),
             pk.clone(),
             BTreeMap::new(),
@@ -347,9 +348,8 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         // Proof with wrong public input fails
         let mut verifier_statements_1 = Statements::new();
-        verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        verifier_statements_1.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params.clone(),
-            pk.clone(),
             BTreeMap::new(),
         ));
         verifier_statements_1.add(
@@ -411,7 +411,7 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
         .0;
 
         let mut verifier_statements_2 = Statements::new();
-        verifier_statements_2.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        verifier_statements_2.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
             sig_params.clone(),
             pk.clone(),
             BTreeMap::new(),
@@ -435,9 +435,8 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
         // Proof with wrong public input fails
         let mut verifier_statements_3 = Statements::new();
-        verifier_statements_3.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        verifier_statements_3.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params,
-            pk,
             BTreeMap::new(),
         ));
         verifier_statements_3.add(
@@ -489,14 +488,12 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     test_serialization!(Vec<SetupParams<Bls12_381>>, prover_setup_params);
 
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params_1.clone(),
-        sig_keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params_2.clone(),
-        sig_keypair_2.public_key.clone(),
         BTreeMap::new(),
     ));
     prover_statements.add(R1CSProverStmt::new_statement_from_params_ref(1, 2, 0).unwrap());
@@ -568,12 +565,12 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
     test_serialization!(Vec<SetupParams<Bls12_381>>, verifier_setup_params);
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params_1.clone(),
         sig_keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params_2.clone(),
         sig_keypair_2.public_key.clone(),
         BTreeMap::new(),
@@ -600,12 +597,12 @@ fn pok_of_bbs_plus_sig_and_attributes_less_than_check() {
 
     // Proof with wrong public input fails
     let mut verifier_statements_1 = Statements::new();
-    verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements_1.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params_1,
         sig_keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements_1.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params_2,
         sig_keypair_2.public_key.clone(),
         BTreeMap::new(),
@@ -663,9 +660,8 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     // ---------------- Case 1 ----------------------------------------------
 
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     prover_statements.add(
@@ -725,7 +721,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -760,7 +756,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     // Proof with wrong public input fails
     let mut verifier_statements_1 = Statements::new();
-    verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements_1.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -826,9 +822,8 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     // ---------------- Case 2 ----------------------------------------------
 
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     prover_statements.add(
@@ -878,7 +873,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -913,7 +908,7 @@ fn pok_of_bbs_plus_sig_and_multiplication_check() {
 
     // Proof with wrong public input fails
     let mut verifier_statements_1 = Statements::new();
-    verifier_statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements_1.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),

@@ -129,6 +129,7 @@ use short_group_sig::common::ProvingKey;
     Serialize,
     Deserialize,
 )]
+#[serde(bound = "")]
 pub struct RandomizedWitness<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub E_C: G,
@@ -152,6 +153,7 @@ pub struct RandomizedWitness<G: AffineRepr> {
     Zeroize,
     ZeroizeOnDrop,
 )]
+#[serde(bound = "")]
 pub struct Blindings<F: PrimeField> {
     #[serde_as(as = "ArkObjectBytes")]
     pub sigma: F,
@@ -178,6 +180,7 @@ pub struct Blindings<F: PrimeField> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct SchnorrCommit<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub R_E: PairingOutput<E>,
@@ -196,6 +199,7 @@ pub struct SchnorrCommit<E: Pairing> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct SchnorrResponse<F: PrimeField> {
     #[serde_as(as = "ArkObjectBytes")]
     pub s_y: F,
@@ -223,10 +227,8 @@ pub struct SchnorrResponse<F: PrimeField> {
     Serialize,
     Deserialize,
 )]
+#[serde(bound = "")]
 pub struct MembershipRandomizedWitness<G: AffineRepr>(
-    #[serde(
-        bound = "RandomizedWitness<G>: Serialize, for<'a> RandomizedWitness<G>: Deserialize<'a>"
-    )]
     pub RandomizedWitness<G>,
 );
 
@@ -244,9 +246,9 @@ pub struct MembershipRandomizedWitness<G: AffineRepr>(
     Zeroize,
     ZeroizeOnDrop,
 )]
+#[serde(bound = "")]
 pub struct MembershipBlindings<F: PrimeField>(
-    #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
-    pub  Blindings<F>,
+    pub Blindings<F>,
 );
 
 /// Commitments from various Schnorr protocols used during membership proof protocol
@@ -254,9 +256,9 @@ pub struct MembershipBlindings<F: PrimeField>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct MembershipSchnorrCommit<E: Pairing>(
-    #[serde(bound = "SchnorrCommit<E>: Serialize, for<'a> SchnorrCommit<E>: Deserialize<'a>")]
-    pub  SchnorrCommit<E>,
+    pub SchnorrCommit<E>,
 );
 
 /// Responses from various Schnorr protocols used during membership proof protocol
@@ -264,8 +266,8 @@ pub struct MembershipSchnorrCommit<E: Pairing>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct MembershipSchnorrResponse<F: PrimeField>(
-    #[serde(bound = "SchnorrResponse<F>: Serialize, for<'a> SchnorrResponse<F>: Deserialize<'a>")]
     pub SchnorrResponse<F>,
 );
 
@@ -274,18 +276,10 @@ pub struct MembershipSchnorrResponse<F: PrimeField>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct MembershipProof<E: Pairing> {
-    #[serde(
-        bound = "MembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> MembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
-    )]
     pub randomized_witness: MembershipRandomizedWitness<E::G1Affine>,
-    #[serde(
-        bound = "MembershipSchnorrCommit<E>: Serialize, for<'a> MembershipSchnorrCommit<E>: Deserialize<'a>"
-    )]
     pub schnorr_commit: MembershipSchnorrCommit<E>,
-    #[serde(
-        bound = "MembershipSchnorrResponse<E::ScalarField>: Serialize, for<'a> MembershipSchnorrResponse<E::ScalarField>: Deserialize<'a>"
-    )]
     pub schnorr_response: MembershipSchnorrResponse<E::ScalarField>,
 }
 
@@ -306,18 +300,12 @@ pub struct MembershipProof<E: Pairing> {
 pub struct MembershipProofProtocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub element: E::ScalarField,
-    #[serde(
-        bound = "MembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> MembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
-    )]
+    #[serde(bound = "")]
     pub randomized_witness: MembershipRandomizedWitness<E::G1Affine>,
     #[zeroize(skip)]
-    #[serde(
-        bound = "MembershipSchnorrCommit<E>: Serialize, for<'a> MembershipSchnorrCommit<E>: Deserialize<'a>"
-    )]
+    #[serde(bound = "")]
     pub schnorr_commit: MembershipSchnorrCommit<E>,
-    #[serde(
-        bound = "MembershipSchnorrResponse<E::ScalarField>: Serialize, for<'a> MembershipSchnorrResponse<E::ScalarField>: Deserialize<'a>"
-    )]
+    #[serde(bound = "")]
     pub schnorr_blindings: MembershipBlindings<E::ScalarField>,
 }
 

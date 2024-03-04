@@ -13,7 +13,10 @@ use proof_system::{
     proof::Proof,
     setup_params::SetupParams,
     statement::{
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         bound_check_legogroth16::{
             BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
             BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt,
@@ -74,14 +77,12 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
     prover_setup_params.push(SetupParams::SaverProvingKey(snark_pk.clone()));
 
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         params_1.clone(),
-        keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         params_2.clone(),
-        keypair_2.public_key.clone(),
         BTreeMap::new(),
     ));
 
@@ -159,12 +160,12 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
     verifier_setup_params.push(SetupParams::SaverVerifyingKey(snark_pk.pk.vk));
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         params_1,
         keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         params_2,
         keypair_2.public_key.clone(),
         BTreeMap::new(),
@@ -276,14 +277,12 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(snark_pk.clone()));
 
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         params_1.clone(),
-        keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         params_2.clone(),
-        keypair_2.public_key.clone(),
         BTreeMap::new(),
     ));
 
@@ -358,12 +357,12 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
     verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(snark_pk.vk));
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         params_1,
         keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         params_2,
         keypair_2.public_key.clone(),
         BTreeMap::new(),

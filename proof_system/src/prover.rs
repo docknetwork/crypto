@@ -200,7 +200,7 @@ impl<E: Pairing> Proof<E> {
         }
 
         macro_rules! sig_protocol_init {
-            ($s: ident, $s_idx: ident, $w: ident, $protocol: ident, $protocol_variant: ident, $label: ident) => {{
+            ($s: ident, $s_idx: ident, $w: ident, $protocol: ident, $func_name: ident, $protocol_variant: ident, $label: ident) => {{
                 // Prepare blindings for this signature proof
                 let blindings_map = build_blindings_map::<E>(
                     &mut blindings,
@@ -208,8 +208,7 @@ impl<E: Pairing> Proof<E> {
                     $w.unrevealed_messages.keys().cloned(),
                 );
                 let sig_params = $s.get_params(&proof_spec.setup_params, $s_idx)?;
-                let pk = $s.get_public_key(&proof_spec.setup_params, $s_idx)?;
-                let mut sp = $protocol::new($s_idx, &$s.revealed_messages, sig_params, pk);
+                let mut sp = $protocol::$func_name($s_idx, &$s.revealed_messages, sig_params);
                 sp.init(rng, blindings_map, $w)?;
                 transcript.set_label($label);
                 sp.challenge_contribution(&mut transcript)?;
@@ -252,26 +251,28 @@ impl<E: Pairing> Proof<E> {
             .enumerate()
         {
             match statement {
-                Statement::PoKBBSSignatureG1(s) => match witness {
+                Statement::PoKBBSSignatureG1Prover(s) => match witness {
                     Witness::PoKBBSSignatureG1(w) => {
                         sig_protocol_init!(
                             s,
                             s_idx,
                             w,
                             PoKBBSPlusSigG1SubProtocol,
+                            new_for_prover,
                             PoKBBSSignatureG1,
                             BBS_PLUS_LABEL
                         );
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
-                Statement::PoKBBSSignature23G1(s) => match witness {
+                Statement::PoKBBSSignature23G1Prover(s) => match witness {
                     Witness::PoKBBSSignature23G1(w) => {
                         sig_protocol_init!(
                             s,
                             s_idx,
                             w,
                             PoKBBSSigG1SubProtocol,
+                            new_for_prover,
                             PoKBBSSignature23G1,
                             BBS_23_LABEL
                         );
@@ -572,7 +573,19 @@ impl<E: Pairing> Proof<E> {
                 },
                 Statement::PoKPSSignature(s) => match witness {
                     Witness::PoKPSSignature(w) => {
-                        sig_protocol_init!(s, s_idx, w, PSSignaturePoK, PSSignaturePoK, PS_LABEL);
+                        // Prepare blindings for this PS sig proof
+                        let blindings_map = build_blindings_map::<E>(
+                            &mut blindings,
+                            s_idx,
+                            w.unrevealed_messages.keys().cloned(),
+                        );
+                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        let mut sp = PSSignaturePoK::new(s_idx, &s.revealed_messages, params, pk);
+                        sp.init::<R>(rng, blindings_map, w)?;
+                        transcript.set_label(PS_LABEL);
+                        sp.challenge_contribution(&mut transcript)?;
+                        sub_protocols.push(SubProtocol::PSSignaturePoK(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
@@ -667,18 +680,15 @@ impl<E: Pairing> Proof<E> {
                 },
                 Statement::PoKBDDT16MAC(s) => match witness {
                     Witness::PoKOfBDDT16MAC(w) => {
-                        // Prepare blindings for this BDDT16 MAC proof
-                        let blindings_map = build_blindings_map::<E>(
-                            &mut blindings,
+                        sig_protocol_init!(
+                            s,
                             s_idx,
-                            w.unrevealed_messages.keys().cloned(),
+                            w,
+                            PoKOfMACSubProtocol,
+                            new,
+                            PoKOfBDDT16MAC,
+                            BDDT16_KVAC_LABEL
                         );
-                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
-                        let mut sp = PoKOfMACSubProtocol::new(s_idx, &s.revealed_messages, params);
-                        sp.init::<R>(rng, blindings_map, w)?;
-                        transcript.set_label(BDDT16_KVAC_LABEL);
-                        sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::PoKOfBDDT16MAC(sp));
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },

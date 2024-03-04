@@ -23,7 +23,7 @@ pub struct PoKBBSSigG1SubProtocol<'a, E: Pairing> {
     pub id: usize,
     pub revealed_messages: &'a BTreeMap<usize, E::ScalarField>,
     pub signature_params: &'a SignatureParams23G1<E>,
-    pub public_key: &'a PublicKeyG2<E>,
+    pub public_key: Option<&'a PublicKeyG2<E>>,
     pub protocol: Option<PoKOfSignature23G1Protocol<E>>,
 }
 

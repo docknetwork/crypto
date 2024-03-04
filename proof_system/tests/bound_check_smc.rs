@@ -15,7 +15,10 @@ use proof_system::{
     prelude::bound_check_smc::SmcParamsAndCommitmentKey,
     proof::Proof,
     statement::{
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         bound_check_smc::BoundCheckSmc as BoundCheckStmt,
     },
     sub_protocols::should_use_cls,
@@ -51,9 +54,8 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         is_cls: bool,
     ) {
         let mut prover_statements = Statements::new();
-        prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params.clone(),
-            sig_keypair.public_key.clone(),
             BTreeMap::new(),
         ));
         prover_statements.add(
@@ -138,7 +140,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         }
 
         let mut verifier_statements = Statements::new();
-        verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
             sig_params.clone(),
             sig_keypair.public_key.clone(),
             BTreeMap::new(),

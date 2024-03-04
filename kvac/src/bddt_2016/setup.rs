@@ -1,9 +1,12 @@
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::PrimeField;
+use ark_ff::{
+    field_hashers::{DefaultFieldHasher, HashToField},
+    PrimeField,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{rand::RngCore, vec::Vec};
+use ark_std::{cfg_iter, rand::RngCore, vec::Vec};
 use core::iter::once;
-use digest::Digest;
+use digest::{Digest, DynDigest};
 use dock_crypto_utils::{
     affine_group_element_from_byte_slices, concat_slices, join,
     misc::{n_projective_group_elements, seq_pairs_satisfy},
@@ -143,6 +146,13 @@ impl<G: AffineRepr> MACParams<G> {
         let commitment = self.commit_to_messages(indexed_messages_sorted_by_index, s)?;
         Ok(commitment + self.h)
     }
+
+    pub fn is_valid(&self) -> bool {
+        !(self.g_0.is_zero()
+            || self.g.is_zero()
+            || self.h.is_zero()
+            || cfg_iter!(self.g_vec).any(|v| v.is_zero()))
+    }
 }
 
 impl<G: AffineRepr> MultiMessageSignatureParams for MACParams<G> {
@@ -160,6 +170,11 @@ impl<G: AffineRepr> MultiMessageSignatureParams for &MACParams<G> {
 impl<F: PrimeField> SecretKey<F> {
     pub fn new<R: RngCore>(rng: &mut R) -> Self {
         Self(F::rand(rng))
+    }
+
+    pub fn generate_using_seed<D: DynDigest + Default + Clone>(seed: &[u8]) -> Self {
+        let hasher = <DefaultFieldHasher<D> as HashToField<F>>::new(b"BDDT16-MAC-KEYGEN-SALT");
+        Self(hasher.hash_to_field(seed, 1).pop().unwrap())
     }
 }
 

@@ -15,8 +15,14 @@ use proof_system::{
     prover::{OldLegoGroth16Proof, OldSaverProof},
     setup_params::SetupParams,
     statement::{
-        bbs_23::PoKBBSSignature23G1 as PoKSignatureBBS23G1Stmt,
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_23::{
+            PoKBBSSignature23G1Prover as PoKSignatureBBS23G1ProverStmt,
+            PoKBBSSignature23G1Verifier as PoKSignatureBBS23G1VerifierStmt,
+        },
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         bound_check_legogroth16::{
             BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
             BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt,
@@ -67,7 +73,7 @@ pub fn decrypt_and_verify(
 }
 
 macro_rules! gen_tests {
-    ($test1_name: ident, $test2_name: ident, $setup_fn_name: ident, $stmt: ident, $wit: ident) => {
+    ($test1_name: ident, $test2_name: ident, $setup_fn_name: ident, $prover_stmt: ident, $verifier_stmt: ident, $wit: ident) => {
         #[test]
         fn $test1_name() {
             // Prove knowledge of BBS+ signature and a specific message is verifiably encrypted.
@@ -93,9 +99,8 @@ macro_rules! gen_tests {
             let enc_msg = msgs[enc_msg_idx];
 
             let mut prover_statements = Statements::new();
-            prover_statements.add($stmt::new_statement_from_params(
+            prover_statements.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
             prover_statements.add(
@@ -161,7 +166,7 @@ macro_rules! gen_tests {
             test_serialization!(Proof<Bls12_381>, proof);
 
             let mut verifier_statements = Statements::new();
-            verifier_statements.add($stmt::new_statement_from_params(
+            verifier_statements.add($verifier_stmt::new_statement_from_params(
                 sig_params,
                 sig_keypair.public_key.clone(),
                 BTreeMap::new(),
@@ -419,9 +424,8 @@ macro_rules! gen_tests {
 
                 let mut prover_statements = Statements::new();
                 let mut meta_statements = MetaStatements::new();
-                prover_statements.add($stmt::new_statement_from_params(
+                prover_statements.add($prover_stmt::new_statement_from_params(
                     sig_params.clone(),
-                    sig_keypair.public_key.clone(),
                     BTreeMap::new(),
                 ));
                 for (i, j) in enc_msg_indices.iter().enumerate() {
@@ -499,7 +503,7 @@ macro_rules! gen_tests {
                 }
 
                 let mut verifier_statements = Statements::new();
-                verifier_statements.add($stmt::new_statement_from_params(
+                verifier_statements.add($verifier_stmt::new_statement_from_params(
                     sig_params,
                     sig_keypair.public_key.clone(),
                     BTreeMap::new(),
@@ -675,14 +679,16 @@ gen_tests!(
     pok_of_bbs_plus_sig_and_verifiable_encryption,
     pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages,
     bbs_plus_sig_setup,
-    PoKSignatureBBSG1Stmt,
+    PoKSignatureBBSG1ProverStmt,
+    PoKSignatureBBSG1VerifierStmt,
     PoKSignatureBBSG1Wit
 );
 gen_tests!(
     pok_of_bbs_sig_and_verifiable_encryption,
     pok_of_bbs_sig_and_verifiable_encryption_of_many_messages,
     bbs_sig_setup,
-    PoKSignatureBBS23G1Stmt,
+    PoKSignatureBBS23G1ProverStmt,
+    PoKSignatureBBS23G1VerifierStmt,
     PoKSignatureBBS23G1Wit
 );
 
@@ -743,9 +749,8 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         }
 
         let mut prover_statements = Statements::new();
-        prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params.clone(),
-            sig_keypair.public_key.clone(),
             BTreeMap::new(),
         ));
 
@@ -910,7 +915,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
         }
 
         let mut verifier_statements = Statements::new();
-        verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
             sig_params,
             sig_keypair.public_key.clone(),
             BTreeMap::new(),
@@ -1225,9 +1230,8 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     prover_setup_params.push(SetupParams::LegoSnarkProvingKey(bound_snark_pk.clone()));
 
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     prover_statements
@@ -1306,7 +1310,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     verifier_setup_params.push(SetupParams::LegoSnarkVerifyingKey(bound_snark_pk.vk));
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),

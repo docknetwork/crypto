@@ -8,6 +8,7 @@ use blake2::Blake2b512;
 use kvac::bddt_2016::mac::MAC;
 use proof_system::{
     meta_statement::{EqualWitnesses, MetaStatements, WitnessRef},
+    prelude::Witness,
     proof::Proof,
     proof_spec::ProofSpec,
     setup_params::SetupParams,
@@ -16,6 +17,7 @@ use proof_system::{
             VBAccumulatorMembershipKV, VBAccumulatorMembershipKVFullVerifier,
         },
         bddt16_kvac::{PoKOfMAC, PoKOfMACFullVerifier},
+        ped_comm::PedersenCommitment as PedersenCommitmentStmt,
         Statements,
     },
     witness::{Membership as MembershipWit, PoKOfBDDT16MAC, Witnesses},
@@ -369,4 +371,93 @@ fn pok_of_knowledge_of_macs_with_reusing_setup_params() {
         "Time to verify full proof with 4 MACs: {:?}",
         start.elapsed()
     );
+}
+
+#[test]
+fn requesting_blind_mac() {
+    // Request a blind MAC by first proving knowledge of values in a Pedersen commitment. The
+    // requester then unblinds the MAC and verifies it.
+
+    let mut rng = StdRng::seed_from_u64(0u64);
+
+    // The total number of messages in the MAC
+    let total_msg_count = 10;
+
+    // Setup params and messages
+    let (msgs, mac_params, sk, _) = bddt16_mac_setup(&mut rng, total_msg_count as u32);
+
+    // Message indices hidden from signer. Here signer does not know msgs[0], msgs[4] and msgs[6]
+    let committed_indices = vec![0, 4, 6].into_iter().collect::<BTreeSet<usize>>();
+
+    let blinding = Fr::rand(&mut rng);
+    let committed_messages = committed_indices
+        .iter()
+        .map(|i| (*i, &msgs[*i]))
+        .collect::<BTreeMap<_, _>>();
+    let commitment = mac_params
+        .commit_to_messages(committed_messages, &blinding)
+        .unwrap();
+
+    // Requester proves knowledge of committed messages
+    let mut statements = Statements::new();
+    let mut bases = vec![mac_params.g];
+    let mut committed_msgs = vec![blinding];
+    for i in committed_indices.iter() {
+        bases.push(mac_params.g_vec[*i]);
+        committed_msgs.push(msgs[*i]);
+    }
+    statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        bases.clone(),
+        commitment,
+    ));
+
+    test_serialization!(Statements<Bls12_381>, statements);
+
+    let context = Some(b"test".to_vec());
+    let proof_spec = ProofSpec::new(statements.clone(), MetaStatements::new(), vec![], context);
+    proof_spec.validate().unwrap();
+
+    test_serialization!(ProofSpec<Bls12_381>, proof_spec);
+
+    let mut witnesses = Witnesses::new();
+    witnesses.add(Witness::PedersenCommitment(committed_msgs));
+
+    test_serialization!(Witnesses<Bls12_381>, witnesses);
+
+    let nonce = Some(b"test nonce".to_vec());
+    let proof = Proof::new::<StdRng, Blake2b512>(
+        &mut rng,
+        proof_spec.clone(),
+        witnesses.clone(),
+        nonce.clone(),
+        Default::default(),
+    )
+    .unwrap()
+    .0;
+
+    test_serialization!(Proof<Bls12_381>, proof);
+
+    proof
+        .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce, Default::default())
+        .unwrap();
+
+    // Now requester picks the messages he is revealing to the signer and prepares `uncommitted_messages`
+    // to request the blind MAC
+    let uncommitted_messages = (0..total_msg_count)
+        .filter(|i| !committed_indices.contains(i))
+        .map(|i| (i, &msgs[i]))
+        .collect::<BTreeMap<_, _>>();
+
+    // Signer creates the blind MAC using the commitment
+    let blinded_mac = MAC::<G1Affine>::new_with_committed_messages(
+        &mut rng,
+        &commitment,
+        uncommitted_messages,
+        &sk,
+        &mac_params,
+    )
+    .unwrap();
+
+    let mac = blinded_mac.unblind(&blinding);
+    mac.verify(&msgs, &sk, &mac_params).unwrap();
 }

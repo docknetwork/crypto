@@ -289,13 +289,13 @@ impl<E: Pairing> Proof<E> {
             .enumerate()
         {
             match statement {
-                Statement::PoKBBSSignatureG1(s) => match proof {
+                Statement::PoKBBSSignatureG1Verifier(s) => match proof {
                     StatementProof::PoKBBSSignatureG1(p) => {
                         sig_protocol_chal_gen!(s, s_idx, p, BBS_PLUS_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
-                Statement::PoKBBSSignature23G1(s) => match proof {
+                Statement::PoKBBSSignature23G1Verifier(s) => match proof {
                     StatementProof::PoKBBSSignature23G1(p) => {
                         sig_protocol_chal_gen!(s, s_idx, p, BBS_23_LABEL);
                     }
@@ -881,10 +881,10 @@ impl<E: Pairing> Proof<E> {
         let challenge = transcript.challenge_scalar(COMPOSITE_PROOF_CHALLENGE_LABEL);
 
         macro_rules! sig_protocol_verify {
-            ($s: ident, $s_idx: ident, $protocol: ident, $p: ident, $derived_pk: ident, $derived_param: ident, $error_variant: ident) => {{
+            ($s: ident, $s_idx: ident, $protocol: ident, $func_name: ident, $p: ident, $derived_pk: ident, $derived_param: ident, $error_variant: ident) => {{
                 let params = $s.get_params(&proof_spec.setup_params, $s_idx)?;
                 let pk = $s.get_public_key(&proof_spec.setup_params, $s_idx)?;
-                let sp = $protocol::new($s_idx, &$s.revealed_messages, params, pk);
+                let sp = $protocol::$func_name($s_idx, &$s.revealed_messages, params, pk);
                 sp.verify_proof_contribution(
                     &challenge,
                     $p,
@@ -905,12 +905,13 @@ impl<E: Pairing> Proof<E> {
             .enumerate()
         {
             match statement {
-                Statement::PoKBBSSignatureG1(s) => match proof {
+                Statement::PoKBBSSignatureG1Verifier(s) => match proof {
                     StatementProof::PoKBBSSignatureG1(ref p) => {
                         sig_protocol_verify!(
                             s,
                             s_idx,
                             PoKBBSSigG1SubProtocol,
+                            new_for_verifier,
                             p,
                             derived_bbs_pk,
                             derived_bbs_plus_param,
@@ -919,12 +920,13 @@ impl<E: Pairing> Proof<E> {
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
-                Statement::PoKBBSSignature23G1(s) => match proof {
+                Statement::PoKBBSSignature23G1Verifier(s) => match proof {
                     StatementProof::PoKBBSSignature23G1(ref p) => {
                         sig_protocol_verify!(
                             s,
                             s_idx,
                             PoKBBSSig23G1SubProtocol,
+                            new_for_verifier,
                             p,
                             derived_bbs_pk,
                             derived_bbs_param,
@@ -1307,6 +1309,7 @@ impl<E: Pairing> Proof<E> {
                             s,
                             s_idx,
                             PSSignaturePoK,
+                            new,
                             p,
                             derived_ps_pk,
                             derived_ps_param,

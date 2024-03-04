@@ -1,3 +1,5 @@
+//! Membership proof in VB accumulator with keyed-verification
+
 use crate::{error::ProofSystemError, statement_proof::StatementProof};
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::{io::Write, rand::RngCore};

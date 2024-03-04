@@ -30,8 +30,14 @@ use proof_system::{
             VBAccumulatorMembership as AccumulatorMembershipStmt,
             VBAccumulatorNonMembership as AccumulatorNonMembershipStmt,
         },
-        bbs_23::PoKBBSSignature23G1 as PoKSignatureBBS23G1Stmt,
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_23::{
+            PoKBBSSignature23G1Prover as PoKSignatureBBS23G1ProverStmt,
+            PoKBBSSignature23G1Verifier as PoKSignatureBBS23G1VerifierStmt,
+        },
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         inequality::PublicInequality as InequalityStmt,
         ped_comm::PedersenCommitment as PedersenCommitmentStmt,
         Statements,
@@ -50,7 +56,7 @@ use proof_system::{
 use test_utils::{accumulators::*, bbs::*, test_serialization};
 
 macro_rules! gen_tests {
-    ($test1_name: ident, $test2_name: ident, $test3_name: ident, $test4_name: ident, $test5_name: ident, $test6_name: ident, $setup_fn_name: ident, $sig: ident, $stmt: ident, $wit: ident, $setup_param_name: ident) => {
+    ($test1_name: ident, $test2_name: ident, $test3_name: ident, $test4_name: ident, $test5_name: ident, $test6_name: ident, $setup_fn_name: ident, $sig: ident, $prover_stmt: ident, $verifier_stmt: ident, $wit: ident, $setup_param_name: ident) => {
         #[test]
         fn $test1_name() {
             // Prove knowledge of 3 BBS+ signatures and 3 of the messages are same among them.
@@ -128,20 +134,17 @@ macro_rules! gen_tests {
                 .collect::<BTreeMap<_, _>>();
 
             // Since proving knowledge of 3 BBS+ signatures, add 3 statements, all of the same type though.
-            let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
-                params_1,
-                keypair_1.public_key.clone(),
+            let mut prover_statements = Statements::new();
+            prover_statements.add($prover_stmt::new_statement_from_params(
+                params_1.clone(),
                 revealed_msgs_1.clone(),
             ));
-            statements.add($stmt::new_statement_from_params(
-                params_2,
-                keypair_2.public_key.clone(),
+            prover_statements.add($prover_stmt::new_statement_from_params(
+                params_2.clone(),
                 revealed_msgs_2.clone(),
             ));
-            statements.add($stmt::new_statement_from_params(
-                params_3,
-                keypair_3.public_key.clone(),
+            prover_statements.add($prover_stmt::new_statement_from_params(
+                params_3.clone(),
                 BTreeMap::new(),
             ));
 
@@ -168,16 +171,16 @@ macro_rules! gen_tests {
                     .collect::<BTreeSet<WitnessRef>>(),
             ));
 
-            test_serialization!(Statements<Bls12_381>, statements);
+            test_serialization!(Statements<Bls12_381>, prover_statements);
             test_serialization!(MetaStatements, meta_statements);
 
             // Create a proof spec, this is shared between prover and verifier
             // Context must be known to both prover and verifier
             let context = Some(b"test".to_vec());
-            let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context);
-            proof_spec.validate().unwrap();
+            let prover_proof_spec = ProofSpec::new(prover_statements, meta_statements.clone(), vec![], context.clone());
+            prover_proof_spec.validate().unwrap();
 
-            test_serialization!(ProofSpec<Bls12_381>, proof_spec);
+            test_serialization!(ProofSpec<Bls12_381>, prover_proof_spec);
 
             // Prover now creates/loads it witnesses corresponding to the proof spec
             let mut witnesses = Witnesses::new();
@@ -200,7 +203,7 @@ macro_rules! gen_tests {
             let nonce = Some(b"some nonce".to_vec());
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
-                proof_spec.clone(),
+                prover_proof_spec,
                 witnesses,
                 nonce.clone(),
                 Default::default(),
@@ -208,16 +211,38 @@ macro_rules! gen_tests {
             .unwrap()
             .0;
 
+            let mut verifier_statements = Statements::new();
+            verifier_statements.add($verifier_stmt::new_statement_from_params(
+                params_1,
+                keypair_1.public_key.clone(),
+                revealed_msgs_1.clone(),
+            ));
+            verifier_statements.add($verifier_stmt::new_statement_from_params(
+                params_2,
+                keypair_2.public_key.clone(),
+                revealed_msgs_2.clone(),
+            ));
+            verifier_statements.add($verifier_stmt::new_statement_from_params(
+                params_3,
+                keypair_3.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            let verifier_proof_spec = ProofSpec::new(verifier_statements.clone(), meta_statements, vec![], context);
+            verifier_proof_spec.validate().unwrap();
+
+            test_serialization!(Statements<Bls12_381>, verifier_statements);
+            test_serialization!(ProofSpec<Bls12_381>, verifier_proof_spec);
+
             // Proof with no nonce shouldn't verify
             assert!(proof
                 .clone()
-                .verify::<StdRng, Blake2b512>(&mut rng, proof_spec.clone(), None, Default::default())
+                .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec.clone(), None, Default::default())
                 .is_err());
             assert!(proof
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     None,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
@@ -230,7 +255,7 @@ macro_rules! gen_tests {
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     Some(b"random...".to_vec()),
                     Default::default()
                 )
@@ -239,7 +264,7 @@ macro_rules! gen_tests {
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     Some(b"random...".to_vec()),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
@@ -255,7 +280,7 @@ macro_rules! gen_tests {
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     nonce.clone(),
                     Default::default(),
                 )
@@ -269,7 +294,7 @@ macro_rules! gen_tests {
             proof
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec,
+                    verifier_proof_spec,
                     nonce,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
@@ -332,13 +357,12 @@ macro_rules! gen_tests {
                 &pos_accum_params
             ));
 
-            let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
+            let mut prover_statements = Statements::new();
+            prover_statements.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
-            statements.add(AccumulatorMembershipStmt::new_statement_from_params(
+            prover_statements.add(AccumulatorMembershipStmt::new_statement_from_params(
                 pos_accum_params.clone(),
                 pos_accum_keypair.public_key.clone(),
                 mem_prk.clone(),
@@ -357,14 +381,14 @@ macro_rules! gen_tests {
                 .collect::<BTreeSet<WitnessRef>>(),
             ));
 
-            test_serialization!(Statements<Bls12_381>, statements);
+            test_serialization!(Statements<Bls12_381>, prover_statements);
             test_serialization!(MetaStatements, meta_statements);
 
             let context = Some(b"test".to_vec());
-            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
-            proof_spec.validate().unwrap();
+            let prover_proof_spec = ProofSpec::new(prover_statements.clone(), meta_statements.clone(), vec![], context.clone());
+            prover_proof_spec.validate().unwrap();
 
-            test_serialization!(ProofSpec<Bls12_381>, proof_spec);
+            test_serialization!(ProofSpec<Bls12_381>, prover_proof_spec);
 
             let mut witnesses = Witnesses::new();
             witnesses.add($wit::new_as_witness(
@@ -381,7 +405,7 @@ macro_rules! gen_tests {
 
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
-                proof_spec.clone(),
+                prover_proof_spec.clone(),
                 witnesses.clone(),
                 nonce.clone(),
                 Default::default(),
@@ -391,12 +415,27 @@ macro_rules! gen_tests {
 
             test_serialization!(Proof<Bls12_381>, proof);
 
+            let mut verifier_statements = Statements::new();
+            verifier_statements.add($verifier_stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            verifier_statements.add(AccumulatorMembershipStmt::new_statement_from_params(
+                pos_accum_params.clone(),
+                pos_accum_keypair.public_key.clone(),
+                mem_prk.clone(),
+                *pos_accumulator.value(),
+            ));
+            let verifier_proof_spec = ProofSpec::new(verifier_statements.clone(), meta_statements.clone(), vec![], context.clone());
+            verifier_proof_spec.validate().unwrap();
+
             let start = Instant::now();
             proof
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     nonce.clone(),
                     Default::default(),
                 )
@@ -410,7 +449,7 @@ macro_rules! gen_tests {
             proof
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
@@ -426,15 +465,15 @@ macro_rules! gen_tests {
                     .into_iter()
                     .collect::<BTreeSet<WitnessRef>>(),
             ));
-            let proof_spec_incorrect = ProofSpec::new(
-                statements.clone(),
-                meta_statements_incorrect,
+            let prover_proof_spec_incorrect = ProofSpec::new(
+                prover_statements.clone(),
+                meta_statements_incorrect.clone(),
                 vec![],
                 context.clone(),
             );
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
-                proof_spec_incorrect.clone(),
+                prover_proof_spec_incorrect.clone(),
                 witnesses,
                 nonce.clone(),
                 Default::default(),
@@ -442,11 +481,17 @@ macro_rules! gen_tests {
             .unwrap()
             .0;
 
+            let verifier_proof_spec_incorrect = ProofSpec::new(
+                verifier_statements.clone(),
+                meta_statements_incorrect.clone(),
+                vec![],
+                context.clone(),
+            );
             assert!(proof
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec_incorrect.clone(),
+                    verifier_proof_spec_incorrect.clone(),
                     nonce.clone(),
                     Default::default()
                 )
@@ -454,7 +499,7 @@ macro_rules! gen_tests {
             assert!(proof
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec_incorrect,
+                    verifier_proof_spec_incorrect,
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
@@ -481,22 +526,24 @@ macro_rules! gen_tests {
                 .into_iter()
                 .collect::<BTreeSet<WitnessRef>>(),
             ));
-            let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context.clone());
-            proof_spec.validate().unwrap();
+            let prover_proof_spec = ProofSpec::new(prover_statements, meta_statements.clone(), vec![], context.clone());
+            prover_proof_spec.validate().unwrap();
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
-                proof_spec.clone(),
+                prover_proof_spec.clone(),
                 witnesses_incorrect,
                 nonce.clone(),
                 Default::default(),
             )
             .unwrap()
             .0;
+            let verifier_proof_spec = ProofSpec::new(verifier_statements, meta_statements.clone(), vec![], context.clone());
+            verifier_proof_spec.validate().unwrap();
             assert!(proof
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     nonce.clone(),
                     Default::default()
                 )
@@ -504,7 +551,7 @@ macro_rules! gen_tests {
             assert!(proof
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec,
+                    verifier_proof_spec,
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
@@ -534,13 +581,12 @@ macro_rules! gen_tests {
                 &uni_accum_params
             ));
 
-            let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
+            let mut prover_statements = Statements::new();
+            prover_statements.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
-            statements.add(AccumulatorMembershipStmt::new_statement_from_params(
+            prover_statements.add(AccumulatorMembershipStmt::new_statement_from_params(
                 uni_accum_params.clone(),
                 uni_accum_keypair.public_key.clone(),
                 derived_mem_prk.clone(),
@@ -564,18 +610,18 @@ macro_rules! gen_tests {
                     .collect::<BTreeSet<WitnessRef>>(),
             ));
 
-            test_serialization!(Statements<Bls12_381>, statements);
+            test_serialization!(Statements<Bls12_381>, prover_statements);
             test_serialization!(MetaStatements, meta_statements);
             test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
-            proof_spec.validate().unwrap();
+            let prover_proof_spec = ProofSpec::new(prover_statements.clone(), meta_statements.clone(), vec![], context.clone());
+            prover_proof_spec.validate().unwrap();
 
-            test_serialization!(ProofSpec<Bls12_381>, proof_spec);
+            test_serialization!(ProofSpec<Bls12_381>, prover_proof_spec);
 
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
-                proof_spec.clone(),
+                prover_proof_spec.clone(),
                 witnesses.clone(),
                 nonce.clone(),
                 Default::default(),
@@ -585,12 +631,27 @@ macro_rules! gen_tests {
 
             test_serialization!(Proof<Bls12_381>, proof);
 
+            let mut verifier_statements = Statements::new();
+            verifier_statements.add($verifier_stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            verifier_statements.add(AccumulatorMembershipStmt::new_statement_from_params(
+                uni_accum_params.clone(),
+                uni_accum_keypair.public_key.clone(),
+                derived_mem_prk.clone(),
+                *uni_accumulator.value(),
+            ));
+            let verifier_proof_spec = ProofSpec::new(verifier_statements.clone(), meta_statements.clone(), vec![], context.clone());
+            verifier_proof_spec.validate().unwrap();
+
             let start = Instant::now();
             proof
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     nonce.clone(),
                     Default::default(),
                 )
@@ -605,7 +666,7 @@ macro_rules! gen_tests {
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
@@ -632,13 +693,12 @@ macro_rules! gen_tests {
                 &uni_accum_params
             ));
 
-            let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
+            let mut prover_statements = Statements::new();
+            prover_statements.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
-            statements.add(AccumulatorNonMembershipStmt::new_statement_from_params(
+            prover_statements.add(AccumulatorNonMembershipStmt::new_statement_from_params(
                 uni_accum_params.clone(),
                 uni_accum_keypair.public_key.clone(),
                 non_mem_prk.clone(),
@@ -662,11 +722,11 @@ macro_rules! gen_tests {
                     .collect::<BTreeSet<WitnessRef>>(),
             ));
 
-            test_serialization!(Statements<Bls12_381>, statements);
+            test_serialization!(Statements<Bls12_381>, prover_statements);
             test_serialization!(MetaStatements, meta_statements);
             test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            let proof_spec = ProofSpec::new(prover_statements.clone(), meta_statements.clone(), vec![], context.clone());
             proof_spec.validate().unwrap();
 
             test_serialization!(ProofSpec<Bls12_381>, proof_spec);
@@ -683,12 +743,27 @@ macro_rules! gen_tests {
 
             test_serialization!(Proof<Bls12_381>, proof);
 
+            let mut verifier_statements = Statements::new();
+            verifier_statements.add($verifier_stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            verifier_statements.add(AccumulatorNonMembershipStmt::new_statement_from_params(
+                uni_accum_params.clone(),
+                uni_accum_keypair.public_key.clone(),
+                non_mem_prk.clone(),
+                *uni_accumulator.value(),
+            ));
+            let verifier_proof_spec = ProofSpec::new(verifier_statements.clone(), meta_statements, vec![], context.clone());
+            verifier_proof_spec.validate().unwrap();
+
             let start = Instant::now();
             proof
                 .clone()
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     nonce.clone(),
                     Default::default(),
                 )
@@ -702,7 +777,7 @@ macro_rules! gen_tests {
             proof
                 .verify::<StdRng, Blake2b512>(
                     &mut rng,
-                    proof_spec.clone(),
+                    verifier_proof_spec.clone(),
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
@@ -734,9 +809,8 @@ macro_rules! gen_tests {
             ));
 
             let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
+            statements.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
             statements.add(KBAccumulatorMembershipStmt::new_statement_from_params(
@@ -767,7 +841,7 @@ macro_rules! gen_tests {
             test_serialization!(MetaStatements, meta_statements);
             test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], context.clone());
             proof_spec.validate().unwrap();
 
             test_serialization!(ProofSpec<Bls12_381>, proof_spec);
@@ -783,6 +857,21 @@ macro_rules! gen_tests {
             .0;
 
             test_serialization!(Proof<Bls12_381>, proof);
+
+            let mut statements = Statements::new();
+            statements.add($verifier_stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements.add(KBAccumulatorMembershipStmt::new_statement_from_params(
+                kb_uni_accum_params.clone(),
+                kb_uni_keypair.public_key.clone(),
+                prk.clone(),
+                *kb_uni_accumulator.mem_value(),
+            ));
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            proof_spec.validate().unwrap();
 
             let start = Instant::now();
             proof
@@ -831,9 +920,8 @@ macro_rules! gen_tests {
             ));
 
             let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
+            statements.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
             statements.add(KBAccumulatorNonMembershipStmt::new_statement_from_params(
@@ -864,7 +952,7 @@ macro_rules! gen_tests {
             test_serialization!(MetaStatements, meta_statements);
             test_serialization!(Witnesses<Bls12_381>, witnesses);
 
-            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], context.clone());
             proof_spec.validate().unwrap();
 
             test_serialization!(ProofSpec<Bls12_381>, proof_spec);
@@ -880,6 +968,21 @@ macro_rules! gen_tests {
             .0;
 
             test_serialization!(Proof<Bls12_381>, proof);
+
+            let mut statements = Statements::new();
+            statements.add($verifier_stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements.add(KBAccumulatorNonMembershipStmt::new_statement_from_params(
+                kb_uni_accum_params.clone(),
+                kb_uni_keypair.public_key.clone(),
+                prk.clone(),
+                *kb_uni_accumulator.non_mem_value(),
+            ));
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            proof_spec.validate().unwrap();
 
             let start = Instant::now();
             proof
@@ -929,9 +1032,8 @@ macro_rules! gen_tests {
             ).unwrap();
 
             let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
+            statements.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
             statements.add(KBPositiveAccumulatorMembership::new_statement_from_params(
@@ -957,7 +1059,7 @@ macro_rules! gen_tests {
             test_serialization!(MetaStatements, meta_statements);
 
             let context = Some(b"test".to_vec());
-            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], context.clone());
             proof_spec.validate().unwrap();
 
             test_serialization!(ProofSpec<Bls12_381>, proof_spec);
@@ -986,6 +1088,21 @@ macro_rules! gen_tests {
             .0;
 
             test_serialization!(Proof<Bls12_381>, proof);
+
+            let mut statements = Statements::new();
+            statements.add($verifier_stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements.add(KBPositiveAccumulatorMembership::new_statement_from_params(
+                kb_pos_accum_params.clone(),
+                kb_pos_accum_pk.clone(),
+                prk.clone(),
+                *kb_pos_accumulator.value(),
+            ));
+            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            proof_spec.validate().unwrap();
 
             let start = Instant::now();
             proof
@@ -1040,15 +1157,14 @@ macro_rules! gen_tests {
             ));
 
             let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
-                sig_params,
-                sig_keypair.public_key.clone(),
+            statements.add($prover_stmt::new_statement_from_params(
+                sig_params.clone(),
                 BTreeMap::new(),
             ));
             statements.add(AccumulatorMembershipStmt::new_statement_from_params(
-                pos_accum_params,
+                pos_accum_params.clone(),
                 pos_accum_keypair.public_key.clone(),
-                mem_prk,
+                mem_prk.clone(),
                 *pos_accumulator.value(),
             ));
             statements.add(AccumulatorMembershipStmt::new_statement_from_params_ref(
@@ -1150,10 +1266,10 @@ macro_rules! gen_tests {
             test_serialization!(Witnesses<Bls12_381>, witnesses);
 
             let proof_spec = ProofSpec::new(
-                statements.clone(),
-                meta_statements,
-                all_setup_params,
-                context,
+                statements,
+                meta_statements.clone(),
+                all_setup_params.clone(),
+                context.clone(),
             );
             proof_spec.validate().unwrap();
 
@@ -1171,6 +1287,54 @@ macro_rules! gen_tests {
 
             test_serialization!(Proof<Bls12_381>, proof);
 
+            let mut statements = Statements::new();
+            statements.add($verifier_stmt::new_statement_from_params(
+                sig_params,
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements.add(AccumulatorMembershipStmt::new_statement_from_params(
+                pos_accum_params,
+                pos_accum_keypair.public_key.clone(),
+                mem_prk,
+                *pos_accumulator.value(),
+            ));
+            statements.add(AccumulatorMembershipStmt::new_statement_from_params_ref(
+                0,
+                1,
+                2,
+                *uni_accumulator.value(),
+            ));
+            statements.add(AccumulatorNonMembershipStmt::new_statement_from_params_ref(
+                0,
+                1,
+                3,
+                *uni_accumulator.value(),
+            ));
+            statements.add(KBAccumulatorMembershipStmt::new_statement_from_params_ref(
+                4,
+                5,
+                6,
+                *kb_uni_accumulator.mem_value(),
+            ));
+            statements.add(KBAccumulatorNonMembershipStmt::new_statement_from_params_ref(
+                4,
+                5,
+                6,
+                *kb_uni_accumulator.non_mem_value(),
+            ));
+            statements.add(KBPositiveAccumulatorMembership::new_statement_from_params_ref(
+                7,
+                8,
+                6,
+                *kb_pos_accumulator.value(),
+            ));
+            let proof_spec = ProofSpec::new(
+                statements,
+                meta_statements,
+                all_setup_params,
+                context.clone(),
+            );
             let start = Instant::now();
             proof
                 .clone()
@@ -1217,17 +1381,16 @@ macro_rules! gen_tests {
             scalars[4] = msgs[5];
             let commitment = G1Projective::msm_unchecked(&bases, &scalars).into_affine();
 
-            let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
-                sig_params,
-                sig_keypair.public_key.clone(),
+            let mut prover_statements = Statements::new();
+            prover_statements.add($prover_stmt::new_statement_from_params(
+                sig_params.clone(),
                 BTreeMap::new(),
             ));
-            statements.add(PedersenCommitmentStmt::new_statement_from_params(
-                bases, commitment,
+            prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+                bases.clone(), commitment,
             ));
 
-            test_serialization!(Statements<Bls12_381>, statements);
+            test_serialization!(Statements<Bls12_381>, prover_statements);
 
             let mut meta_statements = MetaStatements::new();
             meta_statements.add_witness_equality(EqualWitnesses(
@@ -1242,10 +1405,10 @@ macro_rules! gen_tests {
             ));
 
             let context = Some(b"test".to_vec());
-            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
-            proof_spec.validate().unwrap();
+            let prover_proof_spec = ProofSpec::new(prover_statements.clone(), meta_statements.clone(), vec![], context.clone());
+            prover_proof_spec.validate().unwrap();
 
-            test_serialization!(ProofSpec<Bls12_381>, proof_spec);
+            test_serialization!(ProofSpec<Bls12_381>, prover_proof_spec);
 
             let mut witnesses = Witnesses::new();
             witnesses.add($wit::new_as_witness(
@@ -1259,7 +1422,7 @@ macro_rules! gen_tests {
             let nonce = Some(b"test nonce".to_vec());
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
-                proof_spec.clone(),
+                prover_proof_spec.clone(),
                 witnesses.clone(),
                 nonce.clone(),
                 Default::default(),
@@ -1269,8 +1432,20 @@ macro_rules! gen_tests {
 
             test_serialization!(Proof<Bls12_381>, proof);
 
+            let mut verifier_statements = Statements::new();
+            verifier_statements.add($verifier_stmt::new_statement_from_params(
+                sig_params,
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+                bases, commitment,
+            ));
+            let verifier_proof_spec = ProofSpec::new(verifier_statements.clone(), meta_statements.clone(), vec![], context.clone());
+            verifier_proof_spec.validate().unwrap();
+
             proof
-                .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce.clone(), Default::default())
+                .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec, nonce.clone(), Default::default())
                 .unwrap();
 
             // Wrong message equality should fail to verify
@@ -1286,12 +1461,12 @@ macro_rules! gen_tests {
                     .collect::<BTreeSet<WitnessRef>>(),
             ));
 
-            let proof_spec_invalid =
-                ProofSpec::new(statements.clone(), meta_statements_wrong, vec![], context);
+            let prover_proof_spec_invalid =
+                ProofSpec::new(prover_statements.clone(), meta_statements_wrong.clone(), vec![], context.clone());
 
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
-                proof_spec_invalid.clone(),
+                prover_proof_spec_invalid.clone(),
                 witnesses.clone(),
                 nonce.clone(),
                 Default::default(),
@@ -1299,8 +1474,10 @@ macro_rules! gen_tests {
             .unwrap()
             .0;
 
+            let verifier_proof_spec_invalid =
+                ProofSpec::new(verifier_statements.clone(), meta_statements_wrong.clone(), vec![], context);
             assert!(proof
-                .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_invalid, nonce, Default::default())
+                .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec_invalid, nonce, Default::default())
                 .is_err());
         }
 
@@ -1359,9 +1536,8 @@ macro_rules! gen_tests {
 
             // Prover proves to verifier 1
             let mut statements_1 = Statements::new();
-            statements_1.add($stmt::new_statement_from_params(
+            statements_1.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
             statements_1.add(PedersenCommitmentStmt::new_statement_from_params(
@@ -1381,7 +1557,7 @@ macro_rules! gen_tests {
                 statements_1.clone(),
                 meta_statements_1.clone(),
                 vec![],
-                context,
+                context.clone(),
             );
             proof_spec_1.validate().unwrap();
 
@@ -1402,19 +1578,35 @@ macro_rules! gen_tests {
                 .unwrap()
                 .0;
 
+            let mut statements_1 = Statements::new();
+            statements_1.add($verifier_stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements_1.add(PedersenCommitmentStmt::new_statement_from_params(
+                gens_1.clone(),
+                reg_commit_1,
+            ));
+            let proof_spec_1 = ProofSpec::new(
+                statements_1.clone(),
+                meta_statements_1.clone(),
+                vec![],
+                context.clone(),
+            );
+            proof_spec_1.validate().unwrap();
             proof_1
                 .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_1, None, Default::default())
                 .unwrap();
 
             // Prover proves to verifier 2
             let mut statements_2 = Statements::new();
-            statements_2.add($stmt::new_statement_from_params(
+            statements_2.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
             statements_2.add(PedersenCommitmentStmt::new_statement_from_params(
-                gens_2,
+                gens_2.clone(),
                 reg_commit_2,
             ));
 
@@ -1430,7 +1622,7 @@ macro_rules! gen_tests {
                 statements_2.clone(),
                 meta_statements_2.clone(),
                 vec![],
-                context,
+                context.clone(),
             );
             proof_spec_2.validate().unwrap();
 
@@ -1451,6 +1643,23 @@ macro_rules! gen_tests {
                 .unwrap()
                 .0;
 
+            let mut statements_2 = Statements::new();
+            statements_2.add($verifier_stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements_2.add(PedersenCommitmentStmt::new_statement_from_params(
+                gens_2,
+                reg_commit_2,
+            ));
+            let proof_spec_2 = ProofSpec::new(
+                statements_2.clone(),
+                meta_statements_2.clone(),
+                vec![],
+                context.clone(),
+            );
+            proof_spec_2.validate().unwrap();
             proof_2
                 .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_2, None, Default::default())
                 .unwrap();
@@ -1471,13 +1680,12 @@ macro_rules! gen_tests {
             }
 
             let mut statements_3 = Statements::new();
-            statements_3.add($stmt::new_statement_from_params(
-                sig_params,
-                sig_keypair.public_key.clone(),
-                revealed_msgs,
+            statements_3.add($prover_stmt::new_statement_from_params(
+                sig_params.clone(),
+                revealed_msgs.clone(),
             ));
             statements_3.add(PedersenCommitmentStmt::new_statement_from_params(
-                gens_1,
+                gens_1.clone(),
                 reg_commit_1,
             ));
 
@@ -1493,7 +1701,7 @@ macro_rules! gen_tests {
                 statements_3.clone(),
                 meta_statements_3.clone(),
                 vec![],
-                context,
+                context.clone(),
             );
             proof_spec_3.validate().unwrap();
 
@@ -1511,6 +1719,23 @@ macro_rules! gen_tests {
                 .unwrap()
                 .0;
 
+            let mut statements_3 = Statements::new();
+            statements_3.add($verifier_stmt::new_statement_from_params(
+                sig_params,
+                sig_keypair.public_key.clone(),
+                revealed_msgs,
+            ));
+            statements_3.add(PedersenCommitmentStmt::new_statement_from_params(
+                gens_1,
+                reg_commit_1,
+            ));
+            let proof_spec_3 = ProofSpec::new(
+                statements_3.clone(),
+                meta_statements_3.clone(),
+                vec![],
+                context.clone(),
+            );
+            proof_spec_3.validate().unwrap();
             proof_3
                 .verify::<StdRng, Blake2b512>(&mut rng, proof_spec_3, None, Default::default())
                 .unwrap();
@@ -1540,30 +1765,26 @@ macro_rules! gen_tests {
             test_serialization!(Vec<SetupParams<Bls12_381>>, all_setup_params);
 
             let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params_ref(
+            statements.add($prover_stmt::new_statement_from_params_ref(
                 0,
-                1,
                 BTreeMap::new(),
             ));
-            statements.add($stmt::new_statement_from_params_ref(
+            statements.add($prover_stmt::new_statement_from_params_ref(
                 0,
-                1,
                 BTreeMap::new(),
             ));
-            statements.add($stmt::new_statement_from_params_ref(
+            statements.add($prover_stmt::new_statement_from_params_ref(
                 2,
-                3,
                 BTreeMap::new(),
             ));
-            statements.add($stmt::new_statement_from_params_ref(
+            statements.add($prover_stmt::new_statement_from_params_ref(
                 2,
-                3,
                 BTreeMap::new(),
             ));
 
             test_serialization!(Statements<Bls12_381>, statements);
 
-            let proof_spec = ProofSpec::new(statements, MetaStatements::new(), all_setup_params, None);
+            let proof_spec = ProofSpec::new(statements, MetaStatements::new(), all_setup_params.clone(), None);
             proof_spec.validate().unwrap();
 
             test_serialization!(ProofSpec<Bls12_381>, proof_spec);
@@ -1613,6 +1834,30 @@ macro_rules! gen_tests {
                 .unwrap()
                 .0;
 
+            let mut statements = Statements::new();
+            statements.add($verifier_stmt::new_statement_from_params_ref(
+                0,
+                1,
+                BTreeMap::new(),
+            ));
+            statements.add($verifier_stmt::new_statement_from_params_ref(
+                0,
+                1,
+                BTreeMap::new(),
+            ));
+            statements.add($verifier_stmt::new_statement_from_params_ref(
+                2,
+                3,
+                BTreeMap::new(),
+            ));
+            statements.add($verifier_stmt::new_statement_from_params_ref(
+                2,
+                3,
+                BTreeMap::new(),
+            ));
+            let proof_spec = ProofSpec::new(statements, MetaStatements::new(), all_setup_params, None);
+            proof_spec.validate().unwrap();
+
             let start = Instant::now();
             proof
                 .clone()
@@ -1655,9 +1900,8 @@ macro_rules! gen_tests {
             assert_ne!(msgs[inequal_msg_idx], inequal_to);
 
             let mut statements = Statements::new();
-            statements.add($stmt::new_statement_from_params(
+            statements.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
             statements.add(InequalityStmt::new_statement_from_params(
@@ -1675,10 +1919,10 @@ macro_rules! gen_tests {
             ));
 
             let context = Some(b"test".to_vec());
-            let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
-            proof_spec.validate().unwrap();
+            let prover_proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], context.clone());
+            prover_proof_spec.validate().unwrap();
 
-            test_serialization!(ProofSpec<Bls12_381>, proof_spec);
+            test_serialization!(ProofSpec<Bls12_381>, prover_proof_spec);
 
             let mut witnesses = Witnesses::new();
             witnesses.add($wit::new_as_witness(
@@ -1692,7 +1936,7 @@ macro_rules! gen_tests {
             let nonce = Some(b"test nonce".to_vec());
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
-                proof_spec.clone(),
+                prover_proof_spec.clone(),
                 witnesses.clone(),
                 nonce.clone(),
                 Default::default(),
@@ -1702,16 +1946,27 @@ macro_rules! gen_tests {
 
             test_serialization!(Proof<Bls12_381>, proof);
 
+            let mut statements = Statements::new();
+            statements.add($verifier_stmt::new_statement_from_params(
+                sig_params.clone(),
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            statements.add(InequalityStmt::new_statement_from_params(
+                inequal_to.clone(),
+                comm_key.clone(),
+            ));
+            let verifier_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+            verifier_proof_spec.validate().unwrap();
             proof
-            .verify::<StdRng, Blake2b512>(&mut rng, proof_spec.clone(), nonce.clone(), Default::default())
+            .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec.clone(), nonce.clone(), Default::default())
             .unwrap();
 
 
             // Equality should fail to verify
             let mut wrong_statements = Statements::new();
-            wrong_statements.add($stmt::new_statement_from_params(
-                sig_params,
-                sig_keypair.public_key.clone(),
+            wrong_statements.add($prover_stmt::new_statement_from_params(
+                sig_params.clone(),
                 BTreeMap::new(),
             ));
             // Statement mentions wrong inequal, i.e the value is equal to the signed message
@@ -1728,7 +1983,7 @@ macro_rules! gen_tests {
             ));
 
             // proof spec with wrong statement
-            let wrong_proof_spec = ProofSpec::new(wrong_statements.clone(), meta_statements, vec![], None);
+            let wrong_proof_spec = ProofSpec::new(wrong_statements.clone(), meta_statements.clone(), vec![], None);
 
             let mut witnesses = Witnesses::new();
             witnesses.add($wit::new_as_witness(
@@ -1749,7 +2004,7 @@ macro_rules! gen_tests {
             // Create proof with inequal value
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
-                proof_spec,
+                prover_proof_spec,
                 witnesses.clone(),
                 None,
                 Default::default(),
@@ -1758,6 +2013,19 @@ macro_rules! gen_tests {
             .0;
 
             // Try to verify the proof with equal value
+            let mut wrong_statements = Statements::new();
+            wrong_statements.add($verifier_stmt::new_statement_from_params(
+                sig_params,
+                sig_keypair.public_key.clone(),
+                BTreeMap::new(),
+            ));
+            // Statement mentions wrong inequal, i.e the value is equal to the signed message
+            wrong_statements.add(InequalityStmt::new_statement_from_params(
+                msgs[inequal_msg_idx].clone(),
+                comm_key.clone(),
+            ));
+            // proof spec with wrong statement
+            let wrong_proof_spec = ProofSpec::new(wrong_statements.clone(), meta_statements.clone(), vec![], None);
             assert!(proof.verify::<StdRng, Blake2b512>(&mut rng, wrong_proof_spec, None, Default::default()).is_err())
         }
     }
@@ -1772,7 +2040,8 @@ gen_tests!(
     pok_of_bbs_plus_sig_and_inequality_with_public_value,
     bbs_plus_sig_setup,
     SignatureG1,
-    PoKSignatureBBSG1Stmt,
+    PoKSignatureBBSG1ProverStmt,
+    PoKSignatureBBSG1VerifierStmt,
     PoKSignatureBBSG1Wit,
     BBSPlusSignatureParams
 );
@@ -1785,7 +2054,8 @@ gen_tests!(
     pok_of_bbs_sig_and_inequality_with_public_value,
     bbs_sig_setup,
     Signature23G1,
-    PoKSignatureBBS23G1Stmt,
+    PoKSignatureBBS23G1ProverStmt,
+    PoKSignatureBBS23G1VerifierStmt,
     PoKSignatureBBS23G1Wit,
     BBSSignatureParams23
 );
@@ -1991,15 +2261,13 @@ fn proof_spec_modification() {
         .verify(&msgs_2, keypair_2.public_key.clone(), params_2.clone())
         .unwrap();
 
-    let mut statements = Statements::<Bls12_381>::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    let mut prover_statements = Statements::<Bls12_381>::new();
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         params_1.clone(),
-        keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         params_2.clone(),
-        keypair_2.public_key.clone(),
         BTreeMap::new(),
     ));
 
@@ -2009,7 +2277,8 @@ fn proof_spec_modification() {
     let mut meta_statements = MetaStatements::new();
     meta_statements.add_witness_equality(invalid_eq_wit);
 
-    let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
+    let invalid_proof_spec =
+        ProofSpec::new(prover_statements.clone(), meta_statements, vec![], None);
     assert!(invalid_proof_spec.validate().is_err());
 
     let mut witnesses = Witnesses::new();
@@ -2044,7 +2313,8 @@ fn proof_spec_modification() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     ));
-    let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
+    let invalid_proof_spec =
+        ProofSpec::new(prover_statements.clone(), meta_statements, vec![], None);
     assert!(Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         invalid_proof_spec,
@@ -2060,7 +2330,8 @@ fn proof_spec_modification() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     ));
-    let invalid_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
+    let invalid_proof_spec =
+        ProofSpec::new(prover_statements.clone(), meta_statements, vec![], None);
     assert!(Proof::new::<StdRng, Blake2b512>(
         &mut rng,
         invalid_proof_spec,
@@ -2081,16 +2352,25 @@ fn proof_spec_modification() {
     meta_statements.add_witness_equality(valid_eq_wit);
 
     // Verifier's created proof spec
-    let orig_proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], None);
+    let orig_prover_proof_spec = ProofSpec::new(
+        prover_statements.clone(),
+        meta_statements.clone(),
+        vec![],
+        None,
+    );
 
     // Prover's modified proof spec
-    let modified_proof_spec =
-        ProofSpec::new(statements.clone(), MetaStatements::new(), vec![], None);
+    let modified_prover_proof_spec = ProofSpec::new(
+        prover_statements.clone(),
+        MetaStatements::new(),
+        vec![],
+        None,
+    );
 
     // Proof created using modified proof spec wont be a valid
     let invalid_proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
-        modified_proof_spec.clone(),
+        modified_prover_proof_spec,
         witnesses.clone(),
         None,
         Default::default(),
@@ -2098,19 +2378,50 @@ fn proof_spec_modification() {
     .unwrap()
     .0;
 
+    let mut verifier_statements = Statements::<Bls12_381>::new();
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
+        params_1.clone(),
+        keypair_1.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
+        params_2.clone(),
+        keypair_2.public_key.clone(),
+        BTreeMap::new(),
+    ));
+
+    let orig_verifier_proof_spec =
+        ProofSpec::new(verifier_statements.clone(), meta_statements, vec![], None);
+    let modified_verifier_proof_spec = ProofSpec::new(
+        verifier_statements.clone(),
+        MetaStatements::new(),
+        vec![],
+        None,
+    );
+
     // Above proof is valid if verified using the modified proof spec but not with the original proof spec
     invalid_proof
         .clone()
-        .verify::<StdRng, Blake2b512>(&mut rng, modified_proof_spec, None, Default::default())
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            modified_verifier_proof_spec,
+            None,
+            Default::default(),
+        )
         .unwrap();
     assert!(invalid_proof
-        .verify::<StdRng, Blake2b512>(&mut rng, orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            orig_verifier_proof_spec.clone(),
+            None,
+            Default::default()
+        )
         .is_err());
 
     // Proof created using original proof spec will be valid
     let valid_proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
-        orig_proof_spec.clone(),
+        orig_prover_proof_spec.clone(),
         witnesses.clone(),
         None,
         Default::default(),
@@ -2118,21 +2429,25 @@ fn proof_spec_modification() {
     .unwrap()
     .0;
     valid_proof
-        .verify::<StdRng, Blake2b512>(&mut rng, orig_proof_spec, None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, orig_verifier_proof_spec, None, Default::default())
         .unwrap();
 
     // Verifier creates proof spec with 2 statements, prover modifies it to remove a statement
-    let orig_proof_spec = ProofSpec::new(statements.clone(), MetaStatements::new(), vec![], None);
+    let orig_verifier_proof_spec = ProofSpec::new(
+        verifier_statements.clone(),
+        MetaStatements::new(),
+        vec![],
+        None,
+    );
 
     // Prover's modified proof spec
-    let mut only_1_statement = Statements::<Bls12_381>::new();
-    only_1_statement.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        params_1,
-        keypair_1.public_key.clone(),
+    let mut only_1_prover_statement = Statements::<Bls12_381>::new();
+    only_1_prover_statement.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
+        params_1.clone(),
         BTreeMap::new(),
     ));
-    let modified_proof_spec = ProofSpec::new(
-        only_1_statement.clone(),
+    let modified_prover_proof_spec = ProofSpec::new(
+        only_1_prover_statement.clone(),
         MetaStatements::new(),
         vec![],
         None,
@@ -2150,7 +2465,7 @@ fn proof_spec_modification() {
     // Proof created using modified proof spec wont be a valid
     let invalid_proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
-        modified_proof_spec.clone(),
+        modified_prover_proof_spec.clone(),
         only_1_witness.clone(),
         None,
         Default::default(),
@@ -2159,18 +2474,40 @@ fn proof_spec_modification() {
     .0;
 
     // Above proof is valid if verified using the modified proof spec but not with the original proof spec
+    let mut only_1_verifier_statement = Statements::<Bls12_381>::new();
+    only_1_verifier_statement.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
+        params_1,
+        keypair_1.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    let modified_verifier_proof_spec = ProofSpec::new(
+        only_1_verifier_statement,
+        MetaStatements::new(),
+        vec![],
+        None,
+    );
     invalid_proof
         .clone()
-        .verify::<StdRng, Blake2b512>(&mut rng, modified_proof_spec, None, Default::default())
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            modified_verifier_proof_spec,
+            None,
+            Default::default(),
+        )
         .unwrap();
     assert!(invalid_proof
-        .verify::<StdRng, Blake2b512>(&mut rng, orig_proof_spec.clone(), None, Default::default())
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            orig_verifier_proof_spec.clone(),
+            None,
+            Default::default()
+        )
         .is_err());
 
     // Proof created using original proof spec will be valid
     let valid_proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
-        orig_proof_spec.clone(),
+        orig_prover_proof_spec,
         witnesses.clone(),
         None,
         Default::default(),
@@ -2178,7 +2515,7 @@ fn proof_spec_modification() {
     .unwrap()
     .0;
     valid_proof
-        .verify::<StdRng, Blake2b512>(&mut rng, orig_proof_spec, None, Default::default())
+        .verify::<StdRng, Blake2b512>(&mut rng, orig_verifier_proof_spec, None, Default::default())
         .unwrap();
 }
 
@@ -2188,13 +2525,12 @@ fn proof_spec_validation() {
 
     let mut rng = StdRng::seed_from_u64(0u64);
 
-    let (msgs_1, params_1, keypair_1, _) = bbs_plus_sig_setup(&mut rng, 5);
-    let (msgs_2, params_2, keypair_2, _) = bbs_plus_sig_setup(&mut rng, 6);
+    let (msgs_1, params_1, _, _) = bbs_plus_sig_setup(&mut rng, 5);
+    let (msgs_2, params_2, _, _) = bbs_plus_sig_setup(&mut rng, 6);
 
     let mut statements_1 = Statements::<Bls12_381>::new();
-    statements_1.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements_1.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         params_1.clone(),
-        keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
 
@@ -2210,9 +2546,8 @@ fn proof_spec_validation() {
     let mut revealed = BTreeMap::new();
     revealed.insert(1, msgs_1[1]);
     let mut statements_2 = Statements::<Bls12_381>::new();
-    statements_2.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements_2.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         params_1.clone(),
-        keypair_1.public_key.clone(),
         revealed,
     ));
 
@@ -2232,15 +2567,12 @@ fn proof_spec_validation() {
     let mut revealed_1 = BTreeMap::new();
     revealed_1.insert(3, msgs_2[3]);
     let mut statements_3 = Statements::<Bls12_381>::new();
-    statements_3.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements_3.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         params_1,
-        keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    statements_3.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
-        params_2,
-        keypair_2.public_key.clone(),
-        revealed_1,
+    statements_3.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
+        params_2, revealed_1,
     ));
 
     let valid_wit_eq = EqualWitnesses(
@@ -2292,9 +2624,8 @@ fn detached_accumulator() {
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(
@@ -2358,7 +2689,7 @@ fn detached_accumulator() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -2526,9 +2857,8 @@ fn detached_accumulator() {
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(
@@ -2584,7 +2914,7 @@ fn detached_accumulator() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -2651,9 +2981,8 @@ fn detached_accumulator() {
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(
@@ -2709,7 +3038,7 @@ fn detached_accumulator() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -2776,9 +3105,8 @@ fn detached_accumulator() {
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(
@@ -2869,7 +3197,7 @@ fn detached_accumulator() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),

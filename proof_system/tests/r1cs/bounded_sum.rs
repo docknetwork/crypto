@@ -17,7 +17,10 @@ use proof_system::{
     },
     proof::Proof,
     statement::{
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         r1cs_legogroth16::{
             R1CSCircomProver as R1CSProverStmt, R1CSCircomVerifier as R1CSVerifierStmt,
         },
@@ -92,9 +95,8 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     let mut prover_statements = Statements::new();
 
     for _ in 0..12 {
-        prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params_ref(
+        prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params_ref(
             0,
-            1,
             BTreeMap::new(),
         ));
     }
@@ -160,11 +162,9 @@ fn pok_of_bbs_plus_sigs_and_sum_of_certain_attributes_less_than_check() {
     let mut verifier_statements = Statements::new();
 
     for _ in 0..12 {
-        verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params_ref(
-            0,
-            1,
-            BTreeMap::new(),
-        ));
+        verifier_statements.add(
+            PoKSignatureBBSG1VerifierStmt::new_statement_from_params_ref(0, 1, BTreeMap::new()),
+        );
     }
 
     verifier_statements.add(R1CSVerifierStmt::new_statement_from_params_ref(3, 2).unwrap());

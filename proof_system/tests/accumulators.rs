@@ -19,7 +19,10 @@ use proof_system::{
             VBAccumulatorMembershipCDHVerifier, VBAccumulatorNonMembershipCDHProver,
             VBAccumulatorNonMembershipCDHVerifier,
         },
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         Statements,
     },
     verifier::VerifierConfig,
@@ -94,9 +97,8 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(VBAccumulatorMembershipCDHProver::new(
@@ -150,7 +152,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -219,9 +221,8 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(VBAccumulatorMembershipCDHProver::new(
@@ -272,7 +273,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -336,9 +337,8 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(
@@ -393,7 +393,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -463,9 +463,8 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(KBUniversalAccumulatorMembershipCDHProver::new(
@@ -519,7 +518,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -582,9 +581,8 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(KBUniversalAccumulatorNonMembershipCDHProver::new(
@@ -637,7 +635,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),
@@ -702,13 +700,12 @@ start.elapsed()
         )
         .unwrap();
 
-    let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    let mut prover_statements = Statements::new();
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
-    statements.add(
+    prover_statements.add(
         KBPositiveAccumulatorMembershipCDH::new_statement_from_params(
             kb_pos_accum_params.clone(),
             kb_pos_accum_pk.clone(),
@@ -729,11 +726,16 @@ start.elapsed()
         .collect::<BTreeSet<WitnessRef>>(),
     ));
 
-    test_serialization!(Statements<Bls12_381>, statements);
+    test_serialization!(Statements<Bls12_381>, prover_statements);
     test_serialization!(MetaStatements, meta_statements);
 
     let context = Some(b"test".to_vec());
-    let proof_spec = ProofSpec::new(statements.clone(), meta_statements, vec![], context.clone());
+    let proof_spec = ProofSpec::new(
+        prover_statements.clone(),
+        meta_statements.clone(),
+        vec![],
+        context.clone(),
+    );
     proof_spec.validate().unwrap();
 
     test_serialization!(ProofSpec<Bls12_381>, proof_spec);
@@ -753,7 +755,7 @@ start.elapsed()
 
     let proof = Proof::new::<StdRng, Blake2b512>(
         &mut rng,
-        proof_spec.clone(),
+        proof_spec,
         witnesses.clone(),
         nonce.clone(),
         Default::default(),
@@ -762,6 +764,27 @@ start.elapsed()
     .0;
 
     test_serialization!(Proof<Bls12_381>, proof);
+
+    let mut verifier_statements = Statements::new();
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
+        sig_params.clone(),
+        sig_keypair.public_key.clone(),
+        BTreeMap::new(),
+    ));
+    verifier_statements.add(
+        KBPositiveAccumulatorMembershipCDH::new_statement_from_params(
+            kb_pos_accum_params.clone(),
+            kb_pos_accum_pk.clone(),
+            prk.clone(),
+            *kb_pos_accumulator.value(),
+        ),
+    );
+    let proof_spec = ProofSpec::new(
+        verifier_statements,
+        meta_statements,
+        vec![],
+        context.clone(),
+    );
 
     let start = Instant::now();
     proof
@@ -816,9 +839,8 @@ start.elapsed()
     ));
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     statements.add(VBAccumulatorMembershipCDHProver::new(
@@ -941,7 +963,7 @@ start.elapsed()
     test_serialization!(Proof<Bls12_381>, proof);
 
     let mut statements = Statements::new();
-    statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),

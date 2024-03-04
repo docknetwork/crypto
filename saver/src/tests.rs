@@ -7,7 +7,7 @@ use crate::{
     setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens},
     utils::decompose,
 };
-use ark_bls12_381::{Bls12_381, G1Affine};
+use ark_bls12_381::Bls12_381;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_groth16::prepare_verifying_key;
@@ -26,7 +26,10 @@ use proof_system::{
         WitnessRef, Witnesses,
     },
     statement::{
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         ped_comm::PedersenCommitment as PedersenCommitmentStmt,
     },
     witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
@@ -143,21 +146,20 @@ fn bbs_plus_verifiably_encrypt_message() {
         let mut wit_comm_ct = decomposed_message.clone();
         wit_comm_ct.push(r.clone());
 
-        let mut statements = Statements::new();
-        statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        let mut prover_statements = Statements::new();
+        prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params.clone(),
-            keypair.public_key.clone(),
             BTreeMap::new(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             vec![chunked_comm_gens.G, chunked_comm_gens.H],
             comm_single.into_affine(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_chunks.clone(),
             comm_chunks.clone(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_ct.clone(),
             ct.commitment.clone(),
         ));
@@ -176,7 +178,7 @@ fn bbs_plus_verifiably_encrypt_message() {
             )));
         }
 
-        let proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], None);
+        let proof_spec = ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
 
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -198,7 +200,7 @@ fn bbs_plus_verifiably_encrypt_message() {
         println!("Timing for {}-bit chunks", chunk_bit_size);
         let proof = Proof::new::<StdRng, Blake2b512>(
             &mut rng,
-            proof_spec.clone(),
+            proof_spec,
             witnesses.clone(),
             None,
             Default::default(),
@@ -210,6 +212,30 @@ fn bbs_plus_verifiably_encrypt_message() {
         // Verifies the proof
         assert_eq!(comm_chunks, comm_single);
         let start = Instant::now();
+        let mut verifier_statements = Statements::new();
+        verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
+            sig_params.clone(),
+            keypair.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            vec![chunked_comm_gens.G, chunked_comm_gens.H],
+            comm_single.into_affine(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_chunks.clone(),
+            comm_chunks.clone(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_ct.clone(),
+            ct.commitment.clone(),
+        ));
+        let proof_spec = ProofSpec::new(
+            verifier_statements.clone(),
+            meta_statements.clone(),
+            vec![],
+            None,
+        );
         proof
             .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, None, Default::default())
             .unwrap();
@@ -288,6 +314,7 @@ fn bbs_plus_verifiably_encrypt_message() {
         )
         .unwrap();
     }
+
     check(4);
     check(8);
     check(16);
@@ -431,48 +458,47 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         let mut wit_comm_ct_3 = decomposed_message_3.clone();
         wit_comm_ct_3.push(r_3.clone());
 
-        let mut statements = Statements::new();
-        statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        let mut prover_statements = Statements::new();
+        prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params.clone(),
-            keypair.public_key.clone(),
             BTreeMap::new(),
         ));
 
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             vec![chunked_comm_gens.G, chunked_comm_gens.H],
             comm_single_1.into_affine(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_chunks.clone(),
             comm_chunks_1.clone(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_ct.clone(),
             ct_1.commitment.clone(),
         ));
 
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             vec![chunked_comm_gens.G, chunked_comm_gens.H],
             comm_single_2.into_affine(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_chunks.clone(),
             comm_chunks_2.clone(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_ct.clone(),
             ct_2.commitment.clone(),
         ));
 
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             vec![chunked_comm_gens.G, chunked_comm_gens.H],
             comm_single_3.into_affine(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_chunks.clone(),
             comm_chunks_3.clone(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_ct.clone(),
             ct_3.commitment.clone(),
         ));
@@ -512,7 +538,7 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
             )));
         }
 
-        let proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], None);
+        let proof_spec = ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
 
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -547,7 +573,7 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
 
         let proof = Proof::new::<StdRng, Blake2b512>(
             &mut rng,
-            proof_spec.clone(),
+            proof_spec,
             witnesses.clone(),
             None,
             Default::default(),
@@ -560,6 +586,52 @@ fn bbs_plus_verifiably_encrypt_many_messages() {
         assert_eq!(comm_chunks_2, comm_single_2);
         assert_eq!(comm_chunks_3, comm_single_3);
         let pvk = prepare_verifying_key::<Bls12_381>(&snark_srs.pk.vk);
+        let mut verifier_statements = Statements::new();
+        verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
+            sig_params.clone(),
+            keypair.public_key.clone(),
+            BTreeMap::new(),
+        ));
+
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            vec![chunked_comm_gens.G, chunked_comm_gens.H],
+            comm_single_1.into_affine(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_chunks.clone(),
+            comm_chunks_1.clone(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_ct.clone(),
+            ct_1.commitment.clone(),
+        ));
+
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            vec![chunked_comm_gens.G, chunked_comm_gens.H],
+            comm_single_2.into_affine(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_chunks.clone(),
+            comm_chunks_2.clone(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_ct.clone(),
+            ct_2.commitment.clone(),
+        ));
+
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            vec![chunked_comm_gens.G, chunked_comm_gens.H],
+            comm_single_3.into_affine(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_chunks.clone(),
+            comm_chunks_3.clone(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_ct.clone(),
+            ct_3.commitment.clone(),
+        ));
+        let proof_spec = ProofSpec::new(verifier_statements, meta_statements.clone(), vec![], None);
         proof
             .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, None, Default::default())
             .unwrap();
@@ -775,41 +847,39 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         let mut wit_comm_ct_2 = decomposed_message_2.clone();
         wit_comm_ct_2.push(r_2.clone());
 
-        let mut statements = Statements::new();
+        let mut prover_statements = Statements::new();
         // For 1st sig
-        statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params_1.clone(),
-            keypair_1.public_key.clone(),
             BTreeMap::new(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             vec![chunked_comm_gens.G, chunked_comm_gens.H],
             comm_single_1.into_affine(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_chunks.clone(),
             comm_chunks_1.clone(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_ct.clone(),
             ct_1.commitment.clone(),
         ));
 
         // For 2nd sig
-        statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params_2.clone(),
-            keypair_2.public_key.clone(),
             BTreeMap::new(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             vec![chunked_comm_gens.G, chunked_comm_gens.H],
             comm_single_2.into_affine(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_chunks.clone(),
             comm_chunks_2.clone(),
         ));
-        statements.add(PedersenCommitmentStmt::new_statement_from_params(
+        prover_statements.add(PedersenCommitmentStmt::new_statement_from_params(
             bases_comm_ct.clone(),
             ct_2.commitment.clone(),
         ));
@@ -842,7 +912,7 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
             )));
         }
 
-        let proof_spec = ProofSpec::new(statements.clone(), meta_statements.clone(), vec![], None);
+        let proof_spec = ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
 
         let mut witnesses = Witnesses::new();
         witnesses.add(PoKSignatureBBSG1Wit::new_as_witness(
@@ -879,7 +949,7 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
 
         let proof = Proof::new::<StdRng, Blake2b512>(
             &mut rng,
-            proof_spec.clone(),
+            proof_spec,
             witnesses.clone(),
             None,
             Default::default(),
@@ -892,6 +962,45 @@ fn bbs_plus_verifiably_encrypt_message_from_2_sigs() {
         assert_eq!(comm_chunks_1, comm_single_1);
         assert_eq!(comm_chunks_2, comm_single_2);
         let start = Instant::now();
+        let mut verifier_statements = Statements::new();
+        // For 1st sig
+        verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
+            sig_params_1.clone(),
+            keypair_1.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            vec![chunked_comm_gens.G, chunked_comm_gens.H],
+            comm_single_1.into_affine(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_chunks.clone(),
+            comm_chunks_1.clone(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_ct.clone(),
+            ct_1.commitment.clone(),
+        ));
+
+        // For 2nd sig
+        verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
+            sig_params_2.clone(),
+            keypair_2.public_key.clone(),
+            BTreeMap::new(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            vec![chunked_comm_gens.G, chunked_comm_gens.H],
+            comm_single_2.into_affine(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_chunks.clone(),
+            comm_chunks_2.clone(),
+        ));
+        verifier_statements.add(PedersenCommitmentStmt::new_statement_from_params(
+            bases_comm_ct.clone(),
+            ct_2.commitment.clone(),
+        ));
+        let proof_spec = ProofSpec::new(verifier_statements, meta_statements, vec![], None);
         proof
             .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, None, Default::default())
             .unwrap();

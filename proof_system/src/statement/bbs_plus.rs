@@ -8,13 +8,29 @@ use crate::{error::ProofSystemError, setup_params::SetupParams, statement::State
 use bbs_plus::prelude::{PublicKeyG2, SignatureParamsG1};
 use dock_crypto_utils::serde_utils::*;
 
+/// Public values like setup params and revealed messages for proving knowledge of BBS+ signature.
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct PoKBBSSignatureG1Prover<E: Pairing> {
+    /// Messages being revealed.
+    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    pub revealed_messages: BTreeMap<usize, E::ScalarField>,
+    /// If the statement was created by passing the signature params directly, then it will not be None
+    pub signature_params: Option<SignatureParamsG1<E>>,
+    /// If the statement was created by passing the index of signature params in `SetupParams`, then it will not be None
+    pub signature_params_ref: Option<usize>,
+}
+
 /// Public values like setup params, public key and revealed messages for proving knowledge of BBS+ signature.
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct PoKBBSSignatureG1<E: Pairing> {
+pub struct PoKBBSSignatureG1Verifier<E: Pairing> {
     /// Messages being revealed.
     #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
     pub revealed_messages: BTreeMap<usize, E::ScalarField>,
@@ -29,7 +45,52 @@ pub struct PoKBBSSignatureG1<E: Pairing> {
 }
 
 #[macro_export]
-macro_rules! impl_bbs_statement {
+macro_rules! impl_bbs_prover_statement {
+    ($params: ident, $stmt: ident, $setup_param_name: ident) => {
+        /// Create a statement by passing the signature parameters directly.
+        pub fn new_statement_from_params(
+            signature_params: $params<E>,
+            revealed_messages: BTreeMap<usize, E::ScalarField>,
+        ) -> Statement<E> {
+            Statement::$stmt(Self {
+                revealed_messages,
+                signature_params: Some(signature_params),
+                signature_params_ref: None,
+            })
+        }
+
+        /// Create a statement by passing the index of signature parameters in `SetupParams`.
+        pub fn new_statement_from_params_ref(
+            signature_params_ref: usize,
+            revealed_messages: BTreeMap<usize, E::ScalarField>,
+        ) -> Statement<E> {
+            Statement::$stmt(Self {
+                revealed_messages,
+                signature_params: None,
+                signature_params_ref: Some(signature_params_ref),
+            })
+        }
+
+        /// Get signature params for the statement index `s_idx` either from `self` or from given `setup_params`.
+        pub fn get_params<'a>(
+            &'a self,
+            setup_params: &'a [SetupParams<E>],
+            st_idx: usize,
+        ) -> Result<&'a $params<E>, ProofSystemError> {
+            extract_param!(
+                setup_params,
+                &self.signature_params,
+                self.signature_params_ref,
+                $setup_param_name,
+                IncompatibleBBSPlusSetupParamAtIndex,
+                st_idx
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_bbs_verifier_statement {
     ($params: ident, $stmt: ident, $setup_param_name: ident) => {
         /// Create a statement by passing the signature parameters and public key directly.
         pub fn new_statement_from_params(
@@ -95,6 +156,18 @@ macro_rules! impl_bbs_statement {
     };
 }
 
-impl<E: Pairing> PoKBBSSignatureG1<E> {
-    impl_bbs_statement!(SignatureParamsG1, PoKBBSSignatureG1, BBSPlusSignatureParams);
+impl<E: Pairing> PoKBBSSignatureG1Prover<E> {
+    impl_bbs_prover_statement!(
+        SignatureParamsG1,
+        PoKBBSSignatureG1Prover,
+        BBSPlusSignatureParams
+    );
+}
+
+impl<E: Pairing> PoKBBSSignatureG1Verifier<E> {
+    impl_bbs_verifier_statement!(
+        SignatureParamsG1,
+        PoKBBSSignatureG1Verifier,
+        BBSPlusSignatureParams
+    );
 }

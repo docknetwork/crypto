@@ -25,8 +25,8 @@ pub mod saver;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub enum Statement<E: Pairing> {
-    /// For proof of knowledge of BBS+ signature
-    PoKBBSSignatureG1(bbs_plus::PoKBBSSignatureG1<E>),
+    /// Statement used by prover for proof of knowledge of BBS+ signature
+    PoKBBSSignatureG1Prover(bbs_plus::PoKBBSSignatureG1Prover<E>),
     /// For proof of knowledge of committed elements in a Pedersen commitment in group G1
     PedersenCommitment(ped_comm::PedersenCommitment<E::G1Affine>),
     /// For proof of knowledge of an accumulator member and its corresponding witness
@@ -47,8 +47,8 @@ pub enum Statement<E: Pairing> {
     R1CSCircomVerifier(r1cs_legogroth16::R1CSCircomVerifier<E>),
     /// For proof of knowledge of Pointcheval-Sanders signature.
     PoKPSSignature(ps_signature::PoKPSSignatureStatement<E>),
-    /// For proof of knowledge of BBS signature
-    PoKBBSSignature23G1(bbs_23::PoKBBSSignature23G1<E>),
+    /// Statement used by prover for proof of knowledge of BBS signature
+    PoKBBSSignature23G1Prover(bbs_23::PoKBBSSignature23G1Prover<E>),
     /// For bound check using Bulletproofs++ protocol
     BoundCheckBpp(bound_check_bpp::BoundCheckBpp<E::G1Affine>),
     /// For bound check using set-membership check based protocols
@@ -87,12 +87,21 @@ pub enum Statement<E: Pairing> {
     ),
     KBPositiveAccumulatorMembership(accumulator::KBPositiveAccumulatorMembership<E>),
     KBPositiveAccumulatorMembershipCDH(accumulator::cdh::KBPositiveAccumulatorMembershipCDH<E>),
+    /// Statement used by verifier for proof of knowledge of BBS+ signature
+    PoKBBSSignatureG1Verifier(bbs_plus::PoKBBSSignatureG1Verifier<E>),
+    /// Statement used by verifier for proof of knowledge of BBS signature
+    PoKBBSSignature23G1Verifier(bbs_23::PoKBBSSignature23G1Verifier<E>),
+    /// For proof of knowledge of BDDT16 MAC.
     PoKBDDT16MAC(bddt16_kvac::PoKOfMAC<E::G1Affine>),
+    /// Statement used by verifier for proof of knowledge of BDDT16 MAC when it knows the secret key
     PoKBDDT16MACFullVerifier(bddt16_kvac::PoKOfMACFullVerifier<E::G1Affine>),
+    /// For proof of knowledge of committed elements in a Pedersen commitment in group G1
     PedersenCommitmentG2(ped_comm::PedersenCommitment<E::G2Affine>),
+    /// For proof of membership in VB accumulator in keyed verification model.
     VBAccumulatorMembershipKV(
         accumulator::keyed_verification::VBAccumulatorMembershipKV<E::G1Affine>,
     ),
+    /// Statement used by verifier for proof of membership in VB accumulator when it knows the secret key
     VBAccumulatorMembershipKVFullVerifier(
         accumulator::keyed_verification::VBAccumulatorMembershipKVFullVerifier<E::G1Affine>,
     ),
@@ -128,7 +137,7 @@ macro_rules! delegate {
     ($([$idx: ident])? $self: ident $($tt: tt)+) => {{
         $crate::delegate_indexed! {
             $self $([$idx 0u8])? =>
-                PoKBBSSignatureG1,
+                PoKBBSSignatureG1Prover,
                 VBAccumulatorMembership,
                 VBAccumulatorNonMembership,
                 PedersenCommitment,
@@ -139,7 +148,7 @@ macro_rules! delegate {
                 R1CSCircomProver,
                 R1CSCircomVerifier,
                 PoKPSSignature,
-                PoKBBSSignature23G1,
+                PoKBBSSignature23G1Prover,
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKVProver,
@@ -161,6 +170,8 @@ macro_rules! delegate {
                 KBUniversalAccumulatorNonMembershipCDHVerifier,
                 KBPositiveAccumulatorMembership,
                 KBPositiveAccumulatorMembershipCDH,
+                PoKBBSSignatureG1Verifier,
+                PoKBBSSignature23G1Verifier,
                 PoKBDDT16MAC,
                 PoKBDDT16MACFullVerifier,
                 PedersenCommitmentG2,
@@ -175,7 +186,7 @@ macro_rules! delegate_reverse {
     ($val: ident or else $err: expr => $($tt: tt)+) => {{
         $crate::delegate_indexed_reverse! {
             $val[_idx 0u8] =>
-                PoKBBSSignatureG1,
+                PoKBBSSignatureG1Prover,
                 VBAccumulatorMembership,
                 VBAccumulatorNonMembership,
                 PedersenCommitment,
@@ -186,7 +197,7 @@ macro_rules! delegate_reverse {
                 R1CSCircomProver,
                 R1CSCircomVerifier,
                 PoKPSSignature,
-                PoKBBSSignature23G1,
+                PoKBBSSignature23G1Prover,
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKVProver,
@@ -208,6 +219,8 @@ macro_rules! delegate_reverse {
                 KBUniversalAccumulatorNonMembershipCDHVerifier,
                 KBPositiveAccumulatorMembership,
                 KBPositiveAccumulatorMembershipCDH,
+                PoKBBSSignatureG1Verifier,
+                PoKBBSSignature23G1Verifier,
                 PoKBDDT16MAC,
                 PoKBDDT16MACFullVerifier,
                 PedersenCommitmentG2,
@@ -301,9 +314,8 @@ mod tests {
 
         let mut statements: Statements<Bls12_381> = Statements::new();
 
-        let stmt_1 = bbs_plus::PoKBBSSignatureG1::new_statement_from_params(
-            params_1,
-            keypair_1.public_key.clone(),
+        let stmt_1 = bbs_plus::PoKBBSSignatureG1Prover::new_statement_from_params(
+            params_1.clone(),
             BTreeMap::new(),
         );
         test_serialization!(Statement<Bls12_381>, stmt_1);
@@ -344,14 +356,33 @@ mod tests {
         statements.add(stmt_4);
         test_serialization!(Statements<Bls12_381>, statements);
 
-        let stmt_5 = bbs_23::PoKBBSSignature23G1::new_statement_from_params(
-            params_23,
-            keypair_23.public_key.clone(),
+        let stmt_5 = bbs_23::PoKBBSSignature23G1Prover::new_statement_from_params(
+            params_23.clone(),
             BTreeMap::new(),
         );
         test_serialization!(Statement<Bls12_381>, stmt_5);
 
         statements.add(stmt_5);
+        test_serialization!(Statements<Bls12_381>, statements);
+
+        let stmt_6 = bbs_plus::PoKBBSSignatureG1Verifier::new_statement_from_params(
+            params_1,
+            keypair_1.public_key.clone(),
+            BTreeMap::new(),
+        );
+        test_serialization!(Statement<Bls12_381>, stmt_6);
+
+        statements.add(stmt_6);
+        test_serialization!(Statements<Bls12_381>, statements);
+
+        let stmt_7 = bbs_23::PoKBBSSignature23G1Verifier::new_statement_from_params(
+            params_23,
+            keypair_23.public_key.clone(),
+            BTreeMap::new(),
+        );
+        test_serialization!(Statement<Bls12_381>, stmt_7);
+
+        statements.add(stmt_7);
         test_serialization!(Statements<Bls12_381>, statements);
     }
 }

@@ -13,8 +13,12 @@ use proof_system::{
     prelude::{EqualWitnesses, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses},
     proof::Proof,
     statement::{
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
-        bound_check_bpp::BoundCheckBpp as BoundCheckStmt, Statements,
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
+        bound_check_bpp::BoundCheckBpp as BoundCheckStmt,
+        Statements,
     },
     witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
@@ -53,9 +57,8 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_bulletproofs_plus_plus() {
         valid_proof: bool,
     ) {
         let mut prover_statements = Statements::new();
-        prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
             sig_params.clone(),
-            sig_keypair.public_key.clone(),
             BTreeMap::new(),
         ));
         prover_statements.add(
@@ -118,7 +121,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_bulletproofs_plus_plus() {
         }
 
         let mut verifier_statements = Statements::new();
-        verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+        verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
             sig_params.clone(),
             sig_keypair.public_key.clone(),
             BTreeMap::new(),

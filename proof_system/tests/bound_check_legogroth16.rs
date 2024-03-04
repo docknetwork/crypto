@@ -16,8 +16,14 @@ use proof_system::{
     prover::OldLegoGroth16Proof,
     setup_params::SetupParams,
     statement::{
-        bbs_23::PoKBBSSignature23G1 as PoKSignatureBBS23G1Stmt,
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_23::{
+            PoKBBSSignature23G1Prover as PoKSignatureBBS23G1ProverStmt,
+            PoKBBSSignature23G1Verifier as PoKSignatureBBS23G1VerifierStmt,
+        },
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         bound_check_legogroth16::{
             BoundCheckLegoGroth16Prover as BoundCheckProverStmt,
             BoundCheckLegoGroth16Verifier as BoundCheckVerifierStmt,
@@ -33,7 +39,7 @@ use proof_system::{
 use test_utils::{bbs::*, test_serialization};
 
 macro_rules! gen_tests {
-    ($test1_name: ident, $test2_name: ident, $setup_fn_name: ident, $stmt: ident, $wit: ident) => {
+    ($test1_name: ident, $test2_name: ident, $setup_fn_name: ident, $prover_stmt: ident, $verifier_stmt: ident, $wit: ident) => {
         #[test]
         fn $test1_name() {
             // Prove knowledge of BBS+ signature and a specific message satisfies some bounds i.e. min <= message < max.
@@ -56,9 +62,8 @@ macro_rules! gen_tests {
             let msg = msgs[msg_idx];
 
             let mut prover_statements = Statements::new();
-            prover_statements.add($stmt::new_statement_from_params(
+            prover_statements.add($prover_stmt::new_statement_from_params(
                 sig_params.clone(),
-                sig_keypair.public_key.clone(),
                 BTreeMap::new(),
             ));
             prover_statements
@@ -115,7 +120,7 @@ macro_rules! gen_tests {
             test_serialization!(Proof<Bls12_381>, proof);
 
             let mut verifier_statements = Statements::new();
-            verifier_statements.add($stmt::new_statement_from_params(
+            verifier_statements.add($verifier_stmt::new_statement_from_params(
                 sig_params,
                 sig_keypair.public_key.clone(),
                 BTreeMap::new(),
@@ -340,9 +345,8 @@ macro_rules! gen_tests {
                 }
 
                 let mut prover_statements = Statements::new();
-                prover_statements.add($stmt::new_statement_from_params(
+                prover_statements.add($prover_stmt::new_statement_from_params(
                     sig_params.clone(),
-                    sig_keypair.public_key.clone(),
                     BTreeMap::new(),
                 ));
                 if reuse_key {
@@ -429,7 +433,7 @@ macro_rules! gen_tests {
                 }
 
                 let mut verifier_statements = Statements::new();
-                verifier_statements.add($stmt::new_statement_from_params(
+                verifier_statements.add($verifier_stmt::new_statement_from_params(
                     sig_params,
                     sig_keypair.public_key.clone(),
                     BTreeMap::new(),
@@ -558,14 +562,16 @@ gen_tests!(
     pok_of_bbs_plus_sig_and_bounded_message,
     pok_of_bbs_plus_sig_and_many_bounded_messages,
     bbs_plus_sig_setup_given_messages,
-    PoKSignatureBBSG1Stmt,
+    PoKSignatureBBSG1ProverStmt,
+    PoKSignatureBBSG1VerifierStmt,
     PoKSignatureBBSG1Wit
 );
 gen_tests!(
     pok_of_bbs_sig_and_bounded_message,
     pok_of_bbs_sig_and_many_bounded_messages,
     bbs_sig_setup_given_messages,
-    PoKSignatureBBS23G1Stmt,
+    PoKSignatureBBS23G1ProverStmt,
+    PoKSignatureBBS23G1VerifierStmt,
     PoKSignatureBBS23G1Wit
 );
 
@@ -593,9 +599,8 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
 
     // Message same as minimum
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
     prover_statements.add(
@@ -639,7 +644,7 @@ fn pok_of_bbs_plus_sig_and_message_same_as_bound() {
     .0;
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params.clone(),
         sig_keypair.public_key.clone(),
         BTreeMap::new(),

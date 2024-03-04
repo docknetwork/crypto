@@ -16,7 +16,10 @@ use proof_system::{
     },
     proof::Proof,
     statement::{
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         r1cs_legogroth16::{
             R1CSCircomProver as R1CSProverStmt, R1CSCircomVerifier as R1CSVerifierStmt,
         },
@@ -66,9 +69,8 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
     prover_setup_params.push(SetupParams::Bytes(wasm_bytes));
 
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params.clone(),
-        sig_keypair.public_key.clone(),
         BTreeMap::new(),
     ));
 
@@ -150,7 +152,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
     verifier_setup_params.push(SetupParams::FieldElemVec(public_inputs_non_mem));
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params,
         sig_keypair.public_key.clone(),
         BTreeMap::new(),

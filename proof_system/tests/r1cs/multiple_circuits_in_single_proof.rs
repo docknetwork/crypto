@@ -13,7 +13,10 @@ use proof_system::{
     },
     proof::Proof,
     statement::{
-        bbs_plus::PoKBBSSignatureG1 as PoKSignatureBBSG1Stmt,
+        bbs_plus::{
+            PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
+            PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
+        },
         r1cs_legogroth16::{
             R1CSCircomProver as R1CSProverStmt, R1CSCircomVerifier as R1CSVerifierStmt,
         },
@@ -76,14 +79,12 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     test_serialization!(Vec<SetupParams<Bls12_381>>, prover_setup_params);
 
     let mut prover_statements = Statements::new();
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params_1.clone(),
-        sig_keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    prover_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
         sig_params_2.clone(),
-        sig_keypair_2.public_key.clone(),
         BTreeMap::new(),
     ));
     prover_statements.add(R1CSProverStmt::new_statement_from_params_ref(1, 2, 0).unwrap());
@@ -161,12 +162,12 @@ fn pok_of_bbs_plus_sig_and_attribute_less_than_check_with_private_and_public_val
     test_serialization!(Vec<SetupParams<Bls12_381>>, verifier_setup_params);
 
     let mut verifier_statements = Statements::new();
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params_1,
         sig_keypair_1.public_key.clone(),
         BTreeMap::new(),
     ));
-    verifier_statements.add(PoKSignatureBBSG1Stmt::new_statement_from_params(
+    verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
         sig_params_2,
         sig_keypair_2.public_key.clone(),
         BTreeMap::new(),
