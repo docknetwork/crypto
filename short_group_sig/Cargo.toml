@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Short group signatures - BB and weak-BB"
 
 [dependencies]
 ark-serialize.workspace = true

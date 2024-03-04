@@ -38,7 +38,7 @@ legogroth16 = { version = "0.12.0", default-features = false, features = ["circo
 bulletproofs_plus_plus = { version = "0.3.0", default-features = false, path = "../bulletproofs_plus_plus" }
 smc_range_proof = { version = "0.3.0", default-features = false, path = "../smc_range_proof" }
 short_group_sig = { version = "0.1.0", default-features = false, path = "../short_group_sig" }
-kvac = { version = "0.1.0", default-features = false, path = "../kvac" }
+kvac = { version = "0.2.0", default-features = false, path = "../kvac" }
 
 [dev-dependencies]
 ark-bls12-381.workspace = true
