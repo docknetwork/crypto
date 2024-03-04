@@ -1,6 +1,6 @@
 [package]
 name = "compressed_sigma"
-version = "0.0.8"
+version = "0.0.9"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -15,7 +15,7 @@ ark-std.workspace = true
 ark-poly.workspace = true
 rayon = {workspace = true, optional = true}
 digest.workspace = true
-dock_crypto_utils = { version = "0.16.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.17.0", default-features = false, path = "../utils" }
 
 [dev-dependencies]
 blake2.workspace = true

@@ -228,9 +228,7 @@ pub struct SchnorrResponse<F: PrimeField> {
     Deserialize,
 )]
 #[serde(bound = "")]
-pub struct MembershipRandomizedWitness<G: AffineRepr>(
-    pub RandomizedWitness<G>,
-);
+pub struct MembershipRandomizedWitness<G: AffineRepr>(pub RandomizedWitness<G>);
 
 /// Blindings used during membership proof protocol
 #[serde_as]
@@ -247,9 +245,7 @@ pub struct MembershipRandomizedWitness<G: AffineRepr>(
     ZeroizeOnDrop,
 )]
 #[serde(bound = "")]
-pub struct MembershipBlindings<F: PrimeField>(
-    pub Blindings<F>,
-);
+pub struct MembershipBlindings<F: PrimeField>(pub Blindings<F>);
 
 /// Commitments from various Schnorr protocols used during membership proof protocol
 #[serde_as]
@@ -257,9 +253,7 @@ pub struct MembershipBlindings<F: PrimeField>(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct MembershipSchnorrCommit<E: Pairing>(
-    pub SchnorrCommit<E>,
-);
+pub struct MembershipSchnorrCommit<E: Pairing>(pub SchnorrCommit<E>);
 
 /// Responses from various Schnorr protocols used during membership proof protocol
 #[serde_as]
@@ -267,9 +261,7 @@ pub struct MembershipSchnorrCommit<E: Pairing>(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct MembershipSchnorrResponse<F: PrimeField>(
-    pub SchnorrResponse<F>,
-);
+pub struct MembershipSchnorrResponse<F: PrimeField>(pub SchnorrResponse<F>);
 
 /// Proof of knowledge of the member and the membership witness
 #[serde_as]
