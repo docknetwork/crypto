@@ -357,16 +357,32 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
         let (mem_d_A, mut mem_d_D): (Vec<_>, Vec<_>) = cfg_into_iter!(0..p)
             .map(|i| {
                 (
-                    mem_add_poly[i][0] * (additions[0] - members[i]),
-                    mem_rem_poly[i][n - 1] * (removals[n - 1] - members[i]),
+                    if additions.is_empty() {
+                        E::ScalarField::one()
+                    } else {
+                        mem_add_poly[i][0] * (additions[0] - members[i])
+                    },
+                    if removals.is_empty() {
+                        E::ScalarField::one()
+                    } else {
+                        mem_rem_poly[i][n - 1] * (removals[n - 1] - members[i])
+                    },
                 )
             })
             .unzip();
         let (non_mem_d_A, mut non_mem_d_D): (Vec<_>, Vec<_>) = cfg_into_iter!(0..q)
             .map(|i| {
                 (
-                    non_mem_add_poly[i][0] * (removals[0] - non_members[i]),
-                    non_mem_rem_poly[i][m - 1] * (additions[m - 1] - non_members[i]),
+                    if removals.is_empty() {
+                        E::ScalarField::one()
+                    } else {
+                        non_mem_add_poly[i][0] * (removals[0] - non_members[i])
+                    },
+                    if additions.is_empty() {
+                        E::ScalarField::one()
+                    } else {
+                        non_mem_rem_poly[i][m - 1] * (additions[m - 1] - non_members[i])
+                    },
                 )
             })
             .unzip();
@@ -388,7 +404,13 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
                 let mem_poly_v_D = inner_product(&factors_rem_inv, &mem_rem_poly[j]);
 
-                mem_poly_v_A - (mem_poly_v_D * factors_add[m - 1])
+                mem_poly_v_A
+                    - (mem_poly_v_D
+                        * if additions.is_empty() {
+                            E::ScalarField::one()
+                        } else {
+                            factors_add[m - 1]
+                        })
             })
             .collect::<Vec<_>>();
 
@@ -403,7 +425,13 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
                 let non_mem_poly_v_D = inner_product(&factors_add_inv, &non_mem_rem_poly[j]);
 
-                non_mem_poly_v_A - (non_mem_poly_v_D * factors_rem[n - 1])
+                non_mem_poly_v_A
+                    - (non_mem_poly_v_D
+                        * if removals.is_empty() {
+                            E::ScalarField::one()
+                        } else {
+                            factors_rem[n - 1]
+                        })
             })
             .collect::<Vec<_>>();
 
@@ -936,6 +964,20 @@ mod tests {
             ));
         }
 
+        let (membership_witnesses_2_, non_membership_witnesses_2_) = accumulator_3
+            .update_both_wit_using_secret_key_on_batch_updates(
+                &[],
+                &[],
+                &additions_1,
+                &membership_witnesses_2,
+                &non_members,
+                &non_membership_witnesses_2,
+                &keypair.secret_key,
+            )
+            .unwrap();
+        assert_eq!(membership_witnesses_2_, membership_witnesses_2);
+        assert_eq!(non_membership_witnesses_2_, non_membership_witnesses_2);
+
         let start = Instant::now();
         let (membership_witnesses_4, non_membership_witnesses_4) = accumulator_3
             .update_both_wit_using_secret_key_on_batch_updates(
@@ -1028,5 +1070,11 @@ mod tests {
             "Time to generate Omega for witnesses in single calls {:?}",
             omega_time_1
         );
+
+        let (_, __) =
+            accumulator_3.generate_omega_for_both_witnesses(&[], &remaining, &keypair.secret_key);
+
+        let (_, __) =
+            accumulator_3.generate_omega_for_both_witnesses(&additions_3, &[], &keypair.secret_key);
     }
 }

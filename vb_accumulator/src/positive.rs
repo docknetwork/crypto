@@ -362,7 +362,7 @@ pub trait Accumulator<E: Pairing> {
     }
 
     /// Compute membership witness for batch
-    fn compute_membership_witness_for_batch(
+    fn compute_membership_witnesses_for_batch(
         &self,
         members: &[E::ScalarField],
         sk: &SecretKey<E::ScalarField>,
@@ -390,7 +390,7 @@ pub trait Accumulator<E: Pairing> {
                 return Err(VBAccumulatorError::ElementAbsent);
             }
         }
-        Ok(self.compute_membership_witness_for_batch(members, sk))
+        Ok(self.compute_membership_witnesses_for_batch(members, sk))
     }
 
     /// Check if element present in accumulator given the accumulated value. Described in section 2 of the paper
@@ -814,7 +814,8 @@ pub mod tests {
             ));
         }
         assert_eq!(
-            accumulator_3.compute_membership_witness_for_batch(&new_additions, &keypair.secret_key),
+            accumulator_3
+                .compute_membership_witnesses_for_batch(&new_additions, &keypair.secret_key),
             witnesses
         );
 

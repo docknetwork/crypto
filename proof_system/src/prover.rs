@@ -38,7 +38,11 @@ use crate::{
                 DetachedAccumulatorMembershipSubProtocol,
                 DetachedAccumulatorNonMembershipSubProtocol,
             },
-            keyed_verification::VBAccumulatorMembershipKVSubProtocol,
+            keyed_verification::{
+                KBUniversalAccumulatorMembershipKVSubProtocol,
+                KBUniversalAccumulatorNonMembershipKVSubProtocol,
+                VBAccumulatorMembershipKVSubProtocol,
+            },
             KBPositiveAccumulatorMembershipSubProtocol,
             KBUniversalAccumulatorMembershipSubProtocol,
             KBUniversalAccumulatorNonMembershipSubProtocol, VBAccumulatorMembershipSubProtocol,
@@ -222,6 +226,17 @@ impl<E: Pairing> Proof<E> {
                 let comm_key = $s.$cm_key_func(&proof_spec.setup_params, $s_idx)?;
                 let mut sp = SchnorrProtocol::new($s_idx, comm_key, $s.commitment);
                 sp.init(rng, blindings_map, $w)?;
+                sp.challenge_contribution(&mut transcript)?;
+                sub_protocols.push(SubProtocol::$protocol_variant(sp));
+            }};
+        }
+
+        macro_rules! accum_kv_protocol_init {
+            ($s: ident, $s_idx: ident, $w: ident, $protocol: ident, $protocol_variant: ident, $label: ident) => {{
+                let blinding = blindings.remove(&($s_idx, 0));
+                let mut sp = $protocol::new($s_idx, $s.accumulator_value);
+                sp.init(rng, blinding, $w)?;
+                transcript.set_label($label);
                 sp.challenge_contribution(&mut transcript)?;
                 sub_protocols.push(SubProtocol::$protocol_variant(sp));
             }};
@@ -694,13 +709,40 @@ impl<E: Pairing> Proof<E> {
                 },
                 Statement::VBAccumulatorMembershipKV(s) => match witness {
                     Witness::VBAccumulatorMembership(w) => {
-                        let blinding = blindings.remove(&(s_idx, 0));
-                        let mut sp =
-                            VBAccumulatorMembershipKVSubProtocol::new(s_idx, s.accumulator_value);
-                        sp.init(rng, blinding, w)?;
-                        transcript.set_label(VB_ACCUM_MEM_LABEL);
-                        sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::VBAccumulatorMembershipKV(sp));
+                        accum_kv_protocol_init!(
+                            s,
+                            s_idx,
+                            w,
+                            VBAccumulatorMembershipKVSubProtocol,
+                            VBAccumulatorMembershipKV,
+                            VB_ACCUM_MEM_LABEL
+                        );
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::KBUniversalAccumulatorMembershipKV(s) => match witness {
+                    Witness::KBUniAccumulatorMembership(w) => {
+                        accum_kv_protocol_init!(
+                            s,
+                            s_idx,
+                            w,
+                            KBUniversalAccumulatorMembershipKVSubProtocol,
+                            KBUniversalAccumulatorMembershipKV,
+                            KB_UNI_ACCUM_MEM_LABEL
+                        );
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::KBUniversalAccumulatorNonMembershipKV(s) => match witness {
+                    Witness::KBUniAccumulatorNonMembership(w) => {
+                        accum_kv_protocol_init!(
+                            s,
+                            s_idx,
+                            w,
+                            KBUniversalAccumulatorNonMembershipKVSubProtocol,
+                            KBUniversalAccumulatorNonMembershipKV,
+                            KB_UNI_ACCUM_NON_MEM_LABEL
+                        );
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
@@ -785,6 +827,12 @@ impl<E: Pairing> Proof<E> {
                 }
                 SubProtocol::PoKOfBDDT16MAC(mut sp) => sp.gen_proof_contribution(&challenge)?,
                 SubProtocol::VBAccumulatorMembershipKV(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::KBUniversalAccumulatorMembershipKV(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::KBUniversalAccumulatorNonMembershipKV(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
             });
@@ -888,7 +936,7 @@ impl<E: Pairing> Proof<E> {
         &self.statement_proofs
     }
 
-    /// Hash bytes to a field element. This is vulnerable to timing attack and is only used input
+    /// Hash bytes to a field element. This is vulnerable to timing attack and is only used when input
     /// is public anyway like when generating setup parameters or challenge
     pub fn generate_challenge_from_bytes<D: Digest>(bytes: &[u8]) -> E::ScalarField {
         field_elem_from_try_and_incr::<E::ScalarField, D>(bytes)

@@ -1,5 +1,5 @@
 //! A universal accumulator contructed from 2 positive accumulators where one accumulator accumulates all the members, say *Acc_M*,
-//! and the other accumulates all the non-members, say *Acc_N*. Thus in an empty universal accumulator, all possible elements, called
+//! and the other accumulates all the non-members, say *Acc_N*. Thus, in an empty universal accumulator, all possible elements, called
 //! the *domain* are present in the accumulator *Acc_N*. Adding an element to the universal accumulator results in adding the element to *Acc_M* and
 //! removing it from *Acc_N* and removing an element from the universal accumulator results in adding it to *Acc_N* and removing from *Acc_M*.
 //! A membership witness in the universal accumulator is a membership witness in *Acc_M* and a non-membership witness is a membership witness in *Acc_N*
@@ -14,12 +14,16 @@ use crate::{
     positive::{Accumulator, PositiveAccumulator},
     setup::{PublicKey, SecretKey, SetupParams},
 };
-use ark_ec::pairing::Pairing;
-use ark_ff::{Field, One};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_ff::{Field, One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
 pub struct KBUniversalAccumulator<E: Pairing> {
     /// The accumulator accumulating all the members
     pub mem: PositiveAccumulator<E>,
@@ -47,6 +51,12 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
         non_mem: PositiveAccumulator<E>,
     ) -> Self {
         let mem = PositiveAccumulator::initialize(params_gen);
+        Self { mem, non_mem }
+    }
+
+    pub fn initialize_empty(params_gen: impl AsRef<E::G1Affine>) -> Self {
+        let mem = PositiveAccumulator::initialize(params_gen);
+        let non_mem = mem.clone();
         Self { mem, non_mem }
     }
 
@@ -104,8 +114,7 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             self.mem.check_before_add(element, mem_state)?;
         }
         let mut new = self.clone();
-        let update = Poly_d::<E::ScalarField>::eval_direct(&elements, &-sk.0);
-        let update_inv = update.inverse().unwrap();
+        let (update, update_inv) = Self::compute_update_for_batch(&elements, sk);
         for element in elements {
             non_mem_state.remove(&element);
             mem_state.add(element);
@@ -127,8 +136,7 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             self.non_mem.check_before_add(element, non_mem_state)?;
         }
         let mut new = self.clone();
-        let update = Poly_d::<E::ScalarField>::eval_direct(&elements, &-sk.0);
-        let update_inv = update.inverse().unwrap();
+        let (update, update_inv) = Self::compute_update_for_batch(&elements, sk);
         for element in elements {
             mem_state.remove(&element);
             non_mem_state.add(element);
@@ -156,17 +164,8 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
         }
 
         let mut new = self.clone();
-        let update_add = if !additions.is_empty() {
-            Poly_d::<E::ScalarField>::eval_direct(&additions, &-sk.0)
-        } else {
-            E::ScalarField::one()
-        };
-        let update_rem = if !removals.is_empty() {
-            Poly_d::<E::ScalarField>::eval_direct(&removals, &-sk.0)
-        } else {
-            E::ScalarField::one()
-        };
-        let update_mem = update_add * update_rem.inverse().unwrap();
+        let (update_mem, update_non_mem) =
+            Self::compute_update_for_batches(&additions, &removals, sk);
 
         for element in additions {
             non_mem_state.remove(&element);
@@ -177,8 +176,7 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             non_mem_state.add(element);
         }
         new.mem = PositiveAccumulator((*new.mem.value() * update_mem).into());
-        new.non_mem =
-            PositiveAccumulator((*new.non_mem.value() * update_mem.inverse().unwrap()).into());
+        new.non_mem = PositiveAccumulator((*new.non_mem.value() * update_non_mem).into());
         Ok(new)
     }
 
@@ -269,6 +267,188 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             non_mem: PositiveAccumulator::from_accumulated(non_mem_accumulated),
         }
     }
+
+    pub fn compute_extended(
+        &self,
+        new_elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::G1Affine, E::G1Affine) {
+        let mem = self.mem.value().clone();
+        let non_mem = self.mem.compute_new_post_add_batch(new_elements, sk);
+        (mem, non_mem)
+    }
+
+    pub fn compute_new_post_add(
+        &self,
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::G1Affine, E::G1Affine) {
+        // element + sk
+        let y_plus_alpha = *element + sk.0;
+        // 1/(element + sk)
+        let y_plus_alpha_inv = y_plus_alpha.inverse().unwrap(); // Unwrap is fine as element has to equal secret key for it to panic
+        let mem = self
+            .mem
+            .value()
+            .mul_bigint(y_plus_alpha.into_bigint())
+            .into_affine();
+        let non_mem = self
+            .non_mem
+            .value()
+            .mul_bigint(y_plus_alpha_inv.into_bigint())
+            .into_affine();
+        (mem, non_mem)
+    }
+
+    pub fn compute_new_post_remove(
+        &self,
+        element: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::G1Affine, E::G1Affine) {
+        // element + sk
+        let y_plus_alpha = *element + sk.0;
+        // 1/(element + sk)
+        let y_plus_alpha_inv = y_plus_alpha.inverse().unwrap(); // Unwrap is fine as element has to equal secret key for it to panic
+        let mem = self
+            .mem
+            .value()
+            .mul_bigint(y_plus_alpha_inv.into_bigint())
+            .into_affine();
+        let non_mem = self
+            .non_mem
+            .value()
+            .mul_bigint(y_plus_alpha.into_bigint())
+            .into_affine();
+        (mem, non_mem)
+    }
+
+    pub fn compute_new_post_add_batch(
+        &self,
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::G1Affine, E::G1Affine) {
+        let (update, update_inv) = Self::compute_update_for_batch(elements, sk);
+        let mem = self
+            .mem
+            .value()
+            .mul_bigint(update.into_bigint())
+            .into_affine();
+        let non_mem = self
+            .non_mem
+            .value()
+            .mul_bigint(update_inv.into_bigint())
+            .into_affine();
+        (mem, non_mem)
+    }
+
+    pub fn compute_new_post_remove_batch(
+        &self,
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::G1Affine, E::G1Affine) {
+        let (update, update_inv) = Self::compute_update_for_batch(elements, sk);
+        let mem = self
+            .mem
+            .value()
+            .mul_bigint(update_inv.into_bigint())
+            .into_affine();
+        let non_mem = self
+            .non_mem
+            .value()
+            .mul_bigint(update.into_bigint())
+            .into_affine();
+        (mem, non_mem)
+    }
+
+    pub fn compute_new_post_batch_updates(
+        &self,
+        additions: &[E::ScalarField],
+        removals: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::G1Affine, E::G1Affine) {
+        let (update_mem, update_non_mem) =
+            Self::compute_update_for_batches(additions, removals, sk);
+        let mem = self
+            .mem
+            .value()
+            .mul_bigint(update_mem.into_bigint())
+            .into_affine();
+        let non_mem = self
+            .non_mem
+            .value()
+            .mul_bigint(update_non_mem.into_bigint())
+            .into_affine();
+        (mem, non_mem)
+    }
+
+    pub fn compute_membership_witness(
+        &self,
+        member: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> KBUniversalAccumulatorMembershipWitness<E::G1Affine> {
+        self.mem.compute_membership_witness(member, sk).into()
+    }
+
+    pub fn compute_non_membership_witness(
+        &self,
+        member: &E::ScalarField,
+        sk: &SecretKey<E::ScalarField>,
+    ) -> KBUniversalAccumulatorNonMembershipWitness<E::G1Affine> {
+        self.non_mem.compute_membership_witness(member, sk).into()
+    }
+
+    pub fn compute_membership_witnesses_for_batch(
+        &self,
+        members: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> Vec<KBUniversalAccumulatorMembershipWitness<E::G1Affine>> {
+        self.mem
+            .compute_membership_witnesses_for_batch(members, sk)
+            .into_iter()
+            .map(|w| w.into())
+            .collect()
+    }
+
+    pub fn compute_non_membership_witnesses_for_batch(
+        &self,
+        members: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>> {
+        self.non_mem
+            .compute_membership_witnesses_for_batch(members, sk)
+            .into_iter()
+            .map(|w| w.into())
+            .collect()
+    }
+
+    fn compute_update_for_batch(
+        elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::ScalarField) {
+        let update = Poly_d::<E::ScalarField>::eval_direct(&elements, &-sk.0);
+        let update_inv = update.inverse().unwrap();
+        (update, update_inv)
+    }
+
+    fn compute_update_for_batches(
+        additions: &[E::ScalarField],
+        removals: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> (E::ScalarField, E::ScalarField) {
+        let update_add = if !additions.is_empty() {
+            Poly_d::<E::ScalarField>::eval_direct(&additions, &-sk.0)
+        } else {
+            E::ScalarField::one()
+        };
+        let update_rem = if !removals.is_empty() {
+            Poly_d::<E::ScalarField>::eval_direct(&removals, &-sk.0)
+        } else {
+            E::ScalarField::one()
+        };
+        let update_mem = update_add * update_rem.inverse().unwrap();
+        let update_non_mem = update_mem.inverse().unwrap();
+        (update_mem, update_non_mem)
+    }
 }
 
 #[cfg(test)]
@@ -327,6 +507,11 @@ pub mod tests {
         let (params, keypair, mut accumulator, domain, mut mem_state, mut non_mem_state) =
             setup_kb_universal_accum(&mut rng, max);
 
+        let accumulator_ = KBUniversalAccumulator::<Bls12_381>::initialize_empty(&params);
+        let (mem, non_mem) = accumulator_.compute_extended(&domain, &keypair.secret_key);
+        assert_eq!(*accumulator.mem_value(), mem);
+        assert_eq!(*accumulator.non_mem_value(), non_mem);
+
         let mut total_mem_check_time = Duration::default();
         let mut total_non_mem_check_time = Duration::default();
         let count = max;
@@ -348,9 +533,13 @@ pub mod tests {
             ));
             total_non_mem_check_time += start.elapsed();
 
+            let nm_wit_ = accumulator.compute_non_membership_witness(&elem, &keypair.secret_key);
+            assert_eq!(nm_wit, nm_wit_);
+
             assert!(!mem_state.has(&elem));
             assert!(non_mem_state.has(&elem));
 
+            let accumulator_ = accumulator.compute_new_post_add(&elem, &keypair.secret_key);
             accumulator = accumulator
                 .add(
                     elem,
@@ -363,13 +552,41 @@ pub mod tests {
             assert!(mem_state.has(&elem));
             assert!(!non_mem_state.has(&elem));
 
+            assert_eq!(*accumulator.mem_value(), accumulator_.0);
+            assert_eq!(*accumulator.non_mem_value(), accumulator_.1);
+
+            start = Instant::now();
             let m_wit = accumulator
                 .get_membership_witness(&elem, &keypair.secret_key, &mem_state)
                 .unwrap();
-
-            start = Instant::now();
             assert!(accumulator.verify_membership(&elem, &m_wit, &keypair.public_key, &params));
             total_mem_check_time += start.elapsed();
+
+            let m_wit_ = accumulator.compute_membership_witness(&elem, &keypair.secret_key);
+            assert_eq!(m_wit, m_wit_);
+        }
+
+        for i in 0..count {
+            let elem = domain[i].clone();
+
+            assert!(mem_state.has(&elem));
+            assert!(!non_mem_state.has(&elem));
+
+            let accumulator_ = accumulator.compute_new_post_remove(&elem, &keypair.secret_key);
+            accumulator = accumulator
+                .remove(
+                    elem,
+                    &keypair.secret_key,
+                    &mut mem_state,
+                    &mut non_mem_state,
+                )
+                .unwrap();
+
+            assert!(!mem_state.has(&elem));
+            assert!(non_mem_state.has(&elem));
+
+            assert_eq!(*accumulator.mem_value(), accumulator_.0);
+            assert_eq!(*accumulator.non_mem_value(), accumulator_.1);
         }
 
         println!(
@@ -417,6 +634,8 @@ pub mod tests {
         }
 
         // Add as a batch
+        let accumulator_ =
+            accumulator_2.compute_new_post_add_batch(&additions, &keypair.secret_key);
         accumulator_2 = accumulator_2
             .add_batch(
                 additions.clone(),
@@ -428,6 +647,8 @@ pub mod tests {
         assert_eq!(accumulator_1.value(), accumulator_2.value());
         assert_eq!(mem_state.db, state_2_mem.db);
         assert_eq!(non_mem_state.db, state_2_non_mem.db);
+        assert_eq!(*accumulator_2.mem_value(), accumulator_.0);
+        assert_eq!(*accumulator_2.non_mem_value(), accumulator_.1);
 
         // Remove one by one
         for i in 0..removals.len() {
@@ -442,6 +663,8 @@ pub mod tests {
         }
 
         // Remove as a batch
+        let accumulator_ =
+            accumulator_2.compute_new_post_remove_batch(&removals, &keypair.secret_key);
         accumulator_2 = accumulator_2
             .remove_batch(
                 removals.clone(),
@@ -453,6 +676,8 @@ pub mod tests {
         assert_eq!(accumulator_1.value(), accumulator_2.value());
         assert_eq!(mem_state.db, state_2_mem.db);
         assert_eq!(non_mem_state.db, state_2_non_mem.db);
+        assert_eq!(*accumulator_2.mem_value(), accumulator_.0);
+        assert_eq!(*accumulator_2.non_mem_value(), accumulator_.1);
 
         // Need to make `accumulator_3` same as `accumulator_1` and `accumulator_2` by doing batch addition and removal simultaneously.
         // To do the removals, first they need to be added to the accumulator and the additions elements need to be adjusted.
@@ -473,6 +698,11 @@ pub mod tests {
         assert_ne!(accumulator_2.value(), accumulator_3.value());
 
         // Add and remove as a batch
+        let accumulator_ = accumulator_3.compute_new_post_batch_updates(
+            &new_additions,
+            &removals,
+            &keypair.secret_key,
+        );
         accumulator_3 = accumulator_3
             .batch_updates(
                 new_additions.clone(),
@@ -490,6 +720,9 @@ pub mod tests {
         assert_eq!(mem_state.db, state_3_mem.db);
         assert_eq!(non_mem_state.db, state_3_non_mem.db);
 
+        assert_eq!(*accumulator_3.mem_value(), accumulator_.0);
+        assert_eq!(*accumulator_3.non_mem_value(), accumulator_.1);
+
         let mem_witnesses = accumulator_3
             .get_membership_witnesses_for_batch(&new_additions, &keypair.secret_key, &state_3_mem)
             .unwrap();
@@ -501,7 +734,11 @@ pub mod tests {
                 &params
             ));
         }
-        let npn_mem_witnesses = accumulator_3
+        let mem_witnesses_ = accumulator_3
+            .compute_membership_witnesses_for_batch(&new_additions, &keypair.secret_key);
+        assert_eq!(mem_witnesses, mem_witnesses_);
+
+        let non_mem_witnesses = accumulator_3
             .get_non_membership_witnesses_for_batch(
                 &removals,
                 &keypair.secret_key,
@@ -511,10 +748,13 @@ pub mod tests {
         for i in 0..removals.len() {
             assert!(accumulator_3.verify_non_membership(
                 &removals[i],
-                &npn_mem_witnesses[i],
+                &non_mem_witnesses[i],
                 &keypair.public_key,
                 &params
             ));
         }
+        let non_mem_witnesses_ = accumulator_3
+            .compute_non_membership_witnesses_for_batch(&removals, &keypair.secret_key);
+        assert_eq!(non_mem_witnesses, non_mem_witnesses_);
     }
 }

@@ -14,19 +14,28 @@ use proof_system::{
     setup_params::SetupParams,
     statement::{
         accumulator::keyed_verification::{
-            VBAccumulatorMembershipKV, VBAccumulatorMembershipKVFullVerifier,
+            KBUniversalAccumulatorMembershipKV, KBUniversalAccumulatorMembershipKVFullVerifier,
+            KBUniversalAccumulatorNonMembershipKV,
+            KBUniversalAccumulatorNonMembershipKVFullVerifier, VBAccumulatorMembershipKV,
+            VBAccumulatorMembershipKVFullVerifier,
         },
         bddt16_kvac::{PoKOfMAC, PoKOfMACFullVerifier},
         ped_comm::PedersenCommitment as PedersenCommitmentStmt,
         Statements,
     },
-    witness::{Membership as MembershipWit, PoKOfBDDT16MAC, Witnesses},
+    witness::{
+        KBUniMembership, KBUniNonMembership, Membership as MembershipWit, PoKOfBDDT16MAC, Witnesses,
+    },
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
     time::Instant,
 };
-use test_utils::{accumulators::setup_positive_accum, kvac::bddt16_mac_setup, test_serialization};
+use test_utils::{
+    accumulators::{setup_kb_universal_accum_given_domain, setup_positive_accum},
+    kvac::bddt16_mac_setup,
+    test_serialization,
+};
 use vb_accumulator::positive::Accumulator;
 
 #[test]
@@ -61,6 +70,14 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
 
     let (_, pos_accum_keypair, mut pos_accumulator, mut pos_state) = setup_positive_accum(&mut rng);
 
+    let max = 100;
+    let mut domain = msgs_1.clone();
+    while domain.len() < max as usize {
+        domain.push(Fr::rand(&mut rng));
+    }
+    let (_, uni_accum_keypair, mut uni_accumulator, mut uni_mem_state, mut uni_non_mem_state) =
+        setup_kb_universal_accum_given_domain(&mut rng, domain);
+
     // Message with index `accum_member_1_idx` is added in the positive VB accumulator
     let accum_member_1_idx = 1;
     let accum_member_1 = msgs_1[accum_member_1_idx];
@@ -73,6 +90,36 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
         .unwrap();
     let mem_1_wit = pos_accumulator
         .get_membership_witness(&accum_member_1, &pos_accum_keypair.secret_key, &pos_state)
+        .unwrap();
+
+    // Message with index `accum_member_2_idx` is added in the KB universal accumulator
+    let accum_member_2_idx = 3;
+    let accum_member_2 = msgs_1[accum_member_2_idx];
+    uni_accumulator = uni_accumulator
+        .add(
+            accum_member_2,
+            &uni_accum_keypair.secret_key,
+            &mut uni_mem_state,
+            &mut uni_non_mem_state,
+        )
+        .unwrap();
+    let mem_2_wit = uni_accumulator
+        .get_membership_witness(
+            &accum_member_2,
+            &uni_accum_keypair.secret_key,
+            &uni_mem_state,
+        )
+        .unwrap();
+
+    // Message with index `accum_non_member_idx` is not added in the KB universal accumulator
+    let accum_non_member_idx = 4;
+    let accum_non_member = msgs_1[accum_non_member_idx];
+    let non_mem_wit = uni_accumulator
+        .get_non_membership_witness(
+            &accum_non_member,
+            &uni_accum_keypair.secret_key,
+            &uni_non_mem_state,
+        )
         .unwrap();
 
     // Prepare revealed messages for the proof of knowledge of 1st MAC
@@ -127,6 +174,12 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
         BTreeMap::new(),
     ));
     statements.add(VBAccumulatorMembershipKV::new(*pos_accumulator.value()));
+    statements.add(KBUniversalAccumulatorMembershipKV::new(
+        *uni_accumulator.mem_value(),
+    ));
+    statements.add(KBUniversalAccumulatorNonMembershipKV::new(
+        *uni_accumulator.non_mem_value(),
+    ));
 
     // Since 3 of the messages are being proven equal, add a `MetaStatement` describing that
     let mut meta_statements = MetaStatements::new();
@@ -156,6 +209,16 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
             .into_iter()
             .collect::<BTreeSet<WitnessRef>>(),
     ));
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, accum_member_2_idx), (4, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
+    meta_statements.add_witness_equality(EqualWitnesses(
+        vec![(0, accum_non_member_idx), (5, 0)]
+            .into_iter()
+            .collect::<BTreeSet<WitnessRef>>(),
+    ));
 
     test_serialization!(Statements<Bls12_381>, statements);
     test_serialization!(MetaStatements, meta_statements);
@@ -182,6 +245,14 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
     witnesses.add(MembershipWit::new_as_witness(
         accum_member_1,
         mem_1_wit.clone(),
+    ));
+    witnesses.add(KBUniMembership::new_as_witness(
+        accum_member_2,
+        mem_2_wit.clone(),
+    ));
+    witnesses.add(KBUniNonMembership::new_as_witness(
+        accum_non_member,
+        non_mem_wit.clone(),
     ));
 
     test_serialization!(Witnesses<Bls12_381>, witnesses);
@@ -232,6 +303,14 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
     statements.add(VBAccumulatorMembershipKVFullVerifier::new(
         *pos_accumulator.value(),
         pos_accum_keypair.secret_key.clone(),
+    ));
+    statements.add(KBUniversalAccumulatorMembershipKVFullVerifier::new(
+        *uni_accumulator.mem_value(),
+        uni_accum_keypair.secret_key.clone(),
+    ));
+    statements.add(KBUniversalAccumulatorNonMembershipKVFullVerifier::new(
+        *uni_accumulator.non_mem_value(),
+        uni_accum_keypair.secret_key.clone(),
     ));
     let proof_spec = ProofSpec::new(statements, meta_statements, vec![], context);
     proof_spec.validate().unwrap();

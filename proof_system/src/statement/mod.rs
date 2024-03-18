@@ -105,6 +105,26 @@ pub enum Statement<E: Pairing> {
     VBAccumulatorMembershipKVFullVerifier(
         accumulator::keyed_verification::VBAccumulatorMembershipKVFullVerifier<E::G1Affine>,
     ),
+    /// For proof of membership in KB universal accumulator in keyed verification model.
+    KBUniversalAccumulatorMembershipKV(
+        accumulator::keyed_verification::KBUniversalAccumulatorMembershipKV<E::G1Affine>,
+    ),
+    /// Statement used by verifier for proof of membership in KB universal when it knows the secret key
+    KBUniversalAccumulatorMembershipKVFullVerifier(
+        accumulator::keyed_verification::KBUniversalAccumulatorMembershipKVFullVerifier<
+            E::G1Affine,
+        >,
+    ),
+    /// For proof of non-membership in KB universal accumulator in keyed verification model.
+    KBUniversalAccumulatorNonMembershipKV(
+        accumulator::keyed_verification::KBUniversalAccumulatorNonMembershipKV<E::G1Affine>,
+    ),
+    /// Statement used by verifier for proof of non-membership in KB universal when it knows the secret key
+    KBUniversalAccumulatorNonMembershipKVFullVerifier(
+        accumulator::keyed_verification::KBUniversalAccumulatorNonMembershipKVFullVerifier<
+            E::G1Affine,
+        >,
+    ),
 }
 
 /// A collection of statements
@@ -176,7 +196,11 @@ macro_rules! delegate {
                 PoKBDDT16MACFullVerifier,
                 PedersenCommitmentG2,
                 VBAccumulatorMembershipKV,
-                VBAccumulatorMembershipKVFullVerifier
+                VBAccumulatorMembershipKVFullVerifier,
+                KBUniversalAccumulatorMembershipKV,
+                KBUniversalAccumulatorMembershipKVFullVerifier,
+                KBUniversalAccumulatorNonMembershipKV,
+                KBUniversalAccumulatorNonMembershipKVFullVerifier
             : $($tt)+
         }
     }}
@@ -225,7 +249,11 @@ macro_rules! delegate_reverse {
                 PoKBDDT16MACFullVerifier,
                 PedersenCommitmentG2,
                 VBAccumulatorMembershipKV,
-                VBAccumulatorMembershipKVFullVerifier
+                VBAccumulatorMembershipKVFullVerifier,
+                KBUniversalAccumulatorMembershipKV,
+                KBUniversalAccumulatorMembershipKVFullVerifier,
+                KBUniversalAccumulatorNonMembershipKV,
+                KBUniversalAccumulatorNonMembershipKVFullVerifier
             : $($tt)+
         }
 

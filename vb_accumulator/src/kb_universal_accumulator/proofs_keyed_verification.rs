@@ -28,6 +28,7 @@ pub struct KBUniversalAccumulatorMembershipProofProtocol<G: AffineRepr>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct KBUniversalAccumulatorMembershipProof<G: AffineRepr>(pub MembershipProof<G>);
 
 #[serde_as]
@@ -47,6 +48,7 @@ pub struct KBUniversalAccumulatorNonMembershipProofProtocol<G: AffineRepr>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
+#[serde(bound = "")]
 pub struct KBUniversalAccumulatorNonMembershipProof<G: AffineRepr>(pub MembershipProof<G>);
 
 #[serde_as]

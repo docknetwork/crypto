@@ -19,7 +19,11 @@ use crate::{
                 KBUniversalAccumulatorNonMembershipCDHSubProtocol,
                 VBAccumulatorMembershipCDHSubProtocol, VBAccumulatorNonMembershipCDHSubProtocol,
             },
-            keyed_verification::VBAccumulatorMembershipKVSubProtocol,
+            keyed_verification::{
+                KBUniversalAccumulatorMembershipKVSubProtocol,
+                KBUniversalAccumulatorNonMembershipKVSubProtocol,
+                VBAccumulatorMembershipKVSubProtocol,
+            },
             KBPositiveAccumulatorMembershipSubProtocol,
             KBUniversalAccumulatorMembershipSubProtocol,
             KBUniversalAccumulatorNonMembershipSubProtocol, VBAccumulatorMembershipSubProtocol,
@@ -280,6 +284,21 @@ impl<E: Pairing> Proof<E> {
             }};
         }
 
+        macro_rules! accum_cdh_protocol_chal_gen {
+            ($s: ident, $s_idx: ident, $p: ident, $label: ident) => {{
+                check_resp_for_equalities!(
+                    witness_equalities,
+                    $s_idx,
+                    $p,
+                    get_schnorr_response_for_element,
+                    Self,
+                    responses_for_equalities
+                );
+                transcript.set_label($label);
+                $p.challenge_contribution(&$s.accumulator_value, &mut transcript)?;
+            }};
+        }
+
         // Get challenge contribution for each statement and check if response is equal for all witnesses.
         for (s_idx, (statement, proof)) in proof_spec
             .statements
@@ -399,16 +418,17 @@ impl<E: Pairing> Proof<E> {
                 },
                 Statement::VBAccumulatorMembershipCDHVerifier(s) => match proof {
                     StatementProof::VBAccumulatorMembershipCDH(p) => {
-                        check_resp_for_equalities!(
-                            witness_equalities,
-                            s_idx,
-                            p,
-                            get_schnorr_response_for_element,
-                            Self,
-                            responses_for_equalities
-                        );
-                        transcript.set_label(VB_ACCUM_CDH_MEM_LABEL);
-                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
+                        // check_resp_for_equalities!(
+                        //     witness_equalities,
+                        //     s_idx,
+                        //     p,
+                        //     get_schnorr_response_for_element,
+                        //     Self,
+                        //     responses_for_equalities
+                        // );
+                        // transcript.set_label(VB_ACCUM_CDH_MEM_LABEL);
+                        // p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
+                        accum_cdh_protocol_chal_gen!(s, s_idx, p, VB_ACCUM_CDH_MEM_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -435,31 +455,13 @@ impl<E: Pairing> Proof<E> {
                 },
                 Statement::KBUniversalAccumulatorMembershipCDHVerifier(s) => match proof {
                     StatementProof::KBUniversalAccumulatorMembershipCDH(p) => {
-                        check_resp_for_equalities!(
-                            witness_equalities,
-                            s_idx,
-                            p,
-                            get_schnorr_response_for_element,
-                            Self,
-                            responses_for_equalities
-                        );
-                        transcript.set_label(KB_UNI_ACCUM_CDH_MEM_LABEL);
-                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
+                        accum_cdh_protocol_chal_gen!(s, s_idx, p, KB_UNI_ACCUM_CDH_MEM_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::KBUniversalAccumulatorNonMembershipCDHVerifier(s) => match proof {
                     StatementProof::KBUniversalAccumulatorNonMembershipCDH(p) => {
-                        check_resp_for_equalities!(
-                            witness_equalities,
-                            s_idx,
-                            p,
-                            get_schnorr_response_for_element,
-                            Self,
-                            responses_for_equalities
-                        );
-                        transcript.set_label(KB_UNI_ACCUM_CDH_NON_MEM_LABEL);
-                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
+                        accum_cdh_protocol_chal_gen!(s, s_idx, p, KB_UNI_ACCUM_CDH_NON_MEM_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -830,31 +832,37 @@ impl<E: Pairing> Proof<E> {
                 },
                 Statement::VBAccumulatorMembershipKV(s) => match proof {
                     StatementProof::VBAccumulatorMembershipKV(p) => {
-                        check_resp_for_equalities!(
-                            witness_equalities,
-                            s_idx,
-                            p,
-                            get_schnorr_response_for_element,
-                            Self,
-                            responses_for_equalities
-                        );
-                        transcript.set_label(VB_ACCUM_MEM_LABEL);
-                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
+                        accum_cdh_protocol_chal_gen!(s, s_idx, p, VB_ACCUM_MEM_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
                 Statement::VBAccumulatorMembershipKVFullVerifier(s) => match proof {
                     StatementProof::VBAccumulatorMembershipKV(p) => {
-                        check_resp_for_equalities!(
-                            witness_equalities,
-                            s_idx,
-                            p,
-                            get_schnorr_response_for_element,
-                            Self,
-                            responses_for_equalities
-                        );
-                        transcript.set_label(VB_ACCUM_MEM_LABEL);
-                        p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
+                        accum_cdh_protocol_chal_gen!(s, s_idx, p, VB_ACCUM_MEM_LABEL);
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::KBUniversalAccumulatorMembershipKV(s) => match proof {
+                    StatementProof::KBUniversalAccumulatorMembershipKV(p) => {
+                        accum_cdh_protocol_chal_gen!(s, s_idx, p, KB_UNI_ACCUM_MEM_LABEL);
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::KBUniversalAccumulatorMembershipKVFullVerifier(s) => match proof {
+                    StatementProof::KBUniversalAccumulatorMembershipKV(p) => {
+                        accum_cdh_protocol_chal_gen!(s, s_idx, p, KB_UNI_ACCUM_MEM_LABEL);
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::KBUniversalAccumulatorNonMembershipKV(s) => match proof {
+                    StatementProof::KBUniversalAccumulatorNonMembershipKV(p) => {
+                        accum_cdh_protocol_chal_gen!(s, s_idx, p, KB_UNI_ACCUM_NON_MEM_LABEL);
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::KBUniversalAccumulatorNonMembershipKVFullVerifier(s) => match proof {
+                    StatementProof::KBUniversalAccumulatorNonMembershipKV(p) => {
+                        accum_cdh_protocol_chal_gen!(s, s_idx, p, KB_UNI_ACCUM_NON_MEM_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -1411,6 +1419,46 @@ impl<E: Pairing> Proof<E> {
                     StatementProof::VBAccumulatorMembershipKV(ref p) => {
                         let sp =
                             VBAccumulatorMembershipKVSubProtocol::new(s_idx, s.accumulator_value);
+                        sp.verify_full_proof_contribution(&challenge, p, &s.secret_key)?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::KBUniversalAccumulatorMembershipKV(s) => match proof {
+                    StatementProof::KBUniversalAccumulatorMembershipKV(ref p) => {
+                        let sp = KBUniversalAccumulatorMembershipKVSubProtocol::new(
+                            s_idx,
+                            s.accumulator_value,
+                        );
+                        sp.verify_proof_contribution(&challenge, p)?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::KBUniversalAccumulatorMembershipKVFullVerifier(s) => match proof {
+                    StatementProof::KBUniversalAccumulatorMembershipKV(ref p) => {
+                        let sp = KBUniversalAccumulatorMembershipKVSubProtocol::new(
+                            s_idx,
+                            s.accumulator_value,
+                        );
+                        sp.verify_full_proof_contribution(&challenge, p, &s.secret_key)?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::KBUniversalAccumulatorNonMembershipKV(s) => match proof {
+                    StatementProof::KBUniversalAccumulatorNonMembershipKV(ref p) => {
+                        let sp = KBUniversalAccumulatorNonMembershipKVSubProtocol::new(
+                            s_idx,
+                            s.accumulator_value,
+                        );
+                        sp.verify_proof_contribution(&challenge, p)?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::KBUniversalAccumulatorNonMembershipKVFullVerifier(s) => match proof {
+                    StatementProof::KBUniversalAccumulatorNonMembershipKV(ref p) => {
+                        let sp = KBUniversalAccumulatorNonMembershipKVSubProtocol::new(
+                            s_idx,
+                            s.accumulator_value,
+                        );
                         sp.verify_full_proof_contribution(&challenge, p, &s.secret_key)?
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),

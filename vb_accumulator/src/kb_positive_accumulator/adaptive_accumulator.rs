@@ -84,7 +84,7 @@ impl<E: Pairing> KBPositiveAccumulator<E> {
         let members = cfg_iter!(sigs).map(|s| s.1).collect::<Vec<_>>();
         let w = self
             .0
-            .compute_membership_witness_for_batch(&members, &sk.accum);
+            .compute_membership_witnesses_for_batch(&members, &sk.accum);
         self.0.add_batch(members, state)?;
         let wits = cfg_into_iter!(sigs)
             .zip(cfg_into_iter!(w))
@@ -129,7 +129,7 @@ impl<E: Pairing> KBPositiveAccumulator<E> {
         let new = KBPositiveAccumulator(self.0.remove_batch(&removals, &sk.accum, state)?);
         let w = new
             .0
-            .compute_membership_witness_for_batch(&additions, &sk.accum);
+            .compute_membership_witnesses_for_batch(&additions, &sk.accum);
         self.0.add_batch(additions, state)?;
         let wits = cfg_into_iter!(sigs)
             .zip(cfg_into_iter!(w))

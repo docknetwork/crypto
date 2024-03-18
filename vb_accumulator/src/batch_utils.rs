@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use dock_crypto_utils::ff::{inner_product, powers};
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -618,7 +619,13 @@ where
         // mem_poly_v_AD = mem_poly_v_A - mem_poly_v_AD*(additions[0] + alpha)*(additions[1] + alpha)*...(additions[m-1] + alpha)
         let mut mem_poly_v_AD = mem_poly_v_A;
         if !removals.is_empty() {
-            mem_poly_v_AD = &mem_poly_v_AD - &(&mem_poly_v_D * factors_add[m - 1]);
+            mem_poly_v_AD = &mem_poly_v_AD
+                - &(&mem_poly_v_D
+                    * if additions.is_empty() {
+                        G::ScalarField::one()
+                    } else {
+                        factors_add[m - 1]
+                    });
         }
         let omega_mem = Self(G::Group::normalize_batch(
             &multiply_field_elems_with_same_group_elem(
@@ -630,7 +637,13 @@ where
         // non_mem_poly_v_AD = non_mem_poly_v_AD - non_mem_poly_v_AD*(removals[0] + alpha)*(removals[1] + alpha)*...(removals[n-1] + alpha)
         let mut non_mem_poly_v_AD = non_mem_poly_v_A;
         if !additions.is_empty() {
-            non_mem_poly_v_AD = &non_mem_poly_v_AD - &(&non_mem_poly_v_D * factors_rem[n - 1]);
+            non_mem_poly_v_AD = &non_mem_poly_v_AD
+                - &(&non_mem_poly_v_D
+                    * if removals.is_empty() {
+                        G::ScalarField::one()
+                    } else {
+                        factors_rem[n - 1]
+                    });
         }
         let omega_non_mem = Self(G::Group::normalize_batch(
             &multiply_field_elems_with_same_group_elem(

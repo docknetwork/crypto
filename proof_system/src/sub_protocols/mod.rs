@@ -29,7 +29,10 @@ use crate::sub_protocols::{
             KBUniversalAccumulatorNonMembershipCDHSubProtocol,
             VBAccumulatorMembershipCDHSubProtocol, VBAccumulatorNonMembershipCDHSubProtocol,
         },
-        keyed_verification::VBAccumulatorMembershipKVSubProtocol,
+        keyed_verification::{
+            KBUniversalAccumulatorMembershipKVSubProtocol,
+            KBUniversalAccumulatorNonMembershipKVSubProtocol, VBAccumulatorMembershipKVSubProtocol,
+        },
         KBPositiveAccumulatorMembershipSubProtocol, KBUniversalAccumulatorMembershipSubProtocol,
         KBUniversalAccumulatorNonMembershipSubProtocol,
     },
@@ -88,6 +91,10 @@ pub enum SubProtocol<'a, E: Pairing> {
     PoKOfBDDT16MAC(PoKOfMACSubProtocol<'a, E::G1Affine>),
     PoKDiscreteLogsG2(schnorr::SchnorrProtocol<'a, E::G2Affine>),
     VBAccumulatorMembershipKV(VBAccumulatorMembershipKVSubProtocol<E::G1Affine>),
+    KBUniversalAccumulatorMembershipKV(KBUniversalAccumulatorMembershipKVSubProtocol<E::G1Affine>),
+    KBUniversalAccumulatorNonMembershipKV(
+        KBUniversalAccumulatorNonMembershipKVSubProtocol<E::G1Affine>,
+    ),
 }
 
 macro_rules! delegate {
@@ -119,7 +126,9 @@ macro_rules! delegate {
                 KBPositiveAccumulatorMembershipCDH,
                 PoKOfBDDT16MAC,
                 PoKDiscreteLogsG2,
-                VBAccumulatorMembershipKV
+                VBAccumulatorMembershipKV,
+                KBUniversalAccumulatorMembershipKV,
+                KBUniversalAccumulatorNonMembershipKV
             : $($tt)+
         }
     }};

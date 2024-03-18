@@ -59,7 +59,9 @@ pub enum StatementProof<E: Pairing> {
     KBPositiveAccumulatorMembershipCDH(#[serde_as(as = "ArkObjectBytes")] KBPositiveAccumulatorMembershipProofCDH<E>),
     PoKOfBDDT16MAC(PoKOfMAC<E::G1Affine>),
     PedersenCommitmentG2(PedersenCommitmentProof<E::G2Affine>),
-    VBAccumulatorMembershipKV(vb_accumulator::proofs_keyed_verification::MembershipProof<E::G1Affine>)
+    VBAccumulatorMembershipKV(vb_accumulator::proofs_keyed_verification::MembershipProof<E::G1Affine>),
+    KBUniversalAccumulatorMembershipKV(vb_accumulator::kb_universal_accumulator::proofs_keyed_verification::KBUniversalAccumulatorMembershipProof<E::G1Affine>),
+    KBUniversalAccumulatorNonMembershipKV(vb_accumulator::kb_universal_accumulator::proofs_keyed_verification::KBUniversalAccumulatorNonMembershipProof<E::G1Affine>),
 
 }
 
@@ -95,7 +97,9 @@ macro_rules! delegate {
                 KBPositiveAccumulatorMembershipCDH,
                 PoKOfBDDT16MAC,
                 PedersenCommitmentG2,
-                VBAccumulatorMembershipKV
+                VBAccumulatorMembershipKV,
+                KBUniversalAccumulatorMembershipKV,
+                KBUniversalAccumulatorNonMembershipKV
             : $($tt)+
         }
     }};
@@ -133,7 +137,9 @@ macro_rules! delegate_reverse {
                 KBPositiveAccumulatorMembershipCDH,
                 PoKOfBDDT16MAC,
                 PedersenCommitmentG2,
-                VBAccumulatorMembershipKV
+                VBAccumulatorMembershipKV,
+                KBUniversalAccumulatorMembershipKV,
+                KBUniversalAccumulatorNonMembershipKV
             : $($tt)+
         }
 

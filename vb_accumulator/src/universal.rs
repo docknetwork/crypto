@@ -494,7 +494,7 @@ impl<E: Pairing> UniversalAccumulator<E> {
 
     /// Compute non-membership witnesses for a batch {`y_i`} given their `d`s, where `d = f_V(-y_i)`
     /// for each member `y_i`
-    pub fn compute_non_membership_witness_for_batch_given_d(
+    pub fn compute_non_membership_witnesses_for_batch_given_d(
         &self,
         d: Vec<E::ScalarField>,
         non_members: &[E::ScalarField],
@@ -572,7 +572,7 @@ impl<E: Pairing> UniversalAccumulator<E> {
             }
         }
 
-        self.compute_non_membership_witness_for_batch_given_d(
+        self.compute_non_membership_witnesses_for_batch_given_d(
             d_for_witnesses,
             non_members,
             sk,
@@ -1038,7 +1038,8 @@ pub mod tests {
             ));
         }
         assert_eq!(
-            accumulator_3.compute_membership_witness_for_batch(&new_additions, &keypair.secret_key),
+            accumulator_3
+                .compute_membership_witnesses_for_batch(&new_additions, &keypair.secret_key),
             mem_witnesses
         );
 
@@ -1067,7 +1068,7 @@ pub mod tests {
         );
         assert_eq!(
             accumulator_3
-                .compute_non_membership_witness_for_batch_given_d(
+                .compute_non_membership_witnesses_for_batch_given_d(
                     d,
                     &removals,
                     &keypair.secret_key,

@@ -1,6 +1,6 @@
 [package]
 name = "proof_system"
-version = "0.25.0"
+version = "0.26.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -29,7 +29,7 @@ aead = {version = "0.5.2", default-features = false, features = [ "alloc" ]}
 chacha20poly1305 = {version = "0.10.1", default-features = false}
 bbs_plus = { version = "0.19.0", default-features = false, path = "../bbs_plus" }
 schnorr_pok = { version = "0.17.0", default-features = false, path = "../schnorr_pok" }
-vb_accumulator = { version = "0.20.0", default-features = false, path = "../vb_accumulator" }
+vb_accumulator = { version = "0.21.0", default-features = false, path = "../vb_accumulator" }
 dock_crypto_utils = { version = "0.17.0", default-features = false, path = "../utils" }
 saver = { version = "0.15.0", default-features = false, path = "../saver" }
 coconut-crypto = { version = "0.8.0", default-features = false, path = "../coconut" }
