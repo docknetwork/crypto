@@ -623,15 +623,31 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipWitness<G> {
         new_elements_and_omegas: Vec<(&[G::ScalarField], &Omega<G>)>,
         non_member: &G::ScalarField,
     ) -> Result<Self, VBAccumulatorError> {
-        let (_, new) =
-            MembershipWitness::compute_update_using_public_info_after_multiple_batch_updates(
-                cfg_into_iter!(new_elements_and_omegas)
-                    .map(|(a, o)| (a, &[], o))
-                    .collect(),
+        if new_elements_and_omegas.len() == 1 {
+            return MembershipWitness::compute_update_using_public_info_after_batch_updates(
+                new_elements_and_omegas[0].0,
+                &[],
+                new_elements_and_omegas[0].1,
                 non_member,
                 &self.0 .0,
-            )?;
-        Ok(Self(MembershipWitness(new)))
+            )
+            .map(|(_, w)| Self(MembershipWitness(w)));
+        }
+        let mut new_elements = Vec::with_capacity(new_elements_and_omegas.len());
+        let mut omegas = Vec::with_capacity(new_elements_and_omegas.len());
+        for (a, omega) in new_elements_and_omegas {
+            new_elements.push(a);
+            omegas.push(omega);
+        }
+
+        MembershipWitness::compute_update_for_multiple_batches(
+            new_elements,
+            vec![],
+            omegas,
+            non_member,
+            &self.0 .0,
+        )
+        .map(|(_, w)| Self(MembershipWitness(w)))
     }
 }
 
