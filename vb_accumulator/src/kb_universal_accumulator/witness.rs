@@ -219,18 +219,12 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
         sk: &SecretKey<E::ScalarField>,
     ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>, VBAccumulatorError>
     {
-        let old: Vec<E::G1Affine> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
-        let (_, new) =
-            MembershipWitness::<E::G1Affine>::compute_update_using_secret_key_after_batch_additions(
-                removals,
-                non_members,
-                &old,
-                &self.non_mem.0,
-                sk,
-            )?;
-        Ok(cfg_into_iter!(new)
-            .map(|w| MembershipWitness(w).into())
-            .collect())
+        self.update_witnesses_using_secret_key_on_non_mem_accum_update(
+            removals,
+            non_members,
+            old_witnesses,
+            sk,
+        )
     }
 
     /// Update the non-membership witnesses on addition and removal of a batch of elements. Call this on the accumulator before update
@@ -258,6 +252,23 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             .collect())
     }
 
+    pub fn update_non_mem_wit_using_secret_key_on_domain_extension(
+        &self,
+        new_elements: &[E::ScalarField],
+        non_members: &[E::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>, VBAccumulatorError>
+    {
+        // Domain extension is adding elements to the non-membership accumulator
+        self.update_witnesses_using_secret_key_on_non_mem_accum_update(
+            new_elements,
+            non_members,
+            old_witnesses,
+            sk,
+        )
+    }
+
     /// Call this on the accumulator before update
     pub fn generate_omega_for_membership_witnesses(
         &self,
@@ -276,6 +287,17 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
         sk: &SecretKey<E::ScalarField>,
     ) -> Omega<E::G1Affine> {
         Omega::new(removals, additions, self.non_mem.value(), sk)
+    }
+
+    /// Generate Omega when the domain of the accumulator is extended. This means new elements are
+    /// added to the non-membership accumulator and hence those witnesses need to be updated.
+    /// Call this on the accumulator before update
+    pub fn generate_omega_for_non_membership_witnesses_on_domain_extension(
+        &self,
+        new_elements: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> Omega<E::G1Affine> {
+        Omega::new(new_elements, &[], self.non_mem.value(), sk)
     }
 
     /// Update both membership and non-membership witnesses in a single call. Call this on the accumulator before update
@@ -496,6 +518,29 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             sk,
         )
     }
+
+    /// Update non-membership witnesses when the non-membership accumulator is updated
+    fn update_witnesses_using_secret_key_on_non_mem_accum_update(
+        &self,
+        new_elements: &[E::ScalarField],
+        non_members: &[E::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>],
+        sk: &SecretKey<E::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>, VBAccumulatorError>
+    {
+        let old: Vec<E::G1Affine> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
+        let (_, new) =
+            MembershipWitness::<E::G1Affine>::compute_update_using_secret_key_after_batch_additions(
+                new_elements,
+                non_members,
+                &old,
+                &self.non_mem.0,
+                sk,
+            )?;
+        Ok(cfg_into_iter!(new)
+            .map(|w| MembershipWitness(w).into())
+            .collect())
+    }
 }
 
 impl<G: AffineRepr> KBUniversalAccumulatorMembershipWitness<G> {
@@ -533,10 +578,10 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipWitness<G> {
         additions: &[G::ScalarField],
         removals: &[G::ScalarField],
         omega: &Omega<G>,
-        member: &G::ScalarField,
+        non_member: &G::ScalarField,
     ) -> Result<Self, VBAccumulatorError> {
         let (_, new) = MembershipWitness::compute_update_using_public_info_after_batch_updates(
-            removals, additions, omega, member, &self.0 .0,
+            removals, additions, omega, non_member, &self.0 .0,
         )?;
         Ok(Self(MembershipWitness(new)))
     }
@@ -544,14 +589,46 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipWitness<G> {
     pub fn update_using_public_info_after_multiple_batch_updates(
         &self,
         updates_and_omegas: Vec<(&[G::ScalarField], &[G::ScalarField], &Omega<G>)>,
-        member: &G::ScalarField,
+        non_member: &G::ScalarField,
     ) -> Result<Self, VBAccumulatorError> {
         let (_, new) =
             MembershipWitness::compute_update_using_public_info_after_multiple_batch_updates(
                 cfg_into_iter!(updates_and_omegas)
                     .map(|(a, r, o)| (r, a, o))
                     .collect(),
-                member,
+                non_member,
+                &self.0 .0,
+            )?;
+        Ok(Self(MembershipWitness(new)))
+    }
+
+    pub fn update_using_public_info_after_domain_extension(
+        &self,
+        new_elements: &[G::ScalarField],
+        omega: &Omega<G>,
+        non_member: &G::ScalarField,
+    ) -> Result<Self, VBAccumulatorError> {
+        let (_, new) = MembershipWitness::compute_update_using_public_info_after_batch_updates(
+            new_elements,
+            &[],
+            omega,
+            non_member,
+            &self.0 .0,
+        )?;
+        Ok(Self(MembershipWitness(new)))
+    }
+
+    pub fn update_using_public_info_after_multiple_domain_extensions(
+        &self,
+        new_elements_and_omegas: Vec<(&[G::ScalarField], &Omega<G>)>,
+        non_member: &G::ScalarField,
+    ) -> Result<Self, VBAccumulatorError> {
+        let (_, new) =
+            MembershipWitness::compute_update_using_public_info_after_multiple_batch_updates(
+                cfg_into_iter!(new_elements_and_omegas)
+                    .map(|(a, o)| (a, &[], o))
+                    .collect(),
+                non_member,
                 &self.0 .0,
             )?;
         Ok(Self(MembershipWitness(new)))
@@ -563,7 +640,10 @@ mod tests {
     use super::*;
     use crate::kb_universal_accumulator::accumulator::tests::setup_kb_universal_accum;
     use ark_bls12_381::Fr;
-    use ark_std::rand::{prelude::StdRng, SeedableRng};
+    use ark_std::{
+        rand::{prelude::StdRng, SeedableRng},
+        UniformRand,
+    };
     use std::time::{Duration, Instant};
 
     #[test]
@@ -774,12 +854,49 @@ mod tests {
             let wit = accumulator_1
                 .get_non_membership_witness(&elem, &keypair.secret_key, &non_mem_state)
                 .unwrap();
+            assert!(accumulator_1.verify_non_membership(&elem, &wit, &keypair.public_key, &params));
             non_members.push(elem);
             non_membership_witnesses.push(wit);
         }
 
-        // Add elements in `additions_2`, batch update witnesses
+        let new_elements = (0..10).map(|_| Fr::rand(&mut rng)).collect::<Vec<Fr>>();
         let accumulator_2 = accumulator_1
+            .extend_domain(
+                &keypair.secret_key,
+                new_elements.clone(),
+                &mut non_mem_state,
+            )
+            .unwrap();
+
+        for i in 0..non_members.len() {
+            assert!(!accumulator_2.verify_non_membership(
+                &non_members[i],
+                &non_membership_witnesses[i],
+                &keypair.public_key,
+                &params
+            ));
+        }
+
+        non_membership_witnesses = accumulator_1
+            .update_non_mem_wit_using_secret_key_on_domain_extension(
+                &new_elements,
+                &non_members,
+                &non_membership_witnesses,
+                &keypair.secret_key,
+            )
+            .unwrap();
+
+        for i in 0..non_members.len() {
+            assert!(accumulator_2.verify_non_membership(
+                &non_members[i],
+                &non_membership_witnesses[i],
+                &keypair.public_key,
+                &params
+            ));
+        }
+
+        // Add elements in `additions_2`, batch update witnesses
+        let accumulator_3 = accumulator_2
             .add_batch(
                 additions_2.clone(),
                 &keypair.secret_key,
@@ -788,7 +905,7 @@ mod tests {
             )
             .unwrap();
         for i in 0..n {
-            assert!(!accumulator_2.verify_non_membership(
+            assert!(!accumulator_3.verify_non_membership(
                 &non_members[i],
                 &non_membership_witnesses[i],
                 &keypair.public_key,
@@ -809,7 +926,7 @@ mod tests {
             membership_witnesses_1.len()
         );
         for i in 0..additions_1.len() {
-            assert!(accumulator_2.verify_membership(
+            assert!(accumulator_3.verify_membership(
                 &additions_1[i],
                 &membership_witnesses_1[i],
                 &keypair.public_key,
@@ -817,7 +934,7 @@ mod tests {
             ));
         }
 
-        let non_membership_witnesses_1 = accumulator_1
+        let non_membership_witnesses_1 = accumulator_2
             .update_non_mem_wit_using_secret_key_on_batch_additions(
                 &additions_2,
                 &non_members,
@@ -830,7 +947,7 @@ mod tests {
             non_membership_witnesses_1.len()
         );
         for i in 0..n {
-            assert!(accumulator_2.verify_non_membership(
+            assert!(accumulator_3.verify_non_membership(
                 &non_members[i],
                 &non_membership_witnesses_1[i],
                 &keypair.public_key,
@@ -839,7 +956,7 @@ mod tests {
         }
 
         // Remove elements from `removals`, batch update witnesses
-        let accumulator_3 = accumulator_2
+        let accumulator_4 = accumulator_3
             .remove_batch(
                 removals.clone(),
                 &keypair.secret_key,
@@ -848,7 +965,7 @@ mod tests {
             )
             .unwrap();
         for i in 0..n {
-            assert!(!accumulator_3.verify_non_membership(
+            assert!(!accumulator_4.verify_non_membership(
                 &non_members[i],
                 &non_membership_witnesses_1[i],
                 &keypair.public_key,
@@ -856,7 +973,7 @@ mod tests {
             ));
         }
 
-        let membership_witnesses_2 = accumulator_2
+        let membership_witnesses_2 = accumulator_3
             .update_mem_wit_using_secret_key_on_batch_removals(
                 &removals,
                 &additions_1,
@@ -866,7 +983,7 @@ mod tests {
             .unwrap();
         assert_eq!(membership_witnesses_2.len(), membership_witnesses_1.len());
         for i in 0..additions_1.len() {
-            assert!(accumulator_3.verify_membership(
+            assert!(accumulator_4.verify_membership(
                 &additions_1[i],
                 &membership_witnesses_2[i],
                 &keypair.public_key,
@@ -874,7 +991,7 @@ mod tests {
             ));
         }
 
-        let non_membership_witnesses_2 = accumulator_2
+        let non_membership_witnesses_2 = accumulator_3
             .update_non_mem_wit_using_secret_key_on_batch_removals(
                 &removals,
                 &non_members,
@@ -887,7 +1004,7 @@ mod tests {
             non_membership_witnesses_1.len()
         );
         for i in 0..n {
-            assert!(accumulator_3.verify_non_membership(
+            assert!(accumulator_4.verify_non_membership(
                 &non_members[i],
                 &non_membership_witnesses_2[i],
                 &keypair.public_key,
@@ -902,7 +1019,7 @@ mod tests {
             remaining.retain(|&x| x != e);
         }
 
-        let accumulator_4 = accumulator_3
+        let accumulator_5 = accumulator_4
             .batch_updates(
                 additions_3.clone(),
                 remaining.clone(),
@@ -912,7 +1029,7 @@ mod tests {
             )
             .unwrap();
         for i in 0..n {
-            assert!(!accumulator_4.verify_non_membership(
+            assert!(!accumulator_5.verify_non_membership(
                 &non_members[i],
                 &non_membership_witnesses_2[i],
                 &keypair.public_key,
@@ -921,7 +1038,7 @@ mod tests {
         }
 
         let start = Instant::now();
-        let membership_witnesses_3 = accumulator_3
+        let membership_witnesses_3 = accumulator_4
             .update_mem_wit_using_secret_key_on_batch_updates(
                 &additions_3,
                 &remaining,
@@ -930,7 +1047,7 @@ mod tests {
                 &keypair.secret_key,
             )
             .unwrap();
-        let non_membership_witnesses_3 = accumulator_3
+        let non_membership_witnesses_3 = accumulator_4
             .update_non_mem_wit_using_secret_key_on_batch_updates(
                 &additions_3,
                 &remaining,
@@ -943,7 +1060,7 @@ mod tests {
 
         assert_eq!(membership_witnesses_2.len(), membership_witnesses_3.len());
         for i in 0..additions_1.len() {
-            assert!(accumulator_4.verify_membership(
+            assert!(accumulator_5.verify_membership(
                 &additions_1[i],
                 &membership_witnesses_3[i],
                 &keypair.public_key,
@@ -956,7 +1073,7 @@ mod tests {
             non_membership_witnesses_3.len()
         );
         for i in 0..n {
-            assert!(accumulator_4.verify_non_membership(
+            assert!(accumulator_5.verify_non_membership(
                 &non_members[i],
                 &non_membership_witnesses_3[i],
                 &keypair.public_key,
@@ -964,7 +1081,7 @@ mod tests {
             ));
         }
 
-        let (membership_witnesses_2_, non_membership_witnesses_2_) = accumulator_3
+        let (membership_witnesses_2_, non_membership_witnesses_2_) = accumulator_4
             .update_both_wit_using_secret_key_on_batch_updates(
                 &[],
                 &[],
@@ -979,7 +1096,7 @@ mod tests {
         assert_eq!(non_membership_witnesses_2_, non_membership_witnesses_2);
 
         let start = Instant::now();
-        let (membership_witnesses_4, non_membership_witnesses_4) = accumulator_3
+        let (membership_witnesses_4, non_membership_witnesses_4) = accumulator_4
             .update_both_wit_using_secret_key_on_batch_updates(
                 &additions_3,
                 &remaining,
@@ -1005,12 +1122,12 @@ mod tests {
         );
 
         let start = Instant::now();
-        let omega_mem = accumulator_3.generate_omega_for_membership_witnesses(
+        let omega_mem = accumulator_4.generate_omega_for_membership_witnesses(
             &additions_3,
             &remaining,
             &keypair.secret_key,
         );
-        let omega_non_mem = accumulator_3.generate_omega_for_non_membership_witnesses(
+        let omega_non_mem = accumulator_4.generate_omega_for_non_membership_witnesses(
             &additions_3,
             &remaining,
             &keypair.secret_key,
@@ -1026,7 +1143,7 @@ mod tests {
                     &additions_1[i],
                 )
                 .unwrap();
-            assert!(accumulator_4.verify_membership(
+            assert!(accumulator_5.verify_membership(
                 &additions_1[i],
                 &new_wit,
                 &keypair.public_key,
@@ -1043,7 +1160,7 @@ mod tests {
                     &non_members[i],
                 )
                 .unwrap();
-            assert!(accumulator_4.verify_non_membership(
+            assert!(accumulator_5.verify_non_membership(
                 &non_members[i],
                 &new_wit,
                 &keypair.public_key,
@@ -1052,7 +1169,7 @@ mod tests {
         }
 
         let start = Instant::now();
-        let (omega_mem_1, omega_non_mem_1) = accumulator_3.generate_omega_for_both_witnesses(
+        let (omega_mem_1, omega_non_mem_1) = accumulator_4.generate_omega_for_both_witnesses(
             &additions_3,
             &remaining,
             &keypair.secret_key,
@@ -1061,6 +1178,41 @@ mod tests {
 
         assert_eq!(omega_mem, omega_mem_1);
         assert_eq!(omega_non_mem, omega_non_mem_1);
+
+        let new_elements = (0..10).map(|_| Fr::rand(&mut rng)).collect::<Vec<Fr>>();
+        let accumulator_6 = accumulator_5
+            .extend_domain(
+                &keypair.secret_key,
+                new_elements.clone(),
+                &mut non_mem_state,
+            )
+            .unwrap();
+        let omega_domain = accumulator_5
+            .generate_omega_for_non_membership_witnesses_on_domain_extension(
+                &new_elements,
+                &keypair.secret_key,
+            );
+        for i in 0..non_members.len() {
+            assert!(!accumulator_6.verify_non_membership(
+                &non_members[i],
+                &non_membership_witnesses_4[i],
+                &keypair.public_key,
+                &params
+            ));
+            let new_wit = non_membership_witnesses_4[i]
+                .update_using_public_info_after_domain_extension(
+                    &new_elements,
+                    &omega_domain,
+                    &non_members[i],
+                )
+                .unwrap();
+            assert!(accumulator_6.verify_non_membership(
+                &non_members[i],
+                &new_wit,
+                &keypair.public_key,
+                &params
+            ));
+        }
 
         println!(
             "Time to generate Omega for witnesses in separate calls {:?}",
@@ -1072,9 +1224,9 @@ mod tests {
         );
 
         let (_, __) =
-            accumulator_3.generate_omega_for_both_witnesses(&[], &remaining, &keypair.secret_key);
+            accumulator_4.generate_omega_for_both_witnesses(&[], &remaining, &keypair.secret_key);
 
         let (_, __) =
-            accumulator_3.generate_omega_for_both_witnesses(&additions_3, &[], &keypair.secret_key);
+            accumulator_4.generate_omega_for_both_witnesses(&additions_3, &[], &keypair.secret_key);
     }
 }

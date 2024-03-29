@@ -5,6 +5,7 @@
 //!
 //! ## vb_accumulator
 //! Dynamic Positive and Universal accumulators according to the paper: [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
+//!
 //! Implements
 //! - a dynamic positive accumulator [`PositiveAccumulator`], that supports membership proofs.
 //! - a dynamic universal accumulator [`UniversalAccumulator`], that supports membership and non-membership proofs.
@@ -27,6 +28,7 @@
 //!
 //! ## kb_accumulator
 //! Dynamic Positive and Universal accumulators according to the paper: [Efficient Constructions of Pairing Based Accumulators](https://eprint.iacr.org/2021/638)
+//!
 //! Implements
 //! - a dynamic positive accumulator [`KBPositiveAccumulator`], that supports membership proofs. Based on construction 2 in the paper.
 //! - a dynamic universal accumulator [`KBUniversalAccumulator`], that supports membership and non-membership proofs. Based on construction 3 in the paper
