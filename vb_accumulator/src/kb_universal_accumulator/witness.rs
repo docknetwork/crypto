@@ -883,6 +883,16 @@ mod tests {
                 &mut non_mem_state,
             )
             .unwrap();
+        assert_eq!(*accumulator_2.mem_value(), *accumulator_1.mem_value());
+        assert_ne!(
+            *accumulator_2.non_mem_value(),
+            *accumulator_1.non_mem_value()
+        );
+
+        let (accumulator_2_mem, accumulator_2_non_mem) =
+            accumulator_1.compute_extended(&new_elements, &keypair.secret_key);
+        assert_eq!(*accumulator_2.mem_value(), accumulator_2_mem);
+        assert_eq!(*accumulator_2.non_mem_value(), accumulator_2_non_mem);
 
         for i in 0..non_members.len() {
             assert!(!accumulator_2.verify_non_membership(

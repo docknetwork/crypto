@@ -274,7 +274,7 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
         sk: &SecretKey<E::ScalarField>,
     ) -> (E::G1Affine, E::G1Affine) {
         let mem = self.mem.value().clone();
-        let non_mem = self.mem.compute_new_post_add_batch(new_elements, sk);
+        let non_mem = self.non_mem.compute_new_post_add_batch(new_elements, sk);
         (mem, non_mem)
     }
 
@@ -508,6 +508,7 @@ pub mod tests {
             setup_kb_universal_accum(&mut rng, max);
 
         let accumulator_ = KBUniversalAccumulator::<Bls12_381>::initialize_empty(&params);
+        assert_eq!(*accumulator_.mem_value(), *accumulator_.non_mem_value());
         let (mem, non_mem) = accumulator_.compute_extended(&domain, &keypair.secret_key);
         assert_eq!(*accumulator.mem_value(), mem);
         assert_eq!(*accumulator.non_mem_value(), non_mem);
