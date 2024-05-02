@@ -3,7 +3,7 @@
 
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec, UniformRand};
+use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec, UniformRand, ops::Mul};
 use digest::Digest;
 use itertools::Itertools;
 use zeroize::Zeroize;
@@ -61,7 +61,6 @@ impl ROTSenderKeys {
         rng: &mut R,
         n: u16,
         r: Vec<G>,
-        g: &G,
     ) -> Result<(Self, Vec<G>), OTError> {
         if n < 2 {
             return Err(OTError::OTShouldHaveAtLeast2Messages(n));
@@ -79,9 +78,7 @@ impl ROTSenderKeys {
                             .enumerate()
                             .filter_map(|(j, r_j)| (j != i as usize).then_some(r_j)),
                     );
-                // TODO: Use m_b = g*t[i] + m_a OR m_b = m_a * t[i]??
-                let m_b = *g * t[i as usize] + m_a;
-                // let m_b = m_a.mul(&t[i as usize]);
+                let m_b = m_a.mul(&t[i as usize]);
                 (m_b, hash_to_key(i, &m_b))
             })
             .collect::<Vec<_>>()
@@ -135,7 +132,7 @@ pub mod tests {
             );
 
             let start = Instant::now();
-            let (sender_keys, m) = ROTSenderKeys::new(rng, n, r, g).unwrap();
+            let (sender_keys, m) = ROTSenderKeys::new(rng, n, r).unwrap();
             println!(
                 "Sender creates keys for 1-of-{} ROTs in {:?}",
                 n,
@@ -154,7 +151,7 @@ pub mod tests {
         }
 
         check(&mut rng, 2, 0, &g);
-        check(&mut rng, 2, 0, &g);
+        check(&mut rng, 2, 1, &g);
         check(&mut rng, 3, 0, &g);
         check(&mut rng, 3, 1, &g);
         check(&mut rng, 3, 2, &g);
