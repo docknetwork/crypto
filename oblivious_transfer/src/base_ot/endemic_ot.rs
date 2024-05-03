@@ -3,7 +3,7 @@
 
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec, UniformRand, ops::Mul};
+use ark_std::{cfg_into_iter, ops::Mul, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use itertools::Itertools;
 use zeroize::Zeroize;

@@ -3,12 +3,14 @@
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::univariate::DensePolynomial;
-use ark_std::{cfg_iter, rand::RngCore, vec::Vec, UniformRand};
+use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 
 use dock_crypto_utils::ff::powers;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+
+use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
 use crate::{
     common::{CommitmentToCoefficients, Share, ShareId, Shares},
@@ -62,11 +64,10 @@ pub(crate) fn commit_to_poly<G: AffineRepr>(
     poly: &DensePolynomial<G::ScalarField>,
     ck: &G,
 ) -> Vec<G> {
-    G::Group::normalize_batch(
-        &cfg_iter!(poly.coeffs)
-            .map(|i| ck.mul_bigint(i.into_bigint()))
-            .collect::<Vec<_>>(),
-    )
+    G::Group::normalize_batch(&multiply_field_elems_with_same_group_elem(
+        ck.into_group(),
+        &poly.coeffs,
+    ))
 }
 
 impl<F: PrimeField> Share<F> {

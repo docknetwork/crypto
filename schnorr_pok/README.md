@@ -5,18 +5,27 @@
 Schnorr protocol to prove knowledge of 1 or more discrete logs in zero knowledge.
 Refer [this](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) for more details of Schnorr protocol.
 
-We outline the steps here for your convenience, and to make this documentation more succinct.
-Prover wants to prove knowledge of `x` in `y = g * x` (`y` and `g` are public knowledge)
-Step 1: Prover generates randomness `r`, and sends `t = g * r` to Verifier
-Step 2: Verifier generates random challenge `c` and send to Prover
-Step 3: Prover produces `s = r + x*c`, and sends s to Verifier
-Step 4: Verifier checks that `g * s = (y * c) + t`
+Also implements the proof of **inequality of discrete log** (a value committed in a Pedersen commitment),
+either with a public value or with another discrete log in [`Inequality`]. eg. Given a message `m`,
+its commitment `C = g * m + h * r` and a public value `v`, proving that `m` ≠ `v`. Or given 2 messages
+`m1` and `m2` and their commitments `C1 = g * m1 + h * r1` and `C2 = g * m2 + h * r2`, proving `m1` ≠ `m2`
 
-For proving knowledge of multiple messages like `x_1` and `x_2` in `y = g_1*x_1 + g_2*x_2`:
-Step 1: Prover generates randomness `r_1` and `r_2`, and sends `t = g_1*r_1 + g_2*r_2` to Verifier
-Step 2: Verifier generates random challenge `c` and send to Prover
-Step 3: Prover produces `s_1 = r_1 + x_1*c` and `s_2 = r_2 + x_2*c`, and sends `s_1` and `s_2` to Verifier
-Step 4: Verifier checks that `g_1*s_1 + g_2*s_2 = y*c + t`
+Also implements the proof of **inequality of discrete log** when only one of the discrete log is known to
+the prover. i.e. given `y = g * x` and `z = h * k`, prover and verifier know `g`, `h`, `y` and `z` and prover additionally 
+knows `x` but not `k`.
+
+We outline the steps of Schnorr protocol.
+Prover wants to prove knowledge of `x` in `y = g * x` (`y` and `g` are public knowledge)  
+**Step 1**: Prover generates randomness `r`, and sends `t = g * r` to Verifier.  
+**Step 2**: Verifier generates random challenge `c` and send to Prover.  
+**Step 3**: Prover produces `s = r + x*c`, and sends s to Verifier.  
+**Step 4**: Verifier checks that `g * s = (y * c) + t`.  
+
+For proving knowledge of multiple messages like `x_1` and `x_2` in `y = g_1*x_1 + g_2*x_2`:  
+**Step 1**: Prover generates randomness `r_1` and `r_2`, and sends `t = g_1*r_1 + g_2*r_2` to Verifier  
+**Step 2**: Verifier generates random challenge `c` and send to Prover  
+**Step 3**: Prover produces `s_1 = r_1 + x_1*c` and `s_2 = r_2 + x_2*c`, and sends `s_1` and `s_2` to Verifier  
+**Step 4**: Verifier checks that `g_1*s_1 + g_2*s_2 = y*c + t`  
 
 Above can be generalized to more than 2 `x`s
 
@@ -34,8 +43,6 @@ in case of failure, the verifier will only know that its computed challenge `c'`
 challenge `c` but won't know which response `s1` or `s2` or both were incorrect. This is not the case
 with the implemented variant as verifier checks 2 equations `s1 = r1 + x1*c` and `s2 = r2 + x2*c`
 
-Also implements the proof of **inequality of discrete** log (a value committed in a Pedersen commitment),
-either with a public value or with another discrete log in [`Inequality`]
 
 [`Inequality`]: https://docs.rs/schnorr_pok/latest/schnorr_pok/inequality/
 

@@ -1,18 +1,17 @@
-use crate::{bddt_2016::setup::SecretKey, error::KVACError};
+use crate::{
+    bddt_2016::setup::{PublicKey, SecretKey},
+    error::KVACError,
+};
 use ark_ec::{pairing::Pairing, AffineRepr};
-use ark_ff::{Field, Zero};
+use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{
-    affine_group_element_from_byte_slices, commitment::PedersenCommitmentKey,
-    serde_utils::ArkObjectBytes,
-};
+use dock_crypto_utils::{affine_group_element_from_byte_slices, serde_utils::ArkObjectBytes};
 use schnorr_pok::{
     compute_random_oracle_challenge,
-    discrete_log::{
-        PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
-    },
+    discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
+    inequality::{UnknownDiscreteLogInequalityProof, UnknownDiscreteLogInequalityProtocol},
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -37,7 +36,7 @@ pub struct DelegatedProof<G: AffineRepr> {
 }
 
 /// A public key to verify a `DelegatedProof`. The secret key can be used to create any number of delegated public
-/// keys and the delegated. It's a tuple of the form `(P, Q=P*1/y)` where `P` and `Q` are elements in group G2 and `y`
+/// keys. It's a tuple of the form `(P, Q=P*y)` where `P` and `Q` are elements in group G2 and `y`
 /// is the secret key.
 #[serde_as]
 #[derive(
@@ -57,30 +56,35 @@ pub struct PreparedDelegatedPublicKey<E: Pairing>(
     #[serde_as(as = "ArkObjectBytes")] pub E::G2Prepared,
 );
 
-/// A Pedersen commitment `Comm` to the secret key `y`, `Comm = G * y + H * r`
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct SecretKeyCommitment<G: AffineRepr>(pub G);
-
 /// A proof that the `DelegatedProof` can be verified successfully. It proves that secret key `y` is same in the
-/// `DelegatedProof` and the `SecretKeyCommitment`, i.e. `C = B_0 * y, Comm = G * y + H * r`
+/// `DelegatedProof` and the `PublicKey`, i.e. `C = B_0 * y, Pk = g_0 * y`. This can be given
+/// by the signer to the verifier after verifying the delegated proof to convince the verifier that the delegated
+/// proof was in fact valid.
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct ProofOfValidityOfDelegatedProof<G: AffineRepr> {
-    /// Proof of knowledge of opening of `SecretKeyCommitment`
-    pub sc_comm: PokTwoDiscreteLogs<G>,
+    /// Proof of knowledge of opening of `PublicKey`
+    pub sc_pk: PokDiscreteLog<G>,
     /// Proof of knowledge of secret key in `DelegatedProof`
     pub sc_proof: PokDiscreteLog<G>,
 }
 
+/// A proof that the `DelegatedProof` cannot be verified successfully. It proves that DLOG of `C` wrt `B_0`
+/// is not the secret key `y` where (`B_0`, `C`) and `Pk` are the `DelegatedProof` and the `PublicKey` respectively,
+/// i.e. `C = B_0 * k, Pk = g_0 * y`. This can be given by the signer to the verifier after verifying the delegated
+/// proof to convince the verifier that the delegated proof was in fact invalid.
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct ProofOfInvalidityOfDelegatedProof<G: AffineRepr>(UnknownDiscreteLogInequalityProof<G>);
+
 impl<E: Pairing> DelegatedPublicKey<E> {
     pub fn new<D: Digest>(label: &[u8], sk: &SecretKey<E::ScalarField>) -> Self {
         let P = affine_group_element_from_byte_slices!(label, b" : P");
-        let Q = P * sk.0.inverse().unwrap();
+        let Q = P * sk.0;
         Self(P, Q.into())
     }
 }
@@ -108,13 +112,13 @@ impl<G: AffineRepr> DelegatedProof<G> {
         <E as Pairing>::G1Prepared: From<G>,
     {
         let pk = pk.into();
-        // check e(B_0, pk.0) = e(C, pk.1)
+        // check e(B_0, pk.1) = e(C, pk.0)
         if !E::multi_pairing(
             [
                 E::G1Prepared::from(self.B_0),
                 E::G1Prepared::from(self.C.into_group().neg().into()),
             ],
-            [pk.0, pk.1],
+            [pk.1, pk.0],
         )
         .is_zero()
         {
@@ -123,71 +127,74 @@ impl<G: AffineRepr> DelegatedProof<G> {
         Ok(())
     }
 
-    pub fn create_proof_of_validity<R: RngCore, D: Digest>(
+    pub fn create_proof_of_validity<'a, R: RngCore, D: Digest>(
         &self,
         rng: &mut R,
         secret_key: SecretKey<G::ScalarField>,
-        comm_randomness: G::ScalarField,
-        comm: &SecretKeyCommitment<G>,
-        comm_key: &PedersenCommitmentKey<G>,
+        pk: &PublicKey<G>,
+        g_0: impl Into<&'a G>,
     ) -> ProofOfValidityOfDelegatedProof<G> {
+        let g_0 = g_0.into();
         let sk_blinding = G::ScalarField::rand(rng);
-        let sc_comm = PokTwoDiscreteLogsProtocol::init(
-            secret_key.0,
-            sk_blinding,
-            &comm_key.g,
-            comm_randomness,
-            G::ScalarField::rand(rng),
-            &comm_key.h,
-        );
+        let sc_pk = PokDiscreteLogProtocol::init(secret_key.0, sk_blinding, g_0);
         let sc_proof = PokDiscreteLogProtocol::init(secret_key.0, sk_blinding, &self.B_0);
         let mut challenge_bytes = vec![];
-        sc_comm
-            .challenge_contribution(&comm_key.g, &comm_key.h, &comm.0, &mut challenge_bytes)
+        sc_pk
+            .challenge_contribution(g_0, &pk.0, &mut challenge_bytes)
             .unwrap();
         sc_proof
             .challenge_contribution(&self.B_0, &self.C, &mut challenge_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
-        let sc_comm = sc_comm.gen_proof(&challenge);
+        let sc_pk = sc_pk.gen_proof(&challenge);
         let sc_proof = sc_proof.gen_proof(&challenge);
-        ProofOfValidityOfDelegatedProof { sc_comm, sc_proof }
+        ProofOfValidityOfDelegatedProof { sc_pk, sc_proof }
     }
-}
 
-impl<G: AffineRepr> SecretKeyCommitment<G> {
-    /// Commit to the secret key with given randomness
-    pub fn new(
-        secret_key: &SecretKey<G::ScalarField>,
-        randomness: &G::ScalarField,
-        comm_key: &PedersenCommitmentKey<G>,
-    ) -> Self {
-        Self(comm_key.commit(&secret_key.0, randomness))
+    pub fn create_proof_of_invalidity<'a, R: RngCore, D: Digest>(
+        &self,
+        rng: &mut R,
+        secret_key: SecretKey<G::ScalarField>,
+        pk: &PublicKey<G>,
+        g_0: impl Into<&'a G>,
+    ) -> Result<ProofOfInvalidityOfDelegatedProof<G>, KVACError> {
+        let g_0 = g_0.into();
+        let protocol = UnknownDiscreteLogInequalityProtocol::new(
+            rng,
+            secret_key.0,
+            g_0,
+            &self.B_0,
+            &pk.0,
+            &self.C,
+        )?;
+        let mut challenge_bytes = vec![];
+        protocol.challenge_contribution(g_0, &self.B_0, &pk.0, &self.C, &mut challenge_bytes)?;
+        let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
+        let proof = protocol.gen_proof(&challenge);
+        Ok(ProofOfInvalidityOfDelegatedProof(proof))
     }
 }
 
 impl<G: AffineRepr> ProofOfValidityOfDelegatedProof<G> {
-    pub fn verify<D: Digest>(
+    pub fn verify<'a, D: Digest>(
         &self,
         proof: &DelegatedProof<G>,
-        comm: &SecretKeyCommitment<G>,
-        comm_key: &PedersenCommitmentKey<G>,
+        pk: &PublicKey<G>,
+        g_0: impl Into<&'a G>,
     ) -> Result<(), KVACError> {
-        if self.sc_proof.response != self.sc_comm.response1 {
+        if self.sc_proof.response != self.sc_pk.response {
             return Err(KVACError::InvalidDelegatedProof);
         }
+        let g_0 = g_0.into();
         let mut challenge_bytes = vec![];
-        self.sc_comm
-            .challenge_contribution(&comm_key.g, &comm_key.h, &comm.0, &mut challenge_bytes)
+        self.sc_pk
+            .challenge_contribution(g_0, &pk.0, &mut challenge_bytes)
             .unwrap();
         self.sc_proof
             .challenge_contribution(&proof.B_0, &proof.C, &mut challenge_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
-        if !self
-            .sc_comm
-            .verify(&comm.0, &comm_key.g, &comm_key.h, &challenge)
-        {
+        if !self.sc_pk.verify(&pk.0, g_0, &challenge) {
             return Err(KVACError::InvalidDelegatedProof);
         }
         if !self.sc_proof.verify(&proof.C, &proof.B_0, &challenge) {
@@ -197,11 +204,32 @@ impl<G: AffineRepr> ProofOfValidityOfDelegatedProof<G> {
     }
 }
 
+impl<G: AffineRepr> ProofOfInvalidityOfDelegatedProof<G> {
+    pub fn verify<'a, D: Digest>(
+        &self,
+        proof: &DelegatedProof<G>,
+        pk: &PublicKey<G>,
+        g_0: impl Into<&'a G>,
+    ) -> Result<(), KVACError> {
+        let g_0 = g_0.into();
+        let mut challenge_bytes = vec![];
+        self.0
+            .challenge_contribution(g_0, &proof.B_0, &pk.0, &proof.C, &mut challenge_bytes)
+            .unwrap();
+        let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
+        self.0
+            .verify(g_0, &proof.B_0, &pk.0, &proof.C, &challenge)?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use crate::bddt_2016::setup::MACParams;
+    use ark_bls12_381::{Bls12_381, G1Affine};
     use ark_ec::CurveGroup;
+    use ark_ff::Field;
     use ark_std::{
         rand::{prelude::StdRng, SeedableRng},
         UniformRand,
@@ -209,30 +237,44 @@ mod tests {
     use blake2::Blake2b512;
 
     #[test]
-    fn verification_using_delegated_public_key() {
+    fn delegated_proof_verification() {
         let mut rng = StdRng::seed_from_u64(0u64);
+        let params = MACParams::<G1Affine>::new::<Blake2b512>(b"test", 5);
         let sk = SecretKey::new(&mut rng);
-        let pk = DelegatedPublicKey::<Bls12_381>::new::<Blake2b512>(b"test", &sk);
+        let pk = PublicKey::new(&sk, &params.g_0);
+
+        // Verify using delegated public key
+        let dpk = DelegatedPublicKey::<Bls12_381>::new::<Blake2b512>(b"test", &sk);
         let B_0 = G1Affine::rand(&mut rng);
         let C = (B_0 * sk.0).into_affine();
 
         let dp = DelegatedProof { B_0, C };
         dp.verify(&sk).unwrap();
 
-        dp.verify_with_delegated_public_key(pk).unwrap();
+        dp.verify_with_delegated_public_key(dpk).unwrap();
 
-        let comm_key = PedersenCommitmentKey::new::<Blake2b512>(b"test");
-        let sk_comm_randomness = Fr::rand(&mut rng);
-        let sk_comm = SecretKeyCommitment::new(&sk, &sk_comm_randomness, &comm_key);
-        let validity_proof = dp.create_proof_of_validity::<_, Blake2b512>(
-            &mut rng,
-            sk,
-            sk_comm_randomness,
-            &sk_comm,
-            &comm_key,
-        );
+        let invalid_C = (B_0 * sk.0.square()).into_affine();
+        let invalid_dp = DelegatedProof { B_0, C: invalid_C };
+
+        // Check proof of validity
+        let validity_proof =
+            dp.create_proof_of_validity::<_, Blake2b512>(&mut rng, sk.clone(), &pk, &params.g_0);
         validity_proof
-            .verify::<Blake2b512>(&dp, &sk_comm, &comm_key)
+            .verify::<Blake2b512>(&dp, &pk, &params.g_0)
             .unwrap();
+        assert!(validity_proof
+            .verify::<Blake2b512>(&invalid_dp, &pk, &params.g_0)
+            .is_err());
+
+        // Check proof of invalidity
+        let invalidity_proof = invalid_dp
+            .create_proof_of_invalidity::<_, Blake2b512>(&mut rng, sk, &pk, &params.g_0)
+            .unwrap();
+        invalidity_proof
+            .verify::<Blake2b512>(&invalid_dp, &pk, &params.g_0)
+            .unwrap();
+        assert!(invalidity_proof
+            .verify::<Blake2b512>(&dp, &pk, &params.g_0)
+            .is_err());
     }
 }

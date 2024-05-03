@@ -13,6 +13,10 @@
 //!
 //! For proving inequality of 2 committed values, i.e. to prove `m1` ≠ `m2` when given commitments `C1 = g * m1 + h * r1` and `C2 = g * m2 + h * r2`,
 //! use the above protocol with commitment set to `C1 - C2` and `v = 0` as `C1 - C2 = g * (m1 - m2) + h * (r1 - r2)`. If `(m1 - m2)` ≠ 0, then `m1` ≠ `m2``
+//!
+//! Protocol to prove inequality of two discrete logs is taken from section 6 of the paper [Practical Verifiable Encryption and Decryption of Discrete Logarithms](https://www.shoup.net/papers/verenc.pdf).
+//! Here we prove that prover only knows one of the discrete log unlike above, i.e. given `y = g * x` and `z = h * k`,
+//! prover and verifier know `g`, `h`, `y` and `z` and prover additionally knows `x` but not `k`.
 
 use crate::{
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
@@ -21,11 +25,13 @@ use crate::{
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
+use ark_std::{fmt::Debug, io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol};
-use dock_crypto_utils::commitment::PedersenCommitmentKey;
+use dock_crypto_utils::{commitment::PedersenCommitmentKey, serde_utils::ArkObjectBytes};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Protocol to prove inequality of discrete log (committed in a Pedersen commitment) with either a
@@ -45,9 +51,13 @@ pub struct DiscreteLogInequalityProtocol<G: AffineRepr> {
 }
 
 /// Proof created using `DiscreteLogInequalityProtocol`
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
 pub struct InequalityProof<G: AffineRepr> {
     /// `B = g * (m - v) * a`
+    #[serde_as(as = "ArkObjectBytes")]
     pub b: G,
     /// For proving knowledge of `m` and `r` in `C = g * m + h * r`
     pub sc_c: PokTwoDiscreteLogs<G>,
@@ -302,11 +312,192 @@ impl<G: AffineRepr> InequalityProof<G> {
     }
 }
 
+/// Protocol to prove inequality of two discrete logs when only one of them is known to the prover.
+/// Given `y = g * x` and `z = h * k`, prover and verifier know `g`, `h`, `y` and `z` and prover
+/// additionally knows `x` but not `k`
+#[derive(
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
+pub struct UnknownDiscreteLogInequalityProtocol<G: AffineRepr> {
+    /// `c = (h * x - z) * r`
+    pub c: G,
+    /// For proving knowledge of `alpha` and `beta` in `c = h * alpha - z * beta`
+    pub sc_c: PokTwoDiscreteLogsProtocol<G>,
+    /// For proving knowledge of `alpha` and `beta` in `0 = g * alpha - y * beta`
+    pub sc_zero: PokTwoDiscreteLogsProtocol<G>,
+}
+
+/// Proof created using `UnknownDiscreteLogInequalityProtocol`
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct UnknownDiscreteLogInequalityProof<G: AffineRepr> {
+    /// `c = (h * x - z) * r`
+    #[serde_as(as = "ArkObjectBytes")]
+    pub c: G,
+    /// For proving knowledge of `alpha` and `beta` in `c = h * alpha - z * beta`
+    pub sc_c: PokTwoDiscreteLogs<G>,
+    /// For proving knowledge of `alpha` and `beta` in `0 = g * alpha - y * beta`
+    pub sc_zero: PokTwoDiscreteLogs<G>,
+}
+
+impl<G: AffineRepr> UnknownDiscreteLogInequalityProtocol<G> {
+    pub fn new<R: RngCore>(
+        rng: &mut R,
+        value: G::ScalarField,
+        g: &G,
+        h: &G,
+        y: &G,
+        z: &G,
+    ) -> Result<Self, SchnorrError> {
+        let beta = G::ScalarField::rand(rng);
+        let alpha = value * beta;
+        let minus_z = z.into_group().neg();
+        let minus_y = y.into_group().neg();
+        let c = (*h * alpha + minus_z * beta).into_affine();
+        if c.is_zero() {
+            return Err(SchnorrError::ValueMustNotBeEqual);
+        }
+        let alpha_blinding = G::ScalarField::rand(rng);
+        let beta_blinding = G::ScalarField::rand(rng);
+        let sc_c = PokTwoDiscreteLogsProtocol::init(
+            alpha,
+            alpha_blinding,
+            h,
+            beta,
+            beta_blinding,
+            &minus_z.into_affine(),
+        );
+        let sc_zero = PokTwoDiscreteLogsProtocol::init(
+            alpha,
+            alpha_blinding,
+            g,
+            beta,
+            beta_blinding,
+            &minus_y.into_affine(),
+        );
+        Ok(Self { c, sc_c, sc_zero })
+    }
+
+    pub fn challenge_contribution<W: Write>(
+        &self,
+        g: &G,
+        h: &G,
+        y: &G,
+        z: &G,
+        writer: W,
+    ) -> Result<(), SchnorrError> {
+        Self::compute_challenge_contribution(
+            &self.c,
+            &self.sc_c.t,
+            &self.sc_zero.t,
+            g,
+            h,
+            y,
+            z,
+            writer,
+        )
+    }
+
+    pub fn gen_proof(mut self, challenge: &G::ScalarField) -> UnknownDiscreteLogInequalityProof<G> {
+        let sc_c = mem::take(&mut self.sc_c).gen_proof(challenge);
+        let sc_zero = mem::take(&mut self.sc_zero).gen_proof(challenge);
+        UnknownDiscreteLogInequalityProof {
+            c: self.c,
+            sc_c,
+            sc_zero,
+        }
+    }
+
+    pub fn compute_challenge_contribution<W: Write>(
+        c: &G,
+        t_c: &G,
+        t_zero: &G,
+        g: &G,
+        h: &G,
+        y: &G,
+        z: &G,
+        mut writer: W,
+    ) -> Result<(), SchnorrError> {
+        let zero = G::zero();
+        let minus_z = z.into_group().neg().into_affine();
+        let minus_y = y.into_group().neg().into_affine();
+        c.serialize_compressed(&mut writer)?;
+        PokTwoDiscreteLogsProtocol::compute_challenge_contribution(
+            h,
+            &minus_z,
+            c,
+            t_c,
+            &mut writer,
+        )?;
+        PokTwoDiscreteLogsProtocol::compute_challenge_contribution(
+            g,
+            &minus_y,
+            &zero,
+            t_zero,
+            &mut writer,
+        )?;
+        Ok(())
+    }
+}
+
+impl<G: AffineRepr> UnknownDiscreteLogInequalityProof<G> {
+    pub fn challenge_contribution<W: Write>(
+        &self,
+        g: &G,
+        h: &G,
+        y: &G,
+        z: &G,
+        writer: W,
+    ) -> Result<(), SchnorrError> {
+        UnknownDiscreteLogInequalityProtocol::compute_challenge_contribution(
+            &self.c,
+            &self.sc_c.t,
+            &self.sc_zero.t,
+            g,
+            h,
+            y,
+            z,
+            writer,
+        )
+    }
+
+    pub fn verify(
+        &self,
+        g: &G,
+        h: &G,
+        y: &G,
+        z: &G,
+        challenge: &G::ScalarField,
+    ) -> Result<(), SchnorrError> {
+        if self.c.is_zero() {
+            return Err(SchnorrError::InvalidProofOfEquality);
+        }
+        // alpha and beta are same in both protocols
+        if self.sc_c.response1 != self.sc_zero.response1 {
+            return Err(SchnorrError::InvalidProofOfEquality);
+        }
+        if self.sc_c.response2 != self.sc_zero.response2 {
+            return Err(SchnorrError::InvalidProofOfEquality);
+        }
+        let zero = G::zero();
+        let minus_z = z.into_group().neg().into_affine();
+        let minus_y = y.into_group().neg().into_affine();
+        if !self.sc_c.verify(&self.c, h, &minus_z, challenge) {
+            return Err(SchnorrError::InvalidProofOfEquality);
+        }
+        if !self.sc_zero.verify(&zero, g, &minus_y, challenge) {
+            return Err(SchnorrError::InvalidProofOfEquality);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, G1Affine};
-    use ark_ec::pairing::Pairing;
+    use ark_bls12_381::{Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -316,8 +507,6 @@ mod tests {
         commitment::PedersenCommitmentKey,
         transcript::{MerlinTranscript, Transcript},
     };
-
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn inequality_proof() {
@@ -416,5 +605,48 @@ mod tests {
                 &comm_key,
             )
             .unwrap();
+    }
+
+    #[test]
+    fn unknown_inequality_proof() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let x = Fr::rand(&mut rng);
+        let k = Fr::rand(&mut rng);
+        assert_ne!(x, k);
+        let g = G1Affine::rand(&mut rng);
+        let h = G1Affine::rand(&mut rng);
+        let y = (g * x).into_affine();
+        let z = (h * k).into_affine();
+
+        let wrong_z = (h * x).into_affine();
+        assert!(
+            UnknownDiscreteLogInequalityProtocol::new(&mut rng, x, &g, &h, &y, &wrong_z).is_err()
+        );
+
+        let mut prover_transcript = MerlinTranscript::new(b"test");
+        let protocol =
+            UnknownDiscreteLogInequalityProtocol::new(&mut rng, x, &g, &h, &y, &z).unwrap();
+        protocol
+            .challenge_contribution(&g, &h, &y, &z, &mut prover_transcript)
+            .unwrap();
+        let challenge_prover = prover_transcript.challenge_scalar(b"chal");
+        let proof = protocol.gen_proof(&challenge_prover);
+
+        let mut verifier_transcript = MerlinTranscript::new(b"test");
+        proof
+            .challenge_contribution(&g, &h, &y, &z, &mut verifier_transcript)
+            .unwrap();
+        let challenge_verifier = verifier_transcript.challenge_scalar(b"chal");
+        proof.verify(&g, &h, &y, &z, &challenge_verifier).unwrap();
+
+        // Check with equal discrete log should fail
+        let mut verifier_transcript = MerlinTranscript::new(b"test");
+        proof
+            .challenge_contribution(&g, &h, &y, &wrong_z, &mut verifier_transcript)
+            .unwrap();
+        let challenge_verifier = verifier_transcript.challenge_scalar(b"chal");
+        assert!(proof
+            .verify(&g, &h, &y, &wrong_z, &challenge_verifier)
+            .is_err());
     }
 }
