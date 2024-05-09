@@ -3,6 +3,10 @@
 //! Schnorr protocol to prove knowledge of 1 or more discrete logs in zero knowledge.
 //! Refer [this](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) for more details of Schnorr protocol.
 //!
+//! Also implements the proof of knowledge of discrete log in pairing groups, i.e. given prover and verifier
+//! both know (`A1`, `Y1`), and prover additionally knows `B1`, prove that `e(A1, B1) = Y1`. Similarly,
+//! proving `e(A2, B2) = Y2` when only prover knows `A2` but both know (`B2`, `Y2`). See [`discrete_log_pairing`].
+//!
 //! Also implements the proof of **inequality of discrete log** (a value committed in a Pedersen commitment),
 //! either with a public value or with another discrete log in [`Inequality`]. eg. Given a message `m`,
 //! its commitment `C = g * m + h * r` and a public value `v`, proving that `m` ≠ `v`. Or given 2 messages
@@ -43,6 +47,7 @@
 //!
 //!
 //! [`Inequality`]: crate::inequality
+//! [`discrete_log_pairing`]: crate::discrete_log_pairing
 
 use crate::error::SchnorrError;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
@@ -63,6 +68,7 @@ use dock_crypto_utils::expect_equality;
 use rayon::prelude::*;
 
 pub mod discrete_log;
+pub mod discrete_log_pairing;
 pub mod error;
 pub mod inequality;
 

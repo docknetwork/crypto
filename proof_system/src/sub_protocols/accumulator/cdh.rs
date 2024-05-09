@@ -33,7 +33,7 @@ use vb_accumulator::{
 
 macro_rules! impl_cdh_protocol_struct_and_funcs {
     ($(#[$doc:meta])*
-    $name:ident, $statement_proof_variant: ident, $witness_type: ident, $wit_group:path, $protocol: ident, $proof: ident, $error_type: ident) => {
+    $name: ident, $statement_proof_variant: ident, $witness_type: ident, $wit_group: path, $protocol: ident, $proof: ident, $error_type: ident) => {
         #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct $name<'a, E: Pairing> {
             pub id: usize,

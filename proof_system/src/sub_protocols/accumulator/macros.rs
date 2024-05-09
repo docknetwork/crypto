@@ -1,5 +1,5 @@
 macro_rules! impl_common_funcs {
-    ( $prepared_params_type: ident, $prepared_pk_type: ident, $wit_type:ident, $wit_group:path, $wit_protocol:ident, $proof_enum_variant:ident, $proof_typ: ident, $error_typ: ident) => {
+    ( $prepared_params_type: ident, $prepared_pk_type: ident, $wit_type: ident, $wit_group: path, $wit_protocol:ident, $proof_enum_variant: ident, $proof_typ: ident, $error_typ: ident) => {
         pub fn init<R: RngCore>(
             &mut self,
             rng: &mut R,
@@ -84,7 +84,7 @@ macro_rules! impl_common_funcs {
 
 macro_rules! impl_struct_and_funcs {
     ($(#[$doc:meta])*
-    $name:ident, $param_type:ident, $pk_type:ident, $prepared_params_type: ident, $prepared_pk_type: ident, $prk_type:ident, $protocol:ident, $wit_type:ident, $wit_group:path, $proof_enum_variant:ident, $proof_typ: ident, $error_typ: ident) => {
+    $name: ident, $param_type: ident, $pk_type: ident, $prepared_params_type: ident, $prepared_pk_type: ident, $prk_type: ident, $protocol: ident, $wit_type: ident, $wit_group: path, $proof_enum_variant: ident, $proof_typ: ident, $error_typ: ident) => {
         #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct $name<'a, E: Pairing> {
             pub id: usize,

@@ -225,6 +225,34 @@ macro_rules! expect_equality {
     };
 }
 
+#[macro_export]
+macro_rules! pair_g1_g2 {
+    ($pairing_func: path, $g1: expr, $g2: expr) => {
+        $pairing_func($g1, $g2)
+    };
+}
+
+#[macro_export]
+macro_rules! pair_g2_g1 {
+    ($pairing_func: path, $g2: expr, $g1: expr) => {
+        $pairing_func($g1, $g2)
+    };
+}
+
+#[macro_export]
+macro_rules! randomized_pairing_checker_g1_g2 {
+    ($randomized_pairing_checker: ident, $func_name: ident, $g1: expr, $g2: expr, $out: expr) => {
+        $randomized_pairing_checker.$func_name($g1, $g2, $out)
+    };
+}
+
+#[macro_export]
+macro_rules! randomized_pairing_checker_g2_g1 {
+    ($randomized_pairing_checker: ident, $func_name: ident, $g2: expr, $g1: expr, $out: expr) => {
+        $randomized_pairing_checker.$func_name($g1, $g2, $out)
+    };
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

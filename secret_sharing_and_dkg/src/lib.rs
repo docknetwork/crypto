@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod common;
+pub mod distributed_dlog_check;
 pub mod error;
 pub mod feldman_dvss_dkg;
 pub mod feldman_vss;

@@ -7,9 +7,6 @@ use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 
 use dock_crypto_utils::ff::powers;
 
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
 use crate::{

@@ -57,6 +57,25 @@ impl<E: Pairing> RandomizedPairingChecker<E> {
         Self::new(E::ScalarField::rand(rng), lazy)
     }
 
+    /// Add single elements from source and target groups
+    pub fn add_sources_and_target(
+        &mut self,
+        a: &E::G1Affine,
+        b: impl Into<E::G2Prepared>,
+        out: &PairingOutput<E>,
+    ) {
+        let m = self.current_random.into_bigint();
+        let a_m = E::G1Prepared::from(a.mul_bigint(m));
+        if self.lazy {
+            self.pending.0.push(a_m);
+            self.pending.1.push(b.into());
+        } else {
+            self.left.0.mul_assign(E::miller_loop(a_m, b.into()).0);
+        }
+        self.right += out.mul_bigint(m);
+        self.current_random *= self.random;
+    }
+
     /// Add a sequence of group elements whose pairing product must be equal to the given target field
     /// element, i.e. `\prod_{i}(e(a_i, b_i)) = out`
     pub fn add_multiple_sources_and_target(
@@ -264,6 +283,12 @@ mod test {
                 l_str,
                 start.elapsed().as_micros()
             );
+
+            // Fail on wrong output
+            let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
+            checker.add_multiple_sources_and_target(&a1, &b1, &out2);
+            checker.add_multiple_sources_and_target(&a2, &b2, &out1);
+            assert!(!checker.verify());
         }
 
         let b1_prep = b1.iter().map(|b| G2Prepared::from(*b)).collect::<Vec<_>>();
@@ -369,6 +394,28 @@ mod test {
             checker.add_sources(&a1[1], b1[1], &a1[1], b1[1]);
             checker.add_sources(&a1[2], b1[2], &a1[2], b1[2]);
             assert!(checker.verify());
+        }
+
+        for lazy in [true, false] {
+            let out_0 = Bls12_381::pairing(&a1[0], b1[0]);
+            let out_1 = Bls12_381::pairing(&a1[1], b1[1]);
+            let out_2 = Bls12_381::pairing(&a1[2], b1[2]);
+
+            let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
+            checker.add_sources_and_target(&a1[0], b1[0], &out_0);
+            assert!(checker.verify());
+
+            let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
+            checker.add_sources_and_target(&a1[0], b1[0], &out_0);
+            checker.add_sources_and_target(&a1[1], b1[1], &out_1);
+            checker.add_sources_and_target(&a1[2], b1[2], &out_2);
+            assert!(checker.verify());
+
+            // Fail on wrong output
+            let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
+            let wrong_out = Bls12_381::pairing(&a1[0], b1[1]);
+            checker.add_sources_and_target(&a1[0], b1[0], &wrong_out);
+            assert!(!checker.verify());
         }
     }
 }

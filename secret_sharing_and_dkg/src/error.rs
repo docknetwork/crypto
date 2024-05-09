@@ -17,6 +17,11 @@ pub enum SSError {
     InvalidProofOfSecretKeyKnowledge,
     DoesNotSupportThreshold(ShareId),
     SchnorrError(SchnorrError),
+    IdMismatchInComputationShareShareAndShareCommitment(ShareId, ShareId),
+    IdMismatchInComputationShareAndItsProof(ShareId, ShareId),
+    InvalidComputationShareProof(ShareId),
+    UnequalNoOfProofsAndShares(usize, usize),
+    UnequalNoOfProofsAndCommitments(usize, usize),
 }
 
 impl From<SchnorrError> for SSError {
