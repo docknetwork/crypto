@@ -99,4 +99,4 @@ properly created, `UC_i` needs to prove using the similar protocol as above but 
 This method of creating share as Pedersen commitment is not implemented yet.
 
 
-**CREDIT**: Using pairings for maliciously secure protocol was suggested by [Massimiliano Sala](https://webapps.unitn.it/du/en/Persona/PER0000604/Didattica)
+**CREDIT**: Using pairings for maliciously secure protocol was suggested by [Massimiliano Sala](https://www.science.unitn.it/~sala/)
