@@ -1,6 +1,6 @@
 [package]
 name = "smc_range_proof"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,10 +14,10 @@ ark-std.workspace = true
 ark-serialize.workspace = true
 digest.workspace = true
 zeroize.workspace = true
-dock_crypto_utils = { version = "0.17.0", default-features = false, path = "../utils" }
-short_group_sig = { version = "0.1.0", default-features = false, path = "../short_group_sig" }
 rayon = {workspace = true, optional = true}
-schnorr_pok = { version = "0.17.0", default-features = false, path = "../schnorr_pok" }
+dock_crypto_utils = { version = "0.18.0", default-features = false, path = "../utils" }
+short_group_sig = { version = "0.2.0", default-features = false, path = "../short_group_sig" }
+schnorr_pok = { version = "0.18.0", default-features = false, path = "../schnorr_pok" }
 
 [dev-dependencies]
 blake2.workspace = true

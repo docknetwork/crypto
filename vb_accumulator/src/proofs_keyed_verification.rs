@@ -27,6 +27,9 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use kvac::bddt_2016::keyed_proof::{
+    KeyedProof, ProofOfInvalidityOfKeyedProof, ProofOfValidityOfKeyedProof,
+};
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
@@ -52,12 +55,23 @@ pub struct MembershipProof<G: AffineRepr>(pub PoKOfSignatureG1KV<G>);
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct DelegatedMembershipProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
-    pub C_prime: G,
-    #[serde_as(as = "ArkObjectBytes")]
-    pub C_bar: G,
-}
+pub struct KeyedMembershipProof<G: AffineRepr>(pub KeyedProof<G>);
+
+/// A proof that the `KeyedMembershipProof` can be verified successfully.
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct ProofOfValidityOfKeyedMembershipProof<G: AffineRepr>(pub ProofOfValidityOfKeyedProof<G>);
+
+/// A proof that the `KeyedMembershipProof` cannot be verified successfully.
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct ProofOfInvalidityOfKeyedMembershipProof<G: AffineRepr>(
+    pub ProofOfInvalidityOfKeyedProof<G>,
+);
 
 #[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct NonMembershipProofProtocol<G: AffineRepr> {
@@ -94,12 +108,25 @@ pub struct NonMembershipProof<G: AffineRepr> {
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct DelegatedNonMembershipProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
-    pub C_prime: G,
-    #[serde_as(as = "ArkObjectBytes")]
-    pub C_bar: G,
-}
+pub struct KeyedNonMembershipProof<G: AffineRepr>(pub KeyedProof<G>);
+
+/// A proof that the `KeyedNonMembershipProof` can be verified successfully.
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct ProofOfValidityOfKeyedNonMembershipProof<G: AffineRepr>(
+    pub ProofOfValidityOfKeyedProof<G>,
+);
+
+/// A proof that the `KeyedNonMembershipProof` cannot be verified successfully.
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct ProofOfInvalidityOfKeyedNonMembershipProof<G: AffineRepr>(
+    pub ProofOfInvalidityOfKeyedProof<G>,
+);
 
 #[serde_as]
 #[derive(
@@ -319,11 +346,11 @@ impl<G: AffineRepr> MembershipProof<G> {
         Ok(())
     }
 
-    pub fn to_delegated_proof(&self) -> DelegatedMembershipProof<G> {
-        DelegatedMembershipProof {
-            C_prime: self.0.A_prime,
-            C_bar: self.0.A_bar,
-        }
+    pub fn to_keyed_proof(&self) -> KeyedMembershipProof<G> {
+        KeyedMembershipProof(KeyedProof {
+            B_0: self.0.A_prime,
+            C: self.0.A_bar,
+        })
     }
 
     pub fn get_schnorr_response_for_element(&self) -> &G::ScalarField {
@@ -331,11 +358,61 @@ impl<G: AffineRepr> MembershipProof<G> {
     }
 }
 
-impl<G: AffineRepr> DelegatedMembershipProof<G> {
+impl<G: AffineRepr> KeyedMembershipProof<G> {
     pub fn verify(&self, secret_key: &SecretKey<G::ScalarField>) -> Result<(), VBAccumulatorError> {
-        if self.C_bar != (self.C_prime * secret_key.0).into() {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
-        }
+        self.0.verify(&secret_key.0)?;
+        Ok(())
+    }
+
+    pub fn create_proof_of_validity<'a, R: RngCore, D: Digest>(
+        &self,
+        rng: &mut R,
+        secret_key: &SecretKey<G::ScalarField>,
+        pk: &PublicKey<G>,
+        params: &SetupParams<G>,
+    ) -> ProofOfValidityOfKeyedMembershipProof<G> {
+        ProofOfValidityOfKeyedMembershipProof(self.0.create_proof_of_validity::<R, D>(
+            rng,
+            secret_key.0,
+            &pk.0,
+            &params.0,
+        ))
+    }
+
+    pub fn create_proof_of_invalidity<'a, R: RngCore, D: Digest>(
+        &self,
+        rng: &mut R,
+        secret_key: &SecretKey<G::ScalarField>,
+        pk: &PublicKey<G>,
+        params: &SetupParams<G>,
+    ) -> Result<ProofOfInvalidityOfKeyedMembershipProof<G>, VBAccumulatorError> {
+        let p = self
+            .0
+            .create_proof_of_invalidity::<R, D>(rng, secret_key.0, &pk.0, &params.0)?;
+        Ok(ProofOfInvalidityOfKeyedMembershipProof(p))
+    }
+}
+
+impl<G: AffineRepr> ProofOfValidityOfKeyedMembershipProof<G> {
+    pub fn verify<'a, D: Digest>(
+        &self,
+        proof: &KeyedMembershipProof<G>,
+        pk: &PublicKey<G>,
+        params: &SetupParams<G>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify::<D>(&proof.0, &pk.0, &params.0)?;
+        Ok(())
+    }
+}
+
+impl<G: AffineRepr> ProofOfInvalidityOfKeyedMembershipProof<G> {
+    pub fn verify<'a, D: Digest>(
+        &self,
+        proof: &KeyedMembershipProof<G>,
+        pk: &PublicKey<G>,
+        params: &SetupParams<G>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify::<D>(&proof.0, &pk.0, &params.0)?;
         Ok(())
     }
 }
@@ -501,11 +578,11 @@ impl<G: AffineRepr> NonMembershipProof<G> {
         Ok(())
     }
 
-    pub fn to_delegated_proof(&self) -> DelegatedNonMembershipProof<G> {
-        DelegatedNonMembershipProof {
-            C_prime: self.C_prime,
-            C_bar: self.C_bar,
-        }
+    pub fn to_keyed_proof(&self) -> KeyedNonMembershipProof<G> {
+        KeyedNonMembershipProof(KeyedProof {
+            B_0: self.C_prime,
+            C: self.C_bar,
+        })
     }
 
     pub fn get_schnorr_response_for_element(&self) -> &G::ScalarField {
@@ -513,11 +590,61 @@ impl<G: AffineRepr> NonMembershipProof<G> {
     }
 }
 
-impl<G: AffineRepr> DelegatedNonMembershipProof<G> {
+impl<G: AffineRepr> KeyedNonMembershipProof<G> {
     pub fn verify(&self, secret_key: &SecretKey<G::ScalarField>) -> Result<(), VBAccumulatorError> {
-        if self.C_bar != (self.C_prime * secret_key.0).into() {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
-        }
+        self.0.verify(&secret_key.0)?;
+        Ok(())
+    }
+
+    pub fn create_proof_of_validity<'a, R: RngCore, D: Digest>(
+        &self,
+        rng: &mut R,
+        secret_key: &SecretKey<G::ScalarField>,
+        pk: &PublicKey<G>,
+        params: &SetupParams<G>,
+    ) -> ProofOfValidityOfKeyedNonMembershipProof<G> {
+        ProofOfValidityOfKeyedNonMembershipProof(self.0.create_proof_of_validity::<R, D>(
+            rng,
+            secret_key.0,
+            &pk.0,
+            &params.0,
+        ))
+    }
+
+    pub fn create_proof_of_invalidity<'a, R: RngCore, D: Digest>(
+        &self,
+        rng: &mut R,
+        secret_key: &SecretKey<G::ScalarField>,
+        pk: &PublicKey<G>,
+        params: &SetupParams<G>,
+    ) -> Result<ProofOfInvalidityOfKeyedNonMembershipProof<G>, VBAccumulatorError> {
+        let p = self
+            .0
+            .create_proof_of_invalidity::<R, D>(rng, secret_key.0, &pk.0, &params.0)?;
+        Ok(ProofOfInvalidityOfKeyedNonMembershipProof(p))
+    }
+}
+
+impl<G: AffineRepr> ProofOfValidityOfKeyedNonMembershipProof<G> {
+    pub fn verify<'a, D: Digest>(
+        &self,
+        proof: &KeyedNonMembershipProof<G>,
+        pk: &PublicKey<G>,
+        params: &SetupParams<G>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify::<D>(&proof.0, &pk.0, &params.0)?;
+        Ok(())
+    }
+}
+
+impl<G: AffineRepr> ProofOfInvalidityOfKeyedNonMembershipProof<G> {
+    pub fn verify<'a, D: Digest>(
+        &self,
+        proof: &KeyedNonMembershipProof<G>,
+        pk: &PublicKey<G>,
+        params: &SetupParams<G>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify::<D>(&proof.0, &pk.0, &params.0)?;
         Ok(())
     }
 }
@@ -667,8 +794,39 @@ mod tests {
             proof
                 .verify_schnorr_proof(accumulator.value(), &challenge_verifier)
                 .unwrap();
-            let delegated_proof = proof.to_delegated_proof();
-            delegated_proof.verify(&secret_key).unwrap();
+            let keyed_proof = proof.to_keyed_proof();
+            keyed_proof.verify(&secret_key).unwrap();
+
+            let mut invalid_keyed_proof = keyed_proof.clone();
+            invalid_keyed_proof.0.C = G1Affine::rand(&mut rng);
+
+            let proof_of_validity = keyed_proof.create_proof_of_validity::<_, Blake2b512>(
+                &mut rng,
+                &secret_key,
+                &public_key,
+                &params,
+            );
+            proof_of_validity
+                .verify::<Blake2b512>(&keyed_proof, &public_key, &params)
+                .unwrap();
+            assert!(proof_of_validity
+                .verify::<Blake2b512>(&invalid_keyed_proof, &public_key, &params)
+                .is_err());
+
+            let proof_of_invalidity = invalid_keyed_proof
+                .create_proof_of_invalidity::<_, Blake2b512>(
+                    &mut rng,
+                    &secret_key,
+                    &public_key,
+                    &params,
+                )
+                .unwrap();
+            proof_of_invalidity
+                .verify::<Blake2b512>(&invalid_keyed_proof, &public_key, &params)
+                .unwrap();
+            assert!(proof_of_invalidity
+                .verify::<Blake2b512>(&keyed_proof, &public_key, &params)
+                .is_err());
         }
 
         println!(
@@ -781,8 +939,39 @@ mod tests {
                     &Q,
                 )
                 .unwrap();
-            let delegated_proof = proof.to_delegated_proof();
-            delegated_proof.verify(&secret_key).unwrap();
+            let keyed_proof = proof.to_keyed_proof();
+            keyed_proof.verify(&secret_key).unwrap();
+
+            let mut invalid_keyed_proof = keyed_proof.clone();
+            invalid_keyed_proof.0.C = G1Affine::rand(&mut rng);
+
+            let proof_of_validity = keyed_proof.create_proof_of_validity::<_, Blake2b512>(
+                &mut rng,
+                &secret_key,
+                &public_key,
+                &params,
+            );
+            proof_of_validity
+                .verify::<Blake2b512>(&keyed_proof, &public_key, &params)
+                .unwrap();
+            assert!(proof_of_validity
+                .verify::<Blake2b512>(&invalid_keyed_proof, &public_key, &params)
+                .is_err());
+
+            let proof_of_invalidity = invalid_keyed_proof
+                .create_proof_of_invalidity::<_, Blake2b512>(
+                    &mut rng,
+                    &secret_key,
+                    &public_key,
+                    &params,
+                )
+                .unwrap();
+            proof_of_invalidity
+                .verify::<Blake2b512>(&invalid_keyed_proof, &public_key, &params)
+                .unwrap();
+            assert!(proof_of_invalidity
+                .verify::<Blake2b512>(&keyed_proof, &public_key, &params)
+                .is_err());
         }
 
         println!(

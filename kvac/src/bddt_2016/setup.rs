@@ -28,16 +28,7 @@ use rayon::prelude::*;
 /// Public parameters used by the MAC creator and verifier
 #[serde_as]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct MACParams<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
@@ -69,16 +60,7 @@ pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
 /// is used as a signature
 #[serde_as]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct PublicKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
 
@@ -181,5 +163,17 @@ impl<F: PrimeField> SecretKey<F> {
 impl<G: AffineRepr> PublicKey<G> {
     pub fn new<'a>(sk: &SecretKey<G::ScalarField>, g_0: impl Into<&'a G>) -> Self {
         Self((g_0.into().mul_bigint(sk.0.into_bigint())).into_affine())
+    }
+}
+
+impl<F: PrimeField> AsRef<F> for SecretKey<F> {
+    fn as_ref(&self) -> &F {
+        &self.0
+    }
+}
+
+impl<G: AffineRepr> AsRef<G> for PublicKey<G> {
+    fn as_ref(&self) -> &G {
+        &self.0
     }
 }

@@ -19,7 +19,7 @@ pub enum KVACError {
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
     InvalidRandomizedMAC,
-    InvalidDelegatedProof,
+    InvalidKeyedProof,
     InvalidSchnorrProof,
     InvalidMsgIdxForResponse(usize),
 }

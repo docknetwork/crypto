@@ -2,7 +2,7 @@
 
 use crate::{
     bddt_2016::{
-        delegated_proof::DelegatedProof,
+        keyed_proof::KeyedProof,
         mac::MAC,
         setup::{MACParams, SecretKey},
     },
@@ -240,8 +240,8 @@ impl<G: AffineRepr> PoKOfMAC<G> {
     }
 
     /// Create a new sub-proof that can be verified by someone with the secret key
-    pub fn to_delegated_proof(&self) -> DelegatedProof<G> {
-        DelegatedProof {
+    pub fn to_keyed_proof(&self) -> KeyedProof<G> {
+        KeyedProof {
             B_0: self.B_0,
             C: self.C,
         }
@@ -420,8 +420,8 @@ mod tests {
             proof_verif_duration
         );
 
-        let delegated_proof = proof.to_delegated_proof();
-        delegated_proof.verify(&sk).unwrap();
+        let keyed_proof = proof.to_keyed_proof();
+        keyed_proof.verify(sk.as_ref()).unwrap();
         proof
             .verify_schnorr_proofs(&revealed_msgs, &challenge_verifier, &params, f)
             .unwrap();

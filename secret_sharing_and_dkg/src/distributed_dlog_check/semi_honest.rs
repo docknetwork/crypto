@@ -6,7 +6,6 @@ use crate::{
     error::SSError,
 };
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
@@ -231,8 +230,7 @@ impl<G: AffineRepr> ComputationShareProof<G> {
 pub mod tests {
     use super::*;
     use crate::feldman_vss::deal_secret;
-    use ark_bls12_381::{Bls12_381, G1Affine, G2Affine};
-    use ark_ec::pairing::Pairing;
+    use ark_bls12_381::{G1Affine, G2Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         One, UniformRand,

@@ -2,7 +2,7 @@
 //! An alternate implementation of proof of knowledge of MAC is added which is adapted from the protocol to prove knowledge of
 //! BBS+ signatures described in section 4.5 of the paper [Anonymous Attestation Using the Strong Diffie Hellman Assumption Revisited](https://eprint.iacr.org/2016/663)
 
-pub mod delegated_proof;
+pub mod keyed_proof;
 pub mod mac;
 pub mod proof;
 pub mod proof_cdh;

@@ -480,7 +480,7 @@ pub mod tests {
                     let secret = Fr::rand(&mut rng);
                     let expected_result = $pairing!(Bls12_381::pairing, base, *$ck_secret * secret);
 
-                    let (shares, commitments, poly) =
+                    let (shares, commitments, _) =
                         $deal_func(&mut rng, secret, threshold, total, $ck_secret, $ck_poly).unwrap();
                     test_serialization!($secret_share<Bls12_381>, shares[0]);
 

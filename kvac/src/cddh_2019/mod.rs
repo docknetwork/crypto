@@ -39,14 +39,14 @@
 //!     - Accepts revealed messages `m_i` and challenge `c`
 //!     - Check if `t == g * s_rho + sigma_hat * (\sum_k(x_k * s_k) - c * (\sum_i(x_i * m_i) - x_0))` for revealed messages `m_i` and hidden messages `m_k`.
 //! - For separating the above check into parts that require secret key, above can be seen as `t == g * s_rho -  sigma_hat * (c * (\sum_i(x_i * m_i))) + sigma_hat * (\sum_k(x_k * s_k) - c * x_0)`
-//! - Add a function `Proof::to_delegated_proof` that takes revealed messages and the challenge to output `DelegatedProof`. It contains:
+//! - Add a function `Proof::to_keyed_proof` that takes revealed messages and the challenge to output `KeyedProof`. It contains:
 //!     - indices of hidden messages `k`,
 //!     - responses for hidden messages `s_k`
 //!     - `sigma_hat`,
 //!     - challenge `c` and
 //!     - `com = t - g * s_rho + sigma_hat * (c * (\sum_i(x_i * m_i)))` for revealed messages `m_i`
-//! - In `DelegatedProof`::verify` -
+//! - In `KeyedProof`::verify` -
 //!     - Checks `com == sigma_hat * (\sum_k(x_k * s_k) - c * x_0)` corresponding to hidden indices `*_k`
-//! - Objective is to hide the revealed messages from `DelegatedProof` thus building a joint verification protocol where verifier gets `Proof`
-//!   and it passes `DelegatedProof` to the signer who uses secret key to verify it without learning revealed messages `m_i`
+//! - Objective is to hide the revealed messages from `KeyedProof` thus building a joint verification protocol where verifier gets `Proof`
+//!   and it passes `KeyedProof` to the signer who uses secret key to verify it without learning revealed messages `m_i`
 //! - Add a function `Proof::get_resp_for_message` to get Schnorr responses for the hidden messages
