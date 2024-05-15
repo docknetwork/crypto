@@ -1042,7 +1042,7 @@ fn requesting_partially_blind_ps_sig() {
                 .copied()
                 .zip(blinding_m_pairs.as_ref().left()),
             &public_key,
-            &h
+            &h,
         )
         .unwrap();
     sig.verify(&msgs, &public_key, &sig_params).unwrap();
