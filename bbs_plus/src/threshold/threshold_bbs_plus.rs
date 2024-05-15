@@ -196,8 +196,7 @@ impl<E: Pairing> BBSPlusSignatureShare<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
-    use ark_ec::pairing::Pairing;
+    use ark_bls12_381::{Bls12_381, Fr};
     use ark_ff::Zero;
     use std::time::{Duration, Instant};
 
@@ -218,8 +217,6 @@ pub mod tests {
     use blake2::Blake2b512;
 
     use secret_sharing_and_dkg::shamir_ss::deal_random_secret;
-
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     pub fn trusted_party_keygen<R: RngCore, F: PrimeField>(
         rng: &mut R,
@@ -254,8 +251,10 @@ pub mod tests {
 
             let total_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
             let threshold_party_set = (1..=threshold_signers).into_iter().collect::<BTreeSet<_>>();
+            // The signers do a keygen. This is a one time setup.
             let (sk, sk_shares) =
                 trusted_party_keygen::<_, Fr>(rng, threshold_signers, total_signers);
+
             let params = SignatureParamsG1::<Bls12_381>::generate_using_rng(rng, message_count);
             let public_key = PublicKeyG2::generate_using_secret_key(&SecretKey(sk), &params);
 
@@ -264,6 +263,7 @@ pub mod tests {
                 sig_batch_size, message_count, threshold_signers
             );
 
+            // The signers run OT protocol instances. This is also a one time setup.
             let start = Instant::now();
             let base_ot_outputs = do_base_ot_for_threshold_sig::<BASE_OT_KEY_SIZE>(
                 rng,
@@ -273,6 +273,7 @@ pub mod tests {
             );
             println!("Base OT phase took {:?}", start.elapsed());
 
+            // Following have to happen for each new batch of signatures. Batch size can be 1 when creating one signature at a time
             let mut round1s = vec![];
             let mut commitments = vec![];
             let mut commitments_zero_share = vec![];
@@ -280,6 +281,7 @@ pub mod tests {
             let total_phase1_time;
             let mut phase1_times = BTreeMap::new();
 
+            // Signers initiate round-1 and each signer sends commitments to others
             let start = Instant::now();
             for i in 1..=threshold_signers {
                 let start = Instant::now();
@@ -299,6 +301,7 @@ pub mod tests {
                 commitments_zero_share.push(comm_zero);
             }
 
+            // Signers process round-1 commitments received from others
             for i in 1..=threshold_signers {
                 for j in 1..=threshold_signers {
                     if i != j {
@@ -318,6 +321,7 @@ pub mod tests {
                 }
             }
 
+            // Signers create round-1 shares once they have the required commitments from others
             for i in 1..=threshold_signers {
                 for j in 1..=threshold_signers {
                     if i != j {
@@ -335,6 +339,7 @@ pub mod tests {
                 }
             }
 
+            // Signers finish round-1 to generate the output
             let mut expected_sk = Fr::zero();
             for (i, round1) in round1s.into_iter().enumerate() {
                 let id = round1.id;
@@ -360,6 +365,7 @@ pub mod tests {
             let total_phase2_time;
             let mut phase2_times = BTreeMap::new();
 
+            // Signers initiate round-2 and each signer sends messages to others
             let start = Instant::now();
             for i in 1..=threshold_signers {
                 let start = Instant::now();
@@ -381,6 +387,7 @@ pub mod tests {
                 all_msg_1s.push((i, U));
             }
 
+            // Signers process round-2 messages received from others
             let mut all_msg_2s = vec![];
             for (sender_id, msg_1s) in all_msg_1s {
                 for (receiver_id, m) in msg_1s {
@@ -420,6 +427,8 @@ pub mod tests {
             total_phase2_time = start.elapsed();
             println!("Phase 2 took {:?}", total_phase2_time);
 
+            // Check that multiplication phase ran successfully, i.e. each signer has an additive share of
+            // a multiplication with every other signer
             for i in 1..=threshold_signers {
                 for (j, z_A) in &round2_outputs[i as usize - 1].z_A {
                     let z_B = round2_outputs[*j as usize - 1].z_B.get(&i).unwrap();
@@ -438,10 +447,12 @@ pub mod tests {
                 }
             }
 
+            // This is the final step where each signer generates his share of the signature without interaction
+            // with any other signer and sends this share to the client
+
             let mut total_sig_shares_time = Duration::default();
             let mut total_sig_aggr_time = Duration::default();
             let mut share_gen_times = BTreeMap::new();
-
             for k in 0..sig_batch_size as usize {
                 let messages = (0..message_count)
                     .into_iter()
@@ -466,6 +477,7 @@ pub mod tests {
                 }
                 total_sig_shares_time += start.elapsed();
 
+                // Client aggregate the shares to get the final signature
                 let start = Instant::now();
                 let sig = BBSPlusSignatureShare::aggregate(shares).unwrap();
                 total_sig_aggr_time += start.elapsed();
@@ -502,6 +514,7 @@ pub mod tests {
             }
         }
 
+        check(&mut rng, ote_params, 5, 8, 1, 3, &gadget_vector);
         check(&mut rng, ote_params, 5, 8, 10, 3, &gadget_vector);
         check(&mut rng, ote_params, 5, 8, 20, 3, &gadget_vector);
         check(&mut rng, ote_params, 5, 8, 30, 3, &gadget_vector);

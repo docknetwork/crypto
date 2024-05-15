@@ -104,7 +104,7 @@ mod shamir_ss_tests {
                                 BlindSignature::new(comm_and_blindings.clone(), &sk, &h).unwrap();
 
                             let sig = blind_signature
-                                .unblind(blind_indices.clone().zip(&blindings), &pk)
+                                .unblind(blind_indices.clone().zip(&blindings), &pk, &h)
                                 .unwrap();
 
                             (sk, sig)

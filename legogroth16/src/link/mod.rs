@@ -11,8 +11,12 @@ mod test {
     use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
     use ark_ec::{AffineRepr, CurveGroup, Group};
     use ark_ff::{One, PrimeField, UniformRand, Zero};
-    use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use std::ops::Add;
+    use ark_std::{
+        ops::Add,
+        rand::{rngs::StdRng, SeedableRng},
+        vec,
+        vec::Vec,
+    };
 
     #[test]
     fn test_basic() {

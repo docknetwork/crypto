@@ -10,7 +10,8 @@
 //! Both implementations support additional verification methods that allow joint verification of proof of possession of credentials where one
 //! of the verifier is the issuer who knows the secret key and another verifier does not know secret key but learns the revealed attributes which
 //! are not shared with the issuer. This lets us build for a use-case where issuer wants to allow anytime its issued credential is used
-//! (eg. to get paid by the verifier) while still not harming the user's privacy as it doesn't learn any revealed attributes.
+//! (eg. to get paid by the verifier) while still not harming the user's privacy as it doesn't learn any revealed attributes. The first
+//! verifier, i.e. the issuer can also provide a proof of validity or invalidity to the second verifier.
 
 pub mod bddt_2016;
 pub mod cddh_2019;

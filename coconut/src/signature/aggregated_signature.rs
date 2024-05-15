@@ -120,7 +120,7 @@ mod aggregated_signature_tests {
                                 BlindSignature::new(comms.clone(), &sk, &h).unwrap();
 
                             let sig = blind_signature
-                                .unblind(blind_indices.clone().zip(blindings.iter()), &pk)
+                                .unblind(blind_indices.clone().zip(blindings.iter()), &pk, &h)
                                 .unwrap();
 
                             sig.verify(&msgs, &pk, &params).unwrap();

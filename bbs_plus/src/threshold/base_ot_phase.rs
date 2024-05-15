@@ -247,6 +247,7 @@ pub mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
+    use std::time::Instant;
 
     pub fn check_base_ot_keys(
         choices: &[Bit],
@@ -343,11 +344,12 @@ pub mod tests {
     #[test]
     fn base_ot_for_threshold_sig() {
         let mut rng = StdRng::seed_from_u64(0u64);
+
         let num_base_ot = 256;
+        for num_parties in vec![5, 10, 15, 20] {
+            let all_party_set = (1..=num_parties).into_iter().collect::<BTreeSet<_>>();
 
-        let num_parties = 5;
-        let all_party_set = (1..=num_parties).into_iter().collect::<BTreeSet<_>>();
-
-        do_base_ot_for_threshold_sig::<16>(&mut rng, num_base_ot, num_parties, all_party_set);
+            do_base_ot_for_threshold_sig::<16>(&mut rng, num_base_ot, num_parties, all_party_set);
+        }
     }
 }

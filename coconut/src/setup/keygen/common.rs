@@ -129,7 +129,7 @@ impl<X> SecretKeyModel<X> {
         }
     }
 
-    /// Applies given `f` to the each contained entity producing a new `SecretKeyModel`.
+    /// Applies given `f` to each contained entity producing a new `SecretKeyModel`.
     pub(crate) fn map<F, R>(self, mut f: F) -> SecretKeyModel<R>
     where
         F: FnMut(X) -> R,

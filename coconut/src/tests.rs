@@ -79,7 +79,7 @@ fn construction_pac_workflow() {
             let blind_signature = BlindSignature::new(m_comms, &sk, &h).unwrap();
 
             let sig = blind_signature
-                .unblind(blind_indices.zip(blindings), &pk)
+                .unblind(blind_indices.zip(blindings), &pk, &h)
                 .unwrap();
             sig.verify(&msgs, &pk, &params).unwrap();
 

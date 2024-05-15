@@ -8,6 +8,7 @@ use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_ff::Field;
 use ark_std::{
     rand::{rngs::StdRng, RngCore, SeedableRng},
+    vec::Vec,
     UniformRand,
 };
 

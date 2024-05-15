@@ -207,3 +207,151 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         }
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use ark_bls12_381::Fr;
+    use std::time::Instant;
+
+    use crate::threshold::base_ot_phase::tests::do_base_ot_for_threshold_sig;
+    use ark_std::{
+        rand::{rngs::StdRng, SeedableRng},
+        UniformRand,
+    };
+    use blake2::Blake2b512;
+    use oblivious_transfer_protocols::ot_based_multiplication::{
+        dkls18_mul_2p::MultiplicationOTEParams, dkls19_batch_mul_2p::GadgetVector,
+    };
+
+    #[test]
+    fn multiplication_phase() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        const BASE_OT_KEY_SIZE: u16 = 128;
+        const KAPPA: u16 = 256;
+        const STATISTICAL_SECURITY_PARAMETER: u16 = 80;
+        let ote_params = MultiplicationOTEParams::<KAPPA, STATISTICAL_SECURITY_PARAMETER> {};
+        let gadget_vector = GadgetVector::<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>::new::<
+            Blake2b512,
+        >(ote_params, b"test-gadget-vector");
+
+        fn check(
+            rng: &mut StdRng,
+            ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
+            threshold: u16,
+            total: u16,
+            batch_size: u32,
+            gadget_vector: &GadgetVector<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
+        ) {
+            let total_party_set = (1..=total).into_iter().collect::<BTreeSet<_>>();
+            let threshold_party_set = (1..=threshold).into_iter().collect::<BTreeSet<_>>();
+
+            // Run OT protocol instances. This is also a one time setup.
+            let base_ot_outputs = do_base_ot_for_threshold_sig::<BASE_OT_KEY_SIZE>(
+                rng,
+                ote_params.num_base_ot(),
+                total,
+                total_party_set.clone(),
+            );
+
+            let mut mult_phase = vec![];
+            let mut all_msg_1s = vec![];
+            let total_time;
+            let mut times = BTreeMap::new();
+            let mut products = vec![];
+
+            // Initiate multiplication phase and each party sends messages to others
+            let start = Instant::now();
+            for i in 1..=threshold {
+                let start = Instant::now();
+                let mut others = threshold_party_set.clone();
+                others.remove(&i);
+                let a = (0..batch_size).map(|_| Fr::rand(rng)).collect::<Vec<_>>();
+                let b = (0..batch_size).map(|_| Fr::rand(rng)).collect::<Vec<_>>();
+                let (phase, U) = Phase2::init(
+                    rng,
+                    i,
+                    a.clone(),
+                    b.clone(),
+                    base_ot_outputs[i as usize - 1].clone(),
+                    others,
+                    ote_params,
+                    &gadget_vector,
+                )
+                .unwrap();
+                times.insert(i, start.elapsed());
+                products.push((a, b));
+                mult_phase.push(phase);
+                all_msg_1s.push((i, U));
+            }
+
+            // Each party process messages received from others
+            let mut all_msg_2s = vec![];
+            for (sender_id, msg_1s) in all_msg_1s {
+                for (receiver_id, m) in msg_1s {
+                    let start = Instant::now();
+                    let m2 = mult_phase[receiver_id as usize - 1]
+                        .receive_message1::<Blake2b512>(sender_id, m, &gadget_vector)
+                        .unwrap();
+                    times.insert(
+                        receiver_id,
+                        *times.get(&receiver_id).unwrap() + start.elapsed(),
+                    );
+                    all_msg_2s.push((receiver_id, sender_id, m2));
+                }
+            }
+
+            for (sender_id, receiver_id, m2) in all_msg_2s {
+                let start = Instant::now();
+                mult_phase[receiver_id as usize - 1]
+                    .receive_message2::<Blake2b512>(sender_id, m2, &gadget_vector)
+                    .unwrap();
+                times.insert(
+                    receiver_id,
+                    *times.get(&receiver_id).unwrap() + start.elapsed(),
+                );
+            }
+
+            let mult_phase_outputs = mult_phase
+                .into_iter()
+                .map(|p| {
+                    let start = Instant::now();
+                    let i = p.id;
+                    let o = p.finish();
+                    times.insert(i, *times.get(&i).unwrap() + start.elapsed());
+                    o
+                })
+                .collect::<Vec<_>>();
+            total_time = start.elapsed();
+            println!(
+                "Multiplication of batch size {} among parties with threshold {} took {:?}",
+                batch_size, threshold, total_time
+            );
+
+            // Check that multiplication works, i.e. each party has an additive share of
+            // a multiplication with every other party
+            for i in 1..=threshold {
+                for (j, z_A) in &mult_phase_outputs[i as usize - 1].z_A {
+                    let z_B = mult_phase_outputs[*j as usize - 1].z_B.get(&i).unwrap();
+                    for k in 0..batch_size as usize {
+                        assert_eq!(
+                            z_A.0[k] + z_B.0[k],
+                            products[i as usize - 1].0[k] * products[*j as usize - 1].1[k]
+                        );
+                        assert_eq!(
+                            z_A.1[k] + z_B.1[k],
+                            products[i as usize - 1].1[k] * products[*j as usize - 1].0[k]
+                        );
+                    }
+                }
+            }
+        }
+
+        check(&mut rng, ote_params, 5, 8, 1, &gadget_vector);
+        check(&mut rng, ote_params, 5, 8, 10, &gadget_vector);
+        check(&mut rng, ote_params, 5, 8, 20, &gadget_vector);
+        check(&mut rng, ote_params, 5, 8, 30, &gadget_vector);
+        check(&mut rng, ote_params, 10, 20, 10, &gadget_vector);
+        check(&mut rng, ote_params, 20, 30, 10, &gadget_vector);
+    }
+}
