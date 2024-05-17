@@ -216,6 +216,7 @@ macro_rules! try_pairs {
     };
 }
 
+/// Return `$error` if `$left` not equals `$right`
 #[macro_export]
 macro_rules! expect_equality {
     ($left: expr, $right: expr, $error: expr) => {
@@ -225,6 +226,7 @@ macro_rules! expect_equality {
     };
 }
 
+/// Return pairing where `$pairing_func` is the pairing function, `$g1` is/are group G1 elements and `$g2` is/are group G2 elements
 #[macro_export]
 macro_rules! pair_g1_g2 {
     ($pairing_func: path, $g1: expr, $g2: expr) => {
@@ -232,6 +234,7 @@ macro_rules! pair_g1_g2 {
     };
 }
 
+/// Return pairing where `$pairing_func` is the pairing function, `$g1` is/are group G1 elements and `$g2` is/are group G2 elements
 #[macro_export]
 macro_rules! pair_g2_g1 {
     ($pairing_func: path, $g2: expr, $g1: expr) => {

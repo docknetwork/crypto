@@ -1,3 +1,5 @@
+//! Merlin transcripts
+
 use ark_ec::AffineRepr;
 use ark_ff::fields::Field;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};

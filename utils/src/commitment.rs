@@ -8,7 +8,7 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-/// A Pedersen commitment key. The Pedersen commitment will be `g * m + h * r` with opening `(m, r)`
+/// A Pedersen commitment key `(g, h)`. The Pedersen commitment will be `g * m + h * r` with opening `(m, r)`
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,

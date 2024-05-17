@@ -35,6 +35,9 @@ pub fn deal_secret<R: RngCore, F: PrimeField>(
     if threshold > total {
         return Err(SSError::InvalidThresholdOrTotal(threshold, total));
     }
+    if total < 2 {
+        return Err(SSError::InvalidThresholdOrTotal(threshold, total));
+    }
     if threshold < 1 {
         return Err(SSError::InvalidThresholdOrTotal(threshold, total));
     }
@@ -68,18 +71,16 @@ impl<F: PrimeField> Shares<F> {
 pub mod tests {
     use super::*;
     use crate::common::Share;
-    use ark_bls12_381::Bls12_381;
-    use ark_ec::pairing::Pairing;
+    use ark_bls12_381::{Bls12_381, Fr};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use test_utils::test_serialization;
-
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn shamir_secret_sharing() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
+        assert!(deal_random_secret::<_, Fr>(&mut rng, 1, 1).is_err());
         assert!(deal_random_secret::<_, Fr>(&mut rng, 5, 4).is_err());
 
         for (threshold, total) in vec![
@@ -87,6 +88,7 @@ pub mod tests {
             (2, 3),
             (2, 4),
             (2, 5),
+            (1, 3),
             (3, 3),
             (3, 4),
             (3, 5),

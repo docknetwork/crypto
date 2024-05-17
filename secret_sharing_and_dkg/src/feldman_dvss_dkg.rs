@@ -169,7 +169,7 @@ impl<G: AffineRepr> SharesAccumulator<G> {
 }
 
 /// Reconstruct threshold key using the individual public keys. Multiplies each public key with its
-/// Lagrange coefficient and adds the result
+/// Lagrange coefficient and adds the result. Assumes that public key ids are unique
 pub fn reconstruct_threshold_public_key<G: AffineRepr>(
     public_keys: Vec<(ShareId, G)>,
     threshold: ShareId,
