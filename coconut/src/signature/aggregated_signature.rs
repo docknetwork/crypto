@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use ark_ec::pairing::Pairing;
 
 use ark_serialize::*;
+use ark_std::cfg_iter;
 use utils::iter::validate;
 
 use super::{error::AggregatedPSError, ps_signature::Signature};
@@ -49,7 +50,9 @@ impl<E: Pairing> AggregatedSignature<E> {
         if s.is_empty() {
             Err(AggregatedPSError::NoSignatures)?
         }
-
+        if cfg_iter!(participant_ids).any(|p| *p == 0) {
+            return Err(AggregatedPSError::ParticipantIdCantBeZero);
+        }
         let l = lagrange_basis_at_0(participant_ids)
             .map(<E::ScalarField as PrimeField>::into_bigint)
             .collect();
@@ -170,5 +173,19 @@ mod aggregated_signature_tests {
             AggregatedSignature::<Bls12_381>::new(None, &h),
             Err(AggregatedPSError::NoSignatures)
         );
+    }
+
+    #[test]
+    fn zero_participant_id() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let h = G1::rand(&mut rng).into_affine();
+
+        let sig1 = Signature::<Bls12_381>::combine(h.clone(), G1::rand(&mut rng).into_affine());
+        let sig2 = Signature::<Bls12_381>::combine(h.clone(), G1::rand(&mut rng).into_affine());
+        let aggr_sigs = vec![(0, &sig1), (1, &sig2)];
+        assert_eq!(
+            AggregatedSignature::new(aggr_sigs, &h),
+            Err(AggregatedPSError::ParticipantIdCantBeZero)
+        )
     }
 }

@@ -7,6 +7,7 @@ use oblivious_transfer_protocols::ParticipantId;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use secret_sharing_and_dkg::error::SSError;
 
 pub fn compute_masked_arguments_to_multiply<F: PrimeField>(
     signing_key: &F,
@@ -14,12 +15,12 @@ pub fn compute_masked_arguments_to_multiply<F: PrimeField>(
     mut zero_shares: Vec<F>,
     self_id: ParticipantId,
     others: &[ParticipantId],
-) -> (Vec<F>, Vec<F>) {
+) -> Result<(Vec<F>, Vec<F>), SSError> {
     let batch_size = r.len();
     debug_assert_eq!(zero_shares.len(), 2 * batch_size);
     let alphas = zero_shares.drain(0..batch_size).collect::<Vec<_>>();
     let betas = zero_shares;
-    let lambda = secret_sharing_and_dkg::common::lagrange_basis_at_0::<F>(&others, self_id);
+    let lambda = secret_sharing_and_dkg::common::lagrange_basis_at_0::<F>(&others, self_id)?;
     let (masked_signing_key_shares, masked_rs) = cfg_into_iter!(r)
         .zip(cfg_into_iter!(alphas).zip(cfg_into_iter!(betas)))
         .map(|(r, (alpha, beta))| {
@@ -30,7 +31,7 @@ pub fn compute_masked_arguments_to_multiply<F: PrimeField>(
         .collect::<Vec<_>>()
         .into_iter()
         .multiunzip::<(Vec<F>, Vec<F>)>();
-    (masked_signing_key_shares, masked_rs)
+    Ok((masked_signing_key_shares, masked_rs))
 }
 
 pub fn compute_R_and_u<G: AffineRepr>(

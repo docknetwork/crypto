@@ -7,7 +7,7 @@ use crate::{
 };
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
@@ -122,13 +122,11 @@ impl<G: AffineRepr> ComputationShare<G> {
         if threshold > len {
             return Err(SSError::BelowThreshold(threshold, len));
         }
-        let share_ids = &shares[0..threshold as usize]
+        let share_ids = shares[0..threshold as usize]
             .iter()
             .map(|s| s.id)
             .collect::<Vec<_>>();
-        let basis = cfg_into_iter!(&shares[0..threshold as usize])
-            .map(|s| common::lagrange_basis_at_0::<G::ScalarField>(&share_ids, s.id))
-            .collect::<Vec<_>>();
+        let basis = common::lagrange_basis_at_0_for_all::<G::ScalarField>(share_ids)?;
         let shares = &shares[0..threshold as usize]
             .iter()
             .map(|s| s.share)

@@ -61,8 +61,10 @@ impl<F: PrimeField> Shares<F> {
         }
         let shares = &self.0[0..threshold as usize];
         let share_ids = shares.iter().map(|s| s.id).collect::<Vec<_>>();
-        Ok(cfg_iter!(shares)
-            .map(|s| common::lagrange_basis_at_0::<F>(&share_ids, s.id) * s.share)
+        let basis = common::lagrange_basis_at_0_for_all::<F>(share_ids)?;
+        Ok(cfg_into_iter!(basis)
+            .zip(cfg_into_iter!(shares))
+            .map(|(b, s)| b * s.share)
             .sum::<F>())
     }
 }
@@ -71,10 +73,18 @@ impl<F: PrimeField> Shares<F> {
 pub mod tests {
     use super::*;
     use crate::common::Share;
-    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_bls12_381::Fr;
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use test_utils::test_serialization;
+
+    #[test]
+    fn invalid_recombine_zero_id() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let (_, mut shares, _) = deal_random_secret::<_, Fr>(&mut rng, 2, 3).unwrap();
+        shares.0[0].id = 0;
+        assert!(shares.reconstruct_secret().is_err());
+    }
 
     #[test]
     fn shamir_secret_sharing() {

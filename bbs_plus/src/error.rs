@@ -8,6 +8,7 @@ use dock_crypto_utils::{
 };
 use oblivious_transfer_protocols::{error::OTError, ParticipantId};
 use schnorr_pok::error::SchnorrError;
+use secret_sharing_and_dkg::error::SSError;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -57,6 +58,7 @@ pub enum BBSPlusError {
     AlreadyHaveChallengesFrom(ParticipantId),
     SenderEitherNotReadyForResponseOrAlreadySentIt(ParticipantId),
     ReceiverEitherNotReadyForHashedKeysOrAlreadyVerifiedIt(ParticipantId),
+    SSError(SSError),
 }
 
 impl From<SchnorrError> for BBSPlusError {
@@ -86,5 +88,11 @@ impl From<SerializationError> for BBSPlusError {
 impl From<OTError> for BBSPlusError {
     fn from(e: OTError) -> Self {
         Self::OTError(e)
+    }
+}
+
+impl From<SSError> for BBSPlusError {
+    fn from(e: SSError) -> Self {
+        Self::SSError(e)
     }
 }

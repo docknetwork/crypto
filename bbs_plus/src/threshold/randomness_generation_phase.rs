@@ -86,7 +86,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
             zero_shares,
             self.id,
             &others,
-        );
+        )?;
         Ok((others, randomness, masked_signing_key_share, masked_r))
     }
 

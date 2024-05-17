@@ -8,11 +8,14 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::error::SSError;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+/// ShareId must be greater than 0
 pub type ShareId = u16;
 
+/// ParticipantId must be greater than 0
 pub type ParticipantId = u16;
 
 /// Share used in Shamir secret sharing and Feldman verifiable secret sharing
@@ -81,7 +84,7 @@ pub struct VerifiableShare<F: PrimeField> {
 #[serde(bound = "")]
 pub struct VerifiableShares<F: PrimeField>(pub Vec<VerifiableShare<F>>);
 
-/// Commitments to coefficients of the of the polynomial created during secret sharing. Each commitment
+/// Commitments to coefficients of the polynomial created during secret sharing. Each commitment
 /// in the vector could be a Pedersen commitment or a computationally hiding and computationally binding
 /// commitment (scalar multiplication of the coefficient with a public group element). The former is used
 /// in Pedersen secret sharing and the latter in Feldman
@@ -155,11 +158,15 @@ impl<G: AffineRepr> PublicKeyBase<G> {
 /// Return the Lagrange basis polynomial at x = 0 given the `x` coordinates
 /// `(x_coords[0]) * (x_coords[1]) * ... / ((x_coords[0] - i) * (x_coords[1] - i) * ...)`
 /// Assumes all `x` coordinates are distinct and appropriate number of coordinates are provided
-pub fn lagrange_basis_at_0<F: PrimeField>(x_coords: &[ShareId], i: ShareId) -> F {
+pub fn lagrange_basis_at_0<F: PrimeField>(x_coords: &[ShareId], i: ShareId) -> Result<F, SSError> {
     let mut numerator = F::one();
     let mut denominator = F::one();
     let i_f = F::from(i as u64);
     for x in x_coords {
+        // Ensure no x-coordinate can be 0 since we are evaluating basis polynomial at 0
+        if *x == 0 {
+            return Err(SSError::XCordCantBeZero);
+        }
         if *x == i {
             continue;
         }
@@ -168,20 +175,26 @@ pub fn lagrange_basis_at_0<F: PrimeField>(x_coords: &[ShareId], i: ShareId) -> F
         denominator *= x - i_f;
     }
     denominator.inverse_in_place().unwrap();
-    numerator * denominator
+    Ok(numerator * denominator)
 }
 
 /// Return the Lagrange basis polynomial at x = 0 for each of the given `x` coordinates. Faster than
 /// doing multiple calls to `lagrange_basis_at_0`
-pub fn lagrange_basis_at_0_for_all<F: PrimeField>(x_coords: Vec<ShareId>) -> Vec<F> {
+pub fn lagrange_basis_at_0_for_all<F: PrimeField>(
+    x_coords: Vec<ShareId>,
+) -> Result<Vec<F>, SSError> {
     let x = cfg_into_iter!(x_coords.as_slice())
         .map(|x| F::from(*x as u64))
         .collect::<Vec<_>>();
+    // Ensure no x-coordinate can be 0 since we are evaluating basis polynomials at 0
+    if cfg_iter!(x).any(|x_i| x_i.is_zero()) {
+        return Err(SSError::XCordCantBeZero);
+    }
 
     // Product of all `x`, i.e. \prod_{i}(x_i}
     let product = cfg_iter!(x).product::<F>();
 
-    cfg_into_iter!(x.clone())
+    let r = cfg_into_iter!(x.clone())
         .map(move |i| {
             let mut denominator = cfg_iter!(x)
                 .filter(|&j| &i != j)
@@ -195,21 +208,27 @@ pub fn lagrange_basis_at_0_for_all<F: PrimeField>(x_coords: Vec<ShareId>) -> Vec
 
             denominator * numerator
         })
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+    Ok(r)
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
-    use ark_ec::pairing::Pairing;
+    use ark_bls12_381::Fr;
     use ark_std::{
         rand::{prelude::StdRng, SeedableRng},
         UniformRand,
     };
     use std::time::Instant;
 
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
+    #[test]
+    fn cannot_compute_lagrange_basis_at_0_with_0_as_x_coordinate() {
+        assert!(lagrange_basis_at_0::<Fr>(&[0, 1, 2, 4], 2).is_err());
+        assert!(lagrange_basis_at_0::<Fr>(&[1, 0, 2, 4], 2).is_err());
+        assert!(lagrange_basis_at_0_for_all::<Fr>(vec![1, 0, 2, 4]).is_err());
+        assert!(lagrange_basis_at_0_for_all::<Fr>(vec![1, 3, 0, 4]).is_err());
+    }
 
     #[test]
     fn compare_lagrange_basis_at_0() {
@@ -222,12 +241,12 @@ pub mod tests {
 
         let start = Instant::now();
         let single = cfg_iter!(x)
-            .map(|i| lagrange_basis_at_0(&x, *i))
+            .map(|i| lagrange_basis_at_0(&x, *i).unwrap())
             .collect::<Vec<Fr>>();
         println!("For {} x, single took {:?}", count, start.elapsed());
 
         let start = Instant::now();
-        let multiple = lagrange_basis_at_0_for_all(x);
+        let multiple = lagrange_basis_at_0_for_all(x).unwrap();
         println!("For {} x, multiple took {:?}", count, start.elapsed());
 
         assert_eq!(single, multiple);

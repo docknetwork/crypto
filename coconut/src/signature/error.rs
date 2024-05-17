@@ -60,6 +60,7 @@ pub enum AggregatedPSError {
     InvalidSigma1For(ParticipantId),
     ParticipantIdsMustBeUniqueAndSorted(InvalidPair<ParticipantId>),
     PSError(PSError),
+    ParticipantIdCantBeZero,
 }
 
 impl From<InvalidPair<ParticipantId>> for AggregatedPSError {

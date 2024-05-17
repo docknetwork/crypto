@@ -1,6 +1,7 @@
 //! Feldman Distributed Verifiable secret sharing and distributed key generation.
 
 use crate::{
+    common,
     common::{lagrange_basis_at_0, CommitmentToCoefficients, ParticipantId, Share, ShareId},
     error::SSError,
 };
@@ -181,9 +182,7 @@ pub fn reconstruct_threshold_public_key<G: AffineRepr>(
     let pkt = &public_keys[0..threshold as usize];
     let pk_ids = pkt.iter().map(|(i, _)| *i).collect::<Vec<_>>();
     let pks = pkt.iter().map(|(_, pk)| *pk).collect::<Vec<_>>();
-    let lcs = cfg_iter!(pk_ids)
-        .map(|i| lagrange_basis_at_0::<G::ScalarField>(&pk_ids, *i))
-        .collect::<Vec<_>>();
+    let lcs = common::lagrange_basis_at_0_for_all::<G::ScalarField>(pk_ids)?;
     Ok(G::Group::msm_unchecked(&pks, &lcs).into_affine())
 }
 

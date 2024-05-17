@@ -247,7 +247,6 @@ pub mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use std::time::Instant;
 
     pub fn check_base_ot_keys(
         choices: &[Bit],

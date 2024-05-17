@@ -209,16 +209,12 @@ macro_rules! impl_protocol {
                 if threshold > len {
                     return Err(SSError::BelowThreshold(threshold, len));
                 }
-                let share_ids = &shares[0..threshold as usize]
+                let share_ids = shares[0..threshold as usize]
                     .iter()
                     .map(|s| s.id)
                     .collect::<Vec<_>>();
-                let result = cfg_into_iter!(&shares[0..threshold as usize])
-                    .map(|s| {
-                        s.share * common::lagrange_basis_at_0::<E::ScalarField>(&share_ids, s.id)
-                    })
-                    .sum::<PairingOutput<E>>();
-                Ok(result)
+                let basis = common::lagrange_basis_at_0_for_all::<E::ScalarField>(share_ids)?;
+                Ok(cfg_into_iter!(basis).zip(cfg_into_iter!(shares)).map(|(b, s)| s.share * b).sum::<PairingOutput<E>>())
             }
         }
 

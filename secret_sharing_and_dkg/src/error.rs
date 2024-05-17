@@ -1,7 +1,8 @@
 use crate::common::{ParticipantId, ShareId};
 use schnorr_pok::error::SchnorrError;
+use serde::Serialize;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum SSError {
     InvalidThresholdOrTotal(ShareId, ShareId),
     BelowThreshold(ShareId, ShareId),
@@ -22,6 +23,7 @@ pub enum SSError {
     InvalidComputationShareProof(ShareId),
     UnequalNoOfProofsAndShares(usize, usize),
     UnequalNoOfProofsAndCommitments(usize, usize),
+    XCordCantBeZero,
 }
 
 impl From<SchnorrError> for SSError {
