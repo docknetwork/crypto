@@ -26,15 +26,18 @@ schnorr_pok = { version = "0.18.0", default-features = false, path = "../schnorr
 dock_crypto_utils = { version = "0.18.0", default-features = false, path = "../utils" }
 short_group_sig = { version = "0.2.0", default-features = false, path = "../short_group_sig" }
 kvac = { version = "0.3.0", default-features = false, path = "../kvac" }
+oblivious_transfer_protocols = { version = "0.7.0", default-features = false, path = "../oblivious_transfer" }
+secret_sharing_and_dkg = { version = "0.11.0", default-features = false, path = "../secret_sharing_and_dkg" }
 
 [dev-dependencies]
 blake2.workspace = true
 ark-bls12-381.workspace = true
 serde_json = "1.0"
 rmp-serde = "1.0"
+test_utils = { path = "../test_utils" }
 
 [features]
 default = [ "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "short_group_sig/std", "kvac/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "short_group_sig/std", "kvac/std", "oblivious_transfer_protocols/std", "secret_sharing_and_dkg/std"]
 print-trace = [ "ark-std/print-trace", "schnorr_pok/print-trace", "dock_crypto_utils/print-trace" ]
-parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-poly/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "dock_crypto_utils/parallel", "short_group_sig/parallel", "kvac/parallel"]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-poly/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "dock_crypto_utils/parallel", "short_group_sig/parallel", "kvac/parallel", "oblivious_transfer_protocols/parallel", "secret_sharing_and_dkg/parallel"]

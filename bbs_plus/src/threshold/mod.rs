@@ -16,11 +16,10 @@
 //! Both BBS and BBS+ implementations share the same multiplication phase and the base OT phase but their phase 1 is slightly
 //! less expensive as BBS+ needs 2 random fields elements but BBS needs only 1.
 
-pub mod base_ot_phase;
-pub mod cointoss;
 pub mod multiplication_phase;
 pub mod randomness_generation_phase;
 pub mod threshold_bbs;
 pub mod threshold_bbs_plus;
 pub mod utils;
-pub mod zero_sharing;
+
+pub type ParticipantId = oblivious_transfer_protocols::ParticipantId;

@@ -18,9 +18,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
 /// Commitment to the share of the secret
 #[serde_as]
 #[derive(

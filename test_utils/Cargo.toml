@@ -17,9 +17,10 @@ ark-serialize.workspace = true
 blake2.workspace = true
 proof_system = { default-features = false, path = "../proof_system"}
 kvac = { default-features = false, path = "../kvac"}
+oblivious_transfer_protocols = { default-features = false, path = "../oblivious_transfer"}
 
 [features]
 default = ["parallel"]
-parallel = ["proof_system/default"]
+parallel = ["proof_system/parallel", "kvac/parallel", "oblivious_transfer_protocols/parallel"]
 wasmer-js = ["proof_system/wasmer-js"]
 wasmer-sys = ["proof_system/wasmer-sys"]

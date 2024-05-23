@@ -4,10 +4,10 @@ use ark_ff::PrimeField;
 use ark_std::{cfg_into_iter, ops::Mul, vec::Vec};
 use itertools::Itertools;
 use oblivious_transfer_protocols::ParticipantId;
+use secret_sharing_and_dkg::error::SSError;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use secret_sharing_and_dkg::error::SSError;
 
 pub fn compute_masked_arguments_to_multiply<F: PrimeField>(
     signing_key: &F,
@@ -21,6 +21,8 @@ pub fn compute_masked_arguments_to_multiply<F: PrimeField>(
     let alphas = zero_shares.drain(0..batch_size).collect::<Vec<_>>();
     let betas = zero_shares;
     let lambda = secret_sharing_and_dkg::common::lagrange_basis_at_0::<F>(&others, self_id)?;
+    // masked_signing_key_shares[i] = alphas[i] + (lambda * signing_key)
+    // masked_r[i] = betas[i] * r[i]
     let (masked_signing_key_shares, masked_rs) = cfg_into_iter!(r)
         .zip(cfg_into_iter!(alphas).zip(cfg_into_iter!(betas)))
         .map(|(r, (alpha, beta))| {
@@ -45,11 +47,11 @@ pub fn compute_R_and_u<G: AffineRepr>(
 ) -> (G, G::ScalarField) {
     let R = base.mul(r).into_affine();
     let mut u = *masked_r * (*e + masked_signing_key_share);
-    for (_, (a, b)) in &phase2.z_A {
+    for (_, (a, b)) in &phase2.0.z_A {
         u += a[index_in_output as usize];
         u += b[index_in_output as usize];
     }
-    for (_, (a, b)) in &phase2.z_B {
+    for (_, (a, b)) in &phase2.0.z_B {
         u += a[index_in_output as usize];
         u += b[index_in_output as usize];
     }

@@ -6,7 +6,9 @@ use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
 use dock_crypto_utils::serde_utils::ArkSerializationError;
 use kvac::error::KVACError;
+use oblivious_transfer_protocols::error::OTError;
 use schnorr_pok::error::SchnorrError;
+use secret_sharing_and_dkg::error::SSError;
 use serde::Serialize;
 use short_group_sig::error::ShortGroupSigError;
 
@@ -42,6 +44,8 @@ pub enum VBAccumulatorError {
     ShortGroupSigError(ShortGroupSigError),
     MismatchBetweenSignatureAndAccumulatorValue,
     KVACError(KVACError),
+    SSError(SSError),
+    OTError(OTError),
 }
 
 impl From<SchnorrError> for VBAccumulatorError {
@@ -65,5 +69,17 @@ impl From<ShortGroupSigError> for VBAccumulatorError {
 impl From<KVACError> for VBAccumulatorError {
     fn from(e: KVACError) -> Self {
         Self::KVACError(e)
+    }
+}
+
+impl From<SSError> for VBAccumulatorError {
+    fn from(e: SSError) -> Self {
+        Self::SSError(e)
+    }
+}
+
+impl From<OTError> for VBAccumulatorError {
+    fn from(e: OTError) -> Self {
+        Self::OTError(e)
     }
 }

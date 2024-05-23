@@ -1,7 +1,14 @@
 //! Each pair of participants must run a base OT among themselves and stores the OT receiver choices and
 //! the output, i.e sender and receiver keys. This needs to be done only once unless they are lost or compromised.
 
-use crate::error::BBSPlusError;
+use crate::{
+    base_ot::simplest_ot::{
+        Challenges, HashedKey, OneOfTwoROTSenderKeys, ROTReceiverKeys, ROTSenderSetup,
+        ReceiverPubKeys, Responses, SenderPubKey, VSROTChallenger, VSROTResponder,
+    },
+    error::OTError,
+    Bit, ParticipantId,
+};
 use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -11,13 +18,6 @@ use ark_std::{
     UniformRand,
 };
 use digest::Digest;
-use oblivious_transfer_protocols::{
-    base_ot::simplest_ot::{
-        Challenges, HashedKey, OneOfTwoROTSenderKeys, ROTReceiverKeys, ROTSenderSetup,
-        ReceiverPubKeys, Responses, SenderPubKey, VSROTChallenger, VSROTResponder,
-    },
-    Bit, ParticipantId,
-};
 use schnorr_pok::discrete_log::PokDiscreteLog;
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct BaseOTPhase<G: AffineRepr> {
+pub struct Participant<G: AffineRepr> {
     pub id: ParticipantId,
     /// Number of base OTs to perform
     pub count: u16,
@@ -41,10 +41,11 @@ pub struct BaseOTPhase<G: AffineRepr> {
     pub receiver_responder: BTreeMap<ParticipantId, VSROTResponder>,
 }
 
+/// Output of base OT run between each pair of participants of the multi-party multiplication protocol
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct BaseOTPhaseOutput {
+pub struct BaseOTOutput {
     pub id: ParticipantId,
     pub sender_keys: BTreeMap<ParticipantId, OneOfTwoROTSenderKeys>,
     pub receiver: BTreeMap<ParticipantId, (Vec<Bit>, ROTReceiverKeys)>,
@@ -56,14 +57,14 @@ pub struct BaseOTPhaseOutput {
 #[serde(bound = "")]
 pub struct SenderPubKeyAndProof<G: AffineRepr>(SenderPubKey<G>, PokDiscreteLog<G>);
 
-impl<G: AffineRepr> BaseOTPhase<G> {
+impl<G: AffineRepr> Participant<G> {
     pub fn init<R: RngCore, D: Digest>(
         rng: &mut R,
         id: ParticipantId,
         others: BTreeSet<ParticipantId>,
         num_base_ot: u16,
         B: &G,
-    ) -> Result<(Self, BTreeMap<ParticipantId, SenderPubKeyAndProof<G>>), BBSPlusError> {
+    ) -> Result<(Self, BTreeMap<ParticipantId, SenderPubKeyAndProof<G>>), OTError> {
         let mut base_ot_sender_setup = BTreeMap::new();
         let mut base_ot_receiver_choices = BTreeMap::new();
         let mut base_ot_s = BTreeMap::new();
@@ -101,18 +102,18 @@ impl<G: AffineRepr> BaseOTPhase<G> {
         sender_id: ParticipantId,
         sender_pk_and_proof: SenderPubKeyAndProof<G>,
         B: &G,
-    ) -> Result<ReceiverPubKeys<G>, BBSPlusError> {
+    ) -> Result<ReceiverPubKeys<G>, OTError> {
         if self.id == sender_id {
-            return Err(BBSPlusError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
+            return Err(OTError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
         }
         if self.id < sender_id {
-            return Err(BBSPlusError::NotABaseOTSender(sender_id));
+            return Err(OTError::NotABaseOTSender(sender_id));
         }
         if !self.receiver_choices.contains_key(&sender_id) {
-            return Err(BBSPlusError::NotABaseOTSender(sender_id));
+            return Err(OTError::NotABaseOTSender(sender_id));
         }
         if self.receiver_keys.contains_key(&sender_id) {
-            return Err(BBSPlusError::AlreadyHaveSenderPubkeyFrom(sender_id));
+            return Err(OTError::AlreadyHaveSenderPubkeyFrom(sender_id));
         }
         let SenderPubKeyAndProof(S, proof) = sender_pk_and_proof;
         let (receiver_keys, pub_key) = ROTReceiverKeys::new_verifiable::<_, _, D, KEY_SIZE>(
@@ -131,18 +132,18 @@ impl<G: AffineRepr> BaseOTPhase<G> {
         &mut self,
         sender_id: ParticipantId,
         R: ReceiverPubKeys<G>,
-    ) -> Result<Challenges, BBSPlusError> {
+    ) -> Result<Challenges, OTError> {
         if self.id == sender_id {
-            return Err(BBSPlusError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
+            return Err(OTError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
         }
         if self.id > sender_id {
-            return Err(BBSPlusError::NotABaseOTReceiver(sender_id));
+            return Err(OTError::NotABaseOTReceiver(sender_id));
         }
         if self.sender_keys.contains_key(&sender_id) {
-            return Err(BBSPlusError::AlreadyHaveReceiverPubkeyFrom(sender_id));
+            return Err(OTError::AlreadyHaveReceiverPubkeyFrom(sender_id));
         }
         if !self.sender_setup.contains_key(&sender_id) {
-            return Err(BBSPlusError::NotABaseOTReceiver(sender_id));
+            return Err(OTError::NotABaseOTReceiver(sender_id));
         }
         if let Some(sender_setup) = self.sender_setup.get(&sender_id) {
             let sender_keys =
@@ -152,7 +153,7 @@ impl<G: AffineRepr> BaseOTPhase<G> {
             self.sender_keys.insert(sender_id, sender_keys);
             Ok(challenges)
         } else {
-            Err(BBSPlusError::NotABaseOTReceiver(sender_id))
+            Err(OTError::NotABaseOTReceiver(sender_id))
         }
     }
 
@@ -160,15 +161,15 @@ impl<G: AffineRepr> BaseOTPhase<G> {
         &mut self,
         sender_id: ParticipantId,
         challenges: Challenges,
-    ) -> Result<Responses, BBSPlusError> {
+    ) -> Result<Responses, OTError> {
         if self.id == sender_id {
-            return Err(BBSPlusError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
+            return Err(OTError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
         }
         if self.id < sender_id {
-            return Err(BBSPlusError::NotABaseOTSender(sender_id));
+            return Err(OTError::NotABaseOTSender(sender_id));
         }
         if self.receiver_responder.contains_key(&sender_id) {
-            return Err(BBSPlusError::AlreadyHaveChallengesFrom(sender_id));
+            return Err(OTError::AlreadyHaveChallengesFrom(sender_id));
         }
         if let Some(receiver_keys) = self.receiver_keys.get(&sender_id) {
             let (receiver_responder, responses) = VSROTResponder::new(
@@ -180,7 +181,7 @@ impl<G: AffineRepr> BaseOTPhase<G> {
                 .insert(sender_id, receiver_responder);
             Ok(responses)
         } else {
-            Err(BBSPlusError::ReceiverNotReadyForChallengeFrom(sender_id))
+            Err(OTError::ReceiverNotReadyForChallengeFrom(sender_id))
         }
     }
 
@@ -188,18 +189,20 @@ impl<G: AffineRepr> BaseOTPhase<G> {
         &mut self,
         sender_id: ParticipantId,
         responses: Responses,
-    ) -> Result<Vec<(HashedKey, HashedKey)>, BBSPlusError> {
+    ) -> Result<Vec<(HashedKey, HashedKey)>, OTError> {
         if self.id == sender_id {
-            return Err(BBSPlusError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
+            return Err(OTError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
         }
         if self.id > sender_id {
-            return Err(BBSPlusError::NotABaseOTReceiver(sender_id));
+            return Err(OTError::NotABaseOTReceiver(sender_id));
         }
         if let Some(sender_challenger) = self.sender_challenger.remove(&sender_id) {
             let hashed_keys = sender_challenger.verify_responses(responses)?;
             Ok(hashed_keys)
         } else {
-            Err(BBSPlusError::SenderEitherNotReadyForResponseOrAlreadySentIt(sender_id))
+            Err(OTError::SenderEitherNotReadyForResponseOrAlreadySentIt(
+                sender_id,
+            ))
         }
     }
 
@@ -207,29 +210,29 @@ impl<G: AffineRepr> BaseOTPhase<G> {
         &mut self,
         sender_id: ParticipantId,
         hashed_keys: Vec<(HashedKey, HashedKey)>,
-    ) -> Result<(), BBSPlusError> {
+    ) -> Result<(), OTError> {
         if self.id == sender_id {
-            return Err(BBSPlusError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
+            return Err(OTError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
         }
         if self.id < sender_id {
-            return Err(BBSPlusError::NotABaseOTSender(sender_id));
+            return Err(OTError::NotABaseOTSender(sender_id));
         }
         if let Some(receiver_responder) = self.receiver_responder.remove(&sender_id) {
             receiver_responder.verify_sender_hashed_keys(hashed_keys)?;
             Ok(())
         } else {
-            Err(BBSPlusError::ReceiverEitherNotReadyForHashedKeysOrAlreadyVerifiedIt(sender_id))
+            Err(OTError::ReceiverEitherNotReadyForHashedKeysOrAlreadyVerifiedIt(sender_id))
         }
     }
 
-    pub fn finish(mut self) -> BaseOTPhaseOutput {
+    pub fn finish(mut self) -> BaseOTOutput {
         // TODO: Ensure keys from everyone
         let mut base_ot_receiver = BTreeMap::new();
         for (id, choice) in self.receiver_choices {
             let keys = self.receiver_keys.remove(&id).unwrap();
             base_ot_receiver.insert(id, (choice, keys));
         }
-        BaseOTPhaseOutput {
+        BaseOTOutput {
             id: self.id,
             sender_keys: self.sender_keys,
             receiver: base_ot_receiver,
@@ -262,12 +265,12 @@ pub mod tests {
         }
     }
 
-    pub fn do_base_ot_for_threshold_sig<const KEY_SIZE: u16>(
+    pub fn do_pairwise_base_ot<const KEY_SIZE: u16>(
         rng: &mut StdRng,
         num_base_ot: u16,
         num_parties: u16,
         all_party_set: BTreeSet<ParticipantId>,
-    ) -> Vec<BaseOTPhaseOutput> {
+    ) -> Vec<BaseOTOutput> {
         let B = <Bls12_381 as Pairing>::G1Affine::rand(rng);
         let mut base_ots = vec![];
         let mut sender_pks = BTreeMap::new();
@@ -277,7 +280,7 @@ pub mod tests {
             let mut others = all_party_set.clone();
             others.remove(&i);
             let (base_ot, sender_pk_and_proof) =
-                BaseOTPhase::init::<_, Blake2b512>(rng, i, others, num_base_ot, &B).unwrap();
+                Participant::init::<_, Blake2b512>(rng, i, others, num_base_ot, &B).unwrap();
             base_ots.push(base_ot);
             sender_pks.insert(i, sender_pk_and_proof);
         }
@@ -341,14 +344,14 @@ pub mod tests {
     }
 
     #[test]
-    fn base_ot_for_threshold_sig() {
+    fn base_ot_pairwise() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let num_base_ot = 256;
         for num_parties in vec![5, 10, 15, 20] {
             let all_party_set = (1..=num_parties).into_iter().collect::<BTreeSet<_>>();
 
-            do_base_ot_for_threshold_sig::<16>(&mut rng, num_base_ot, num_parties, all_party_set);
+            do_pairwise_base_ot::<16>(&mut rng, num_base_ot, num_parties, all_party_set);
         }
     }
 }

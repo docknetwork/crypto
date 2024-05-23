@@ -2,7 +2,7 @@
 
 use ark_ff::PrimeField;
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
-use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec::Vec};
+use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec};
 
 use crate::{
     common,

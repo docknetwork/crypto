@@ -564,7 +564,7 @@ pub mod tests {
             GadgetVector::<Fr, KAPPA, SSP>::new::<Blake2b512>(ote_params, b"test-gadget-vector");
         test_serialization!(GadgetVector<Fr, KAPPA, SSP>, gadget_vector);
 
-        let mut checked = false;
+        let mut checked_serialization = false;
         for batch_size in [2, 4, 8, 20, 40, 80] {
             let a = (0..batch_size)
                 .map(|_| Fr::rand(&mut rng))
@@ -572,8 +572,16 @@ pub mod tests {
             let b = (0..batch_size)
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<Vec<_>>();
-            check::<128, KAPPA, SSP>(&mut rng, a, b, ote_params, &gadget_vector, &B, !checked);
-            checked = true;
+            check::<128, KAPPA, SSP>(
+                &mut rng,
+                a,
+                b,
+                ote_params,
+                &gadget_vector,
+                &B,
+                !checked_serialization,
+            );
+            checked_serialization = true;
         }
     }
 }

@@ -1,5 +1,5 @@
 //! Generate 1 or more random numbers using commit-and-release coin tossing.
-//! Called F_com in the paper
+//! Called F_com in the paper [Threshold BBS+ Signatures for Distributed Anonymous Credential Issuance](https://eprint.iacr.org/2023/602)
 
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -7,11 +7,12 @@ use ark_std::{cfg_into_iter, collections::BTreeMap, rand::RngCore, vec, vec::Vec
 use digest::Digest;
 use sha3::Sha3_256;
 
-use oblivious_transfer_protocols::ParticipantId;
+use super::ParticipantId;
 
-use crate::error::BBSPlusError;
+use crate::error::OTError;
 
 use dock_crypto_utils::expect_equality;
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -69,19 +70,17 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         &mut self,
         sender_id: ParticipantId,
         commitments: Commitments,
-    ) -> Result<(), BBSPlusError> {
+    ) -> Result<(), OTError> {
         if self.id == sender_id {
-            return Err(BBSPlusError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
+            return Err(OTError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
         }
         if self.other_commitments.contains_key(&sender_id) {
-            return Err(BBSPlusError::AlreadyHaveCommitmentFromParticipant(
-                sender_id,
-            ));
+            return Err(OTError::AlreadyHaveCommitmentFromParticipant(sender_id));
         }
         expect_equality!(
             self.own_shares_and_salts.len(),
             commitments.0.len(),
-            BBSPlusError::IncorrectNoOfCommitments
+            OTError::IncorrectNoOfCommitments
         );
         self.other_commitments.insert(sender_id, commitments);
         Ok(())
@@ -93,24 +92,24 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         &mut self,
         sender_id: ParticipantId,
         shares_and_salts: Vec<(F, [u8; SALT_SIZE])>,
-    ) -> Result<(), BBSPlusError> {
+    ) -> Result<(), OTError> {
         if self.id == sender_id {
-            return Err(BBSPlusError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
+            return Err(OTError::SenderIdCannotBeSameAsSelf(sender_id, self.id));
         }
         if !self.other_commitments.contains_key(&sender_id) {
-            return Err(BBSPlusError::MissingCommitmentFromParticipant(sender_id));
+            return Err(OTError::MissingCommitmentFromParticipant(sender_id));
         }
         if self.other_shares.contains_key(&sender_id) {
-            return Err(BBSPlusError::AlreadyHaveSharesFromParticipant(sender_id));
+            return Err(OTError::AlreadyHaveSharesFromParticipant(sender_id));
         }
         expect_equality!(
             self.own_shares_and_salts.len(),
             shares_and_salts.len(),
-            BBSPlusError::IncorrectNoOfShares
+            OTError::IncorrectNoOfShares
         );
         let expected_commitments = Self::compute_commitments(&shares_and_salts, &self.protocol_id);
         if expected_commitments != self.other_commitments.get(&sender_id).unwrap().0 {
-            return Err(BBSPlusError::IncorrectCommitment);
+            return Err(OTError::IncorrectCommitment);
         }
         self.other_shares.insert(
             sender_id,

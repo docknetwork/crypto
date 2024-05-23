@@ -1,4 +1,3 @@
-use crate::threshold::cointoss::Commitments;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField, Zero};
 
@@ -10,7 +9,7 @@ use ark_std::{
 };
 use digest::DynDigest;
 use dock_crypto_utils::expect_equality;
-use oblivious_transfer_protocols::ParticipantId;
+use oblivious_transfer_protocols::{cointoss, zero_sharing, ParticipantId};
 
 use super::{multiplication_phase::Phase2Output, utils::compute_R_and_u};
 use crate::{
@@ -25,6 +24,7 @@ use dock_crypto_utils::signature::MultiMessageSignatureParams;
 pub struct Phase1Output<F: PrimeField> {
     pub id: ParticipantId,
     pub batch_size: u32,
+    /// Shares of the random `r`, one share for each item in the batch
     pub r: Vec<F>,
     pub e: Vec<F>,
     pub s: Vec<F>,
@@ -53,17 +53,24 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         id: ParticipantId,
         others: BTreeSet<ParticipantId>,
         protocol_id: Vec<u8>,
-    ) -> Result<(Self, Commitments, BTreeMap<ParticipantId, Commitments>), BBSPlusError> {
+    ) -> Result<
+        (
+            Self,
+            cointoss::Commitments,
+            BTreeMap<ParticipantId, cointoss::Commitments>,
+        ),
+        BBSPlusError,
+    > {
         if others.contains(&id) {
             return Err(BBSPlusError::ParticipantCannotBePresentInOthers(id));
         }
         let r = (0..batch_size).map(|_| F::rand(rng)).collect();
         // 2 because 2 random values `e` and `s` need to be generated per signature
         let (commitment_protocol, comm) =
-            super::cointoss::Party::commit(rng, id, 2 * batch_size, protocol_id.clone());
+            cointoss::Party::commit(rng, id, 2 * batch_size, protocol_id.clone());
         // Each signature will have its own zero-sharing of `alpha` and `beta`
         let (zero_sharing_protocol, comm_zero_share) =
-            super::zero_sharing::Party::init(rng, id, 2 * batch_size, others, protocol_id);
+            zero_sharing::Party::init(rng, id, 2 * batch_size, others, protocol_id);
         Ok((
             Self {
                 id,
@@ -202,9 +209,7 @@ pub mod tests {
 
     use crate::{
         setup::{PublicKeyG2, SecretKey},
-        threshold::{
-            base_ot_phase::tests::do_base_ot_for_threshold_sig, multiplication_phase::Phase2,
-        },
+        threshold::multiplication_phase::Phase2,
     };
     use oblivious_transfer_protocols::ot_based_multiplication::{
         dkls18_mul_2p::MultiplicationOTEParams, dkls19_batch_mul_2p::GadgetVector,
@@ -217,6 +222,7 @@ pub mod tests {
     use blake2::Blake2b512;
 
     use secret_sharing_and_dkg::shamir_ss::deal_random_secret;
+    use test_utils::ot::do_pairwise_base_ot;
 
     pub fn trusted_party_keygen<R: RngCore, F: PrimeField>(
         rng: &mut R,
@@ -265,7 +271,7 @@ pub mod tests {
 
             // The signers run OT protocol instances. This is also a one time setup.
             let start = Instant::now();
-            let base_ot_outputs = do_base_ot_for_threshold_sig::<BASE_OT_KEY_SIZE>(
+            let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
                 rng,
                 ote_params.num_base_ot(),
                 total_signers,
@@ -418,7 +424,7 @@ pub mod tests {
                 .into_iter()
                 .map(|p| {
                     let start = Instant::now();
-                    let i = p.id;
+                    let i = p.0.id;
                     let o = p.finish();
                     phase2_times.insert(i, *phase2_times.get(&i).unwrap() + start.elapsed());
                     o
@@ -430,8 +436,8 @@ pub mod tests {
             // Check that multiplication phase ran successfully, i.e. each signer has an additive share of
             // a multiplication with every other signer
             for i in 1..=threshold_signers {
-                for (j, z_A) in &round2_outputs[i as usize - 1].z_A {
-                    let z_B = round2_outputs[*j as usize - 1].z_B.get(&i).unwrap();
+                for (j, z_A) in &round2_outputs[i as usize - 1].0.z_A {
+                    let z_B = round2_outputs[*j as usize - 1].0.z_B.get(&i).unwrap();
                     for k in 0..sig_batch_size as usize {
                         assert_eq!(
                             z_A.0[k] + z_B.0[k],

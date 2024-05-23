@@ -2,18 +2,15 @@
 
 use crate::{
     common,
-    common::{lagrange_basis_at_0, CommitmentToCoefficients, ParticipantId, Share, ShareId},
+    common::{CommitmentToCoefficients, ParticipantId, Share, ShareId},
     error::SSError,
 };
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_iter, collections::BTreeMap, vec, vec::Vec};
+use ark_std::{collections::BTreeMap, vec, vec::Vec};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
-
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 
 /// Used by a participant to store received shares and commitment coefficients.
 #[derive(

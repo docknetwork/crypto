@@ -1547,6 +1547,7 @@ impl<E: Pairing> Proof<E> {
             }
         }
 
+        // If randomized pairing checker was used, verify all its pairing checks
         if let Some(c) = pairing_checker {
             if !c.verify() {
                 return Err(ProofSystemError::RandomizedPairingCheckFailed);

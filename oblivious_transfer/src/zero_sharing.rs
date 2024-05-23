@@ -1,9 +1,10 @@
 //! Generate a secret sharing of 0. Does not use a trusted party or Shamir secret sharing.
-//! Called F_zero and described in section 3.1 in the paper
+//! Called F_zero and described in section 3.1 in the paper [Threshold BBS+ Signatures for Distributed Anonymous Credential Issuance](https://eprint.iacr.org/2023/602)
 
+use super::ParticipantId;
 use crate::{
-    error::BBSPlusError,
-    threshold::cointoss::{Commitments, Party as CommitmentParty},
+    cointoss::{Commitments, Party as CommitmentParty},
+    error::OTError,
 };
 use ark_ff::{
     field_hashers::{DefaultFieldHasher, HashToField},
@@ -17,7 +18,6 @@ use ark_std::{
     vec::Vec,
 };
 use digest::DynDigest;
-use oblivious_transfer_protocols::ParticipantId;
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Party<F: PrimeField, const SALT_SIZE: usize> {
@@ -64,9 +64,9 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         &mut self,
         sender_id: ParticipantId,
         commitments: Commitments,
-    ) -> Result<(), BBSPlusError> {
+    ) -> Result<(), OTError> {
         if !self.cointoss_protocols.contains_key(&sender_id) {
-            return Err(BBSPlusError::UnexpectedParticipant(sender_id));
+            return Err(OTError::UnexpectedParticipant(sender_id));
         }
         let protocol = self.cointoss_protocols.get_mut(&sender_id).unwrap();
         protocol.receive_commitment(sender_id, commitments)?;
@@ -79,9 +79,9 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         &mut self,
         sender_id: ParticipantId,
         shares: Vec<(F, [u8; SALT_SIZE])>,
-    ) -> Result<(), BBSPlusError> {
+    ) -> Result<(), OTError> {
         if !self.cointoss_protocols.contains_key(&sender_id) {
-            return Err(BBSPlusError::UnexpectedParticipant(sender_id));
+            return Err(OTError::UnexpectedParticipant(sender_id));
         }
         let protocol = self.cointoss_protocols.get_mut(&sender_id).unwrap();
         protocol.receive_shares(sender_id, shares)?;
@@ -89,14 +89,12 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
     }
 
     /// Use the shares received from all parties to create `batch_size` sets of shares of 0
-    pub fn compute_zero_shares<D: Default + DynDigest + Clone>(
-        self,
-    ) -> Result<Vec<F>, BBSPlusError> {
+    pub fn compute_zero_shares<D: Default + DynDigest + Clone>(self) -> Result<Vec<F>, OTError> {
         let mut randoness = BTreeMap::<ParticipantId, Vec<F>>::new();
         let mut shares = vec![F::zero(); self.batch_size as usize];
         for (id, protocol) in self.cointoss_protocols {
             if !protocol.has_shares_from(&id) {
-                return Err(BBSPlusError::MissingSharesFromParticipant(id));
+                return Err(OTError::MissingSharesFromParticipant(id));
             }
             randoness.insert(id, protocol.compute_joint_randomness());
         }
@@ -118,17 +116,17 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         Ok(shares)
     }
 
-    pub fn has_commitment_from(&self, id: &ParticipantId) -> Result<bool, BBSPlusError> {
+    pub fn has_commitment_from(&self, id: &ParticipantId) -> Result<bool, OTError> {
         if !self.cointoss_protocols.contains_key(id) {
-            return Err(BBSPlusError::UnexpectedParticipant(*id));
+            return Err(OTError::UnexpectedParticipant(*id));
         }
         let protocol = self.cointoss_protocols.get(id).unwrap();
         Ok(protocol.other_commitments.contains_key(id))
     }
 
-    pub fn has_shares_from(&self, id: &ParticipantId) -> Result<bool, BBSPlusError> {
+    pub fn has_shares_from(&self, id: &ParticipantId) -> Result<bool, OTError> {
         if !self.cointoss_protocols.contains_key(id) {
-            return Err(BBSPlusError::UnexpectedParticipant(*id));
+            return Err(OTError::UnexpectedParticipant(*id));
         }
         let protocol = self.cointoss_protocols.get(id).unwrap();
         Ok(protocol.other_shares.contains_key(id))

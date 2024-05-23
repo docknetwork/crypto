@@ -1,3 +1,4 @@
+use crate::ParticipantId;
 use schnorr_pok::error::SchnorrError;
 use serde::Serialize;
 
@@ -39,6 +40,28 @@ pub enum OTError {
     IncorrectCorrelationTagSize(usize, usize),
     InvalidSchnorrProof,
     SchnorrError(SchnorrError),
+    NotABaseOTSender(ParticipantId),
+    NotABaseOTReceiver(ParticipantId),
+    AlreadyHaveSenderPubkeyFrom(ParticipantId),
+    SenderIdCannotBeSameAsSelf(ParticipantId, ParticipantId),
+    AlreadyHaveReceiverPubkeyFrom(ParticipantId),
+    ReceiverNotReadyForChallengeFrom(ParticipantId),
+    AlreadyHaveChallengesFrom(ParticipantId),
+    SenderEitherNotReadyForResponseOrAlreadySentIt(ParticipantId),
+    ReceiverEitherNotReadyForHashedKeysOrAlreadyVerifiedIt(ParticipantId),
+    MissingOTReceiverFor(ParticipantId),
+    MissingOTSenderFor(ParticipantId),
+    NotAMultiplicationParty2(ParticipantId),
+    NotAMultiplicationParty1(ParticipantId),
+    AlreadyHaveCommitmentFromParticipant(ParticipantId),
+    IncorrectNoOfCommitments(usize, usize),
+    IncorrectNoOfShares(usize, usize),
+    MissingCommitmentFromParticipant(ParticipantId),
+    AlreadyHaveSharesFromParticipant(ParticipantId),
+    IncorrectCommitment,
+    UnexpectedParticipant(ParticipantId),
+    MissingSharesFromParticipant(ParticipantId),
+    ParticipantCannotBePresentInOthers(ParticipantId),
 }
 
 impl From<SchnorrError> for OTError {

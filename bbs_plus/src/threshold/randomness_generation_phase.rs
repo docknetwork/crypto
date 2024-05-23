@@ -1,12 +1,10 @@
-use crate::{
-    error::BBSPlusError,
-    threshold::{cointoss::Commitments, utils::compute_masked_arguments_to_multiply},
-};
+use super::ParticipantId;
+use crate::{error::BBSPlusError, threshold::utils::compute_masked_arguments_to_multiply};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use digest::DynDigest;
-use oblivious_transfer_protocols::ParticipantId;
+use oblivious_transfer_protocols::{cointoss, zero_sharing};
 
 /// This is the first phase of the signing protocol where parties generate random values, jointly and
 /// individually including additive shares of 0.
@@ -15,11 +13,12 @@ pub struct Phase1<F: PrimeField, const SALT_SIZE: usize> {
     pub id: ParticipantId,
     /// Number of threshold signatures being generated in a single batch.
     pub batch_size: u32,
+    /// Shares of the random `r`, one share for each item in the batch
     pub r: Vec<F>,
-    /// Protocols to generate shares of random values used in signature like `e`
-    pub commitment_protocol: super::cointoss::Party<F, SALT_SIZE>,
+    /// Protocols to generate shares of random values used in signature like `e` for BBS and (`e`, `s`) for BBS+
+    pub commitment_protocol: cointoss::Party<F, SALT_SIZE>,
     /// Protocols to generate shares of 0s.
-    pub zero_sharing_protocol: super::zero_sharing::Party<F, SALT_SIZE>,
+    pub zero_sharing_protocol: zero_sharing::Party<F, SALT_SIZE>,
 }
 
 impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
@@ -44,8 +43,8 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
     pub fn receive_commitment(
         &mut self,
         sender_id: ParticipantId,
-        comm: Commitments,
-        comm_zero_share: Commitments,
+        comm: cointoss::Commitments,
+        comm_zero_share: cointoss::Commitments,
     ) -> Result<(), BBSPlusError> {
         self.commitment_protocol
             .receive_commitment(sender_id, comm)?;

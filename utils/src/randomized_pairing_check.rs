@@ -202,7 +202,7 @@ impl<E: Pairing> RandomizedPairingChecker<E> {
 
     /// Verify that all added pairing equations are satisfied.
     pub fn verify(&self) -> bool {
-        assert_eq!(self.pending.0.len(), self.pending.1.len());
+        debug_assert_eq!(self.pending.0.len(), self.pending.1.len());
         let left = if !self.pending.0.is_empty() {
             let mut p = E::multi_miller_loop(self.pending.0.clone(), self.pending.1.clone());
             p.0.mul_assign(self.left.0);
