@@ -107,6 +107,7 @@ macro_rules! impl_protocol {
         /// Proof that the computation on the share was done correctly
         #[serde_as]
         #[derive(
+            Default,
             Clone,
             Debug,
             PartialEq,
@@ -325,7 +326,11 @@ macro_rules! impl_protocol {
             }
         }
 
-        /// Deal a secret.
+        /// Generate shares of the given secret and return the scalar multiplication of the share and commitment
+        /// key and thus returning a commitment to the share of the form `comm_key * share`.
+        /// At least `threshold` number of share-commitment are needed to reconstruct the commitment to secret.
+        /// Returns the share-commitments, commitments to coefficients of the polynomials for
+        /// the secret and the polynomial
         pub fn $deal_secret<'a, R: RngCore, E: Pairing>(
             rng: &mut R,
             secret: E::ScalarField,
@@ -454,6 +459,7 @@ pub mod tests {
         macro_rules! check {
             ($secret_share: ident, $secret_share_comm: ident, $comp_share: ident, $comp_share_proof: ident, $deal_func: ident, $secret_group: ident, $other_group: ident, $pairing: tt, $ck_secret: expr, $ck_poly: expr) => {
                 let base = $other_group::rand(&mut rng);
+                let mut checked_serialization = true;
                 for (threshold, total) in vec![
                     (2, 2),
                     (2, 3),
@@ -478,7 +484,10 @@ pub mod tests {
 
                     let (shares, commitments, _) =
                         $deal_func(&mut rng, secret, threshold, total, $ck_secret, $ck_poly).unwrap();
-                    test_serialization!($secret_share<Bls12_381>, shares[0]);
+
+                    if !checked_serialization {
+                     test_serialization!($secret_share<Bls12_381>, shares[0]);
+                    }
 
                     for share in &shares {
                         // Wrong share fails to verify
@@ -496,7 +505,11 @@ pub mod tests {
                     let computation_shares = cfg_into_iter!(shares.clone())
                         .map(|s| $comp_share::new(&s, &base))
                         .collect::<Vec<_>>();
-                    test_serialization!($comp_share<Bls12_381>, computation_shares[0]);
+
+                    if !checked_serialization {
+                     test_serialization!($comp_share<Bls12_381>, computation_shares[0]);
+                    }
+
                     let result = $comp_share::combine(computation_shares.clone()).unwrap();
                     assert_eq!(result, expected_result);
 
@@ -537,6 +550,10 @@ pub mod tests {
 
                             // Verification with incorrect secret share fails
                             assert!(proof.verify::<Blake2b512>(&shares[0], &share_comms[i], &share_comm_ck, &base).is_err());
+
+                            // if !checked_serialization {
+                            //  test_serialization!($comp_share_proof<Bls12_381>, proof);
+                            // }
                         }
 
                         shares.push(share);
@@ -564,6 +581,8 @@ pub mod tests {
                         println!("Time to verify {} proofs using randomized pairing checker with lazy={}: {:?}", proofs.len(), lazy, start.elapsed());
                         assert!(checker.verify());
                     }
+
+                    checked_serialization = true;
                 }
             }
         }

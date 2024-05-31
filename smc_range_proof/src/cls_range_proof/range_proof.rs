@@ -51,6 +51,7 @@ pub struct CLSRangeProof<E: Pairing> {
     pub z_r: E::ScalarField,
 }
 
+#[allow(dead_code)]
 impl<E: Pairing> CLSRangeProofProtocol<E> {
     pub fn init<R: RngCore>(
         rng: &mut R,
@@ -203,6 +204,7 @@ impl<E: Pairing> CLSRangeProofProtocol<E> {
     }
 }
 
+#[allow(dead_code)]
 impl<E: Pairing> CLSRangeProof<E> {
     pub fn verify(
         &self,

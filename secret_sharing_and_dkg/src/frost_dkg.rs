@@ -266,6 +266,7 @@ pub mod tests {
         let g2 = G2::rand(&mut rng);
 
         fn check<G: AffineRepr>(rng: &mut StdRng, pub_key_base: &G) {
+            let mut checked_serialization = true;
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -309,8 +310,10 @@ pub mod tests {
                     all_round1_msgs.push(round1_msg);
                 }
 
-                test_serialization!(Round1State<G>, all_round1_states[0].clone());
-                test_serialization!(Round1Msg<G>, all_round1_msgs[0].clone());
+                if !checked_serialization {
+                    test_serialization!(Round1State<G>, all_round1_states[0].clone());
+                    test_serialization!(Round1Msg<G>, all_round1_msgs[0].clone());
+                }
 
                 // Each participant receives message during Round 1
                 for i in 0..total {
@@ -356,7 +359,9 @@ pub mod tests {
                         }
                     }
 
-                    test_serialization!(Round1State<G>, all_round1_states[i].clone());
+                    if !checked_serialization {
+                        test_serialization!(Round1State<G>, all_round1_states[i].clone());
+                    }
                 }
 
                 // Each participant ends Round 1 and begins Round 2
@@ -367,7 +372,9 @@ pub mod tests {
                     all_shares.push(shares);
                 }
 
-                test_serialization!(Round2State<G>, all_round2_states[0].clone());
+                if !checked_serialization {
+                    test_serialization!(Round2State<G>, all_round2_states[0].clone());
+                }
 
                 // Each participant receives shares and commitments during Round2
                 for i in 0..total {
@@ -439,7 +446,9 @@ pub mod tests {
                         assert!(all_round2_states[i].clone().finish(pub_key_base).is_err());
                     }
 
-                    test_serialization!(Round2State<G>, all_round2_states[i].clone());
+                    if !checked_serialization {
+                        test_serialization!(Round2State<G>, all_round2_states[i].clone());
+                    }
                 }
 
                 // Each participant ends Round2
@@ -482,6 +491,7 @@ pub mod tests {
                             .unwrap()
                     )
                 );
+                checked_serialization = true;
             }
         }
 

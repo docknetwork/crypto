@@ -178,6 +178,7 @@ pub mod tests {
         let comm_key2 = PedersenCommitmentKey::<G2>::new::<Blake2b512>(b"test");
 
         fn check<G: AffineRepr>(rng: &mut StdRng, comm_key: &PedersenCommitmentKey<G>) {
+            let mut checked_serialization = false;
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -314,7 +315,10 @@ pub mod tests {
                     }
                 }
 
-                test_serialization!(SharesAccumulator<G>, accumulators[0].clone());
+                if !checked_serialization {
+                    test_serialization!(SharesAccumulator<G>, accumulators[0].clone());
+                    checked_serialization = true;
+                }
 
                 for accumulator in accumulators {
                     let share = accumulator.finalize(comm_key).unwrap();

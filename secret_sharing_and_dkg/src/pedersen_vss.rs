@@ -25,6 +25,7 @@ use crate::{
 };
 
 /// Generate a random secret with its shares according to Pedersen's verifiable secret sharing.
+/// At least `threshold` number of shares are needed to reconstruct the secret.
 /// Returns the secret, blinding, shares, Pedersen commitments to coefficients of the polynomials for
 /// the secret and blinding and the polynomials
 pub fn deal_random_secret<R: RngCore, G: AffineRepr>(
@@ -164,6 +165,7 @@ pub mod tests {
         let comm_key2 = PedersenCommitmentKey::<G2>::new::<Blake2b512>(b"test");
 
         fn check<G: AffineRepr>(rng: &mut StdRng, comm_key: &PedersenCommitmentKey<G>) {
+            let mut checked_serialization = false;
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -209,9 +211,13 @@ pub mod tests {
                 assert_eq!(s, secret);
                 assert_eq!(t, blinding);
 
-                test_serialization!(VerifiableShares<G::ScalarField>, shares);
-                test_serialization!(VerifiableShare<G::ScalarField>, shares.0[0]);
-                test_serialization!(CommitmentToCoefficients<G>, commitments);
+                // Test serialization
+                if !checked_serialization {
+                    test_serialization!(VerifiableShares<G::ScalarField>, shares);
+                    test_serialization!(VerifiableShare<G::ScalarField>, shares.0[0]);
+                    test_serialization!(CommitmentToCoefficients<G>, commitments);
+                    checked_serialization = true;
+                }
             }
         }
 

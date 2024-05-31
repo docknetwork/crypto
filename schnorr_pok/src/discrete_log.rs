@@ -56,7 +56,15 @@ pub struct PokDiscreteLogProtocol<G: AffineRepr> {
 /// Proof of knowledge of discrete log
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct PokDiscreteLog<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]

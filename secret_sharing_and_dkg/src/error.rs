@@ -1,4 +1,6 @@
 use crate::common::{ParticipantId, ShareId};
+use ark_serialize::SerializationError;
+use dock_crypto_utils::serde_utils::ArkSerializationError;
 use schnorr_pok::error::SchnorrError;
 use serde::Serialize;
 
@@ -24,10 +26,21 @@ pub enum SSError {
     UnequalNoOfProofsAndShares(usize, usize),
     UnequalNoOfProofsAndCommitments(usize, usize),
     XCordCantBeZero,
+    InvalidProof,
+    #[serde(with = "ArkSerializationError")]
+    Serialization(SerializationError),
+    UnequalNoOfSharesAndPublicKeys(usize, usize),
+    UnexpectedNumberOfResponses(usize, usize),
 }
 
 impl From<SchnorrError> for SSError {
     fn from(e: SchnorrError) -> Self {
         Self::SchnorrError(e)
+    }
+}
+
+impl From<SerializationError> for SSError {
+    fn from(e: SerializationError) -> Self {
+        Self::Serialization(e)
     }
 }

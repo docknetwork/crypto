@@ -61,7 +61,7 @@ macro_rules! impl_protocol {
 
             #[serde_as]
             #[derive(
-                Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+                Default, Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
             )]
             pub struct $proof<E: Pairing> {
                 #[serde_as(as = "ArkObjectBytes")]

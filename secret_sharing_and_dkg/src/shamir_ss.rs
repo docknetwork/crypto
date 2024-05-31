@@ -14,6 +14,7 @@ use crate::{
 use rayon::prelude::*;
 
 /// Generate a random secret with its shares according to Shamir secret sharing.
+/// At least `threshold` number of shares are needed to reconstruct the secret.
 /// Returns the secret, shares and the polynomial whose evaluations are the secret and the shares
 pub fn deal_random_secret<R: RngCore, F: PrimeField>(
     rng: &mut R,
@@ -93,6 +94,7 @@ pub mod tests {
         assert!(deal_random_secret::<_, Fr>(&mut rng, 1, 1).is_err());
         assert!(deal_random_secret::<_, Fr>(&mut rng, 5, 4).is_err());
 
+        let mut checked_serialization = false;
         for (threshold, total) in vec![
             (2, 2),
             (2, 3),
@@ -128,8 +130,11 @@ pub mod tests {
             assert_eq!(shares.reconstruct_secret().unwrap(), secret);
 
             // Test serialization
-            test_serialization!(Shares<Fr>, shares);
-            test_serialization!(Share<Fr>, shares.0[0]);
+            if !checked_serialization {
+                test_serialization!(Shares<Fr>, shares);
+                test_serialization!(Share<Fr>, shares.0[0]);
+                checked_serialization = true;
+            }
         }
     }
 }

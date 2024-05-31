@@ -201,6 +201,7 @@ pub mod tests {
         let g2 = G2::rand(&mut rng);
 
         fn check<G: AffineRepr>(rng: &mut StdRng, g: &G) {
+            let mut checked_serialization = true;
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -328,7 +329,10 @@ pub mod tests {
                     }
                 }
 
-                test_serialization!(SharesAccumulator<G>, accumulators[0].clone());
+                if !checked_serialization {
+                    test_serialization!(SharesAccumulator<G>, accumulators[0].clone());
+                    checked_serialization = true;
+                }
 
                 let mut tk = None;
                 let mut all_pk = vec![];

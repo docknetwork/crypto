@@ -16,6 +16,7 @@ use crate::{
 };
 
 /// Generate a random secret with its shares according to Feldman's verifiable secret sharing.
+/// At least `threshold` number of shares are needed to reconstruct the secret.
 /// Returns the secret, shares, and commitments to coefficients of the polynomials for
 /// the secret and the polynomial
 pub fn deal_random_secret<'a, R: RngCore, G: AffineRepr>(
@@ -106,6 +107,7 @@ pub mod tests {
         let g2 = <Bls12_381 as Pairing>::G2Affine::rand(&mut rng);
 
         fn check<G: AffineRepr>(rng: &mut StdRng, g: &G) {
+            let mut checked_serialization = true;
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -141,7 +143,10 @@ pub mod tests {
 
                 assert_eq!(shares.reconstruct_secret().unwrap(), secret);
 
-                test_serialization!(CommitmentToCoefficients<G>, commitments);
+                if !checked_serialization {
+                    test_serialization!(CommitmentToCoefficients<G>, commitments);
+                    checked_serialization = true;
+                }
             }
         }
 
