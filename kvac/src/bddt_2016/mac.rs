@@ -112,7 +112,7 @@ impl<G: AffineRepr> MAC<G> {
 
         let s = G::ScalarField::rand(rng);
         // `b` is the part of signature on uncommitted messages,
-        // i.e. partial_sig = h + sum(g_vec__i * m_i) for all i in uncommitted_messages
+        // i.e. partial_sig = h + sum(g_vec_i * m_i) for all i in uncommitted_messages
         let b = params.b(uncommitted_messages, &s)?;
 
         let mut e = G::ScalarField::rand(rng);

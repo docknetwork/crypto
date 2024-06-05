@@ -5,7 +5,8 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Oblivious Transfer (OT), Oblivious Transfer Extensions (OTE)"
+description = "Oblivious Transfer (OT), Oblivious Transfer Extensions (OTE) and multiplication protocol using them"
+keywords = ["oblivious-transfer", "simplest-OT", "OT-multiplication"]
 
 [dependencies]
 ark-ff.workspace = true

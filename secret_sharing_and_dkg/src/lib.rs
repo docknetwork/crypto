@@ -1,6 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub mod bagheri_pvss;
+pub mod baghery_pvss;
 pub mod common;
 pub mod distributed_dlog_check;
 pub mod error;

@@ -20,10 +20,6 @@
 //! an Elgamal ciphertext, `g * k_i` is the ephemeral secret key (between the dealer and party `i`) and
 //! `j * k_i` is the message. This is implemented in [different_base](./different_base.rs). Note that both `j` and `g` must be in the same group.
 //!
-//! The proof in the protocol described in the paper contains a polynomial of degree `t-1`. This adds to the proof `t` field
-//! elements (polynomial coefficients) and requires evaluation of a `t-1` degree polynomial during proving and verification.
-//! An alternate implementation is to have the proof contain `n` fields elements and avoid the polynomial evaluation during
-//! proving and verification making these faster but the proofs bigger. These are implemented in [same_base_alt](./same_base_alt.rs) and [different_base_alt](./different_base_alt.rs)
 
 use crate::{common::ShareId, error::SSError};
 use ark_ec::AffineRepr;
@@ -35,9 +31,7 @@ use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub mod different_base;
-pub mod different_base_alt;
 pub mod same_base;
-pub mod same_base_alt;
 
 /// A commitment to the share of the secret. The commitment is of the form `g * share_i` where `g` is the public
 /// commitment key and `share_i` is the i-th share.

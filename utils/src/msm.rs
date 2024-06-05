@@ -84,7 +84,7 @@ pub mod tests {
     type G2 = <Bls12_381 as Pairing>::G2;
 
     #[test]
-    fn temp() {
+    fn print_size_of_group_elems() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let g1 = G1::rand(&mut rng);
         let g2 = G2::rand(&mut rng);

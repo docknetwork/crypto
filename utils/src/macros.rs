@@ -294,6 +294,7 @@ mod tests {
     #[test]
     fn equality() {
         enum Errr {
+            #[allow(dead_code)]
             Unequal(usize, usize),
         }
 

@@ -29,10 +29,7 @@
 //! ```
 
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_ff::{
-    field_hashers::{DefaultFieldHasher, HashToField},
-    PrimeField,
-};
+use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -41,10 +38,11 @@ use digest::{Digest, DynDigest};
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
 
 use dock_crypto_utils::{
-    affine_group_element_from_byte_slices, concat_slices, join, serde_utils::*,
+    affine_group_element_from_byte_slices, concat_slices,
+    hashing_utils::{hash_to_field, projective_group_elem_from_try_and_incr},
+    join,
+    serde_utils::*,
 };
-
-use dock_crypto_utils::hashing_utils::projective_group_elem_from_try_and_incr;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use short_group_sig::common::ProvingKey;
@@ -104,6 +102,8 @@ pub struct SetupParams<E: Pairing> {
 }
 
 impl<F: PrimeField> SecretKey<F> {
+    pub const DST: &'static [u8] = b"VB-ACCUM-KEYGEN-SALT";
+
     pub fn new<R: RngCore>(rng: &mut R) -> Self {
         Self(F::rand(rng))
     }
@@ -113,8 +113,7 @@ impl<F: PrimeField> SecretKey<F> {
         F: PrimeField,
         D: DynDigest + Default + Clone,
     {
-        let hasher = <DefaultFieldHasher<D> as HashToField<F>>::new(b"VB-ACCUM-KEYGEN-SALT");
-        Self(hasher.hash_to_field(seed, 1).pop().unwrap())
+        Self(hash_to_field::<F, D>(Self::DST, seed))
     }
 }
 

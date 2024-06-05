@@ -49,10 +49,7 @@
 
 use crate::error::BBSPlusError;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{
-    field_hashers::{DefaultFieldHasher, HashToField},
-    PrimeField,
-};
+use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, fmt::Debug, rand::RngCore, vec::Vec, UniformRand};
 use digest::{Digest, DynDigest};
@@ -64,7 +61,7 @@ use dock_crypto_utils::{
     affine_group_element_from_byte_slices,
     aliases::*,
     concat_slices,
-    hashing_utils::projective_group_elem_from_try_and_incr,
+    hashing_utils::{hash_to_field, projective_group_elem_from_try_and_incr},
     iter::*,
     join,
     misc::{n_projective_group_elements, seq_pairs_satisfy},
@@ -96,13 +93,13 @@ use serde_with::serde_as;
 pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
 
 impl<F: PrimeField> SecretKey<F> {
+    pub const DST: &'static [u8] = b"BBS-SIG-KEYGEN-SALT";
     pub fn generate_using_seed<D>(seed: &[u8]) -> Self
     where
         F: PrimeField,
         D: Default + DynDigest + Clone,
     {
-        let hasher = <DefaultFieldHasher<D> as HashToField<F>>::new(b"BBS-SIG-KEYGEN-SALT");
-        Self(hasher.hash_to_field(seed, 1).pop().unwrap())
+        Self(hash_to_field::<F, D>(Self::DST, seed))
     }
 }
 

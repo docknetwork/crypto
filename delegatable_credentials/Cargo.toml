@@ -5,7 +5,8 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Schemes used to develop DAC (Delegatable Anonymous Credentials)"
+description = "Schemes used to develop DAC (Delegatable Anonymous Credentials). Implements structure preseving signatures, Mercurial Signature, set commitment scheme"
+keywords = ["mercurial-signature", "set-commitment", "SPS-EQ"]
 
 [dependencies]
 ark-ff.workspace = true

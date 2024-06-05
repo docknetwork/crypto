@@ -2,28 +2,23 @@
 //! Implements 2 variations of the algorithms, one where signature is in group G1 and public key in group G2
 //! and the other where signature is in group G2 and public key in group G1
 
+use crate::error::DelegationError;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::{
-    field_hashers::{DefaultFieldHasher, HashToField},
-    Field, PrimeField, Zero,
-};
+use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, fmt::Debug, rand::RngCore, vec::Vec, UniformRand};
-use digest::DynDigest;
-
-use zeroize::{Zeroize, ZeroizeOnDrop};
-
-use dock_crypto_utils::serde_utils::*;
-
+use dock_crypto_utils::{
+    aliases::{FullDigest, SyncIfParallel},
+    hashing_utils::hash_to_field_many,
+    msm::WindowTable,
+    serde_utils::*,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-
-use dock_crypto_utils::msm::WindowTable;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-use crate::error::DelegationError;
 
 /// Secret key used by the signer to sign messages
 #[serde_as]
@@ -105,6 +100,8 @@ pub struct SignatureG2<E: Pairing> {
 }
 
 impl<E: Pairing> SecretKey<E> {
+    pub const DST: &'static [u8] = b"MERCURIAL-SIG-KEYGEN-SALT";
+
     pub fn new<R: RngCore>(rng: &mut R, size: u32) -> Result<Self, DelegationError> {
         if size == 0 {
             return Err(DelegationError::NeedNonZeroSize);
@@ -118,15 +115,16 @@ impl<E: Pairing> SecretKey<E> {
 
     pub fn generate_using_seed<D>(seed: &[u8], size: u32) -> Result<Self, DelegationError>
     where
-        D: DynDigest + Default + Clone,
+        D: FullDigest + SyncIfParallel,
     {
         if size == 0 {
             return Err(DelegationError::NeedNonZeroSize);
         }
-        let hasher = <DefaultFieldHasher<D> as HashToField<E::ScalarField>>::new(
-            b"MERCURIAL-SIG-KEYGEN-SALT",
-        );
-        Ok(Self(hasher.hash_to_field(seed, size as usize)))
+        Ok(Self(hash_to_field_many::<E::ScalarField, D>(
+            Self::DST,
+            seed,
+            size,
+        )))
     }
 
     /// ConvertSK from the paper.

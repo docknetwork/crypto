@@ -544,7 +544,7 @@ pub mod tests {
                         time_one_by_one += start.elapsed();
 
                         // Check some invalid conditions - not checking for all shares and proofs but just one
-                        if (i == 1) {
+                        if i == 1 {
                             // Verification with incorrect commitment to the secret share fails
                             assert!(proof.verify::<Blake2b512>(&share, &share_comms[i-1], &share_comm_ck, &base).is_err());
 
@@ -553,6 +553,7 @@ pub mod tests {
 
                             // if !checked_serialization {
                             //  test_serialization!($comp_share_proof<Bls12_381>, proof);
+                            //  test_serialization!($secret_share_comm<Bls12_381>, share_comms[i]);
                             // }
                         }
 

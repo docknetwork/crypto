@@ -5,7 +5,8 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Secret sharing schemes and DKGs."
+description = "Secret sharing schemes like Shamir's, Feldman's, Pedersen's and Publicly Verifiable Secret Sharing scheme and DKGs like FROST"
+keywords = ["secret-sharing", "VSS", "PVSS", "DKG", "Shamir"]
 
 [dependencies]
 ark-ff.workspace = true

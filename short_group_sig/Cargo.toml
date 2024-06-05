@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Short group signatures - BB and weak-BB"
+keywords = ["bb-signature", "weak-bb-signature", "proof-of-knowledge", "ZKPoK"]
 
 [dependencies]
 ark-serialize.workspace = true

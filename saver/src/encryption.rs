@@ -29,6 +29,7 @@ use serde_with::serde_as;
 use crate::utils::CHUNK_TYPE;
 use dock_crypto_utils::{ff::non_zero_random, serde_utils::*};
 
+use dock_crypto_utils::solve_discrete_log::solve_discrete_log_bsgs_alt;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -505,6 +506,7 @@ impl<E: Pairing> Encryption<E> {
         let c_0_rho = c_0.mul_bigint((-sk.0).into_bigint());
         let c_0_rho_prepared = E::G1Prepared::from(c_0_rho.into_affine());
         let mut decrypted_chunks = vec![];
+        // chunk_max_val = 2^chunk_bit_size - 1
         let chunk_max_val: u32 = (1 << chunk_bit_size) - 1;
         let pairing_powers = if let Some(p) = pairing_powers { p } else { &[] };
         for i in 0..n {
@@ -582,17 +584,8 @@ impl<E: Pairing> Encryption<E> {
         g_i_v_i: PairingOutput<E>,
         p: PairingOutput<E>,
     ) -> crate::Result<CHUNK_TYPE> {
-        if p == g_i_v_i {
-            return Ok(1);
-        }
-        let mut cur = g_i_v_i;
-        for j in 2..=chunk_max_val {
-            cur += g_i_v_i;
-            if cur == p {
-                return Ok(j);
-            }
-        }
-        Err(SaverError::CouldNotFindDiscreteLog)
+        solve_discrete_log_bsgs_alt(chunk_max_val, g_i_v_i, p)
+            .ok_or(SaverError::CouldNotFindDiscreteLog)
     }
 
     /// Relies on precomputation

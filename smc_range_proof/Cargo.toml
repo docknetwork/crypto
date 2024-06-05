@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Range proofs based on set-membership check and sumsets"
+keywords = ["set-membership-proof", "range-proof"]
 
 [dependencies]
 ark-ff.workspace = true

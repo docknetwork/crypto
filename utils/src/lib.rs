@@ -41,5 +41,7 @@ pub mod poly;
 /// in a random linear combination and doing a multi-pairing check. Relies on Schwartz–Zippel lemma.
 pub mod randomized_pairing_check;
 pub mod signature;
+/// Solving discrete log using Baby Step Giant Step
+pub mod solve_discrete_log;
 pub mod transcript;
 pub mod try_iter;

@@ -6,7 +6,7 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec, UniformRand};
-use digest::DynDigest;
+use dock_crypto_utils::aliases::{FullDigest, SyncIfParallel};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Secret key of the credential issuer. The size of the key would be at least 3 and at most 7 depending on it
@@ -62,7 +62,7 @@ impl<E: Pairing> IssuerSecretKey<E> {
         supports_audit: bool,
     ) -> Result<Self, DelegationError>
     where
-        D: DynDigest + Default + Clone,
+        D: FullDigest + SyncIfParallel,
     {
         Ok(Self {
             secret_key: SecretKey::generate_using_seed::<D>(

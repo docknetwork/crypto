@@ -1,7 +1,7 @@
 # Secret sharing and distributed key generation
 
-Implements Secret Sharing (SS), Verifiable Secret Sharing (VSS), Distributed Verifiable Secret Sharing (DVSS) and Distributed 
-Key Generation (DKG) algorithms. DVSS and DKG do not require a trusted dealer. Also implements a distributed discrete log check.
+Implements Secret Sharing (SS), Verifiable Secret Sharing (VSS), Distributed Verifiable Secret Sharing (DVSS), Distributed 
+Key Generation (DKG) and Publicly Verifiable Secret Sharing (PVSS) algorithms. DVSS and DKG do not require a trusted dealer. Also implements a distributed discrete log check.
 
 
 1. [Shamir secret sharing (Requires a trusted dealer)](./src/shamir_ss.rs)
@@ -12,3 +12,4 @@ Key Generation (DKG) algorithms. DVSS and DKG do not require a trusted dealer. A
 1. [Secure Distributed Key Generation for Discrete-Log Based Cryptosystems](./src/gennaro_dkg.rs)
 1. [Distributed Key Generation from FROST](./src/frost_dkg.rs)
 1. [Distributed discrete log (DLOG) check](./src/distributed_dlog_check)
+1. [Publicly Verifiable Secret Sharing](./src/baghery_pvss)

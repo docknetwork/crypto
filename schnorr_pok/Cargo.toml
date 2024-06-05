@@ -5,7 +5,8 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Schnorr protocol for proof of knowledge of one or more discrete logs"
+description = "Schnorr protocol for proof of knowledge of one or more discrete logs. Working in elliptic curve and pairing groups"
+keywords = ["Schnorr", "proof-of-knowledge", "ZKPoK"]
 
 [lib]
 doctest = false

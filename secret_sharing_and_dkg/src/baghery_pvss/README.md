@@ -19,8 +19,3 @@ to `y_i = h_i * k_i` and a proof that `k_i` is the same in both `y'_i` and `y_i`
 compute `g * k_i` as described in the paper and compute `j * k_i = y'_i - g * k_i`. Essentially, `y'_i` is
 an Elgamal ciphertext, `g * k_i` is the ephemeral secret key (between the dealer and party `i`) and
 `j * k_i` is the message. This is implemented in [different_base](./different_base.rs). Note that both `j` and `g` must be in the same group.
-
-The proof in the protocol described in the paper contains a polynomial of degree `t-1`. This adds to the proof `t` field
-elements (polynomial coefficients) and requires evaluation of a `t-1` degree polynomial during proving and verification.
-An alternate implementation is to have the proof contain `n` fields elements and avoid the polynomial evaluation during
-proving and verification making these faster but the proofs bigger. These are implemented in [same_base_alt](./same_base_alt.rs) and [different_base_alt](./different_base_alt.rs)  

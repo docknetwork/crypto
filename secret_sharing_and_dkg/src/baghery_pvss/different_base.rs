@@ -1,5 +1,5 @@
 use crate::{
-    bagheri_pvss::{validate_threshold, Share},
+    baghery_pvss::{validate_threshold, Share},
     common::ShareId,
     error::SSError,
     shamir_ss,
@@ -10,7 +10,7 @@ use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{expect_equality, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::{expect_equality, msm::WindowTable, serde_utils::ArkObjectBytes};
 use schnorr_pok::compute_random_oracle_challenge;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -36,8 +36,12 @@ pub struct EncryptedShare<G: AffineRepr> {
     pub id: ShareId,
     #[zeroize(skip)]
     pub threshold: ShareId,
+    /// Masked share `y'_i = j * k_i . g * k_i = (j + g) * k_i`
     #[serde_as(as = "ArkObjectBytes")]
-    pub share: G,
+    pub masked_share: G,
+    /// Mask `y_i = h_i * k_i`
+    #[serde_as(as = "ArkObjectBytes")]
+    pub mask: G,
 }
 
 /// Proof that the correct shares are correctly encrypted for each party
@@ -54,10 +58,8 @@ pub struct EncryptedShare<G: AffineRepr> {
     Deserialize,
 )]
 pub struct Proof<F: PrimeField> {
-    /// Called `d` in the paper
     #[serde_as(as = "ArkObjectBytes")]
     pub challenge: F,
-    /// Called `z` in the paper
     #[serde_as(as = "ArkObjectBytes")]
     pub resp: DensePolynomial<F>,
 }
@@ -66,11 +68,14 @@ pub struct Proof<F: PrimeField> {
 /// commitments to the shares with one encryption for each public key. Assumes the public keys are given
 /// in the increasing order of their ids in the context of secret sharing and number of public keys equals `total`.
 /// At least `threshold` number of share-commitments are needed to reconstruct the commitment to the secret.
+/// `pk_base` is the base of the public keys (`g`) and `target_base` is the base for the secret share commitment (`j`)
 pub fn deal_random_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
     rng: &mut R,
     threshold: ShareId,
     total: ShareId,
     public_keys: Vec<G>,
+    pk_base: &G,
+    target_base: &G,
 ) -> Result<
     (
         G::ScalarField,
@@ -81,8 +86,15 @@ pub fn deal_random_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
     SSError,
 > {
     let secret = G::ScalarField::rand(rng);
-    let (enc_shares, proof, poly) =
-        deal_secret::<R, G, D>(rng, secret, threshold, total, public_keys)?;
+    let (enc_shares, proof, poly) = deal_secret::<R, G, D>(
+        rng,
+        secret,
+        threshold,
+        total,
+        public_keys,
+        pk_base,
+        target_base,
+    )?;
     Ok((secret, enc_shares, proof, poly))
 }
 
@@ -93,6 +105,8 @@ pub fn deal_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
     threshold: ShareId,
     total: ShareId,
     public_keys: Vec<G>,
+    pk_base: &G,
+    target_base: &G,
 ) -> Result<
     (
         Vec<EncryptedShare<G>>,
@@ -110,18 +124,29 @@ pub fn deal_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
     debug_assert_eq!(f.degree(), r.degree());
     let mut chal_bytes = vec![];
     let mut enc_shares = vec![];
+    let mask_base = WindowTable::new(total as usize, *target_base + pk_base);
+    mask_base.serialize_compressed(&mut chal_bytes)?;
     for (i, pk) in public_keys.into_iter().enumerate() {
         let share_i = &shares.0[i];
         debug_assert_eq!(share_i.id as usize, i + 1);
-        let t = pk * r.evaluate(&G::ScalarField::from(share_i.id));
-        let enc_share_i = (pk * share_i.share).into_affine();
+        // Use same blinding for both relations
+        let blinding = r.evaluate(&G::ScalarField::from(share_i.id));
+        let t_mask = pk * blinding;
+        // `h_i * k_i`
+        let mask = (pk * share_i.share).into_affine();
+        let t_masked_share = mask_base.multiply(&blinding).into_affine();
+        // `(j + g) * k_i`
+        let masked_share = mask_base.multiply(&share_i.share).into_affine();
         pk.serialize_compressed(&mut chal_bytes)?;
-        t.serialize_compressed(&mut chal_bytes)?;
-        enc_share_i.serialize_compressed(&mut chal_bytes)?;
+        t_mask.serialize_compressed(&mut chal_bytes)?;
+        t_masked_share.serialize_compressed(&mut chal_bytes)?;
+        mask.serialize_compressed(&mut chal_bytes)?;
+        masked_share.serialize_compressed(&mut chal_bytes)?;
         enc_shares.push(EncryptedShare {
             id: share_i.id,
             threshold: share_i.threshold,
-            share: enc_share_i,
+            masked_share,
+            mask,
         });
     }
     let d = compute_random_oracle_challenge::<G::ScalarField, D>(&chal_bytes);
@@ -139,12 +164,15 @@ pub fn deal_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
 impl<F: PrimeField> Proof<F> {
     /// Assumes the public keys and encrypted shares are given in the increasing order of their ids in the context
     /// of secret sharing and number of public keys equals `total`
+    /// `pk_base` is the base of the public keys (`g`) and `target_base` is the base for the secret share commitment (`j`)
     pub fn verify<G: AffineRepr<ScalarField = F>, D: Digest>(
         &self,
         threshold: ShareId,
         total: ShareId,
         public_keys: Vec<G>,
         enc_shares: &[EncryptedShare<G>],
+        pk_base: &G,
+        target_base: &G,
     ) -> Result<(), SSError> {
         validate_threshold(threshold, total)?;
         expect_equality!(
@@ -156,15 +184,24 @@ impl<F: PrimeField> Proof<F> {
             return Err(SSError::DoesNotSupportThreshold(threshold));
         }
         let mut chal_bytes = vec![];
+        let mask_base = WindowTable::new(total as usize, *target_base + pk_base);
+        mask_base.serialize_compressed(&mut chal_bytes)?;
         for (i, pk) in public_keys.into_iter().enumerate() {
             let enc_share_i = &enc_shares[i];
             debug_assert_eq!(enc_share_i.id as usize, i + 1);
-            // pk * r(i) - y_i * d
-            let t = (pk * self.resp.evaluate(&G::ScalarField::from(enc_share_i.id)))
-                - (enc_share_i.share * self.challenge);
+            let resp_i = self.resp.evaluate(&G::ScalarField::from(enc_share_i.id));
+            // h_i * z(i) - y_i * d
+            let t_mask = (pk * resp_i) - (enc_share_i.mask * self.challenge);
+            // (j + g) * z(i) - y'_i * d
+            let t_masked_share =
+                mask_base.multiply(&resp_i) - (enc_share_i.masked_share * self.challenge);
             pk.serialize_compressed(&mut chal_bytes)?;
-            t.serialize_compressed(&mut chal_bytes)?;
-            enc_share_i.share.serialize_compressed(&mut chal_bytes)?;
+            t_mask.serialize_compressed(&mut chal_bytes)?;
+            t_masked_share.serialize_compressed(&mut chal_bytes)?;
+            enc_share_i.mask.serialize_compressed(&mut chal_bytes)?;
+            enc_share_i
+                .masked_share
+                .serialize_compressed(&mut chal_bytes)?;
         }
         if self.challenge != compute_random_oracle_challenge::<G::ScalarField, D>(&chal_bytes) {
             return Err(SSError::InvalidProof);
@@ -174,12 +211,14 @@ impl<F: PrimeField> Proof<F> {
 }
 
 impl<G: AffineRepr> EncryptedShare<G> {
-    /// Use the party's secret key to decrypt the share
     pub fn decrypt(&self, sk: &G::ScalarField) -> Share<G> {
+        // y_i * 1 / s_i = g * k_i
+        let mask = self.mask * sk.inverse().unwrap();
         Share {
             id: self.id,
             threshold: self.threshold,
-            share: (self.share * sk.inverse().unwrap()).into_affine(),
+            // (j + g) * k_i - g * k_i = j * k_i
+            share: (self.masked_share.into_group() - mask).into_affine(),
         }
     }
 
@@ -201,10 +240,10 @@ pub mod tests {
     use test_utils::test_serialization;
 
     #[test]
-    fn pvss_with_same_base_as_public_key() {
+    fn pvss_with_different_base_than_public_key() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        fn check<G: AffineRepr>(rng: &mut StdRng, g: G) {
+        fn check<G: AffineRepr>(rng: &mut StdRng, pk_base: G, target_base: G) {
             let mut checked_serialization = false;
             for (threshold, total) in vec![
                 (1, 3),
@@ -222,9 +261,8 @@ pub mod tests {
             ] {
                 let sks = n_rand(rng, total).collect::<Vec<_>>();
                 let pks = (0..total)
-                    .map(|i| (g * &sks[i]).into_affine())
+                    .map(|i| (pk_base * &sks[i]).into_affine())
                     .collect::<Vec<_>>();
-
                 println!("For {}-of-{} sharing", threshold, total);
                 let start = Instant::now();
                 let (secret, enc_shares, proof, poly) = deal_random_secret::<_, G, Blake2b512>(
@@ -232,10 +270,15 @@ pub mod tests {
                     threshold as ShareId,
                     total as ShareId,
                     pks.clone(),
+                    &pk_base,
+                    &target_base,
                 )
                 .unwrap();
                 println!("Time to create shares and proof: {:?}", start.elapsed());
-                println!("Proof size is {}", proof.serialized_size(Compress::Yes));
+                println!(
+                    "Proof size is {} bytes",
+                    proof.serialized_size(Compress::Yes)
+                );
 
                 let start = Instant::now();
                 proof
@@ -244,16 +287,19 @@ pub mod tests {
                         total as ShareId,
                         pks.clone(),
                         &enc_shares,
+                        &pk_base,
+                        &target_base,
                     )
                     .unwrap();
-                println!("Time to create verify proof: {:?}", start.elapsed());
+                println!("Time to verify proof: {:?}", start.elapsed());
 
                 let mut decrypted_shares = vec![];
                 for (i, enc_share) in enc_shares.iter().enumerate() {
                     let dec_share = enc_share.decrypt(&sks[i]);
                     assert_eq!(
                         dec_share.share,
-                        (g * poly.evaluate(&G::ScalarField::from(enc_share.id))).into_affine()
+                        (target_base * poly.evaluate(&G::ScalarField::from(enc_share.id)))
+                            .into_affine()
                     );
                     decrypted_shares.push(dec_share);
                 }
@@ -268,7 +314,10 @@ pub mod tests {
                     .collect::<Vec<_>>();
                 let basis =
                     common::lagrange_basis_at_0_for_all::<G::ScalarField>(share_ids).unwrap();
-                assert_eq!(G::Group::msm_unchecked(&share_vals, &basis), g * secret);
+                assert_eq!(
+                    G::Group::msm_unchecked(&share_vals, &basis),
+                    target_base * secret
+                );
 
                 if !checked_serialization {
                     test_serialization!(Proof<G::ScalarField>, proof);
@@ -279,9 +328,13 @@ pub mod tests {
             }
         }
 
-        let g1 = G1Affine::rand(&mut rng);
-        let g2 = G2Affine::rand(&mut rng);
-        check(&mut rng, g1);
-        check(&mut rng, g2);
+        let pk_base_g1 = G1Affine::rand(&mut rng);
+        let target_base_g1 = G1Affine::rand(&mut rng);
+        let pk_base_g2 = G2Affine::rand(&mut rng);
+        let target_base_g2 = G2Affine::rand(&mut rng);
+        println!("Checking in group G1");
+        check(&mut rng, pk_base_g1, target_base_g1);
+        println!("Checking in group G2");
+        check(&mut rng, pk_base_g2, target_base_g2);
     }
 }

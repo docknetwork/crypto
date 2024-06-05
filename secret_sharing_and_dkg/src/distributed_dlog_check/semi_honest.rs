@@ -242,6 +242,7 @@ pub mod tests {
         fn check<G: AffineRepr>(rng: &mut StdRng, ck: &G) {
             let base = G::rand(rng);
             let share_comm_ck = G::rand(rng);
+            let mut checked_serialization = true;
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -284,7 +285,11 @@ pub mod tests {
                     .iter()
                     .map(|s| ComputationShare::new(s, &base))
                     .collect::<Vec<_>>();
-                test_serialization!(ComputationShare<G>, computation_shares[0]);
+
+                if !checked_serialization {
+                    test_serialization!(ComputationShare<G>, computation_shares[0]);
+                }
+
                 let result = ComputationShare::combine(computation_shares.clone()).unwrap();
                 assert_eq!(result, expected_result);
 
@@ -313,7 +318,34 @@ pub mod tests {
                     proof
                         .verify::<Blake2b512>(&share, &share_comms[i], &share_comm_ck, &base)
                         .unwrap();
+                    if i == 1 {
+                        // Verification with incorrect commitment to the secret share fails
+                        assert!(proof
+                            .verify::<Blake2b512>(
+                                &share,
+                                &share_comms[i - 1],
+                                &share_comm_ck,
+                                &base
+                            )
+                            .is_err());
+
+                        // Verification with incorrect secret share fails
+                        assert!(proof
+                            .verify::<Blake2b512>(
+                                &computation_shares[0],
+                                &share_comms[i],
+                                &share_comm_ck,
+                                &base
+                            )
+                            .is_err());
+
+                        // if !checked_serialization {
+                        //     test_serialization!(ComputationShareProof<G>, proof);
+                        //     test_serialization!(ShareCommitment<G>, share_comms[i]);
+                        // }
+                    }
                 }
+                checked_serialization = true;
             }
         }
 

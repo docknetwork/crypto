@@ -5,15 +5,15 @@ use crate::{
     set_commitment::SetCommitmentSRS,
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
-use ark_ff::{
-    field_hashers::{DefaultFieldHasher, HashToField},
-    PrimeField, Zero,
-};
+use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
-use digest::DynDigest;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use dock_crypto_utils::{
+    aliases::{FullDigest, SyncIfParallel},
+    hashing_utils::hash_to_field,
+};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -64,6 +64,8 @@ pub struct UpdateKey<E: Pairing> {
 }
 
 impl<E: Pairing> RootIssuerSecretKey<E> {
+    pub const DST: &'static [u8] = b"MERCURIAL-SIG-KEYGEN-SALT-0";
+
     pub fn new<R: RngCore>(rng: &mut R, size: u32) -> Result<Self, DelegationError> {
         let m_sk = SecretKey::new(rng, size)?;
         Ok(Self(E::ScalarField::rand(rng), m_sk))
@@ -71,13 +73,13 @@ impl<E: Pairing> RootIssuerSecretKey<E> {
 
     pub fn generate_using_seed<D>(seed: &[u8], size: u32) -> Result<Self, DelegationError>
     where
-        D: DynDigest + Default + Clone,
+        D: FullDigest + SyncIfParallel,
     {
         let m_sk = SecretKey::generate_using_seed::<D>(seed, size)?;
-        let hasher = <DefaultFieldHasher<D> as HashToField<E::ScalarField>>::new(
-            b"MERCURIAL-SIG-KEYGEN-SALT-0",
-        );
-        Ok(Self(hasher.hash_to_field(seed, 1).pop().unwrap(), m_sk))
+        Ok(Self(
+            hash_to_field::<E::ScalarField, D>(Self::DST, seed),
+            m_sk,
+        ))
     }
 }
 

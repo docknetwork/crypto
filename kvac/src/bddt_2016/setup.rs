@@ -1,26 +1,26 @@
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{
-    field_hashers::{DefaultFieldHasher, HashToField},
-    PrimeField,
-};
+use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, rand::RngCore, vec::Vec};
 use core::iter::once;
 use digest::{Digest, DynDigest};
 use dock_crypto_utils::{
-    affine_group_element_from_byte_slices, concat_slices, join,
+    affine_group_element_from_byte_slices, concat_slices,
+    hashing_utils::hash_to_field,
+    iter::pair_valid_items_with_slice,
+    join,
     misc::{n_projective_group_elements, seq_pairs_satisfy},
     serde_utils::ArkObjectBytes,
+    signature::MultiMessageSignatureParams,
+    try_iter::CheckLeft,
 };
+
 use itertools::process_results;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::error::KVACError;
-use dock_crypto_utils::{iter::pair_valid_items_with_slice, try_iter::CheckLeft};
-
-use dock_crypto_utils::signature::MultiMessageSignatureParams;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -150,13 +150,14 @@ impl<G: AffineRepr> MultiMessageSignatureParams for &MACParams<G> {
 }
 
 impl<F: PrimeField> SecretKey<F> {
+    pub const DST: &'static [u8] = b"BDDT16-MAC-KEYGEN-SALT";
+
     pub fn new<R: RngCore>(rng: &mut R) -> Self {
         Self(F::rand(rng))
     }
 
     pub fn generate_using_seed<D: DynDigest + Default + Clone>(seed: &[u8]) -> Self {
-        let hasher = <DefaultFieldHasher<D> as HashToField<F>>::new(b"BDDT16-MAC-KEYGEN-SALT");
-        Self(hasher.hash_to_field(seed, 1).pop().unwrap())
+        Self(hash_to_field::<F, D>(Self::DST, seed))
     }
 }
 
