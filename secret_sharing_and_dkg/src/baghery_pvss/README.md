@@ -14,7 +14,7 @@ Notice the base `g` is the same in the public keys, the share commitments and th
 
 Let's say the dealer wants to share `j * k` where base `j` is also a group generator and discrete log of `j` wrt. `g` is not known
 such that party `i` gets `j * k_i`
-The dealer follows a similar protocol as above and broadcasts `y'_i = j * k_i . g * k_i = (j + g) * k_i` in addition
+The dealer follows a similar protocol as above and broadcasts `y'_i = j * k_i + g * k_i = (j + g) * k_i` in addition
 to `y_i = h_i * k_i` and a proof that `k_i` is the same in both `y'_i` and `y_i`. Then each party can
 compute `g * k_i` as described in the paper and compute `j * k_i = y'_i - g * k_i`. Essentially, `y'_i` is
 an Elgamal ciphertext, `g * k_i` is the ephemeral secret key (between the dealer and party `i`) and

@@ -447,6 +447,13 @@ impl<E: Pairing> ProofSpec<E> {
                     let pk = s.get_public_key(&self.setup_params, s_idx)?;
                     derived_bbs_pk.on_new_statement_idx(pk, s_idx);
                 }
+                Statement::PoKBBSSignature23IETFG1Verifier(s) => {
+                    let params = s.get_params(&self.setup_params, s_idx)?;
+                    derived_bbs.on_new_statement_idx(params, s_idx);
+
+                    let pk = s.get_public_key(&self.setup_params, s_idx)?;
+                    derived_bbs_pk.on_new_statement_idx(pk, s_idx);
+                }
                 Statement::VBAccumulatorMembership(s) => {
                     set_derived_for_accum!(s, s_idx, derived_accum_p, derived_accum_pk);
                 }

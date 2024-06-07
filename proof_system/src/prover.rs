@@ -49,6 +49,7 @@ use crate::{
             VBAccumulatorNonMembershipSubProtocol,
         },
         bbs_23::PoKBBSSigG1SubProtocol,
+        bbs_23_ietf::PoKBBSSigIETFG1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol as PoKBBSPlusSigG1SubProtocol,
         bddt16_kvac::PoKOfMACSubProtocol,
         bound_check_bpp::BoundCheckBppProtocol,
@@ -289,6 +290,20 @@ impl<E: Pairing> Proof<E> {
                             PoKBBSSigG1SubProtocol,
                             new_for_prover,
                             PoKBBSSignature23G1,
+                            BBS_23_LABEL
+                        );
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::PoKBBSSignature23IETFG1Prover(s) => match witness {
+                    Witness::PoKBBSSignature23G1(w) => {
+                        sig_protocol_init!(
+                            s,
+                            s_idx,
+                            w,
+                            PoKBBSSigIETFG1SubProtocol,
+                            new_for_prover,
+                            PoKBBSSignature23IETFG1,
                             BBS_23_LABEL
                         );
                     }
@@ -785,6 +800,9 @@ impl<E: Pairing> Proof<E> {
                 }
                 SubProtocol::PSSignaturePoK(mut sp) => sp.gen_proof_contribution(&challenge)?,
                 SubProtocol::PoKBBSSignature23G1(mut sp) => {
+                    sp.gen_proof_contribution(&challenge)?
+                }
+                SubProtocol::PoKBBSSignature23IETFG1(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
                 SubProtocol::BoundCheckBpp(mut sp) => {

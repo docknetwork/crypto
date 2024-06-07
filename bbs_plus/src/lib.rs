@@ -43,8 +43,9 @@
 //! 3. BBS+ proof of knowledge of signature module - [`proof`]
 //! 4. BBS signature module - [`signature_23`]
 //! 5. BBS proof of knowledge of signature module - [`proof_23`]
-//! 6. BBS proof of knowledge of signature module, alternate implementation - [`proof_23_cdl`]
-//! 7. Threshold BBS and BBS+ signatures - [`threshold`]
+//! 6. BBS proof of knowledge of signature module, implementation as in appendix B - [`proof_23_cdl`]
+//! 7. BBS proof of knowledge of signature module, implementation as in appendix A - [`proof_23_ietf`]
+//! 8. Threshold BBS and BBS+ signatures - [`threshold`]
 //!
 //! The implementation tries to use the same variable names as the paper and thus violate Rust's naming conventions at places.
 //!
@@ -55,12 +56,14 @@
 //! [`signature_23`]: crate::signature_23
 //! [`proof_23`]: crate::proof_23
 //! [`proof_23_cdl`]: crate::proof_23_cdl
+//! [`proof_23_ietf`]: crate::proof_23_ietf
 //! [`threshold`]: crate::threshold
 
 pub mod error;
 pub mod proof;
 pub mod proof_23;
 pub mod proof_23_cdl;
+pub mod proof_23_ietf;
 pub mod setup;
 pub mod signature;
 pub mod signature_23;

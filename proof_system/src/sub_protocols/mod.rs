@@ -2,6 +2,7 @@ pub mod accumulator;
 #[macro_use]
 pub mod bbs_plus;
 pub mod bbs_23;
+pub mod bbs_23_ietf;
 pub mod bddt16_kvac;
 pub mod bound_check_bpp;
 pub mod bound_check_legogroth16;
@@ -68,6 +69,7 @@ pub enum SubProtocol<'a, E: Pairing> {
     PSSignaturePoK(ps_signature::PSSignaturePoK<'a, E>),
     /// For BBS signature in group G1
     PoKBBSSignature23G1(bbs_23::PoKBBSSigG1SubProtocol<'a, E>),
+    PoKBBSSignature23IETFG1(bbs_23_ietf::PoKBBSSigIETFG1SubProtocol<'a, E>),
     /// For range proof using Bulletproofs++
     BoundCheckBpp(BoundCheckBppProtocol<'a, E::G1Affine>),
     /// For range proof using set-membership check
@@ -110,6 +112,7 @@ macro_rules! delegate {
                 R1CSLegogroth16Protocol,
                 PSSignaturePoK,
                 PoKBBSSignature23G1,
+                PoKBBSSignature23IETFG1,
                 BoundCheckBpp,
                 BoundCheckSmc,
                 BoundCheckSmcWithKV,

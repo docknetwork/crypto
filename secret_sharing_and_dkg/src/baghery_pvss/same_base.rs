@@ -110,6 +110,7 @@ pub fn deal_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
     debug_assert_eq!(f.degree(), r.degree());
     let mut chal_bytes = vec![];
     let mut enc_shares = vec![];
+    // NOTE: The following can be done in parallel
     for (i, pk) in public_keys.into_iter().enumerate() {
         let share_i = &shares.0[i];
         debug_assert_eq!(share_i.id as usize, i + 1);
@@ -156,6 +157,8 @@ impl<F: PrimeField> Proof<F> {
             return Err(SSError::DoesNotSupportThreshold(threshold));
         }
         let mut chal_bytes = vec![];
+        // NOTE: The following can be done in parallel but since this will be done on blockchain (in our use-case)
+        // where we won't have parallelization, keeping it serial
         for (i, pk) in public_keys.into_iter().enumerate() {
             let enc_share_i = &enc_shares[i];
             debug_assert_eq!(enc_share_i.id as usize, i + 1);

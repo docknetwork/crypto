@@ -62,6 +62,7 @@ pub enum StatementProof<E: Pairing> {
     VBAccumulatorMembershipKV(vb_accumulator::proofs_keyed_verification::MembershipProof<E::G1Affine>),
     KBUniversalAccumulatorMembershipKV(vb_accumulator::kb_universal_accumulator::proofs_keyed_verification::KBUniversalAccumulatorMembershipProof<E::G1Affine>),
     KBUniversalAccumulatorNonMembershipKV(vb_accumulator::kb_universal_accumulator::proofs_keyed_verification::KBUniversalAccumulatorNonMembershipProof<E::G1Affine>),
+    PoKBBSSignature23IETFG1(bbs_plus::proof_23_ietf::PoKOfSignature23G1Proof<E>),
 
 }
 
@@ -99,7 +100,8 @@ macro_rules! delegate {
                 PedersenCommitmentG2,
                 VBAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKV,
-                KBUniversalAccumulatorNonMembershipKV
+                KBUniversalAccumulatorNonMembershipKV,
+                PoKBBSSignature23IETFG1
             : $($tt)+
         }
     }};
@@ -139,7 +141,8 @@ macro_rules! delegate_reverse {
                 PedersenCommitmentG2,
                 VBAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKV,
-                KBUniversalAccumulatorNonMembershipKV
+                KBUniversalAccumulatorNonMembershipKV,
+                PoKBBSSignature23IETFG1
             : $($tt)+
         }
 

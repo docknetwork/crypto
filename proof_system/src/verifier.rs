@@ -30,6 +30,7 @@ use crate::{
             VBAccumulatorNonMembershipSubProtocol,
         },
         bbs_23::PoKBBSSigG1SubProtocol as PoKBBSSig23G1SubProtocol,
+        bbs_23_ietf::PoKBBSSigIETFG1SubProtocol as PoKBBSSig23IETFG1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol,
         bddt16_kvac::PoKOfMACSubProtocol,
         bound_check_bpp::BoundCheckBppProtocol,
@@ -320,6 +321,12 @@ impl<E: Pairing> Proof<E> {
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
+                Statement::PoKBBSSignature23IETFG1Verifier(s) => match proof {
+                    StatementProof::PoKBBSSignature23IETFG1(p) => {
+                        sig_protocol_chal_gen!(s, s_idx, p, BBS_23_LABEL);
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
                 Statement::VBAccumulatorMembership(s) => match proof {
                     StatementProof::VBAccumulatorMembership(p) => {
                         check_resp_for_equalities!(
@@ -418,16 +425,6 @@ impl<E: Pairing> Proof<E> {
                 },
                 Statement::VBAccumulatorMembershipCDHVerifier(s) => match proof {
                     StatementProof::VBAccumulatorMembershipCDH(p) => {
-                        // check_resp_for_equalities!(
-                        //     witness_equalities,
-                        //     s_idx,
-                        //     p,
-                        //     get_schnorr_response_for_element,
-                        //     Self,
-                        //     responses_for_equalities
-                        // );
-                        // transcript.set_label(VB_ACCUM_CDH_MEM_LABEL);
-                        // p.challenge_contribution(&s.accumulator_value, &mut transcript)?;
                         accum_cdh_protocol_chal_gen!(s, s_idx, p, VB_ACCUM_CDH_MEM_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
@@ -934,6 +931,21 @@ impl<E: Pairing> Proof<E> {
                             s,
                             s_idx,
                             PoKBBSSig23G1SubProtocol,
+                            new_for_verifier,
+                            p,
+                            derived_bbs_pk,
+                            derived_bbs_param,
+                            BBSProofContributionFailed
+                        );
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::PoKBBSSignature23IETFG1Verifier(s) => match proof {
+                    StatementProof::PoKBBSSignature23IETFG1(ref p) => {
+                        sig_protocol_verify!(
+                            s,
+                            s_idx,
+                            PoKBBSSig23IETFG1SubProtocol,
                             new_for_verifier,
                             p,
                             derived_bbs_pk,

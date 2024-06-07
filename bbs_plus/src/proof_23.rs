@@ -398,10 +398,10 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::{setup::KeypairG2, test_serialization};
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, Fr};
     use ark_serialize::CanonicalDeserialize;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
@@ -411,9 +411,7 @@ mod tests {
     use schnorr_pok::compute_random_oracle_challenge;
     use std::time::{Duration, Instant};
 
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
-
-    fn sig_setup<R: RngCore>(
+    pub fn sig_setup<R: RngCore>(
         rng: &mut R,
         message_count: u32,
     ) -> (

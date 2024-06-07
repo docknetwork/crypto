@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod accumulator;
 pub mod bbs_23;
+pub mod bbs_23_ietf;
 #[macro_use]
 pub mod bbs_plus;
 pub mod bddt16_kvac;
@@ -125,6 +126,8 @@ pub enum Statement<E: Pairing> {
             E::G1Affine,
         >,
     ),
+    PoKBBSSignature23IETFG1Prover(bbs_23_ietf::PoKBBSSignature23IETFG1Prover<E>),
+    PoKBBSSignature23IETFG1Verifier(bbs_23_ietf::PoKBBSSignature23IETFG1Verifier<E>),
 }
 
 /// A collection of statements
@@ -200,7 +203,9 @@ macro_rules! delegate {
                 KBUniversalAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKVFullVerifier,
                 KBUniversalAccumulatorNonMembershipKV,
-                KBUniversalAccumulatorNonMembershipKVFullVerifier
+                KBUniversalAccumulatorNonMembershipKVFullVerifier,
+                PoKBBSSignature23IETFG1Prover,
+                PoKBBSSignature23IETFG1Verifier
             : $($tt)+
         }
     }}
@@ -253,7 +258,9 @@ macro_rules! delegate_reverse {
                 KBUniversalAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKVFullVerifier,
                 KBUniversalAccumulatorNonMembershipKV,
-                KBUniversalAccumulatorNonMembershipKVFullVerifier
+                KBUniversalAccumulatorNonMembershipKVFullVerifier,
+                PoKBBSSignature23IETFG1Prover,
+                PoKBBSSignature23IETFG1Verifier
             : $($tt)+
         }
 

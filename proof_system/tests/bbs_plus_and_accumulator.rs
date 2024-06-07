@@ -34,6 +34,10 @@ use proof_system::{
             PoKBBSSignature23G1Prover as PoKSignatureBBS23G1ProverStmt,
             PoKBBSSignature23G1Verifier as PoKSignatureBBS23G1VerifierStmt,
         },
+        bbs_23_ietf::{
+            PoKBBSSignature23IETFG1Prover as PoKSignatureBBS23IETFG1ProverStmt,
+            PoKBBSSignature23IETFG1Verifier as PoKSignatureBBS23IETFG1VerifierStmt,
+        },
         bbs_plus::{
             PoKBBSSignatureG1Prover as PoKSignatureBBSG1ProverStmt,
             PoKBBSSignatureG1Verifier as PoKSignatureBBSG1VerifierStmt,
@@ -2045,6 +2049,7 @@ gen_tests!(
     PoKSignatureBBSG1Wit,
     BBSPlusSignatureParams
 );
+
 gen_tests!(
     pok_of_3_bbs_sig_and_message_equality,
     pok_of_bbs_sig_and_accumulator,
@@ -2056,6 +2061,21 @@ gen_tests!(
     Signature23G1,
     PoKSignatureBBS23G1ProverStmt,
     PoKSignatureBBS23G1VerifierStmt,
+    PoKSignatureBBS23G1Wit,
+    BBSSignatureParams23
+);
+
+gen_tests!(
+    pok_of_3_bbs_ietf_sig_and_message_equality,
+    pok_of_bbs_ietf_sig_and_accumulator,
+    pok_of_knowledge_in_pedersen_commitment_and_bbs_ietf_sig,
+    verifier_local_linkability_with_bbs_ietf,
+    pok_of_bbs_ietf_sig_with_reusing_setup_params,
+    pok_of_bbs_ietf_sig_and_inequality_with_public_value,
+    bbs_sig_setup,
+    Signature23G1,
+    PoKSignatureBBS23IETFG1ProverStmt,
+    PoKSignatureBBS23IETFG1VerifierStmt,
     PoKSignatureBBS23G1Wit,
     BBSSignatureParams23
 );

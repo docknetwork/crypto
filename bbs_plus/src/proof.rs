@@ -876,6 +876,181 @@ mod tests {
         }}
     }
 
+    #[macro_export]
+    macro_rules! gen_test_pok_signature_schnorr_response {
+        ($setup_fn_name: ident, $protocol: ident, $resp_name: ident) => {{
+            // Test response from Schnorr protocol from various messages
+            let mut rng = StdRng::seed_from_u64(0u64);
+            let message_count = 6;
+            let (messages, params, _keypair, sig) = $setup_fn_name(&mut rng, message_count);
+
+            let challenge = Fr::rand(&mut rng);
+
+            // Test response when no hidden message
+            let revealed_indices_1 = BTreeSet::new();
+            let pok_1 = $protocol::init(
+                &mut rng,
+                &sig,
+                &params,
+                messages.iter().enumerate().map(|(idx, msg)| {
+                    if revealed_indices_1.contains(&idx) {
+                        MessageOrBlinding::RevealMessage(msg)
+                    } else {
+                        MessageOrBlinding::BlindMessageRandomly(msg)
+                    }
+                }),
+            )
+            .unwrap();
+            let proof_1 = pok_1.gen_proof(&challenge).unwrap();
+            for i in 0..message_count as usize {
+                assert_eq!(
+                    *proof_1
+                        .get_resp_for_message(i, &revealed_indices_1)
+                        .unwrap(),
+                    proof_1.$resp_name.0[i]
+                );
+            }
+
+            // Test response when some messages are revealed
+            let mut revealed_indices_2 = BTreeSet::new();
+            revealed_indices_2.insert(0);
+            revealed_indices_2.insert(2);
+            revealed_indices_2.insert(5);
+            let pok_2 = $protocol::init(
+                &mut rng,
+                &sig,
+                &params,
+                messages.iter().enumerate().map(|(idx, msg)| {
+                    if revealed_indices_2.contains(&idx) {
+                        MessageOrBlinding::RevealMessage(msg)
+                    } else {
+                        MessageOrBlinding::BlindMessageRandomly(msg)
+                    }
+                }),
+            )
+            .unwrap();
+            let proof_2 = pok_2.gen_proof(&challenge).unwrap();
+
+            // Getting response for messages that are revealed throws error as they are not included in
+            // the proof of knowledge
+            assert!(proof_2
+                .get_resp_for_message(0, &revealed_indices_2)
+                .is_err());
+            assert!(proof_2
+                .get_resp_for_message(2, &revealed_indices_2)
+                .is_err());
+            assert!(proof_2
+                .get_resp_for_message(5, &revealed_indices_2)
+                .is_err());
+
+            assert_eq!(
+                *proof_2
+                    .get_resp_for_message(1, &revealed_indices_2)
+                    .unwrap(),
+                proof_2.$resp_name.0[0]
+            );
+            assert_eq!(
+                *proof_2
+                    .get_resp_for_message(3, &revealed_indices_2)
+                    .unwrap(),
+                proof_2.$resp_name.0[1]
+            );
+            assert_eq!(
+                *proof_2
+                    .get_resp_for_message(4, &revealed_indices_2)
+                    .unwrap(),
+                proof_2.$resp_name.0[2]
+            );
+
+            let mut revealed_indices_3 = BTreeSet::new();
+            revealed_indices_3.insert(0);
+            revealed_indices_3.insert(3);
+            let pok_3 = $protocol::init(
+                &mut rng,
+                &sig,
+                &params,
+                messages.iter().enumerate().map(|(idx, msg)| {
+                    if revealed_indices_3.contains(&idx) {
+                        MessageOrBlinding::RevealMessage(msg)
+                    } else {
+                        MessageOrBlinding::BlindMessageRandomly(msg)
+                    }
+                }),
+            )
+            .unwrap();
+            let proof_3 = pok_3.gen_proof(&challenge).unwrap();
+
+            // Getting response for messages that are revealed throws error as they are not included in
+            // the proof of knowledge
+            assert!(proof_3
+                .get_resp_for_message(0, &revealed_indices_3)
+                .is_err());
+            assert!(proof_3
+                .get_resp_for_message(3, &revealed_indices_3)
+                .is_err());
+
+            assert_eq!(
+                *proof_3
+                    .get_resp_for_message(1, &revealed_indices_3)
+                    .unwrap(),
+                proof_3.$resp_name.0[0]
+            );
+            assert_eq!(
+                *proof_3
+                    .get_resp_for_message(2, &revealed_indices_3)
+                    .unwrap(),
+                proof_3.$resp_name.0[1]
+            );
+            assert_eq!(
+                *proof_3
+                    .get_resp_for_message(4, &revealed_indices_3)
+                    .unwrap(),
+                proof_3.$resp_name.0[2]
+            );
+            assert_eq!(
+                *proof_3
+                    .get_resp_for_message(5, &revealed_indices_3)
+                    .unwrap(),
+                proof_3.$resp_name.0[3]
+            );
+
+            // Reveal one message only
+            for i in 0..message_count as usize {
+                let mut revealed_indices = BTreeSet::new();
+                revealed_indices.insert(i);
+                let pok = $protocol::init(
+                    &mut rng,
+                    &sig,
+                    &params,
+                    messages.iter().enumerate().map(|(idx, msg)| {
+                        if revealed_indices.contains(&idx) {
+                            MessageOrBlinding::RevealMessage(msg)
+                        } else {
+                            MessageOrBlinding::BlindMessageRandomly(msg)
+                        }
+                    }),
+                )
+                .unwrap();
+                let proof = pok.gen_proof(&challenge).unwrap();
+                for j in 0..message_count as usize {
+                    if i == j {
+                        assert!(proof.get_resp_for_message(j, &revealed_indices).is_err());
+                    } else if i < j {
+                        assert_eq!(
+                            *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
+                            proof.$resp_name.0[j - 1]
+                        );
+                    } else {
+                        assert_eq!(
+                            *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
+                            proof.$resp_name.0[j]
+                        );
+                    }
+                }
+            }
+        }}
+    }
+
     #[test]
     fn pok_signature_revealed_message() {
         gen_test_pok_signature_revealed_message!(PoKOfSignatureG1Protocol, PoKOfSignatureG1Proof)
@@ -893,175 +1068,7 @@ mod tests {
 
     #[test]
     fn pok_signature_schnorr_response() {
-        // Test response from Schnorr protocol from various messages
-        let mut rng = StdRng::seed_from_u64(0u64);
-        let message_count = 6;
-        let (messages, params, _keypair, sig) = sig_setup(&mut rng, message_count);
-
-        let challenge = Fr::rand(&mut rng);
-
-        // Test response when no hidden message
-        let revealed_indices_1 = BTreeSet::new();
-        let pok_1 = PoKOfSignatureG1Protocol::init(
-            &mut rng,
-            &sig,
-            &params,
-            messages.iter().enumerate().map(|(idx, msg)| {
-                if revealed_indices_1.contains(&idx) {
-                    MessageOrBlinding::RevealMessage(msg)
-                } else {
-                    MessageOrBlinding::BlindMessageRandomly(msg)
-                }
-            }),
-        )
-        .unwrap();
-        let proof_1 = pok_1.gen_proof(&challenge).unwrap();
-        for i in 0..message_count as usize {
-            assert_eq!(
-                *proof_1
-                    .get_resp_for_message(i, &revealed_indices_1)
-                    .unwrap(),
-                proof_1.sc_resp_2.0[i]
-            );
-        }
-
-        // Test response when some messages are revealed
-        let mut revealed_indices_2 = BTreeSet::new();
-        revealed_indices_2.insert(0);
-        revealed_indices_2.insert(2);
-        revealed_indices_2.insert(5);
-        let pok_2 = PoKOfSignatureG1Protocol::init(
-            &mut rng,
-            &sig,
-            &params,
-            messages.iter().enumerate().map(|(idx, msg)| {
-                if revealed_indices_2.contains(&idx) {
-                    MessageOrBlinding::RevealMessage(msg)
-                } else {
-                    MessageOrBlinding::BlindMessageRandomly(msg)
-                }
-            }),
-        )
-        .unwrap();
-        let proof_2 = pok_2.gen_proof(&challenge).unwrap();
-
-        // Getting response for messages that are revealed throws error as they are not included in
-        // the proof of knowledge
-        assert!(proof_2
-            .get_resp_for_message(0, &revealed_indices_2)
-            .is_err());
-        assert!(proof_2
-            .get_resp_for_message(2, &revealed_indices_2)
-            .is_err());
-        assert!(proof_2
-            .get_resp_for_message(5, &revealed_indices_2)
-            .is_err());
-
-        assert_eq!(
-            *proof_2
-                .get_resp_for_message(1, &revealed_indices_2)
-                .unwrap(),
-            proof_2.sc_resp_2.0[0]
-        );
-        assert_eq!(
-            *proof_2
-                .get_resp_for_message(3, &revealed_indices_2)
-                .unwrap(),
-            proof_2.sc_resp_2.0[1]
-        );
-        assert_eq!(
-            *proof_2
-                .get_resp_for_message(4, &revealed_indices_2)
-                .unwrap(),
-            proof_2.sc_resp_2.0[2]
-        );
-
-        let mut revealed_indices_3 = BTreeSet::new();
-        revealed_indices_3.insert(0);
-        revealed_indices_3.insert(3);
-        let pok_3 = PoKOfSignatureG1Protocol::init(
-            &mut rng,
-            &sig,
-            &params,
-            messages.iter().enumerate().map(|(idx, msg)| {
-                if revealed_indices_3.contains(&idx) {
-                    MessageOrBlinding::RevealMessage(msg)
-                } else {
-                    MessageOrBlinding::BlindMessageRandomly(msg)
-                }
-            }),
-        )
-        .unwrap();
-        let proof_3 = pok_3.gen_proof(&challenge).unwrap();
-
-        // Getting response for messages that are revealed throws error as they are not included in
-        // the proof of knowledge
-        assert!(proof_3
-            .get_resp_for_message(0, &revealed_indices_3)
-            .is_err());
-        assert!(proof_3
-            .get_resp_for_message(3, &revealed_indices_3)
-            .is_err());
-
-        assert_eq!(
-            *proof_3
-                .get_resp_for_message(1, &revealed_indices_3)
-                .unwrap(),
-            proof_3.sc_resp_2.0[0]
-        );
-        assert_eq!(
-            *proof_3
-                .get_resp_for_message(2, &revealed_indices_3)
-                .unwrap(),
-            proof_3.sc_resp_2.0[1]
-        );
-        assert_eq!(
-            *proof_3
-                .get_resp_for_message(4, &revealed_indices_3)
-                .unwrap(),
-            proof_3.sc_resp_2.0[2]
-        );
-        assert_eq!(
-            *proof_3
-                .get_resp_for_message(5, &revealed_indices_3)
-                .unwrap(),
-            proof_3.sc_resp_2.0[3]
-        );
-
-        // Reveal one message only
-        for i in 0..message_count as usize {
-            let mut revealed_indices = BTreeSet::new();
-            revealed_indices.insert(i);
-            let pok = PoKOfSignatureG1Protocol::init(
-                &mut rng,
-                &sig,
-                &params,
-                messages.iter().enumerate().map(|(idx, msg)| {
-                    if revealed_indices.contains(&idx) {
-                        MessageOrBlinding::RevealMessage(msg)
-                    } else {
-                        MessageOrBlinding::BlindMessageRandomly(msg)
-                    }
-                }),
-            )
-            .unwrap();
-            let proof = pok.gen_proof(&challenge).unwrap();
-            for j in 0..message_count as usize {
-                if i == j {
-                    assert!(proof.get_resp_for_message(j, &revealed_indices).is_err());
-                } else if i < j {
-                    assert_eq!(
-                        *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                        proof.sc_resp_2.0[j - 1]
-                    );
-                } else {
-                    assert_eq!(
-                        *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                        proof.sc_resp_2.0[j]
-                    );
-                }
-            }
-        }
+        gen_test_pok_signature_schnorr_response!(sig_setup, PoKOfSignatureG1Protocol, sc_resp_2);
     }
 
     #[test]

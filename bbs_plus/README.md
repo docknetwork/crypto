@@ -27,14 +27,14 @@ The threshold signing protocol has 3 phases (not communication rounds)
 
 Note that only 3rd phase requires the messages to be known so the first 2 phases can be treated as pre-computation
 and can be done proactively and thus only phase 1 and 2 are online phases of the MPC protocol and phase 3 is the offline
-phase.  
+phase.
 Secondly since the communication time among signers is most likely to be the bottleneck
 in threshold signing, phase 1 and 2 support batching meaning that to generate `n` signatures only a single execution
 of phase 1 and 2 needs to done, although with larger inputs. Then `n` executions of phase 3 are done to generate
-the signature.  
+the signature.
 Also, its assumed that parties have done the DKG as well as the base OT and stored their results before starting phase 1.
 Both BBS and BBS+ implementations share the same multiplication phase and the base OT phase but their phase 1 is slightly
-less expensive as BBS+ needs 2 random fields elements but BBS needs only 1.  
+less expensive as BBS+ needs 2 random fields elements but BBS needs only 1.
 
 ### Modules
 
@@ -44,8 +44,9 @@ different from BBS+ but public key is same.
 3. BBS+ proof of knowledge of signature module - [`proof`]
 4. BBS signature module - [`signature_23`]
 5. BBS proof of knowledge of signature module - [`proof_23`]
-6. BBS proof of knowledge of signature module, alternate implementation - [`proof_23_cdl`]
-7. Threshold BBS and BBS+ signatures - [`threshold`]
+6. BBS proof of knowledge of signature module, implementation as in appendix B - [`proof_23_cdl`]
+7. BBS proof of knowledge of signature module, implementation as in appendix A - [`proof_23_ietf`]
+8. Threshold BBS and BBS+ signatures - [`threshold`]
 
 The implementation tries to use the same variable names as the paper and thus violate Rust's naming conventions at places.
 
@@ -56,6 +57,7 @@ The implementation tries to use the same variable names as the paper and thus vi
 [`signature_23`]: https://docs.rs/bbs_plus/latest/bbs_plus/signature_23/
 [`proof_23`]: https://docs.rs/bbs_plus/latest/bbs_plus/proof_23/
 [`proof_23_cdl`]: https://docs.rs/bbs_plus/latest/bbs_plus/proof_23_cdl/
+[`proof_23_ietf`]: https://docs.rs/bbs_plus/latest/bbs_plus/proof_23_ietf/
 [`threshold`]: https://docs.rs/bbs_plus/latest/bbs_plus/threshold/
 
 <!-- cargo-rdme end -->

@@ -36,7 +36,7 @@ pub struct EncryptedShare<G: AffineRepr> {
     pub id: ShareId,
     #[zeroize(skip)]
     pub threshold: ShareId,
-    /// Masked share `y'_i = j * k_i . g * k_i = (j + g) * k_i`
+    /// Masked share `y'_i = j * k_i + g * k_i = (j + g) * k_i`
     #[serde_as(as = "ArkObjectBytes")]
     pub masked_share: G,
     /// Mask `y_i = h_i * k_i`
@@ -126,6 +126,7 @@ pub fn deal_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
     let mut enc_shares = vec![];
     let mask_base = WindowTable::new(total as usize, *target_base + pk_base);
     mask_base.serialize_compressed(&mut chal_bytes)?;
+    // NOTE: The following can be done in parallel
     for (i, pk) in public_keys.into_iter().enumerate() {
         let share_i = &shares.0[i];
         debug_assert_eq!(share_i.id as usize, i + 1);
@@ -186,6 +187,8 @@ impl<F: PrimeField> Proof<F> {
         let mut chal_bytes = vec![];
         let mask_base = WindowTable::new(total as usize, *target_base + pk_base);
         mask_base.serialize_compressed(&mut chal_bytes)?;
+        // NOTE: The following can be done in parallel but since this will be done on blockchain (in our use-case)
+        // where we won't have parallelization, keeping it serial
         for (i, pk) in public_keys.into_iter().enumerate() {
             let enc_share_i = &enc_shares[i];
             debug_assert_eq!(enc_share_i.id as usize, i + 1);
