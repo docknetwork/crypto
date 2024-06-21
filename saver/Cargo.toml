@@ -1,6 +1,6 @@
 [package]
 name = "saver"
-version = "0.16.0"
+version = "0.17.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -20,8 +20,8 @@ rayon = {workspace = true, optional = true}
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
-dock_crypto_utils = { version = "0.18.0", default-features = false, path = "../utils" }
-legogroth16 = { version = "0.13.0", default-features = false, features = ["aggregation"], path = "../legogroth16" }
+dock_crypto_utils = { version = "0.19.0", default-features = false, path = "../utils" }
+legogroth16 = { version = "0.14.0", default-features = false, features = ["aggregation"], path = "../legogroth16" }
 merlin = { package = "dock_merlin", version = "3.0.0", default-features = false, path = "../merlin" }
 
 [dev-dependencies]

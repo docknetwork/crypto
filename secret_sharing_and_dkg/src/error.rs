@@ -31,6 +31,8 @@ pub enum SSError {
     Serialization(SerializationError),
     UnequalNoOfSharesAndPublicKeys(usize, usize),
     UnexpectedNumberOfResponses(usize, usize),
+    MissingRound2MessageFrom(ParticipantId),
+    InvalidNoOfCommitments(usize, usize),
 }
 
 impl From<SchnorrError> for SSError {

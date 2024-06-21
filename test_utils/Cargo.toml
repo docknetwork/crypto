@@ -7,7 +7,6 @@ license.workspace = true
 
 [dependencies]
 bbs_plus = { default-features = false, path = "../bbs_plus" }
-schnorr_pok = { default-features = false, path = "../schnorr_pok" }
 vb_accumulator = { default-features = false, path = "../vb_accumulator" }
 ark-ff.workspace = true
 ark-ec.workspace = true
@@ -15,12 +14,10 @@ ark-std.workspace = true
 ark-bls12-381.workspace = true
 ark-serialize.workspace = true
 blake2.workspace = true
-proof_system = { default-features = false, path = "../proof_system"}
 kvac = { default-features = false, path = "../kvac"}
 oblivious_transfer_protocols = { default-features = false, path = "../oblivious_transfer"}
 
 [features]
 default = ["parallel"]
-parallel = ["proof_system/parallel", "kvac/parallel", "oblivious_transfer_protocols/parallel"]
-wasmer-js = ["proof_system/wasmer-js"]
-wasmer-sys = ["proof_system/wasmer-sys"]
+std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "bbs_plus/std", "bbs_plus/std", "vb_accumulator/std", "kvac/std", "oblivious_transfer_protocols/std"]
+parallel = ["bbs_plus/parallel", "vb_accumulator/parallel", "kvac/parallel", "oblivious_transfer_protocols/parallel"]

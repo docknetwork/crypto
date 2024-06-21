@@ -63,11 +63,12 @@ impl<G: AffineRepr> MAC<G> {
         rng: &mut R,
         messages: &[G::ScalarField],
         secret_key: &SecretKey<G::ScalarField>,
-        params: &MACParams<G>,
+        params: impl AsRef<MACParams<G>>,
     ) -> Result<Self, KVACError> {
         if messages.is_empty() {
             return Err(KVACError::NoMessageGiven);
         }
+        let params = params.as_ref();
         expect_equality!(
             messages.len(),
             params.supported_message_count(),
@@ -96,11 +97,12 @@ impl<G: AffineRepr> MAC<G> {
         commitment: &G,
         uncommitted_messages: BTreeMap<usize, &G::ScalarField>,
         sk: &SecretKey<G::ScalarField>,
-        params: &MACParams<G>,
+        params: impl AsRef<MACParams<G>>,
     ) -> Result<Self, KVACError> {
         if uncommitted_messages.is_empty() {
             return Err(KVACError::NoMessageGiven);
         }
+        let params = params.as_ref();
         // `>` as commitment will have 0 or more messages. In practice, commitment should have
         // at least 1 message
         if uncommitted_messages.len() > params.supported_message_count() {
@@ -135,19 +137,22 @@ impl<G: AffineRepr> MAC<G> {
     pub fn verify(
         &self,
         messages: &[G::ScalarField],
-        sk: &SecretKey<G::ScalarField>,
-        params: &MACParams<G>,
+        sk: impl AsRef<G::ScalarField>,
+        params: impl AsRef<MACParams<G>>,
     ) -> Result<(), KVACError> {
         if messages.is_empty() {
             return Err(KVACError::NoMessageGiven);
         }
+        let params = params.as_ref();
         expect_equality!(
             messages.len(),
             params.supported_message_count(),
             KVACError::MessageCountIncompatibleWithMACParams
         );
         let b = params.b(messages.iter().enumerate(), &self.s)?;
-        let e_plus_x_inv = (self.e + sk.0).inverse().ok_or(KVACError::CannotInvert0)?;
+        let e_plus_x_inv = (self.e + sk.as_ref())
+            .inverse()
+            .ok_or(KVACError::CannotInvert0)?;
         if (b * e_plus_x_inv).into_affine() != self.A {
             return Err(KVACError::InvalidMAC);
         }
@@ -171,11 +176,12 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         mac: &MAC<G>,
         secret_key: &SecretKey<G::ScalarField>,
         public_key: &PublicKey<G>,
-        params: &MACParams<G>,
+        params: impl AsRef<MACParams<G>>,
     ) -> Self {
         let witness = secret_key.0;
         let blinding = G::ScalarField::rand(rng);
         let B = (mac.A * witness).into_affine();
+        let params = params.as_ref();
         let mut challenge_bytes = vec![];
         // As witness has to be proven same in both protocols.
         let p1 = PokDiscreteLogProtocol::init(witness, blinding, &mac.A);
@@ -196,11 +202,12 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         mac: &MAC<G>,
         messages: &[G::ScalarField],
         public_key: &PublicKey<G>,
-        params: &MACParams<G>,
+        params: impl AsRef<MACParams<G>>,
     ) -> Result<(), KVACError> {
         if self.sc_B.response != self.sc_pk.response {
             return Err(KVACError::InvalidMACProof);
         }
+        let params = params.as_ref();
         // B = h + g * s + g_1 * m_1 + g_2 * m_2 + ... g_n * m_n
         let B =
             (params.b(messages.iter().enumerate(), &mac.s)? + mac.A * mac.e.neg()).into_affine();
@@ -246,7 +253,7 @@ mod tests {
 
         let proof = ProofOfValidityOfMAC::new::<_, Blake2b512>(&mut rng, &mac, &sk, &pk, &params);
         proof
-            .verify::<Blake2b512>(&mac, &messages, &pk, &params)
+            .verify::<Blake2b512>(&mac, &messages, &pk, params)
             .unwrap();
     }
 
@@ -297,6 +304,6 @@ mod tests {
         assert!(blinded_mac.verify(&messages, &sk, &params).is_err());
 
         let mac = blinded_mac.unblind(&blinding);
-        mac.verify(&messages, &sk, &params).unwrap();
+        mac.verify(&messages, sk, params).unwrap();
     }
 }

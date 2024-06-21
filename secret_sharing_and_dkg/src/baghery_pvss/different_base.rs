@@ -1,20 +1,18 @@
-use crate::{
-    baghery_pvss::{validate_threshold, Share},
-    common::ShareId,
-    error::SSError,
-    shamir_ss,
-};
+use crate::{baghery_pvss::Share, common::ShareId, error::SSError, shamir_ss};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{cfg_into_iter, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::{expect_equality, msm::WindowTable, serde_utils::ArkObjectBytes};
 use schnorr_pok::compute_random_oracle_challenge;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Share encrypted for the party
 #[serde_as]
@@ -68,6 +66,8 @@ pub struct Proof<F: PrimeField> {
 /// commitments to the shares with one encryption for each public key. Assumes the public keys are given
 /// in the increasing order of their ids in the context of secret sharing and number of public keys equals `total`.
 /// At least `threshold` number of share-commitments are needed to reconstruct the commitment to the secret.
+/// If additional faults need to be handled, then the threshold should be increased, eg. if `f` number of faults
+/// need to be handled and `threshold` number of parties are required to reconstruct the secret, `total >= threshold + f`
 /// `pk_base` is the base of the public keys (`g`) and `target_base` is the base for the secret share commitment (`j`)
 pub fn deal_random_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
     rng: &mut R,
@@ -115,13 +115,15 @@ pub fn deal_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
     ),
     SSError,
 > {
-    validate_threshold(threshold, total)?;
     let (shares, f) = shamir_ss::deal_secret(rng, secret, threshold, total)?;
     let r = <DensePolynomial<G::ScalarField> as DenseUVPolynomial<G::ScalarField>>::rand(
         threshold as usize - 1,
         rng,
     );
     debug_assert_eq!(f.degree(), r.degree());
+    let r_evals = cfg_into_iter!(1..=total)
+        .map(|i| r.evaluate(&G::ScalarField::from(i)))
+        .collect::<Vec<_>>();
     let mut chal_bytes = vec![];
     let mut enc_shares = vec![];
     let mask_base = WindowTable::new(total as usize, *target_base + pk_base);
@@ -131,7 +133,7 @@ pub fn deal_secret<'a, R: RngCore, G: AffineRepr, D: Digest>(
         let share_i = &shares.0[i];
         debug_assert_eq!(share_i.id as usize, i + 1);
         // Use same blinding for both relations
-        let blinding = r.evaluate(&G::ScalarField::from(share_i.id));
+        let blinding = r_evals[i];
         let t_mask = pk * blinding;
         // `h_i * k_i`
         let mask = (pk * share_i.share).into_affine();
@@ -175,7 +177,6 @@ impl<F: PrimeField> Proof<F> {
         pk_base: &G,
         target_base: &G,
     ) -> Result<(), SSError> {
-        validate_threshold(threshold, total)?;
         expect_equality!(
             enc_shares.len(),
             public_keys.len(),

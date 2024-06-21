@@ -149,6 +149,10 @@ impl<G: AffineRepr> Round1State<G> {
         if !msg.comm_coeffs.supports_threshold(self.threshold) {
             return Err(SSError::DoesNotSupportThreshold(self.threshold));
         }
+        if self.coeff_comms.contains_key(&msg.sender_id) {
+            return Err(SSError::AlreadyProcessedFromSender(msg.sender_id));
+        }
+
         let pk_gen = pk_gen.into();
         // Verify Schnorr proof
         let mut challenge_bytes = vec![];
@@ -257,16 +261,17 @@ pub mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
+    use std::time::{Duration, Instant};
     use test_utils::{test_serialization, G1, G2};
 
     #[test]
-    fn frost_distributed_key_generation() {
+    fn distributed_key_generation() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let g1 = G1::rand(&mut rng);
         let g2 = G2::rand(&mut rng);
 
         fn check<G: AffineRepr>(rng: &mut StdRng, pub_key_base: &G) {
-            let mut checked_serialization = true;
+            let mut checked_serialization = false;
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),
@@ -293,8 +298,13 @@ pub mod tests {
                 let mut secrets = vec![];
                 let schnorr_ctx = b"test-ctx";
 
+                println!("For {}-of-{}", threshold, total);
+                let mut round1_time = Duration::default();
+                let mut round2_time = Duration::default();
+
                 // Each participant starts Round 1
                 for i in 1..=total {
+                    let start = Instant::now();
                     let (round1_state, round1_msg) =
                         Round1State::start_with_random_secret::<StdRng, Blake2b512>(
                             rng,
@@ -305,6 +315,8 @@ pub mod tests {
                             pub_key_base,
                         )
                         .unwrap();
+                    round1_time += start.elapsed();
+
                     secrets.push(round1_state.secret.clone());
                     all_round1_states.push(round1_state);
                     all_round1_msgs.push(round1_msg);
@@ -348,6 +360,7 @@ pub mod tests {
                                 )
                                 .is_err());
 
+                            let start = Instant::now();
                             // Process valid message
                             all_round1_states[i]
                                 .add_received_message::<Blake2b512>(
@@ -356,6 +369,7 @@ pub mod tests {
                                     pub_key_base,
                                 )
                                 .unwrap();
+                            round1_time += start.elapsed();
                         }
                     }
 
@@ -367,7 +381,9 @@ pub mod tests {
                 // Each participant ends Round 1 and begins Round 2
                 for i in 0..total {
                     assert_eq!(all_round1_states[i].total_participants(), total);
+                    let start = Instant::now();
                     let (round2, shares) = all_round1_states[i].clone().finish().unwrap();
+                    round1_time += start.elapsed();
                     all_round2_states.push(round2);
                     all_shares.push(shares);
                 }
@@ -422,6 +438,7 @@ pub mod tests {
                                 )
                                 .is_err());
 
+                            let start = Instant::now();
                             all_round2_states[i]
                                 .add_received_share(
                                     (j + 1) as ParticipantId,
@@ -429,6 +446,7 @@ pub mod tests {
                                     pub_key_base,
                                 )
                                 .unwrap();
+                            round2_time += start.elapsed();
 
                             // Adding duplicate share not allowed
                             assert!(all_round2_states[i]
@@ -456,8 +474,10 @@ pub mod tests {
                 let mut all_pk = vec![];
                 let mut final_shares = vec![];
                 for i in 0..total {
+                    let start = Instant::now();
                     let (share, pk, t_pk) =
                         all_round2_states[i].clone().finish(pub_key_base).unwrap();
+                    round2_time += start.elapsed();
                     assert_eq!(
                         pub_key_base
                             .mul_bigint(share.share.into_bigint())
@@ -492,6 +512,9 @@ pub mod tests {
                     )
                 );
                 checked_serialization = true;
+
+                println!("Time taken for round 1 {:?}", round1_time);
+                println!("Time taken for round 2 {:?}", round2_time);
             }
         }
 

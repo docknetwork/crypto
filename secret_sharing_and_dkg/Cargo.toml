@@ -1,11 +1,11 @@
 [package]
 name = "secret_sharing_and_dkg"
-version = "0.11.0"
+version = "0.12.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Secret sharing schemes like Shamir's, Feldman's, Pedersen's and Publicly Verifiable Secret Sharing scheme and DKGs like FROST"
+description = "Secret sharing schemes like Shamir's, Feldman's, Pedersen's and Publicly Verifiable Secret Sharing scheme and DKGs like Gennaro's and FROST's"
 keywords = ["secret-sharing", "VSS", "PVSS", "DKG", "Shamir"]
 
 [dependencies]
@@ -19,8 +19,8 @@ rayon = { workspace = true, optional = true }
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
-dock_crypto_utils = { version = "0.18.0", default-features = false, path = "../utils" }
-schnorr_pok = { version = "0.18.0", default-features = false, path = "../schnorr_pok" }
+dock_crypto_utils = { version = "0.19.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.19.0", default-features = false, path = "../schnorr_pok" }
 
 [dev-dependencies]
 blake2.workspace = true

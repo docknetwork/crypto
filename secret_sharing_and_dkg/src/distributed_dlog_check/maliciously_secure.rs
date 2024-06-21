@@ -459,7 +459,7 @@ pub mod tests {
         macro_rules! check {
             ($secret_share: ident, $secret_share_comm: ident, $comp_share: ident, $comp_share_proof: ident, $deal_func: ident, $secret_group: ident, $other_group: ident, $pairing: tt, $ck_secret: expr, $ck_poly: expr) => {
                 let base = $other_group::rand(&mut rng);
-                let mut checked_serialization = true;
+                let mut checked_serialization = false;
                 for (threshold, total) in vec![
                     (2, 2),
                     (2, 3),

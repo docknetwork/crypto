@@ -178,3 +178,9 @@ impl<G: AffineRepr> AsRef<G> for PublicKey<G> {
         &self.0
     }
 }
+
+impl<G: AffineRepr> AsRef<MACParams<G>> for MACParams<G> {
+    fn as_ref(&self) -> &MACParams<G> {
+        &self
+    }
+}

@@ -54,7 +54,7 @@ pub struct Message1<F: PrimeField>(
 
 /// Message sent from Party1 to Party2 of multiplication protocol. This message is created after Party1 processes `Message1`
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Message2<F: PrimeField>(CorrelationTag<F>, RLC<F>, MaskedInputs<F>);
+pub struct Message2<F: PrimeField>(pub CorrelationTag<F>, RLC<F>, MaskedInputs<F>);
 
 /// A participant's output on completion of the multiplication protocol
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]

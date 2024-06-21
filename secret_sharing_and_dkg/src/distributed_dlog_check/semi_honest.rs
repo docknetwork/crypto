@@ -242,7 +242,7 @@ pub mod tests {
         fn check<G: AffineRepr>(rng: &mut StdRng, ck: &G) {
             let base = G::rand(rng);
             let share_comm_ck = G::rand(rng);
-            let mut checked_serialization = true;
+            let mut checked_serialization = false;
             for (threshold, total) in vec![
                 (2, 2),
                 (2, 3),

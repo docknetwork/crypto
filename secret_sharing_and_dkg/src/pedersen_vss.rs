@@ -8,7 +8,7 @@
 //! - Dealer sends `(F(i), G(i))` to participant `i`
 //! - Each participant verifies `C(F(i), G(i)) = C_0 * C_1*i * C_2*{i^2} * ... C_{k-1}*{k-1}`
 
-use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::univariate::DensePolynomial;
 
@@ -72,11 +72,12 @@ pub fn deal_secret<R: RngCore, G: AffineRepr>(
     // Create a random blinding and shares of that
     let (t, t_shares, t_poly) = shamir_ss::deal_random_secret(rng, threshold, total)?;
     // Create Pedersen commitments where each commitment commits to a coefficient of the polynomial `s_poly` and with blinding as coefficient of the polynomial `t_poly`
-    let coeff_comms = G::Group::normalize_batch(
-        &cfg_into_iter!(0..threshold as usize)
-            .map(|i| comm_key.commit_as_projective(&s_poly.coeffs[i], &t_poly.coeffs[i]))
-            .collect::<Vec<_>>(),
-    );
+    // let coeff_comms = G::Group::normalize_batch(
+    //     &cfg_into_iter!(0..threshold as usize)
+    //         .map(|i| comm_key.commit_as_projective(&s_poly.coeffs[i], &t_poly.coeffs[i]))
+    //         .collect::<Vec<_>>(),
+    // );
+    let coeff_comms = comm_key.commit_to_a_batch(&s_poly.coeffs, &t_poly.coeffs);
 
     Ok((
         t,
@@ -99,6 +100,8 @@ pub fn deal_secret<R: RngCore, G: AffineRepr>(
 
 impl<F: PrimeField> VerifiableShare<F> {
     /// Executed by each participant to verify its share received from the dealer.
+    /// Also, should be called by the "reconstructor" to verify that each of the share being used in
+    /// reconstruction is a valid share.
     pub fn verify<G: AffineRepr<ScalarField = F>>(
         &self,
         commitment_coeffs: &CommitmentToCoefficients<G>,
@@ -156,6 +159,7 @@ pub mod tests {
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
+    use std::time::Instant;
     use test_utils::{test_serialization, G1, G2};
 
     #[test]
@@ -185,6 +189,8 @@ pub mod tests {
                 (7, 10),
                 (7, 15),
             ] {
+                println!("For {}-of-{} sharing", threshold, total);
+                let start = Instant::now();
                 let (secret, blinding, shares, commitments, _, _) = deal_random_secret::<_, G>(
                     rng,
                     threshold as ShareId,
@@ -192,7 +198,12 @@ pub mod tests {
                     &comm_key,
                 )
                 .unwrap();
+                println!(
+                    "Time to create shares and commitments {:?}",
+                    start.elapsed()
+                );
 
+                let mut noted_time = false;
                 for share in &shares.0 {
                     // Wrong share fails to verify
                     let mut wrong_share = share.clone();
@@ -204,10 +215,18 @@ pub mod tests {
                     assert!(wrong_share.verify(&commitments, &comm_key).is_err());
 
                     // Correct share verifies
+                    let start = Instant::now();
                     share.verify(&commitments, &comm_key).unwrap();
+                    if !noted_time {
+                        println!("Time to verify commitments is {:?}", start.elapsed());
+                        noted_time = true;
+                    }
                 }
 
+                // Its assumed that reconstructor verifies each share before calling `reconstruct_secret`
+                let start = Instant::now();
                 let (s, t) = shares.reconstruct_secret().unwrap();
+                println!("Time to reconstruct secret {:?}", start.elapsed());
                 assert_eq!(s, secret);
                 assert_eq!(t, blinding);
 

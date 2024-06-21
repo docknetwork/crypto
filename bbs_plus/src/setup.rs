@@ -72,7 +72,8 @@ use dock_crypto_utils::{
 use itertools::process_results;
 
 #[cfg(feature = "parallel")]
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
+
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 

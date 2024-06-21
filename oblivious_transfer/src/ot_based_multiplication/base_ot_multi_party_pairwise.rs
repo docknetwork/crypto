@@ -55,7 +55,7 @@ pub struct BaseOTOutput {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct SenderPubKeyAndProof<G: AffineRepr>(SenderPubKey<G>, PokDiscreteLog<G>);
+pub struct SenderPubKeyAndProof<G: AffineRepr>(pub SenderPubKey<G>, PokDiscreteLog<G>);
 
 impl<G: AffineRepr> Participant<G> {
     pub fn init<R: RngCore, D: Digest>(

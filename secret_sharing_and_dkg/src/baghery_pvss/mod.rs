@@ -21,7 +21,7 @@
 //! `j * k_i` is the message. This is implemented in [different_base](./different_base.rs). Note that both `j` and `g` must be in the same group.
 //!
 
-use crate::{common::ShareId, error::SSError};
+use crate::common::ShareId;
 use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
@@ -56,12 +56,4 @@ pub struct Share<G: AffineRepr> {
     pub threshold: ShareId,
     #[serde_as(as = "ArkObjectBytes")]
     pub share: G,
-}
-
-pub(crate) fn validate_threshold(threshold: ShareId, total: ShareId) -> Result<(), SSError> {
-    // This looks different from the paper since paper assume `t+1` parties can reconstruct but the code assumes `t` parties can reconstruct
-    if total < 2 * threshold {
-        return Err(SSError::InvalidThresholdOrTotal(threshold, total));
-    }
-    Ok(())
 }
