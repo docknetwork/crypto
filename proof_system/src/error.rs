@@ -105,8 +105,8 @@ pub enum ProofSystemError {
     IncorrectEncryptedAccumulator,
     KBAccumProofContributionFailed(u32, VBAccumulatorError),
     KVACError(KVACError),
-    BDDT16KVACProtocolInvalidMessageCount(usize, usize),
-    BDDT16KVACProofContributionFailed(u32, KVACError),
+    BBDT16KVACProtocolInvalidMessageCount(usize, usize),
+    BBDT16KVACProofContributionFailed(u32, KVACError),
 }
 
 impl From<SchnorrError> for ProofSystemError {

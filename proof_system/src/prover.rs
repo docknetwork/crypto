@@ -15,7 +15,7 @@ use legogroth16::aggregation::srs::PreparedProverSRS;
 
 use crate::{
     constants::{
-        BBS_23_LABEL, BBS_PLUS_LABEL, BDDT16_KVAC_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL,
+        BBS_23_LABEL, BBS_PLUS_LABEL, BBDT16_KVAC_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL,
         COMPOSITE_PROOF_LABEL, CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_CDH_MEM_LABEL, KB_UNI_ACCUM_CDH_NON_MEM_LABEL, KB_UNI_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, PS_LABEL, VB_ACCUM_CDH_MEM_LABEL,
@@ -51,7 +51,7 @@ use crate::{
         bbs_23::PoKBBSSigG1SubProtocol,
         bbs_23_ietf::PoKBBSSigIETFG1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol as PoKBBSPlusSigG1SubProtocol,
-        bddt16_kvac::PoKOfMACSubProtocol,
+        bbdt16_kvac::PoKOfMACSubProtocol,
         bound_check_bpp::BoundCheckBppProtocol,
         bound_check_legogroth16::BoundCheckLegoGrothProtocol,
         bound_check_smc::BoundCheckSmcProtocol,
@@ -708,16 +708,16 @@ impl<E: Pairing> Proof<E> {
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
-                Statement::PoKBDDT16MAC(s) => match witness {
-                    Witness::PoKOfBDDT16MAC(w) => {
+                Statement::PoKBBDT16MAC(s) => match witness {
+                    Witness::PoKOfBBDT16MAC(w) => {
                         sig_protocol_init!(
                             s,
                             s_idx,
                             w,
                             PoKOfMACSubProtocol,
                             new,
-                            PoKOfBDDT16MAC,
-                            BDDT16_KVAC_LABEL
+                            PoKOfBBDT16MAC,
+                            BBDT16_KVAC_LABEL
                         );
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
@@ -843,7 +843,7 @@ impl<E: Pairing> Proof<E> {
                 SubProtocol::KBPositiveAccumulatorMembershipCDH(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
-                SubProtocol::PoKOfBDDT16MAC(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::PoKOfBBDT16MAC(mut sp) => sp.gen_proof_contribution(&challenge)?,
                 SubProtocol::VBAccumulatorMembershipKV(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }

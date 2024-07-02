@@ -11,7 +11,7 @@ pub mod bbs_23;
 pub mod bbs_23_ietf;
 #[macro_use]
 pub mod bbs_plus;
-pub mod bddt16_kvac;
+pub mod bbdt16_kvac;
 pub mod bound_check_bpp;
 pub mod bound_check_legogroth16;
 pub mod bound_check_smc;
@@ -92,10 +92,10 @@ pub enum Statement<E: Pairing> {
     PoKBBSSignatureG1Verifier(bbs_plus::PoKBBSSignatureG1Verifier<E>),
     /// Statement used by verifier for proof of knowledge of BBS signature
     PoKBBSSignature23G1Verifier(bbs_23::PoKBBSSignature23G1Verifier<E>),
-    /// For proof of knowledge of BDDT16 MAC.
-    PoKBDDT16MAC(bddt16_kvac::PoKOfMAC<E::G1Affine>),
-    /// Statement used by verifier for proof of knowledge of BDDT16 MAC when it knows the secret key
-    PoKBDDT16MACFullVerifier(bddt16_kvac::PoKOfMACFullVerifier<E::G1Affine>),
+    /// For proof of knowledge of BBDT16 MAC.
+    PoKBBDT16MAC(bbdt16_kvac::PoKOfMAC<E::G1Affine>),
+    /// Statement used by verifier for proof of knowledge of BBDT16 MAC when it knows the secret key
+    PoKBBDT16MACFullVerifier(bbdt16_kvac::PoKOfMACFullVerifier<E::G1Affine>),
     /// For proof of knowledge of committed elements in a Pedersen commitment in group G1
     PedersenCommitmentG2(ped_comm::PedersenCommitment<E::G2Affine>),
     /// For proof of membership in VB accumulator in keyed verification model.
@@ -195,8 +195,8 @@ macro_rules! delegate {
                 KBPositiveAccumulatorMembershipCDH,
                 PoKBBSSignatureG1Verifier,
                 PoKBBSSignature23G1Verifier,
-                PoKBDDT16MAC,
-                PoKBDDT16MACFullVerifier,
+                PoKBBDT16MAC,
+                PoKBBDT16MACFullVerifier,
                 PedersenCommitmentG2,
                 VBAccumulatorMembershipKV,
                 VBAccumulatorMembershipKVFullVerifier,
@@ -250,8 +250,8 @@ macro_rules! delegate_reverse {
                 KBPositiveAccumulatorMembershipCDH,
                 PoKBBSSignatureG1Verifier,
                 PoKBBSSignature23G1Verifier,
-                PoKBDDT16MAC,
-                PoKBDDT16MACFullVerifier,
+                PoKBBDT16MAC,
+                PoKBBDT16MACFullVerifier,
                 PedersenCommitmentG2,
                 VBAccumulatorMembershipKV,
                 VBAccumulatorMembershipKVFullVerifier,

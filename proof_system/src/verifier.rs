@@ -1,6 +1,6 @@
 use crate::{
     constants::{
-        BBS_23_LABEL, BBS_PLUS_LABEL, BDDT16_KVAC_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL,
+        BBS_23_LABEL, BBS_PLUS_LABEL, BBDT16_KVAC_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL,
         COMPOSITE_PROOF_LABEL, CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_CDH_MEM_LABEL, KB_UNI_ACCUM_CDH_NON_MEM_LABEL, KB_UNI_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, PS_LABEL, VB_ACCUM_CDH_MEM_LABEL,
@@ -32,7 +32,7 @@ use crate::{
         bbs_23::PoKBBSSigG1SubProtocol as PoKBBSSig23G1SubProtocol,
         bbs_23_ietf::PoKBBSSigIETFG1SubProtocol as PoKBBSSig23IETFG1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol,
-        bddt16_kvac::PoKOfMACSubProtocol,
+        bbdt16_kvac::PoKOfMACSubProtocol,
         bound_check_bpp::BoundCheckBppProtocol,
         bound_check_legogroth16::BoundCheckLegoGrothProtocol,
         bound_check_smc::BoundCheckSmcProtocol,
@@ -815,15 +815,15 @@ impl<E: Pairing> Proof<E> {
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
-                Statement::PoKBDDT16MAC(s) => match proof {
-                    StatementProof::PoKOfBDDT16MAC(p) => {
-                        sig_protocol_chal_gen!(s, s_idx, p, BDDT16_KVAC_LABEL);
+                Statement::PoKBBDT16MAC(s) => match proof {
+                    StatementProof::PoKOfBBDT16MAC(p) => {
+                        sig_protocol_chal_gen!(s, s_idx, p, BBDT16_KVAC_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
-                Statement::PoKBDDT16MACFullVerifier(s) => match proof {
-                    StatementProof::PoKOfBDDT16MAC(p) => {
-                        sig_protocol_chal_gen!(s, s_idx, p, BDDT16_KVAC_LABEL);
+                Statement::PoKBBDT16MACFullVerifier(s) => match proof {
+                    StatementProof::PoKOfBBDT16MAC(p) => {
+                        sig_protocol_chal_gen!(s, s_idx, p, BBDT16_KVAC_LABEL);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -1398,23 +1398,23 @@ impl<E: Pairing> Proof<E> {
                 },
                 Statement::DetachedAccumulatorMembershipVerifier(_s) => (),
                 Statement::DetachedAccumulatorNonMembershipVerifier(_s) => (),
-                Statement::PoKBDDT16MAC(s) => match proof {
-                    StatementProof::PoKOfBDDT16MAC(ref p) => {
+                Statement::PoKBBDT16MAC(s) => match proof {
+                    StatementProof::PoKOfBBDT16MAC(ref p) => {
                         let mac_params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let sp = PoKOfMACSubProtocol::new(s_idx, &s.revealed_messages, mac_params);
                         sp.verify_proof_contribution(&challenge, p).map_err(|e| {
-                            ProofSystemError::BDDT16KVACProofContributionFailed(s_idx as u32, e)
+                            ProofSystemError::BBDT16KVACProofContributionFailed(s_idx as u32, e)
                         })?
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
-                Statement::PoKBDDT16MACFullVerifier(s) => match proof {
-                    StatementProof::PoKOfBDDT16MAC(ref p) => {
+                Statement::PoKBBDT16MACFullVerifier(s) => match proof {
+                    StatementProof::PoKOfBBDT16MAC(ref p) => {
                         let mac_params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let sp = PoKOfMACSubProtocol::new(s_idx, &s.revealed_messages, mac_params);
                         sp.verify_full_proof_contribution(&challenge, p, &s.secret_key)
                             .map_err(|e| {
-                                ProofSystemError::BDDT16KVACProofContributionFailed(s_idx as u32, e)
+                                ProofSystemError::BBDT16KVACProofContributionFailed(s_idx as u32, e)
                             })?
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),

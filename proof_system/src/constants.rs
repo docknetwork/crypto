@@ -21,4 +21,4 @@ pub const KB_UNI_ACCUM_CDH_NON_MEM_LABEL: &'static [u8; 43] =
 pub const KB_POS_ACCUM_MEM_LABEL: &'static [u8; 34] = b"KB-positive-accumulator-membership";
 pub const KB_POS_ACCUM_CDH_MEM_LABEL: &'static [u8; 38] = b"KB-positive-accumulator-CDH-membership";
 
-pub const BDDT16_KVAC_LABEL: &'static [u8; 14] = b"BDDT-2016-KVAC";
+pub const BBDT16_KVAC_LABEL: &'static [u8; 14] = b"BDDT-2016-KVAC";

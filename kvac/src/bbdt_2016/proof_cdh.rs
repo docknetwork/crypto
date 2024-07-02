@@ -12,7 +12,7 @@
 //! 5. Verifier uses the secret key `y` to check `C = B_0 * y` and the proofs of knowledge.
 
 use crate::{
-    bddt_2016::{
+    bbdt_2016::{
         keyed_proof::KeyedProof,
         mac::MAC,
         setup::{MACParams, SecretKey},

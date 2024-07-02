@@ -13,6 +13,6 @@
 //! (eg. to get paid by the verifier) while still not harming the user's privacy as it doesn't learn any revealed attributes. The first
 //! verifier, i.e. the issuer can also provide a proof of validity or invalidity to the second verifier.
 
-pub mod bddt_2016;
+pub mod bbdt_2016;
 pub mod cddh_2019;
 pub mod error;

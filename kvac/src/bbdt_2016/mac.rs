@@ -1,7 +1,7 @@
 //! MAC_BB - A MAC based on Boneh-Boyen Signatures. Follows section 3.2 of the paper
 
 use crate::{
-    bddt_2016::setup::{MACParams, PublicKey, SecretKey},
+    bbdt_2016::setup::{MACParams, PublicKey, SecretKey},
     error::KVACError,
 };
 use ark_ec::{AffineRepr, CurveGroup};

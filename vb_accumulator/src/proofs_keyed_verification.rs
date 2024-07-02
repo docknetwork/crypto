@@ -27,7 +27,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use kvac::bddt_2016::keyed_proof::{
+use kvac::bbdt_2016::keyed_proof::{
     KeyedProof, ProofOfInvalidityOfKeyedProof, ProofOfValidityOfKeyedProof,
 };
 use schnorr_pok::{

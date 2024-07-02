@@ -1,7 +1,7 @@
 //! Protocol to prove knowledge of the MAC. This is the "Show" protocol described in Fig.2 (2) in the paper
 
 use crate::{
-    bddt_2016::{
+    bbdt_2016::{
         keyed_proof::KeyedProof,
         mac::MAC,
         setup::{MACParams, SecretKey},

@@ -5,7 +5,7 @@ use ark_std::{
     UniformRand,
 };
 use blake2::Blake2b512;
-use kvac::bddt_2016::mac::MAC;
+use kvac::bbdt_2016::mac::MAC;
 use proof_system::{
     meta_statement::{EqualWitnesses, MetaStatements, WitnessRef},
     prelude::Witness,
@@ -19,12 +19,12 @@ use proof_system::{
             KBUniversalAccumulatorNonMembershipKVFullVerifier, VBAccumulatorMembershipKV,
             VBAccumulatorMembershipKVFullVerifier,
         },
-        bddt16_kvac::{PoKOfMAC, PoKOfMACFullVerifier},
+        bbdt16_kvac::{PoKOfMAC, PoKOfMACFullVerifier},
         ped_comm::PedersenCommitment as PedersenCommitmentStmt,
         Statements,
     },
     witness::{
-        KBUniMembership, KBUniNonMembership, Membership as MembershipWit, PoKOfBDDT16MAC, Witnesses,
+        KBUniMembership, KBUniNonMembership, Membership as MembershipWit, PoKOfBBDT16MAC, Witnesses,
     },
 };
 use std::{
@@ -33,7 +33,7 @@ use std::{
 };
 use test_utils::{
     accumulators::{setup_kb_universal_accum_given_domain, setup_positive_accum},
-    kvac::bddt16_mac_setup,
+    kvac::bbdt16_mac_setup,
     test_serialization,
 };
 use vb_accumulator::positive::Accumulator;
@@ -44,13 +44,13 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
     let mut rng = StdRng::seed_from_u64(0u64);
 
     let msg_count_1 = 6;
-    let (msgs_1, params_1, sk_1, mac_1) = bddt16_mac_setup(&mut rng, msg_count_1 as u32);
+    let (msgs_1, params_1, sk_1, mac_1) = bbdt16_mac_setup(&mut rng, msg_count_1 as u32);
 
     let msg_count_2 = 10;
-    let (mut msgs_2, params_2, sk_2, _) = bddt16_mac_setup(&mut rng, msg_count_2 as u32);
+    let (mut msgs_2, params_2, sk_2, _) = bbdt16_mac_setup(&mut rng, msg_count_2 as u32);
 
     let msg_count_3 = 12;
-    let (mut msgs_3, params_3, sk_3, _) = bddt16_mac_setup(&mut rng, msg_count_3 as u32);
+    let (mut msgs_3, params_3, sk_3, _) = bbdt16_mac_setup(&mut rng, msg_count_3 as u32);
 
     // Make 3 messages same
     msgs_2[9] = msgs_1[5];
@@ -233,15 +233,15 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
 
     // Prover now creates/loads it witnesses corresponding to the proof spec
     let mut witnesses = Witnesses::new();
-    witnesses.add(PoKOfBDDT16MAC::new_as_witness(
+    witnesses.add(PoKOfBBDT16MAC::new_as_witness(
         mac_1,
         unrevealed_msgs_1.clone(),
     ));
-    witnesses.add(PoKOfBDDT16MAC::new_as_witness(
+    witnesses.add(PoKOfBBDT16MAC::new_as_witness(
         mac_2,
         unrevealed_msgs_2.clone(),
     ));
-    witnesses.add(PoKOfBDDT16MAC::new_as_witness(mac_3, unrevealed_msgs_3));
+    witnesses.add(PoKOfBBDT16MAC::new_as_witness(mac_3, unrevealed_msgs_3));
     witnesses.add(MembershipWit::new_as_witness(
         accum_member_1,
         mem_1_wit.clone(),
@@ -331,8 +331,8 @@ fn pok_of_knowledge_of_macs_with_reusing_setup_params() {
     let mut rng = StdRng::seed_from_u64(0u64);
 
     let msg_count = 5;
-    let (msgs_1, params_1, sk_1, mac_1) = bddt16_mac_setup(&mut rng, msg_count as u32);
-    let (msgs_2, params_2, sk_2, mac_2) = bddt16_mac_setup(&mut rng, msg_count as u32);
+    let (msgs_1, params_1, sk_1, mac_1) = bbdt16_mac_setup(&mut rng, msg_count as u32);
+    let (msgs_2, params_2, sk_2, mac_2) = bbdt16_mac_setup(&mut rng, msg_count as u32);
 
     let msgs_3: Vec<Fr> = (0..msg_count).map(|_| Fr::rand(&mut rng)).collect();
     let mac_3 = MAC::<G1Affine>::new(&mut rng, &msgs_3, &sk_1, &params_1).unwrap();
@@ -340,8 +340,8 @@ fn pok_of_knowledge_of_macs_with_reusing_setup_params() {
     let mac_4 = MAC::<G1Affine>::new(&mut rng, &msgs_4, &sk_2, &params_2).unwrap();
 
     let mut all_setup_params = vec![];
-    all_setup_params.push(SetupParams::BDDT16MACParams(params_1.clone()));
-    all_setup_params.push(SetupParams::BDDT16MACParams(params_2.clone()));
+    all_setup_params.push(SetupParams::BBDT16MACParams(params_1.clone()));
+    all_setup_params.push(SetupParams::BBDT16MACParams(params_2.clone()));
 
     test_serialization!(Vec<SetupParams<Bls12_381>>, all_setup_params);
 
@@ -364,7 +364,7 @@ fn pok_of_knowledge_of_macs_with_reusing_setup_params() {
     test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
     let mut witnesses = Witnesses::new();
-    witnesses.add(PoKOfBDDT16MAC::new_as_witness(
+    witnesses.add(PoKOfBBDT16MAC::new_as_witness(
         mac_1,
         msgs_1
             .iter()
@@ -372,7 +372,7 @@ fn pok_of_knowledge_of_macs_with_reusing_setup_params() {
             .map(|(i, m)| (i, *m))
             .collect::<BTreeMap<_, _>>(),
     ));
-    witnesses.add(PoKOfBDDT16MAC::new_as_witness(
+    witnesses.add(PoKOfBBDT16MAC::new_as_witness(
         mac_3,
         msgs_3
             .iter()
@@ -380,7 +380,7 @@ fn pok_of_knowledge_of_macs_with_reusing_setup_params() {
             .map(|(i, m)| (i, *m))
             .collect::<BTreeMap<_, _>>(),
     ));
-    witnesses.add(PoKOfBDDT16MAC::new_as_witness(
+    witnesses.add(PoKOfBBDT16MAC::new_as_witness(
         mac_2,
         msgs_2
             .iter()
@@ -388,7 +388,7 @@ fn pok_of_knowledge_of_macs_with_reusing_setup_params() {
             .map(|(i, m)| (i, *m))
             .collect::<BTreeMap<_, _>>(),
     ));
-    witnesses.add(PoKOfBDDT16MAC::new_as_witness(
+    witnesses.add(PoKOfBBDT16MAC::new_as_witness(
         mac_4,
         msgs_4
             .iter()
@@ -463,7 +463,7 @@ fn requesting_blind_mac() {
     let total_msg_count = 10;
 
     // Setup params and messages
-    let (msgs, mac_params, sk, _) = bddt16_mac_setup(&mut rng, total_msg_count as u32);
+    let (msgs, mac_params, sk, _) = bbdt16_mac_setup(&mut rng, total_msg_count as u32);
 
     // Message indices hidden from signer. Here signer does not know msgs[0], msgs[4] and msgs[6]
     let committed_indices = vec![0, 4, 6].into_iter().collect::<BTreeSet<usize>>();

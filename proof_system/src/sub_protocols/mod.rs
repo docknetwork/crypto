@@ -3,7 +3,7 @@ pub mod accumulator;
 pub mod bbs_plus;
 pub mod bbs_23;
 pub mod bbs_23_ietf;
-pub mod bddt16_kvac;
+pub mod bbdt16_kvac;
 pub mod bound_check_bpp;
 pub mod bound_check_legogroth16;
 pub mod bound_check_smc;
@@ -37,7 +37,7 @@ use crate::sub_protocols::{
         KBPositiveAccumulatorMembershipSubProtocol, KBUniversalAccumulatorMembershipSubProtocol,
         KBUniversalAccumulatorNonMembershipSubProtocol,
     },
-    bddt16_kvac::PoKOfMACSubProtocol,
+    bbdt16_kvac::PoKOfMACSubProtocol,
     bound_check_bpp::BoundCheckBppProtocol,
     bound_check_legogroth16::BoundCheckLegoGrothProtocol,
     bound_check_smc::BoundCheckSmcProtocol,
@@ -90,7 +90,7 @@ pub enum SubProtocol<'a, E: Pairing> {
     ),
     KBPositiveAccumulatorMembership(KBPositiveAccumulatorMembershipSubProtocol<'a, E>),
     KBPositiveAccumulatorMembershipCDH(KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E>),
-    PoKOfBDDT16MAC(PoKOfMACSubProtocol<'a, E::G1Affine>),
+    PoKOfBBDT16MAC(PoKOfMACSubProtocol<'a, E::G1Affine>),
     PoKDiscreteLogsG2(schnorr::SchnorrProtocol<'a, E::G2Affine>),
     VBAccumulatorMembershipKV(VBAccumulatorMembershipKVSubProtocol<E::G1Affine>),
     KBUniversalAccumulatorMembershipKV(KBUniversalAccumulatorMembershipKVSubProtocol<E::G1Affine>),
@@ -127,7 +127,7 @@ macro_rules! delegate {
                 KBUniversalAccumulatorNonMembershipCDH,
                 KBPositiveAccumulatorMembership,
                 KBPositiveAccumulatorMembershipCDH,
-                PoKOfBDDT16MAC,
+                PoKOfBBDT16MAC,
                 PoKDiscreteLogsG2,
                 VBAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKV,

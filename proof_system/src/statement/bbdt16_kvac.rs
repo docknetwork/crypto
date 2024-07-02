@@ -3,7 +3,7 @@ use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, vec::Vec};
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use kvac::bddt_2016::setup::{MACParams, SecretKey};
+use kvac::bbdt_2016::setup::{MACParams, SecretKey};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 
@@ -39,7 +39,7 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         params: MACParams<G>,
         revealed_messages: BTreeMap<usize, G::ScalarField>,
     ) -> Statement<E> {
-        Statement::PoKBDDT16MAC(Self {
+        Statement::PoKBBDT16MAC(Self {
             revealed_messages,
             mac_params: Some(params),
             mac_params_ref: None,
@@ -50,7 +50,7 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         params_ref: usize,
         revealed_messages: BTreeMap<usize, G::ScalarField>,
     ) -> Statement<E> {
-        Statement::PoKBDDT16MAC(Self {
+        Statement::PoKBBDT16MAC(Self {
             revealed_messages,
             mac_params: None,
             mac_params_ref: Some(params_ref),
@@ -66,7 +66,7 @@ impl<G: AffineRepr> PoKOfMAC<G> {
             setup_params,
             &self.mac_params,
             self.mac_params_ref,
-            BDDT16MACParams,
+            BBDT16MACParams,
             IncompatibleBBSPlusSetupParamAtIndex,
             st_idx
         )
@@ -79,7 +79,7 @@ impl<G: AffineRepr> PoKOfMACFullVerifier<G> {
         params: MACParams<G>,
         revealed_messages: BTreeMap<usize, G::ScalarField>,
     ) -> Statement<E> {
-        Statement::PoKBDDT16MACFullVerifier(Self {
+        Statement::PoKBBDT16MACFullVerifier(Self {
             revealed_messages,
             mac_params: Some(params),
             mac_params_ref: None,
@@ -92,7 +92,7 @@ impl<G: AffineRepr> PoKOfMACFullVerifier<G> {
         params_ref: usize,
         revealed_messages: BTreeMap<usize, G::ScalarField>,
     ) -> Statement<E> {
-        Statement::PoKBDDT16MACFullVerifier(Self {
+        Statement::PoKBBDT16MACFullVerifier(Self {
             revealed_messages,
             mac_params: None,
             mac_params_ref: Some(params_ref),
@@ -109,7 +109,7 @@ impl<G: AffineRepr> PoKOfMACFullVerifier<G> {
             setup_params,
             &self.mac_params,
             self.mac_params_ref,
-            BDDT16MACParams,
+            BBDT16MACParams,
             IncompatibleBBSPlusSetupParamAtIndex,
             st_idx
         )

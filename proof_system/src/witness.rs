@@ -6,7 +6,7 @@ use bbs_plus::{
 };
 use coconut_crypto::Signature;
 use dock_crypto_utils::serde_utils::*;
-use kvac::bddt_2016::mac::MAC;
+use kvac::bbdt_2016::mac::MAC;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
@@ -38,7 +38,7 @@ pub enum Witness<E: Pairing> {
     KBUniAccumulatorMembership(KBUniMembership<E::G1Affine>),
     KBUniAccumulatorNonMembership(KBUniNonMembership<E::G1Affine>),
     KBPosAccumulatorMembership(KBPosMembership<E>),
-    PoKOfBDDT16MAC(PoKOfBDDT16MAC<E::G1Affine>),
+    PoKOfBBDT16MAC(PoKOfBBDT16MAC<E::G1Affine>),
 }
 
 macro_rules! delegate {
@@ -61,7 +61,7 @@ macro_rules! delegate {
                 KBUniAccumulatorMembership,
                 KBUniAccumulatorNonMembership,
                 KBPosAccumulatorMembership,
-                PoKOfBDDT16MAC
+                PoKOfBBDT16MAC
             : $($tt)+
         }
     }}
@@ -87,7 +87,7 @@ macro_rules! delegate_reverse {
                 KBUniAccumulatorMembership,
                 KBUniAccumulatorNonMembership,
                 KBPosAccumulatorMembership,
-                PoKOfBDDT16MAC
+                PoKOfBBDT16MAC
             : $($tt)+
         }
 
@@ -474,18 +474,18 @@ impl<E: Pairing> R1CSCircomWitness<E> {
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct PoKOfBDDT16MAC<G: AffineRepr> {
+pub struct PoKOfBBDT16MAC<G: AffineRepr> {
     pub mac: MAC<G>,
     #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
     pub unrevealed_messages: BTreeMap<usize, G::ScalarField>,
 }
 
-impl<G: AffineRepr> PoKOfBDDT16MAC<G> {
+impl<G: AffineRepr> PoKOfBBDT16MAC<G> {
     pub fn new_as_witness<E: Pairing<G1Affine = G>>(
         mac: MAC<G>,
         unrevealed_messages: BTreeMap<usize, G::ScalarField>,
     ) -> Witness<E> {
-        Witness::PoKOfBDDT16MAC(PoKOfBDDT16MAC {
+        Witness::PoKOfBBDT16MAC(PoKOfBBDT16MAC {
             mac,
             unrevealed_messages,
         })

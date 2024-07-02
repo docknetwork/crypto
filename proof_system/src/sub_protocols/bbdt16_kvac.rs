@@ -13,7 +13,7 @@ use dock_crypto_utils::{
 };
 use itertools::Itertools;
 use kvac::{
-    bddt_2016::{
+    bbdt_2016::{
         proof_cdh::{PoKOfMAC, PoKOfMACProtocol},
         setup::{MACParams, SecretKey},
     },
@@ -46,7 +46,7 @@ impl<'a, G: AffineRepr> PoKOfMACSubProtocol<'a, G> {
         &mut self,
         rng: &mut R,
         blindings: BTreeMap<usize, G::ScalarField>,
-        witness: crate::witness::PoKOfBDDT16MAC<G>,
+        witness: crate::witness::PoKOfBBDT16MAC<G>,
     ) -> Result<(), ProofSystemError> {
         if self.protocol.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -55,7 +55,7 @@ impl<'a, G: AffineRepr> PoKOfMACSubProtocol<'a, G> {
         expect_equality!(
             total_message_count,
             self.mac_params.supported_message_count(),
-            ProofSystemError::BDDT16KVACProtocolInvalidMessageCount
+            ProofSystemError::BBDT16KVACProtocolInvalidMessageCount
         );
 
         // Create messages from revealed messages in statement and unrevealed in witness
@@ -120,7 +120,7 @@ impl<'a, G: AffineRepr> PoKOfMACSubProtocol<'a, G> {
         }
         let protocol = self.protocol.take().unwrap();
         let proof = protocol.gen_proof(challenge)?;
-        Ok(StatementProof::PoKOfBDDT16MAC(proof))
+        Ok(StatementProof::PoKOfBBDT16MAC(proof))
     }
 
     pub fn verify_proof_contribution(

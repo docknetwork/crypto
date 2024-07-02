@@ -8,7 +8,7 @@ use bbs_plus::prelude::{PoKOfSignature23G1Proof, PoKOfSignatureG1Proof};
 use bulletproofs_plus_plus::prelude::ProofArbitraryRange;
 use coconut_crypto::SignaturePoK as PSSignaturePoK;
 use dock_crypto_utils::{ecies, serde_utils::ArkObjectBytes};
-use kvac::bddt_2016::proof_cdh::PoKOfMAC;
+use kvac::bbdt_2016::proof_cdh::PoKOfMAC;
 use saver::encryption::Ciphertext;
 use schnorr_pok::SchnorrResponse;
 use serde::{Deserialize, Serialize};
@@ -57,7 +57,7 @@ pub enum StatementProof<E: Pairing> {
     KBUniversalAccumulatorNonMembershipCDH(vb_accumulator::kb_universal_accumulator::proofs_cdh::KBUniversalAccumulatorNonMembershipProof<E>),
     KBPositiveAccumulatorMembership(#[serde_as(as = "ArkObjectBytes")] KBPositiveAccumulatorMembershipProof<E>),
     KBPositiveAccumulatorMembershipCDH(#[serde_as(as = "ArkObjectBytes")] KBPositiveAccumulatorMembershipProofCDH<E>),
-    PoKOfBDDT16MAC(PoKOfMAC<E::G1Affine>),
+    PoKOfBBDT16MAC(PoKOfMAC<E::G1Affine>),
     PedersenCommitmentG2(PedersenCommitmentProof<E::G2Affine>),
     VBAccumulatorMembershipKV(vb_accumulator::proofs_keyed_verification::MembershipProof<E::G1Affine>),
     KBUniversalAccumulatorMembershipKV(vb_accumulator::kb_universal_accumulator::proofs_keyed_verification::KBUniversalAccumulatorMembershipProof<E::G1Affine>),
@@ -96,7 +96,7 @@ macro_rules! delegate {
                 KBUniversalAccumulatorNonMembershipCDH,
                 KBPositiveAccumulatorMembership,
                 KBPositiveAccumulatorMembershipCDH,
-                PoKOfBDDT16MAC,
+                PoKOfBBDT16MAC,
                 PedersenCommitmentG2,
                 VBAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKV,
@@ -137,7 +137,7 @@ macro_rules! delegate_reverse {
                 KBUniversalAccumulatorNonMembershipCDH,
                 KBPositiveAccumulatorMembership,
                 KBPositiveAccumulatorMembershipCDH,
-                PoKOfBDDT16MAC,
+                PoKOfBBDT16MAC,
                 PedersenCommitmentG2,
                 VBAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKV,

@@ -17,7 +17,7 @@ use bbs_plus::prelude::{
 };
 use bulletproofs_plus_plus::setup::SetupParams as BppSetupParams;
 use dock_crypto_utils::{commitment::PedersenCommitmentKey, serde_utils::ArkObjectBytes};
-use kvac::bddt_2016::setup::MACParams;
+use kvac::bbdt_2016::setup::MACParams;
 use legogroth16::{
     circom::R1CS,
     data_structures::{ProvingKey as LegoSnarkProvingKey, VerifyingKey as LegoSnarkVerifyingKey},
@@ -71,7 +71,7 @@ pub enum SetupParams<E: Pairing> {
     BBSigProvingKey(ProvingKey<E::G1Affine>),
     KBPositiveAccumulatorParams(KBAccumParams<E>),
     KBPositiveAccumulatorPublicKey(KBAccumPublicKey<E>),
-    BDDT16MACParams(MACParams<E::G1Affine>),
+    BBDT16MACParams(MACParams<E::G1Affine>),
     PedersenCommitmentKeyG2(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::G2Affine>),
     CommitmentKeyG2(#[serde_as(as = "ArkObjectBytes")] PedersenCommitmentKey<E::G2Affine>),
 }
@@ -107,7 +107,7 @@ macro_rules! delegate {
                 BBSigProvingKey,
                 KBPositiveAccumulatorParams,
                 KBPositiveAccumulatorPublicKey,
-                BDDT16MACParams,
+                BBDT16MACParams,
                 PedersenCommitmentKeyG2,
                 CommitmentKeyG2
             : $($tt)+
@@ -146,7 +146,7 @@ macro_rules! delegate_reverse {
                 BBSigProvingKey,
                 KBPositiveAccumulatorParams,
                 KBPositiveAccumulatorPublicKey,
-                BDDT16MACParams,
+                BBDT16MACParams,
                 PedersenCommitmentKeyG2,
                 CommitmentKeyG2
             : $($tt)+

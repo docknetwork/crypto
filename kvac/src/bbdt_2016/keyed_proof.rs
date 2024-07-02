@@ -220,7 +220,7 @@ impl<G: AffineRepr> ProofOfInvalidityOfKeyedProof<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bddt_2016::setup::{MACParams, PublicKey, SecretKey};
+    use crate::bbdt_2016::setup::{MACParams, PublicKey, SecretKey};
     use ark_bls12_381::{Bls12_381, G1Affine};
     use ark_ec::CurveGroup;
     use ark_ff::Field;
