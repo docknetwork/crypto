@@ -38,7 +38,6 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
             commitments: None,
             bpp_randomness: None,
             values: None,
-            // bpp_proof: None,
             sp1: None,
             sp2: None,
         }
@@ -86,7 +85,7 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         blindings_for_bpp: (G::ScalarField, G::ScalarField),
         commitments: &[G],
     ) -> Result<(), ProofSystemError> {
-        // blinding used to prove knowledge of message in `snark_proof.d`. The caller of this method ensures
+        // blinding used to prove knowledge of message. The caller of this method ensures
         // that this will be same as the one used proving knowledge of the corresponding message in BBS+
         // signature, thus allowing them to be proved equal.
         let blinding = if blinding.is_none() {

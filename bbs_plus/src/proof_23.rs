@@ -13,8 +13,10 @@
 //! that `r` and Schnorr responses for the equal messages `m_k` are equal. i.e. for known messages `J_1`,
 //! `J_2`, hidden messages `I_1`, `I_2` for signatures `sigma_1`, `sigma_2` with equal messages `m_k` being
 //! a subset of `I_1`, `I_2`, `r` and `m_k` are same in following 2 relations:
-//! `{B_1}_bar = C_{J_1}(m) * r + \sum_{i in I_1}(h_i * (m_i*r)) + {A_1}_bar * -e_1`
-//! `{B_2}_bar = C_{J_2}(m) * r + \sum_{i in I_2}(h_i * (m_i*r)) + {A_2}_bar * -e_2`
+//!
+//! - `{B_1}_bar = C_{J_1}(m) * r + \sum_{i in I_1}(h_i * (m_i*r)) + {A_1}_bar * -e_1`
+//! - `{B_2}_bar = C_{J_2}(m) * r + \sum_{i in I_2}(h_i * (m_i*r)) + {A_2}_bar * -e_2`
+//!
 //! Its important to prove that `r` is same in `C_{J_1}(m)` and `C_{J_2}(m)` otherwise two unequal
 //! messages `m_a` and `m_b` can be proven equal by using signature randomizers `r_1` and `r2` such that `m_a * r_1 = m_b * r_2`
 

@@ -1,6 +1,6 @@
 use crate::{
     constants::{
-        BBS_23_LABEL, BBS_PLUS_LABEL, BBDT16_KVAC_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL,
+        BBDT16_KVAC_LABEL, BBS_23_LABEL, BBS_PLUS_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL,
         COMPOSITE_PROOF_LABEL, CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_CDH_MEM_LABEL, KB_UNI_ACCUM_CDH_NON_MEM_LABEL, KB_UNI_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, PS_LABEL, VB_ACCUM_CDH_MEM_LABEL,
@@ -29,10 +29,10 @@ use crate::{
             KBUniversalAccumulatorNonMembershipSubProtocol, VBAccumulatorMembershipSubProtocol,
             VBAccumulatorNonMembershipSubProtocol,
         },
+        bbdt16_kvac::PoKOfMACSubProtocol,
         bbs_23::PoKBBSSigG1SubProtocol as PoKBBSSig23G1SubProtocol,
         bbs_23_ietf::PoKBBSSigIETFG1SubProtocol as PoKBBSSig23IETFG1SubProtocol,
         bbs_plus::PoKBBSSigG1SubProtocol,
-        bbdt16_kvac::PoKOfMACSubProtocol,
         bound_check_bpp::BoundCheckBppProtocol,
         bound_check_legogroth16::BoundCheckLegoGrothProtocol,
         bound_check_smc::BoundCheckSmcProtocol,

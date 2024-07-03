@@ -1,9 +1,9 @@
 pub mod accumulator;
 #[macro_use]
 pub mod bbs_plus;
+pub mod bbdt16_kvac;
 pub mod bbs_23;
 pub mod bbs_23_ietf;
-pub mod bbdt16_kvac;
 pub mod bound_check_bpp;
 pub mod bound_check_legogroth16;
 pub mod bound_check_smc;
