@@ -27,6 +27,8 @@ ark-bls12-381.workspace = true
 ark-ed25519 = { version = "^0.4.0", default-features = false }
 ark-curve25519 = { version = "^0.4.0", default-features = false }
 ark-secp256k1 = { version = "^0.4.0", default-features = false }
+ark-secp256r1 = { version = "^0.4.0", default-features = false }
+sha2 = {version = "0.10.8", default-features = false}
 
 [features]
 default = [ "parallel"]

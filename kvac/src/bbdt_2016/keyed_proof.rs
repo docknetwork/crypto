@@ -175,6 +175,16 @@ impl<G: AffineRepr> ProofOfValidityOfKeyedProof<G> {
         pk: impl Into<&'a G>,
         g_0: impl Into<&'a G>,
     ) -> Result<(), KVACError> {
+        self.verify_given_destructured::<D>(&proof.B_0, &proof.C, pk, g_0)
+    }
+
+    pub fn verify_given_destructured<'a, D: Digest>(
+        &self,
+        B_0: &G,
+        C: &G,
+        pk: impl Into<&'a G>,
+        g_0: impl Into<&'a G>,
+    ) -> Result<(), KVACError> {
         if self.sc_proof.response != self.sc_pk.response {
             return Err(KVACError::InvalidKeyedProof);
         }
@@ -185,13 +195,13 @@ impl<G: AffineRepr> ProofOfValidityOfKeyedProof<G> {
             .challenge_contribution(g_0, pk, &mut challenge_bytes)
             .unwrap();
         self.sc_proof
-            .challenge_contribution(&proof.B_0, &proof.C, &mut challenge_bytes)
+            .challenge_contribution(B_0, C, &mut challenge_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         if !self.sc_pk.verify(pk, g_0, &challenge) {
             return Err(KVACError::InvalidKeyedProof);
         }
-        if !self.sc_proof.verify(&proof.C, &proof.B_0, &challenge) {
+        if !self.sc_proof.verify(C, B_0, &challenge) {
             return Err(KVACError::InvalidKeyedProof);
         }
         Ok(())

@@ -14,5 +14,6 @@
 //! verifier, i.e. the issuer can also provide a proof of validity or invalidity to the second verifier.
 
 pub mod bbdt_2016;
+pub mod bbs_sharp;
 pub mod cddh_2019;
 pub mod error;

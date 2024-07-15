@@ -45,6 +45,7 @@ pub mod poly;
 /// An efficient way to check several equality relations involving pairings by combining the relations
 /// in a random linear combination and doing a multi-pairing check. Relies on Schwartz–Zippel lemma.
 pub mod randomized_pairing_check;
+pub mod schnorr_signature;
 pub mod signature;
 /// Solving discrete log using Baby Step Giant Step
 pub mod solve_discrete_log;

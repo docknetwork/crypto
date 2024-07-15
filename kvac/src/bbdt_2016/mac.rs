@@ -208,7 +208,7 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
             return Err(KVACError::InvalidMACProof);
         }
         let params = params.as_ref();
-        // B = h + g * s + g_1 * m_1 + g_2 * m_2 + ... g_n * m_n
+        // B = h + g * s + g_1 * m_1 + g_2 * m_2 + ... g_n * m_n - A * e
         let B =
             (params.b(messages.iter().enumerate(), &mac.s)? + mac.A * mac.e.neg()).into_affine();
 

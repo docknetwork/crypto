@@ -28,6 +28,7 @@ Library providing privacy enhancing cryptographic primitives.
 9. [LegoGroth16](./legogroth16/).  LegoGroth16, the [LegoSNARK](https://eprint.iacr.org/2019/142) variant of [Groth16](https://eprint.iacr.org/2016/260) zkSNARK proof system
 10. [Oblivious Transfer (OT) and Oblivious Transfer Extensions (OTE)](./oblivious_transfer).
 11. [Short group signatures](./short_group_sig/). BB signature and weak-BB signature and their proofs of knowledge based on the papers [Short Signatures Without Random Oracles](https://eprint.iacr.org/2004/171) and [Scalable Revocation Scheme for Anonymous Credentials Based on n-times Unlinkable Proofs](http://library.usc.edu.ph/ACM/SIGSAC%202017/wpes/p123.pdf).
+12. [Keyed-Verification Anonymous Credentials (KVAC)](./kvac). Implements Keyed-Verification Anonymous Credentials (KVAC) schemes.
 
 ## Composite proof system
 
