@@ -255,9 +255,6 @@ mod tests {
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
         let proof = protocol.gen_proof(&challenge_prover).unwrap();
-        let mut bytes = vec![];
-        proof.serialize_compressed(&mut bytes).unwrap();
-        println!("{:?}", bytes);
         let mut chal_bytes_verifier = vec![];
         proof
             .challenge_contribution(&pk, params.g1, &mut chal_bytes_verifier)

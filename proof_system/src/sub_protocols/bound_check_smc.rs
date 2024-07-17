@@ -1,6 +1,11 @@
 use ark_ec::pairing::Pairing;
 use ark_serialize::CanonicalSerialize;
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, UniformRand};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+    rand::RngCore,
+    vec, UniformRand,
+};
 
 use crate::{
     error::ProofSystemError,
@@ -160,6 +165,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
                 BoundCheckSmcInnerProof::CLS(p)
             }
         };
+        let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::BoundCheckSmc(BoundCheckSmcProof {
             proof,
             comm: self.comm.take().unwrap(),
@@ -167,7 +173,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
                 .sp
                 .take()
                 .unwrap()
-                .gen_proof_contribution_as_struct(challenge)?,
+                .gen_partial_proof_contribution_as_struct(challenge, &skip_for)?,
         }))
     }
 
@@ -178,6 +184,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
         comm_key_as_slice: &[E::G1Affine],
         params: SmcParamsWithPairingAndCommitmentKey<E>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         let comm_key = &self.params_and_comm_key.comm_key;
         match &proof.proof {
@@ -239,8 +246,8 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
 
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key_as_slice, proof.comm);
-
-        sp.verify_proof_contribution(challenge, &proof.sp)
+        let missing_resp = BTreeMap::from([(0, resp_for_message)]);
+        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

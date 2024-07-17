@@ -8,7 +8,7 @@ use crate::{
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
-use schnorr_pok::discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol};
+use schnorr_pok::{discrete_log::PokTwoDiscreteLogsProtocol, partial::Partial2PokTwoDiscreteLogs};
 use short_group_sig::{
     weak_bb_sig::SecretKey,
     weak_bb_sig_pok_kv::{PoKOfSignatureG1KV, PoKOfSignatureG1KVProtocol},
@@ -23,7 +23,7 @@ pub struct SetMembershipCheckWithKVProtocol<E: Pairing> {
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SetMembershipCheckWithKVProof<E: Pairing> {
     pub pok_sig: PoKOfSignatureG1KV<E::G1Affine>,
-    pub sc: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc: Partial2PokTwoDiscreteLogs<E::G1Affine>,
 }
 
 impl<E: Pairing> SetMembershipCheckWithKVProtocol<E> {
@@ -65,7 +65,7 @@ impl<E: Pairing> SetMembershipCheckWithKVProtocol<E> {
     pub fn gen_proof(self, challenge: &E::ScalarField) -> SetMembershipCheckWithKVProof<E> {
         SetMembershipCheckWithKVProof {
             pok_sig: self.pok_sig.gen_proof(challenge),
-            sc: self.sc.gen_proof(challenge),
+            sc: self.sc.gen_partial2_proof(challenge),
         }
     }
 }
@@ -82,13 +82,13 @@ impl<E: Pairing> SetMembershipCheckWithKVProof<E> {
         // Check commitment * challenge + g * z_sigma + h * z_r == D
         self.pok_sig
             .verify(challenge, secret_key, &params.bb_sig_params.g1)?;
-        if !self
-            .sc
-            .verify(commitment, &comm_key.g, &comm_key.h, challenge)
-        {
-            return Err(SmcRangeProofError::InvalidSetMembershipProof);
-        }
-        if *self.pok_sig.get_resp_for_message() != self.sc.response1 {
+        if !self.sc.verify(
+            commitment,
+            &comm_key.g,
+            &comm_key.h,
+            challenge,
+            self.pok_sig.get_resp_for_message().unwrap(),
+        ) {
             return Err(SmcRangeProofError::InvalidSetMembershipProof);
         }
         Ok(())

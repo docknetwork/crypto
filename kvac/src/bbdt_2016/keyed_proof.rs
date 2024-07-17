@@ -9,6 +9,7 @@ use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
     inequality::{UnknownDiscreteLogInequalityProof, UnknownDiscreteLogInequalityProtocol},
+    partial::PartialPokDiscreteLog,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -65,7 +66,7 @@ pub struct ProofOfValidityOfKeyedProof<G: AffineRepr> {
     /// Proof of knowledge of opening of `PublicKey`
     pub sc_pk: PokDiscreteLog<G>,
     /// Proof of knowledge of secret key in `KeyedProof`
-    pub sc_proof: PokDiscreteLog<G>,
+    pub sc_proof: PartialPokDiscreteLog<G>,
 }
 
 /// A proof that the `KeyedProof` cannot be verified successfully. It proves that DLOG of `C` wrt `B_0`
@@ -144,7 +145,7 @@ impl<G: AffineRepr> KeyedProof<G> {
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         let sc_pk = sc_pk.gen_proof(&challenge);
-        let sc_proof = sc_proof.gen_proof(&challenge);
+        let sc_proof = sc_proof.gen_partial_proof();
         ProofOfValidityOfKeyedProof { sc_pk, sc_proof }
     }
 
@@ -185,9 +186,6 @@ impl<G: AffineRepr> ProofOfValidityOfKeyedProof<G> {
         pk: impl Into<&'a G>,
         g_0: impl Into<&'a G>,
     ) -> Result<(), KVACError> {
-        if self.sc_proof.response != self.sc_pk.response {
-            return Err(KVACError::InvalidKeyedProof);
-        }
         let pk = pk.into();
         let g_0 = g_0.into();
         let mut challenge_bytes = vec![];
@@ -201,7 +199,10 @@ impl<G: AffineRepr> ProofOfValidityOfKeyedProof<G> {
         if !self.sc_pk.verify(pk, g_0, &challenge) {
             return Err(KVACError::InvalidKeyedProof);
         }
-        if !self.sc_proof.verify(C, B_0, &challenge) {
+        if !self
+            .sc_proof
+            .verify(C, B_0, &challenge, &self.sc_pk.response)
+        {
             return Err(KVACError::InvalidKeyedProof);
         }
         Ok(())

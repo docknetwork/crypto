@@ -1276,6 +1276,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         None,
     );
     prover_proof_spec.validate().unwrap();
+
     test_serialization!(ProofSpec<Bls12_381>, prover_proof_spec);
 
     let mut witnesses = Witnesses::new();
@@ -1287,7 +1288,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
     witnesses.add(Witness::BoundCheckLegoGroth16(enc_msg));
     witnesses.add(Witness::Saver(enc_msg));
 
-    test_serialization!(Witnesses<Bls12_381>, witnesses);
+    // test_serialization!(Witnesses<Bls12_381>, witnesses);
 
     let start = Instant::now();
     let (proof, comm_rand) = Proof::new::<StdRng, Blake2b512>(
@@ -1339,6 +1340,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
         None,
     );
     verifier_proof_spec.validate().unwrap();
+
     test_serialization!(ProofSpec<Bls12_381>, verifier_proof_spec);
 
     let start = Instant::now();

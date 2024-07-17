@@ -93,13 +93,13 @@ pub struct PokTwoDiscreteLogsProtocol<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
     #[serde_as(as = "ArkObjectBytes")]
-    blinding1: G::ScalarField,
+    pub(crate) blinding1: G::ScalarField,
     #[serde_as(as = "ArkObjectBytes")]
-    witness1: G::ScalarField,
+    pub(crate) witness1: G::ScalarField,
     #[serde_as(as = "ArkObjectBytes")]
-    blinding2: G::ScalarField,
+    pub(crate) blinding2: G::ScalarField,
     #[serde_as(as = "ArkObjectBytes")]
-    witness2: G::ScalarField,
+    pub(crate) witness2: G::ScalarField,
 }
 
 /// Proof of knowledge of 2 discrete logs

@@ -2,7 +2,14 @@
 
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{collections::BTreeMap, format, rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    format,
+    rand::RngCore,
+    vec,
+    vec::Vec,
+    UniformRand,
+};
 
 use crate::{
     error::ProofSystemError,
@@ -21,7 +28,7 @@ use crate::{
         KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, PS_LABEL, VB_ACCUM_CDH_MEM_LABEL,
         VB_ACCUM_CDH_NON_MEM_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL,
     },
-    meta_statement::WitnessRef,
+    meta_statement::{EqualWitnesses, WitnessRef},
     prelude::SnarkpackSRS,
     proof::{AggregatedGroth16, Proof},
     proof_spec::ProofSpec,
@@ -33,10 +40,6 @@ use crate::{
                 KBUniversalAccumulatorMembershipCDHSubProtocol,
                 KBUniversalAccumulatorNonMembershipCDHSubProtocol,
                 VBAccumulatorMembershipCDHSubProtocol, VBAccumulatorNonMembershipCDHSubProtocol,
-            },
-            detached::{
-                DetachedAccumulatorMembershipSubProtocol,
-                DetachedAccumulatorNonMembershipSubProtocol,
             },
             keyed_verification::{
                 KBUniversalAccumulatorMembershipKVSubProtocol,
@@ -65,6 +68,7 @@ use crate::{
 use dock_crypto_utils::{
     expect_equality,
     hashing_utils::field_elem_from_try_and_incr,
+    signature::MultiMessageSignatureParams,
     transcript::{MerlinTranscript, Transcript},
 };
 use saver::encryption::Ciphertext;
@@ -154,9 +158,10 @@ impl<E: Pairing> Proof<E> {
         let mut blindings = BTreeMap::<WitnessRef, E::ScalarField>::new();
 
         // Prepare blindings for any witnesses that need to be proven equal.
+        let mut disjoint_equalities = vec![];
         if !proof_spec.meta_statements.is_empty() {
-            let disjoint_equalities = proof_spec.meta_statements.disjoint_witness_equalities();
-            for eq_wits in disjoint_equalities {
+            disjoint_equalities = proof_spec.meta_statements.disjoint_witness_equalities();
+            for eq_wits in disjoint_equalities.clone() {
                 let blinding = E::ScalarField::rand(rng);
                 for wr in eq_wits.0 {
                     // Duplicating the same blinding for faster search
@@ -243,6 +248,9 @@ impl<E: Pairing> Proof<E> {
             }};
         }
 
+        /// Build a map of blindings for witnesses of given the statement index. The key is the witness
+        /// index and value is the blinding. Also removes that blinding from the global blindings map
+        /// containing blinding for each witness reference.
         fn build_blindings_map<E: Pairing>(
             blindings: &mut BTreeMap<WitnessRef, E::ScalarField>,
             s_idx: usize,
@@ -678,33 +686,35 @@ impl<E: Pairing> Proof<E> {
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::DetachedAccumulatorMembershipProver(s) => match witness {
-                    Witness::VBAccumulatorMembership(w) => {
-                        let blinding = blindings.remove(&(s_idx, 0));
-                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
-                        let mut sp =
-                            DetachedAccumulatorMembershipSubProtocol::new(s_idx, params, pk, prk);
-                        sp.init(rng, s.accumulator_value, blinding, w)?;
-                        transcript.set_label(VB_ACCUM_MEM_LABEL);
-                        sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::DetachedAccumulatorMembership(sp));
+                    Witness::VBAccumulatorMembership(_w) => {
+                        // let blinding = blindings.remove(&(s_idx, 0));
+                        // let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        // let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        // let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        // let mut sp =
+                        //     DetachedAccumulatorMembershipSubProtocol::new(s_idx, params, pk, prk);
+                        // sp.init(rng, s.accumulator_value, blinding, w)?;
+                        // transcript.set_label(VB_ACCUM_MEM_LABEL);
+                        // sp.challenge_contribution(&mut transcript)?;
+                        // sub_protocols.push(SubProtocol::DetachedAccumulatorMembership(sp));
+                        todo!()
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
                 Statement::DetachedAccumulatorNonMembershipProver(s) => match witness {
-                    Witness::VBAccumulatorNonMembership(w) => {
-                        let blinding = blindings.remove(&(s_idx, 0));
-                        let params = s.get_params(&proof_spec.setup_params, s_idx)?;
-                        let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
-                        let mut sp = DetachedAccumulatorNonMembershipSubProtocol::new(
-                            s_idx, params, pk, prk,
-                        );
-                        sp.init(rng, s.accumulator_value, blinding, w)?;
-                        transcript.set_label(VB_ACCUM_NON_MEM_LABEL);
-                        sp.challenge_contribution(&mut transcript)?;
-                        sub_protocols.push(SubProtocol::DetachedAccumulatorNonMembership(sp));
+                    Witness::VBAccumulatorNonMembership(_w) => {
+                        // let blinding = blindings.remove(&(s_idx, 0));
+                        // let params = s.get_params(&proof_spec.setup_params, s_idx)?;
+                        // let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
+                        // let prk = s.get_proving_key(&proof_spec.setup_params, s_idx)?;
+                        // let mut sp = DetachedAccumulatorNonMembershipSubProtocol::new(
+                        //     s_idx, params, pk, prk,
+                        // );
+                        // sp.init(rng, s.accumulator_value, blinding, w)?;
+                        // transcript.set_label(VB_ACCUM_NON_MEM_LABEL);
+                        // sp.challenge_contribution(&mut transcript)?;
+                        // sub_protocols.push(SubProtocol::DetachedAccumulatorNonMembership(sp));
+                        todo!()
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
@@ -778,18 +788,66 @@ impl<E: Pairing> Proof<E> {
 
         // Get each sub-protocol's proof
         let mut statement_proofs = Vec::with_capacity(sub_protocols.len());
+        // Tracks if response generated for witness equality. The set member is the witness equality index
+        let mut resp_generated = BTreeSet::new();
         for p in sub_protocols {
             statement_proofs.push(match p {
-                SubProtocol::PoKBBSSignatureG1(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::PoKBBSSignatureG1(mut sp) => {
+                    let s_id = sp.id;
+                    let total_msgs = sp.signature_params.supported_message_count();
+                    let skip_responses_for = Self::get_responses_to_skip(
+                        s_id,
+                        total_msgs,
+                        &disjoint_equalities,
+                        &mut resp_generated,
+                    );
+                    if skip_responses_for.is_empty() {
+                        sp.gen_proof_contribution(&challenge)?
+                    } else {
+                        let revealed_idx =
+                            BTreeSet::<usize>::from_iter(sp.revealed_messages.keys().cloned());
+                        sp.gen_partial_proof_contribution(
+                            &challenge,
+                            &revealed_idx,
+                            &skip_responses_for,
+                        )?
+                    }
+                }
                 SubProtocol::VBAccumulatorMembership(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
                 SubProtocol::VBAccumulatorNonMembership(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
-                SubProtocol::PoKDiscreteLogs(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::PoKDiscreteLogs(mut sp) => {
+                    let s_id = sp.id;
+                    let total_msgs = sp.witnesses.as_ref().unwrap().len();
+                    let skip_responses_for = Self::get_responses_to_skip(
+                        s_id,
+                        total_msgs,
+                        &disjoint_equalities,
+                        &mut resp_generated,
+                    );
+                    if skip_responses_for.is_empty() {
+                        sp.gen_proof_contribution(&challenge)?
+                    } else {
+                        sp.gen_partial_proof_contribution(&challenge, &skip_responses_for)?
+                    }
+                }
                 SubProtocol::PoKDiscreteLogsG2(mut sp) => {
-                    sp.gen_proof_contribution_g2(&challenge)?
+                    let s_id = sp.id;
+                    let total_msgs = sp.witnesses.as_ref().unwrap().len();
+                    let skip_responses_for = Self::get_responses_to_skip(
+                        s_id,
+                        total_msgs,
+                        &disjoint_equalities,
+                        &mut resp_generated,
+                    );
+                    if skip_responses_for.is_empty() {
+                        sp.gen_proof_contribution_g2(&challenge)?
+                    } else {
+                        sp.gen_partial_proof_contribution_g2(&challenge, &skip_responses_for)?
+                    }
                 }
                 SubProtocol::Saver(mut sp) => sp.gen_proof_contribution(&challenge)?,
                 SubProtocol::BoundCheckLegoGroth16(mut sp) => {
@@ -798,12 +856,58 @@ impl<E: Pairing> Proof<E> {
                 SubProtocol::R1CSLegogroth16Protocol(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
-                SubProtocol::PSSignaturePoK(mut sp) => sp.gen_proof_contribution(&challenge)?,
-                SubProtocol::PoKBBSSignature23G1(mut sp) => {
+                SubProtocol::PSSignaturePoK(mut sp) => {
+                    let s_id = sp.id;
+                    let total_msgs = sp.signature_params.supported_message_count();
+                    Self::update_resp_generated(
+                        s_id,
+                        total_msgs,
+                        &disjoint_equalities,
+                        &mut resp_generated,
+                    );
                     sp.gen_proof_contribution(&challenge)?
                 }
+                SubProtocol::PoKBBSSignature23G1(mut sp) => {
+                    let s_id = sp.id;
+                    let total_msgs = sp.signature_params.supported_message_count();
+                    let skip_responses_for = Self::get_responses_to_skip(
+                        s_id,
+                        total_msgs,
+                        &disjoint_equalities,
+                        &mut resp_generated,
+                    );
+                    if skip_responses_for.is_empty() {
+                        sp.gen_proof_contribution(&challenge)?
+                    } else {
+                        let revealed_idx =
+                            BTreeSet::<usize>::from_iter(sp.revealed_messages.keys().cloned());
+                        sp.gen_partial_proof_contribution(
+                            &challenge,
+                            &revealed_idx,
+                            &skip_responses_for,
+                        )?
+                    }
+                }
                 SubProtocol::PoKBBSSignature23IETFG1(mut sp) => {
-                    sp.gen_proof_contribution(&challenge)?
+                    let s_id = sp.id;
+                    let total_msgs = sp.signature_params.supported_message_count();
+                    let skip_responses_for = Self::get_responses_to_skip(
+                        s_id,
+                        total_msgs,
+                        &disjoint_equalities,
+                        &mut resp_generated,
+                    );
+                    if skip_responses_for.is_empty() {
+                        sp.gen_proof_contribution(&challenge)?
+                    } else {
+                        let revealed_idx =
+                            BTreeSet::<usize>::from_iter(sp.revealed_messages.keys().cloned());
+                        sp.gen_partial_proof_contribution(
+                            &challenge,
+                            &revealed_idx,
+                            &skip_responses_for,
+                        )?
+                    }
                 }
                 SubProtocol::BoundCheckBpp(mut sp) => {
                     sp.gen_proof_contribution(rng, &challenge, &mut transcript)?
@@ -813,11 +917,13 @@ impl<E: Pairing> Proof<E> {
                     sp.gen_proof_contribution(&challenge)?
                 }
                 SubProtocol::Inequality(mut sp) => sp.gen_proof_contribution(&challenge)?,
-                SubProtocol::DetachedAccumulatorMembership(mut sp) => {
-                    sp.gen_proof_contribution(rng, &challenge)?
+                SubProtocol::DetachedAccumulatorMembership(mut _sp) => {
+                    // sp.gen_proof_contribution(rng, &challenge)?
+                    todo!()
                 }
-                SubProtocol::DetachedAccumulatorNonMembership(mut sp) => {
-                    sp.gen_proof_contribution(rng, &challenge)?
+                SubProtocol::DetachedAccumulatorNonMembership(mut _sp) => {
+                    // sp.gen_proof_contribution(rng, &challenge)?
+                    todo!()
                 }
                 SubProtocol::KBUniversalAccumulatorMembership(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
@@ -843,7 +949,27 @@ impl<E: Pairing> Proof<E> {
                 SubProtocol::KBPositiveAccumulatorMembershipCDH(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
-                SubProtocol::PoKOfBBDT16MAC(mut sp) => sp.gen_proof_contribution(&challenge)?,
+                SubProtocol::PoKOfBBDT16MAC(mut sp) => {
+                    let s_id = sp.id;
+                    let total_msgs = sp.mac_params.supported_message_count();
+                    let skip_responses_for = Self::get_responses_to_skip(
+                        s_id,
+                        total_msgs,
+                        &disjoint_equalities,
+                        &mut resp_generated,
+                    );
+                    if skip_responses_for.is_empty() {
+                        sp.gen_proof_contribution(&challenge)?
+                    } else {
+                        let revealed_idx =
+                            BTreeSet::<usize>::from_iter(sp.revealed_messages.keys().cloned());
+                        sp.gen_partial_proof_contribution(
+                            &challenge,
+                            &revealed_idx,
+                            &skip_responses_for,
+                        )?
+                    }
+                }
                 SubProtocol::VBAccumulatorMembershipKV(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
@@ -1003,6 +1129,50 @@ impl<E: Pairing> Proof<E> {
             statement_proofs,
             aggregated_groth16: self.aggregated_groth16.clone(),
             aggregated_legogroth16: self.aggregated_legogroth16.clone(),
+        }
+    }
+
+    fn get_responses_to_skip(
+        s_id: usize,
+        total_msgs: usize,
+        disjoint_equalities: &[EqualWitnesses],
+        resp_generated: &mut BTreeSet<usize>,
+    ) -> BTreeSet<usize> {
+        let mut skip_responses_for = BTreeSet::new();
+        for w_id in 0..total_msgs {
+            let wit_ref = (s_id, w_id);
+            for (i, eq) in disjoint_equalities.iter().enumerate() {
+                if eq.has_wit_ref(&wit_ref) {
+                    if resp_generated.contains(&i) {
+                        skip_responses_for.insert(w_id);
+                    } else {
+                        resp_generated.insert(i);
+                    }
+                    // Exit loop because equalities are disjoint
+                    break;
+                }
+            }
+        }
+        skip_responses_for
+    }
+
+    fn update_resp_generated(
+        s_id: usize,
+        total_msgs: usize,
+        disjoint_equalities: &[EqualWitnesses],
+        resp_generated: &mut BTreeSet<usize>,
+    ) {
+        for w_id in 0..total_msgs {
+            let wit_ref = (s_id, w_id);
+            for (i, eq) in disjoint_equalities.iter().enumerate() {
+                if eq.has_wit_ref(&wit_ref) {
+                    if !resp_generated.contains(&i) {
+                        resp_generated.insert(i);
+                    }
+                    // Exit loop because equalities are disjoint
+                    break;
+                }
+            }
         }
     }
 }

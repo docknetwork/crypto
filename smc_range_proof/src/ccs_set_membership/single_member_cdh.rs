@@ -8,7 +8,7 @@ use crate::{
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
-use schnorr_pok::discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol};
+use schnorr_pok::{discrete_log::PokTwoDiscreteLogsProtocol, partial::Partial2PokTwoDiscreteLogs};
 use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -24,7 +24,7 @@ pub struct SetMembershipCheckProof<E: Pairing> {
     /// Proof of knowledge of the weak-BB signature on the set member
     pub pok_sig: PoKOfSignatureG1<E>,
     /// Proof of knowledge of the opening to commitment to the set member
-    pub sc: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc: Partial2PokTwoDiscreteLogs<E::G1Affine>,
 }
 
 impl<E: Pairing> SetMembershipCheckProtocol<E> {
@@ -67,7 +67,7 @@ impl<E: Pairing> SetMembershipCheckProtocol<E> {
     pub fn gen_proof(self, challenge: &E::ScalarField) -> SetMembershipCheckProof<E> {
         SetMembershipCheckProof {
             pok_sig: self.pok_sig.gen_proof(challenge),
-            sc: self.sc.gen_proof(challenge),
+            sc: self.sc.gen_partial2_proof(challenge),
         }
     }
 }
@@ -87,14 +87,13 @@ impl<E: Pairing> SetMembershipCheckProof<E> {
             &params.bb_sig_params.g1,
             params.bb_sig_params.g2_prepared,
         )?;
-        if !self
-            .sc
-            .verify(commitment, &comm_key.g, &comm_key.h, challenge)
-        {
-            return Err(SmcRangeProofError::InvalidSetMembershipProof);
-        }
-        // Note: The following check could be avoided if the abstraction PokTwoDiscreteLogsProtocol wasnt used
-        if *self.pok_sig.get_resp_for_message() != self.sc.response1 {
+        if !self.sc.verify(
+            commitment,
+            &comm_key.g,
+            &comm_key.h,
+            challenge,
+            self.pok_sig.get_resp_for_message().unwrap(),
+        ) {
             return Err(SmcRangeProofError::InvalidSetMembershipProof);
         }
         Ok(())

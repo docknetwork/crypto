@@ -1,3 +1,4 @@
+use crate::error::ProofSystemError;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
@@ -10,7 +11,7 @@ use coconut_crypto::SignaturePoK as PSSignaturePoK;
 use dock_crypto_utils::{ecies, serde_utils::ArkObjectBytes};
 use kvac::bbdt_2016::proof_cdh::PoKOfMAC;
 use saver::encryption::Ciphertext;
-use schnorr_pok::SchnorrResponse;
+use schnorr_pok::{partial::PartialSchnorrResponse, SchnorrResponse};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use vb_accumulator::{
@@ -23,8 +24,6 @@ use vb_accumulator::{
     },
     prelude::{MembershipProof, NonMembershipProof},
 };
-
-use crate::error::ProofSystemError;
 
 /// Proof corresponding to one `Statement`
 #[serde_as]
@@ -63,7 +62,8 @@ pub enum StatementProof<E: Pairing> {
     KBUniversalAccumulatorMembershipKV(vb_accumulator::kb_universal_accumulator::proofs_keyed_verification::KBUniversalAccumulatorMembershipProof<E::G1Affine>),
     KBUniversalAccumulatorNonMembershipKV(vb_accumulator::kb_universal_accumulator::proofs_keyed_verification::KBUniversalAccumulatorNonMembershipProof<E::G1Affine>),
     PoKBBSSignature23IETFG1(bbs_plus::proof_23_ietf::PoKOfSignature23G1Proof<E>),
-
+    PedersenCommitmentPartial(PedersenCommitmentPartialProof<E::G1Affine>),
+    PedersenCommitmentG2Partial(PedersenCommitmentPartialProof<E::G2Affine>),
 }
 
 macro_rules! delegate {
@@ -101,7 +101,9 @@ macro_rules! delegate {
                 VBAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKV,
                 KBUniversalAccumulatorNonMembershipKV,
-                PoKBBSSignature23IETFG1
+                PoKBBSSignature23IETFG1,
+                PedersenCommitmentPartial,
+                PedersenCommitmentG2Partial
             : $($tt)+
         }
     }};
@@ -142,7 +144,9 @@ macro_rules! delegate_reverse {
                 VBAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKV,
                 KBUniversalAccumulatorNonMembershipKV,
-                PoKBBSSignature23IETFG1
+                PoKBBSSignature23IETFG1,
+                PedersenCommitmentPartial,
+                PedersenCommitmentG2Partial
             : $($tt)+
         }
 
@@ -165,6 +169,33 @@ impl<G: AffineRepr> PedersenCommitmentProof<G> {
     pub fn new(t: G, response: SchnorrResponse<G>) -> Self {
         Self { t, response }
     }
+
+    pub fn get_resp_for_message(&self, idx: usize) -> Result<&G::ScalarField, ProofSystemError> {
+        let r = self.response.get_response(idx)?;
+        Ok(r)
+    }
+}
+
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct PedersenCommitmentPartialProof<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub t: G,
+    pub response: PartialSchnorrResponse<G>,
+}
+
+impl<G: AffineRepr> PedersenCommitmentPartialProof<G> {
+    pub fn new(t: G, response: PartialSchnorrResponse<G>) -> Self {
+        Self { t, response }
+    }
+
+    pub fn get_resp_for_message(&self, idx: usize) -> Result<&G::ScalarField, ProofSystemError> {
+        let r = self.response.get_response(idx)?;
+        Ok(r)
+    }
 }
 
 #[serde_as]
@@ -181,20 +212,11 @@ pub struct SaverProof<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub comm_combined: E::G1Affine,
     pub sp_ciphertext: PedersenCommitmentProof<E::G1Affine>,
-    pub sp_chunks: PedersenCommitmentProof<E::G1Affine>,
-    pub sp_combined: PedersenCommitmentProof<E::G1Affine>,
+    pub sp_chunks: PedersenCommitmentPartialProof<E::G1Affine>,
+    pub sp_combined: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
 impl<E: Pairing> SaverProof<E> {
-    pub fn get_schnorr_response_for_combined_message(
-        &self,
-    ) -> Result<&E::ScalarField, ProofSystemError> {
-        self.sp_combined
-            .response
-            .get_response(0)
-            .map_err(|e| e.into())
-    }
-
     pub fn for_aggregation(&self) -> SaverProofWhenAggregatingSnarks<E> {
         SaverProofWhenAggregatingSnarks {
             ciphertext: self.ciphertext.clone(),
@@ -219,19 +241,8 @@ pub struct SaverProofWhenAggregatingSnarks<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub comm_combined: E::G1Affine,
     pub sp_ciphertext: PedersenCommitmentProof<E::G1Affine>,
-    pub sp_chunks: PedersenCommitmentProof<E::G1Affine>,
-    pub sp_combined: PedersenCommitmentProof<E::G1Affine>,
-}
-
-impl<E: Pairing> SaverProofWhenAggregatingSnarks<E> {
-    pub fn get_schnorr_response_for_combined_message(
-        &self,
-    ) -> Result<&E::ScalarField, ProofSystemError> {
-        self.sp_combined
-            .response
-            .get_response(0)
-            .map_err(|e| e.into())
-    }
+    pub sp_chunks: PedersenCommitmentPartialProof<E::G1Affine>,
+    pub sp_combined: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
 #[serde_as]
@@ -242,14 +253,10 @@ impl<E: Pairing> SaverProofWhenAggregatingSnarks<E> {
 pub struct BoundCheckLegoGroth16Proof<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub snark_proof: legogroth16::Proof<E>,
-    pub sp: PedersenCommitmentProof<E::G1Affine>,
+    pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
 impl<E: Pairing> BoundCheckLegoGroth16Proof<E> {
-    pub fn get_schnorr_response_for_message(&self) -> Result<&E::ScalarField, ProofSystemError> {
-        self.sp.response.get_response(0).map_err(|e| e.into())
-    }
-
     pub fn for_aggregation(&self) -> BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E> {
         BoundCheckLegoGroth16ProofWhenAggregatingSnarks {
             commitment: self.snark_proof.d,
@@ -266,13 +273,7 @@ impl<E: Pairing> BoundCheckLegoGroth16Proof<E> {
 pub struct BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub commitment: E::G1Affine,
-    pub sp: PedersenCommitmentProof<E::G1Affine>,
-}
-
-impl<E: Pairing> BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E> {
-    pub fn get_schnorr_response_for_message(&self) -> Result<&E::ScalarField, ProofSystemError> {
-        self.sp.response.get_response(0).map_err(|e| e.into())
-    }
+    pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
 #[serde_as]
@@ -283,17 +284,10 @@ impl<E: Pairing> BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E> {
 pub struct R1CSLegoGroth16Proof<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub snark_proof: legogroth16::Proof<E>,
-    pub sp: PedersenCommitmentProof<E::G1Affine>,
+    pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
 impl<E: Pairing> R1CSLegoGroth16Proof<E> {
-    pub fn get_schnorr_response_for_message(
-        &self,
-        index: usize,
-    ) -> Result<&E::ScalarField, ProofSystemError> {
-        self.sp.response.get_response(index).map_err(|e| e.into())
-    }
-
     pub fn for_aggregation(&self) -> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
         R1CSLegoGroth16ProofWhenAggregatingSnarks {
             commitment: self.snark_proof.d,
@@ -310,16 +304,7 @@ impl<E: Pairing> R1CSLegoGroth16Proof<E> {
 pub struct R1CSLegoGroth16ProofWhenAggregatingSnarks<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub commitment: E::G1Affine,
-    pub sp: PedersenCommitmentProof<E::G1Affine>,
-}
-
-impl<E: Pairing> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
-    pub fn get_schnorr_response_for_message(
-        &self,
-        index: usize,
-    ) -> Result<&E::ScalarField, ProofSystemError> {
-        self.sp.response.get_response(index).map_err(|e| e.into())
-    }
+    pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
 #[serde_as]
@@ -330,20 +315,8 @@ impl<E: Pairing> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
 pub struct BoundCheckBppProof<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub bpp_proof: ProofArbitraryRange<G>,
-    pub sp1: PedersenCommitmentProof<G>,
-    pub sp2: PedersenCommitmentProof<G>,
-}
-
-impl<G: AffineRepr> BoundCheckBppProof<G> {
-    pub fn get_schnorr_response_for_message(&self) -> Result<&G::ScalarField, ProofSystemError> {
-        self.sp1.response.get_response(0).map_err(|e| e.into())
-    }
-
-    /// For the proof to be correct, both responses of Schnorr protocols should be correct as both
-    /// are proving the knowledge of same committed message
-    pub fn check_schnorr_responses_consistency(&self) -> Result<bool, ProofSystemError> {
-        Ok(self.sp1.response.get_response(0)? == self.sp2.response.get_response(0)?)
-    }
+    pub sp1: PedersenCommitmentPartialProof<G>,
+    pub sp2: PedersenCommitmentPartialProof<G>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -368,13 +341,7 @@ pub struct BoundCheckSmcProof<E: Pairing> {
     pub proof: BoundCheckSmcInnerProof<E>,
     #[serde_as(as = "ArkObjectBytes")]
     pub comm: E::G1Affine,
-    pub sp: PedersenCommitmentProof<E::G1Affine>,
-}
-
-impl<E: Pairing> BoundCheckSmcProof<E> {
-    pub fn get_schnorr_response_for_message(&self) -> Result<&E::ScalarField, ProofSystemError> {
-        self.sp.response.get_response(0).map_err(|e| e.into())
-    }
+    pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
 #[serde_as]
@@ -387,13 +354,7 @@ pub struct BoundCheckSmcWithKVProof<E: Pairing> {
     pub proof: BoundCheckSmcWithKVInnerProof<E>,
     #[serde_as(as = "ArkObjectBytes")]
     pub comm: E::G1Affine,
-    pub sp: PedersenCommitmentProof<E::G1Affine>,
-}
-
-impl<E: Pairing> BoundCheckSmcWithKVProof<E> {
-    pub fn get_schnorr_response_for_message(&self) -> Result<&E::ScalarField, ProofSystemError> {
-        self.sp.response.get_response(0).map_err(|e| e.into())
-    }
+    pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
 #[serde_as]
@@ -406,13 +367,7 @@ pub struct InequalityProof<G: AffineRepr> {
     pub proof: schnorr_pok::inequality::InequalityProof<G>,
     #[serde_as(as = "ArkObjectBytes")]
     pub comm: G,
-    pub sp: PedersenCommitmentProof<G>,
-}
-
-impl<G: AffineRepr> InequalityProof<G> {
-    pub fn get_schnorr_response_for_message(&self) -> Result<&G::ScalarField, ProofSystemError> {
-        self.sp.response.get_response(0).map_err(|e| e.into())
-    }
+    pub sp: PedersenCommitmentPartialProof<G>,
 }
 
 #[serde_as]

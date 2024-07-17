@@ -27,6 +27,7 @@ use dock_crypto_utils::{
 use itertools::multiunzip;
 use schnorr_pok::{
     discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
+    partial::Partial1PokTwoDiscreteLogs,
     SchnorrCommitment, SchnorrResponse,
 };
 use serde::{Deserialize, Serialize};
@@ -82,7 +83,7 @@ pub struct PoKOfMAC<G: AffineRepr> {
     pub E: G,
     #[serde_as(as = "ArkObjectBytes")]
     pub C: G,
-    pub sc_E: PokTwoDiscreteLogs<G>,
+    pub sc_E: Partial1PokTwoDiscreteLogs<G>,
     pub sc_C: PokTwoDiscreteLogs<G>,
     #[serde_as(as = "ArkObjectBytes")]
     pub t_msgs: G,
@@ -177,7 +178,7 @@ impl<G: AffineRepr> PoKOfMACProtocol<G> {
     }
 
     pub fn gen_proof(mut self, challenge: &G::ScalarField) -> Result<PoKOfMAC<G>, KVACError> {
-        let sc_E = mem::take(&mut self.sc_E).gen_proof(challenge);
+        let sc_E = mem::take(&mut self.sc_E).gen_partial1_proof(challenge);
         let sc_C = mem::take(&mut self.sc_C).gen_proof(challenge);
         let sc_resp_msgs = self.sc_comm_msgs.response(&self.sc_wits_msgs, challenge)?;
         Ok(PoKOfMAC {
@@ -256,17 +257,17 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         f: impl Into<G>,
     ) -> Result<(), KVACError> {
         let f = f.into();
-        if !self.sc_E.verify(&self.E, &self.C, &f, challenge) {
+        if !self.sc_E.verify(
+            &self.E,
+            &self.C,
+            &f,
+            challenge,
+            self.sc_resp_msgs
+                .get_response(self.sc_resp_msgs.len() - 1)?,
+        ) {
             return Err(KVACError::InvalidSchnorrProof);
         }
         if !self.sc_C.verify(&self.C, &self.E, &f, challenge) {
-            return Err(KVACError::InvalidSchnorrProof);
-        }
-        if self.sc_E.response2
-            != *self
-                .sc_resp_msgs
-                .get_response(self.sc_resp_msgs.len() - 1)?
-        {
             return Err(KVACError::InvalidSchnorrProof);
         }
         let mut bases = Vec::with_capacity(3 + params.g_vec.len() - revealed_msgs.len());

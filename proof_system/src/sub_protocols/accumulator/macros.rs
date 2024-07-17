@@ -48,7 +48,7 @@ macro_rules! impl_common_funcs {
                 ));
             }
             let protocol = self.protocol.take().unwrap();
-            let proof = protocol.gen_proof(challenge)?;
+            let proof = protocol.gen_partial_proof(challenge)?;
             Ok(StatementProof::$proof_enum_variant(proof))
         }
 
@@ -59,9 +59,11 @@ macro_rules! impl_common_funcs {
             pk: impl Into<$prepared_pk_type<E>>,
             params: impl Into<$prepared_params_type<E>>,
             pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+            resp_for_element: E::ScalarField,
         ) -> Result<(), ProofSystemError> {
             match pairing_checker {
-                Some(c) => proof.verify_with_randomized_pairing_checker(
+                Some(c) => proof.verify_partial_with_randomized_pairing_checker(
+                    &resp_for_element,
                     &self.accumulator_value,
                     challenge,
                     pk,
@@ -69,7 +71,8 @@ macro_rules! impl_common_funcs {
                     self.proving_key,
                     c,
                 ),
-                None => proof.verify(
+                None => proof.verify_partial(
+                    &resp_for_element,
                     &self.accumulator_value,
                     challenge,
                     pk,

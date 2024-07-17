@@ -88,7 +88,19 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProofProtocol<E> {
         challenge: &E::ScalarField,
     ) -> Result<KBPositiveAccumulatorMembershipProof<E>, VBAccumulatorError> {
         let sig_proof = self.sig_protocol.clone().gen_proof(challenge)?;
-        let accum_proof = self.accum_protocol.clone().gen_proof(challenge)?;
+        let accum_proof = self.accum_protocol.clone().gen_partial_proof(challenge)?;
+        Ok(KBPositiveAccumulatorMembershipProof {
+            sig_proof,
+            accum_proof,
+        })
+    }
+
+    pub fn gen_partial_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<KBPositiveAccumulatorMembershipProof<E>, VBAccumulatorError> {
+        let sig_proof = self.sig_protocol.clone().gen_partial_proof(challenge)?;
+        let accum_proof = self.accum_protocol.clone().gen_partial_proof(challenge)?;
         Ok(KBPositiveAccumulatorMembershipProof {
             sig_proof,
             accum_proof,
@@ -109,14 +121,13 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
         let params = params.into();
         self.sig_proof
             .verify(challenge, pk.sig, params.sig.g1, params.sig.g2, proving_key)?;
-        self.accum_proof
-            .verify(accumulator_value, challenge, pk.accum, params.accum)?;
-        // Check that the signature's randomness is same as the non-adaptive accumulator's member
-        if self.sig_proof.get_resp_for_randomness()
-            != self.accum_proof.get_schnorr_response_for_element()
-        {
-            return Err(VBAccumulatorError::MismatchBetweenSignatureAndAccumulatorValue);
-        }
+        self.accum_proof.verify_partial(
+            self.sig_proof.get_resp_for_randomness(),
+            accumulator_value,
+            challenge,
+            pk.accum,
+            params.accum,
+        )?;
         Ok(())
     }
 
@@ -139,19 +150,78 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
             proving_key,
             pairing_checker,
         )?;
-        self.accum_proof.verify_with_randomized_pairing_checker(
+        self.accum_proof
+            .verify_partial_with_randomized_pairing_checker(
+                self.sig_proof.get_resp_for_randomness(),
+                accumulator_value,
+                challenge,
+                pk.accum,
+                params.accum,
+                pairing_checker,
+            )?;
+        Ok(())
+    }
+
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        proving_key: &ProvingKey<E::G1Affine>,
+    ) -> Result<(), VBAccumulatorError> {
+        let pk = pk.into();
+        let params = params.into();
+        self.sig_proof.verify_partial(
+            resp_for_element,
+            challenge,
+            pk.sig,
+            params.sig.g1,
+            params.sig.g2,
+            proving_key,
+        )?;
+        self.accum_proof.verify_partial(
+            self.sig_proof.get_resp_for_randomness(),
             accumulator_value,
             challenge,
             pk.accum,
             params.accum,
-            pairing_checker,
         )?;
-        // Check that the signature's randomness is same as the non-adaptive accumulator's member
-        if self.sig_proof.get_resp_for_randomness()
-            != self.accum_proof.get_schnorr_response_for_element()
-        {
-            return Err(VBAccumulatorError::MismatchBetweenSignatureAndAccumulatorValue);
-        }
+        Ok(())
+    }
+
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        proving_key: &ProvingKey<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        let pk = pk.into();
+        let params = params.into();
+        self.sig_proof
+            .verify_partial_with_randomized_pairing_checker(
+                resp_for_element,
+                challenge,
+                pk.sig,
+                params.sig.g1,
+                params.sig.g2,
+                proving_key,
+                pairing_checker,
+            )?;
+        self.accum_proof
+            .verify_partial_with_randomized_pairing_checker(
+                self.sig_proof.get_resp_for_randomness(),
+                accumulator_value,
+                challenge,
+                pk.accum,
+                params.accum,
+                pairing_checker,
+            )?;
         Ok(())
     }
 
@@ -170,7 +240,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
         Ok(())
     }
 
-    pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
+    pub fn get_schnorr_response_for_element(&self) -> Option<&E::ScalarField> {
         self.sig_proof.get_resp_for_message()
     }
 }

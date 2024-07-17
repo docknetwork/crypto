@@ -1,5 +1,9 @@
 use ark_ec::pairing::Pairing;
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+    rand::RngCore,
+};
 use bbs_plus::{
     prelude::{
         BBSPlusError, PreparedPublicKeyG2, PreparedSignatureParams23G1, PublicKeyG2,

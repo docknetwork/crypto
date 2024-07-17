@@ -15,6 +15,7 @@ use dock_crypto_utils::{
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
+    partial::PartialPokDiscreteLog,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -55,7 +56,7 @@ pub struct ProofOfValidityOfMAC<G: AffineRepr> {
     /// For proving `B = A * sk` where `sk` is the secret key and `B = h + g * s + g_1 * m_1 + g_2 * m_2 + ... g_n * m_n`
     pub sc_B: PokDiscreteLog<G>,
     /// For proving knowledge of secret key, i.e. `pk = g_0 * sk`
-    pub sc_pk: PokDiscreteLog<G>,
+    pub sc_pk: PartialPokDiscreteLog<G>,
 }
 
 impl<G: AffineRepr> MAC<G> {
@@ -193,7 +194,7 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         Self {
             sc_B: p1.gen_proof(&challenge),
-            sc_pk: p2.gen_proof(&challenge),
+            sc_pk: p2.gen_partial_proof(),
         }
     }
 
@@ -204,9 +205,6 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         public_key: &PublicKey<G>,
         params: impl AsRef<MACParams<G>>,
     ) -> Result<(), KVACError> {
-        if self.sc_B.response != self.sc_pk.response {
-            return Err(KVACError::InvalidMACProof);
-        }
         let params = params.as_ref();
         // B = h + g * s + g_1 * m_1 + g_2 * m_2 + ... g_n * m_n - A * e
         let B =
@@ -223,7 +221,10 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         if !self.sc_B.verify(&B, &mac.A, &challenge) {
             return Err(KVACError::InvalidMACProof);
         }
-        if !self.sc_pk.verify(&public_key.0, &params.g_0, &challenge) {
+        if !self
+            .sc_pk
+            .verify(&public_key.0, &params.g_0, &challenge, &self.sc_B.response)
+        {
             return Err(KVACError::InvalidMACProof);
         }
         Ok(())

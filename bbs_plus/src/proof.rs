@@ -77,12 +77,17 @@ use dock_crypto_utils::{
     misc::rand,
     randomized_pairing_check::RandomizedPairingChecker,
     serde_utils::*,
-    signature::{split_messages_and_blindings, MessageOrBlinding, MultiMessageSignatureParams},
+    signature::{
+        msg_index_map_to_schnorr_response_map, msg_index_to_schnorr_response_index,
+        schnorr_responses_to_msg_index_map, split_messages_and_blindings, MessageOrBlinding,
+        MultiMessageSignatureParams,
+    },
 };
 use itertools::multiunzip;
 use schnorr_pok::{
     discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
     error::SchnorrError,
+    partial::PartialSchnorrResponse,
     SchnorrCommitment, SchnorrResponse,
 };
 use serde::{Deserialize, Serialize};
@@ -90,8 +95,8 @@ use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Protocol to prove knowledge of BBS+ signature in group G1.
-/// The BBS+ signature proves validity of a set of messages {m_i}, i in I. This stateful protocol proves knowledge of such
-/// a signature whilst selectively disclosing only a subset of the messages, {m_i} for i in a disclosed set D. The
+/// The BBS+ signature proves validity of a set of messages `m_i`, `i` in `I`. This stateful protocol proves knowledge of such
+/// a signature whilst selectively disclosing only a subset of the messages, `m_i` for `i` in a disclosed set `D`. The
 /// protocol randomizes the initial BBS+ signature, then conducts 2 Schnorr PoK protocols to prove exponent knowledge
 /// for the relations in section 4.5 of the paper (refer to top). It contains commitments (Schnorr step 1; refer to schnorr_pok)
 /// and witnesses to both Schnorr protocols in `sc_comm_` and `sc_wits_` respectively. The protocol executes in 2 phases,
@@ -147,7 +152,8 @@ pub struct PoKOfSignatureG1Proof<E: Pairing> {
     /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
     #[serde_as(as = "ArkObjectBytes")]
     pub T2: E::G1Affine,
-    pub sc_resp_2: SchnorrResponse<E::G1Affine>,
+    pub sc_resp_2: Option<SchnorrResponse<E::G1Affine>>,
+    pub sc_partial_resp_2: Option<PartialSchnorrResponse<E::G1Affine>>,
 }
 
 impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
@@ -283,7 +289,38 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
             d: self.d,
             sc_resp_1,
             T2: self.sc_comm_2.t,
-            sc_resp_2,
+            sc_resp_2: Some(sc_resp_2),
+            sc_partial_resp_2: None,
+        })
+    }
+
+    pub fn gen_partial_proof(
+        mut self,
+        challenge: &E::ScalarField,
+        revealed_msg_ids: &BTreeSet<usize>,
+        skip_responses_for: &BTreeSet<usize>,
+    ) -> Result<PoKOfSignatureG1Proof<E>, BBSPlusError> {
+        if !skip_responses_for.is_disjoint(revealed_msg_ids) {
+            return Err(BBSPlusError::CommonIndicesFoundInRevealedAndSkip);
+        }
+        // Schnorr response for relation `A_bar - d == A'*{-e} + h_0*r2`
+        let sc_resp_1 = mem::take(&mut self.sc_comm_1).gen_proof(challenge);
+        let wits = schnorr_responses_to_msg_index_map(
+            mem::take(&mut self.sc_wits_2),
+            revealed_msg_ids,
+            skip_responses_for,
+        );
+        // Schnorr response for relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + \sum_{j not in D}(h_j*{-m_j})`
+        let sc_resp_2 = self.sc_comm_2.partial_response(wits, challenge)?;
+
+        Ok(PoKOfSignatureG1Proof {
+            A_prime: self.A_prime,
+            A_bar: self.A_bar,
+            d: self.d,
+            sc_resp_1,
+            T2: self.sc_comm_2.t,
+            sc_resp_2: None,
+            sc_partial_resp_2: Some(sc_resp_2),
         })
     }
 
@@ -326,26 +363,7 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
         pk: impl Into<PreparedPublicKeyG2<E>>,
         params: impl Into<PreparedSignatureParamsG1<E>>,
     ) -> Result<(), BBSPlusError> {
-        let params = params.into();
-        let g1 = params.g1;
-        let g2 = params.g2;
-        let h0 = params.h_0;
-        let h = params.h;
-        self.verify_except_pairings(revealed_msgs, challenge, g1, h0, h)?;
-
-        // Verify the randomized signature
-        if !E::multi_pairing(
-            [
-                E::G1Prepared::from(self.A_prime),
-                E::G1Prepared::from(-(self.A_bar.into_group())),
-            ],
-            [pk.into().0, g2],
-        )
-        .is_zero()
-        {
-            return Err(BBSPlusError::PairingCheckFailed);
-        }
-        Ok(())
+        self._verify(revealed_msgs, challenge, pk, params, None)
     }
 
     pub fn verify_with_randomized_pairing_checker(
@@ -356,14 +374,50 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
         params: impl Into<PreparedSignatureParamsG1<E>>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), BBSPlusError> {
-        let params = params.into();
-        let g1 = params.g1;
-        let g2 = params.g2;
-        let h0 = params.h_0;
-        let h = params.h;
-        self.verify_except_pairings(revealed_msgs, challenge, g1, h0, h)?;
-        pairing_checker.add_sources(&self.A_prime, pk.into().0, &self.A_bar, g2);
-        Ok(())
+        self._verify_with_randomized_pairing_checker(
+            revealed_msgs,
+            challenge,
+            pk,
+            params,
+            pairing_checker,
+            None,
+        )
+    }
+
+    pub fn verify_partial(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParamsG1<E>>,
+        missing_responses: BTreeMap<usize, E::ScalarField>,
+    ) -> Result<(), BBSPlusError> {
+        self._verify(
+            revealed_msgs,
+            challenge,
+            pk,
+            params,
+            Some(missing_responses),
+        )
+    }
+
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParamsG1<E>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+        missing_responses: BTreeMap<usize, E::ScalarField>,
+    ) -> Result<(), BBSPlusError> {
+        self._verify_with_randomized_pairing_checker(
+            revealed_msgs,
+            challenge,
+            pk,
+            params,
+            pairing_checker,
+            Some(missing_responses),
+        )
     }
 
     /// For the verifier to independently calculate the challenge
@@ -392,18 +446,96 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
         msg_idx: usize,
         revealed_msg_ids: &BTreeSet<usize>,
     ) -> Result<&E::ScalarField, BBSPlusError> {
-        // Revealed messages are not part of Schnorr protocol
-        if revealed_msg_ids.contains(&msg_idx) {
-            return Err(BBSPlusError::InvalidMsgIdxForResponse(msg_idx));
+        let adjusted_idx = msg_index_to_schnorr_response_index(msg_idx, revealed_msg_ids)
+            .ok_or_else(|| BBSPlusError::InvalidMsgIdxForResponse(msg_idx))?;
+        if let Some(resp) = self.sc_resp_2.as_ref() {
+            Ok(resp.get_response(adjusted_idx)?)
+        } else if let Some(resp) = self.sc_partial_resp_2.as_ref() {
+            Ok(resp.get_response(adjusted_idx)?)
+        } else {
+            Err(BBSPlusError::NeedEitherPartialOrCompleteSchnorrResponse)
         }
-        // Adjust message index as the revealed messages are not part of the Schnorr protocol
-        let mut adjusted_idx = msg_idx;
-        for i in revealed_msg_ids {
-            if *i < msg_idx {
-                adjusted_idx -= 1;
-            }
+    }
+
+    pub fn get_responses(
+        &self,
+        msg_ids: &BTreeSet<usize>,
+        revealed_msg_ids: &BTreeSet<usize>,
+    ) -> Result<BTreeMap<usize, E::ScalarField>, BBSPlusError> {
+        let mut resps = BTreeMap::new();
+        for msg_idx in msg_ids {
+            resps.insert(
+                *msg_idx,
+                *self.get_resp_for_message(*msg_idx, revealed_msg_ids)?,
+            );
         }
-        Ok(self.sc_resp_2.get_response(adjusted_idx)?)
+        Ok(resps)
+    }
+
+    pub fn _verify(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParamsG1<E>>,
+        missing_responses: Option<BTreeMap<usize, E::ScalarField>>,
+    ) -> Result<(), BBSPlusError> {
+        let params = params.into();
+        let g1 = params.g1;
+        let g2 = params.g2;
+        let h0 = params.h_0;
+        let h = params.h;
+        self.verify_except_pairings(revealed_msgs, challenge, g1, h0, h, missing_responses)?;
+
+        // Verify the randomized signature
+        if !E::multi_pairing(
+            [
+                E::G1Prepared::from(self.A_prime),
+                E::G1Prepared::from(-(self.A_bar.into_group())),
+            ],
+            [pk.into().0, g2],
+        )
+        .is_zero()
+        {
+            return Err(BBSPlusError::PairingCheckFailed);
+        }
+        Ok(())
+    }
+
+    pub fn _verify_with_randomized_pairing_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParamsG1<E>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+        missing_responses: Option<BTreeMap<usize, E::ScalarField>>,
+    ) -> Result<(), BBSPlusError> {
+        let params = params.into();
+        let g1 = params.g1;
+        let g2 = params.g2;
+        let h0 = params.h_0;
+        let h = params.h;
+        self.verify_except_pairings(revealed_msgs, challenge, g1, h0, h, missing_responses)?;
+        pairing_checker.add_sources(&self.A_prime, pk.into().0, &self.A_bar, g2);
+        Ok(())
+    }
+
+    /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this
+    /// protocol or others) and the pairing equations are combined in a randomized pairing check.
+    fn verify_except_pairings(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        g1: E::G1Affine,
+        h_0: E::G1Affine,
+        h: Vec<E::G1Affine>,
+        missing_responses: Option<BTreeMap<usize, E::ScalarField>>,
+    ) -> Result<(), BBSPlusError> {
+        if self.A_prime.is_zero() {
+            return Err(BBSPlusError::ZeroSignature);
+        }
+        self.verify_schnorr_proofs(revealed_msgs, challenge, g1, h_0, h, missing_responses)
     }
 
     pub fn verify_schnorr_proofs(
@@ -413,6 +545,7 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
         g1: E::G1Affine,
         h_0: E::G1Affine,
         h: Vec<E::G1Affine>,
+        missing_responses: Option<BTreeMap<usize, E::ScalarField>>,
     ) -> Result<(), BBSPlusError> {
         // Verify the 1st Schnorr proof
         // A_bar - d
@@ -443,31 +576,35 @@ impl<E: Pairing> PoKOfSignatureG1Proof<E> {
         // pr = -g1 + \sum_{i in D}(h_i*{-m_i}) = -(g1 + \sum_{i in D}(h_i*{m_i}))
         let pr = -E::G1::msm_unchecked(&bases_revealed, &exponents) - g1;
         let pr = pr.into_affine();
-        match self.sc_resp_2.is_valid(&bases_2, &pr, &self.T2, challenge) {
-            Ok(()) => (),
-            Err(SchnorrError::InvalidResponse) => {
-                return Err(BBSPlusError::SecondSchnorrVerificationFailed)
+        if let Some(resp) = &self.sc_resp_2 {
+            if missing_responses.is_some() {
+                return Err(BBSPlusError::MissingResponsesProvidedForFullSchnorrProofVerification);
             }
-            Err(other) => return Err(BBSPlusError::SchnorrError(other)),
+            return match resp.is_valid(&bases_2, &pr, &self.T2, challenge) {
+                Ok(()) => Ok(()),
+                Err(SchnorrError::InvalidResponse) => {
+                    Err(BBSPlusError::SecondSchnorrVerificationFailed)
+                }
+                Err(other) => Err(BBSPlusError::SchnorrError(other)),
+            };
+        } else if let Some(resp) = &self.sc_partial_resp_2 {
+            if missing_responses.is_none() {
+                return Err(BBSPlusError::MissingResponsesNeededForPartialSchnorrProofVerification);
+            }
+            let adjusted_missing = msg_index_map_to_schnorr_response_map(
+                missing_responses.unwrap(),
+                revealed_msgs.keys(),
+            );
+            return match resp.is_valid(&bases_2, &pr, &self.T2, challenge, adjusted_missing) {
+                Ok(()) => Ok(()),
+                Err(SchnorrError::InvalidResponse) => {
+                    Err(BBSPlusError::SecondSchnorrVerificationFailed)
+                }
+                Err(other) => Err(BBSPlusError::SchnorrError(other)),
+            };
+        } else {
+            Err(BBSPlusError::NeedEitherPartialOrCompleteSchnorrResponse)
         }
-
-        Ok(())
-    }
-
-    /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this
-    /// protocol or others) and the pairing equations are combined in a randomized pairing check.
-    fn verify_except_pairings(
-        &self,
-        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
-        challenge: &E::ScalarField,
-        g1: E::G1Affine,
-        h_0: E::G1Affine,
-        h: Vec<E::G1Affine>,
-    ) -> Result<(), BBSPlusError> {
-        if self.A_prime.is_zero() {
-            return Err(BBSPlusError::ZeroSignature);
-        }
-        self.verify_schnorr_proofs(revealed_msgs, challenge, g1, h_0, h)
     }
 }
 
@@ -604,29 +741,35 @@ mod tests {
 
             let mut rng = StdRng::seed_from_u64(0u64);
             let message_1_count = 10;
-            let message_2_count = 7;
+            let message_2_count = 9;
+            let message_3_count = 8;
             let params_1 =
                 $params::<Bls12_381>::new::<Blake2b512>("test".as_bytes(), message_1_count);
             let params_2 =
                 $params::<Bls12_381>::new::<Blake2b512>("test-1".as_bytes(), message_2_count);
+            let params_3 =
+                $params::<Bls12_381>::new::<Blake2b512>("test-2".as_bytes(), message_3_count);
             let keypair_1 = KeypairG2::<Bls12_381>::$fn_name(&mut rng, &params_1);
             let keypair_2 = KeypairG2::<Bls12_381>::$fn_name(&mut rng, &params_2);
+            let keypair_3 = KeypairG2::<Bls12_381>::$fn_name(&mut rng, &params_3);
 
-            let mut messages_1: Vec<Fr> = (0..message_1_count - 1)
+            let same_msg_idx = BTreeSet::from([0, 3, 4, 7]);
+            let mut messages_1: Vec<Fr> = (0..message_1_count - same_msg_idx.len() as u32)
                 .map(|_| Fr::rand(&mut rng))
                 .collect();
-            let mut messages_2: Vec<Fr> = (0..message_2_count - 1)
+            let mut messages_2: Vec<Fr> = (0..message_2_count - same_msg_idx.len() as u32)
+                .map(|_| Fr::rand(&mut rng))
+                .collect();
+            let mut messages_3: Vec<Fr> = (0..message_3_count - same_msg_idx.len() as u32)
                 .map(|_| Fr::rand(&mut rng))
                 .collect();
 
-            let same_msg_idx = 4;
-            let same_msg = Fr::rand(&mut rng);
-            messages_1.insert(same_msg_idx, same_msg);
-            messages_2.insert(same_msg_idx, same_msg);
-
-            // A particular message is same
-            assert_eq!(messages_1[same_msg_idx], messages_2[same_msg_idx]);
-            assert_ne!(messages_1, messages_2);
+            let same_msgs = same_msg_idx.clone().into_iter().map(|i| (i, Fr::rand(&mut rng))).collect::<BTreeMap<usize, Fr>>();
+            for (i, m) in &same_msgs {
+                messages_1.insert(*i, m.clone());
+                messages_2.insert(*i, m.clone());
+                messages_3.insert(*i, m.clone());
+            }
 
             let sig_1 =
                 $sig::<Bls12_381>::new(&mut rng, &messages_1, &keypair_1.secret_key, &params_1)
@@ -642,33 +785,48 @@ mod tests {
                 .verify(&messages_2, keypair_2.public_key.clone(), params_2.clone())
                 .unwrap();
 
+            let sig_3 =
+                $sig::<Bls12_381>::new(&mut rng, &messages_3, &keypair_3.secret_key, &params_3)
+                    .unwrap();
+            sig_3
+                .verify(&messages_3, keypair_3.public_key.clone(), params_3.clone())
+                .unwrap();
+
+            let revealed_indices = BTreeSet::from([2, 5, 6]);
+
+            let mut revealed_msgs_1 = BTreeMap::new();
+            let mut revealed_msgs_2 = BTreeMap::new();
+            let mut revealed_msgs_3 = BTreeMap::new();
+            for i in revealed_indices.iter() {
+                revealed_msgs_1.insert(*i, messages_1[*i]);
+                revealed_msgs_2.insert(*i, messages_2[*i]);
+                revealed_msgs_3.insert(*i, messages_3[*i]);
+            }
+
             // Add the same blinding for the message which has to be proven equal across signatures
-            let same_blinding = Fr::rand(&mut rng);
+            let same_blindings = same_msg_idx.clone().into_iter().map(|i| (i, Fr::rand(&mut rng))).collect::<BTreeMap<usize, Fr>>();
 
             let mut blindings_1 = BTreeMap::new();
-            blindings_1.insert(same_msg_idx, same_blinding);
-
             let mut blindings_2 = BTreeMap::new();
-            blindings_2.insert(same_msg_idx, same_blinding);
+            let mut blindings_3 = BTreeMap::new();
+            for (i, b) in &same_blindings {
+                blindings_1.insert(*i, *b);
+                blindings_2.insert(*i, *b);
+                blindings_3.insert(*i, *b);
+            }
 
             // Add some more blindings randomly,
-            blindings_1.insert(0, Fr::rand(&mut rng));
             blindings_1.insert(1, Fr::rand(&mut rng));
-            blindings_2.insert(2, Fr::rand(&mut rng));
-
-            // Blinding for the same message is kept same
-            assert_eq!(
-                blindings_1.get(&same_msg_idx),
-                blindings_2.get(&same_msg_idx)
-            );
-            assert_ne!(blindings_1, blindings_2);
+            blindings_3.insert(2, Fr::rand(&mut rng));
 
             let pok_1 = $protocol::init(
                 &mut rng,
                 &sig_1,
                 &params_1,
                 messages_1.iter().enumerate().map(|(idx, message)| {
-                    if let Some(blinding) = blindings_1.remove(&idx) {
+                    if revealed_indices.contains(&idx) {
+                        MessageOrBlinding::RevealMessage(message)
+                    } else if let Some(blinding) = blindings_1.remove(&idx) {
                         MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
                     } else {
                         MessageOrBlinding::BlindMessageRandomly(message)
@@ -681,7 +839,24 @@ mod tests {
                 &sig_2,
                 &params_2,
                 messages_2.iter().enumerate().map(|(idx, message)| {
-                    if let Some(blinding) = blindings_2.remove(&idx) {
+                    if revealed_indices.contains(&idx) {
+                        MessageOrBlinding::RevealMessage(message)
+                    } else if let Some(blinding) = blindings_2.remove(&idx) {
+                        MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
+                    } else {
+                        MessageOrBlinding::BlindMessageRandomly(message)
+                    }
+                }),
+            )
+            .unwrap();
+            let pok_3 = $protocol::init(
+                &mut rng,
+                &sig_3,
+                &params_3,
+                messages_3.iter().enumerate().map(|(idx, message)| {
+                    if revealed_indices.contains(&idx) {
+                        MessageOrBlinding::RevealMessage(message)
+                    } else if let Some(blinding) = blindings_3.remove(&idx) {
                         MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
                     } else {
                         MessageOrBlinding::BlindMessageRandomly(message)
@@ -690,43 +865,56 @@ mod tests {
             )
             .unwrap();
 
+
             let mut chal_bytes_prover = vec![];
             pok_1
-                .challenge_contribution(&BTreeMap::new(), &params_1, &mut chal_bytes_prover)
+                .challenge_contribution(&revealed_msgs_1, &params_1, &mut chal_bytes_prover)
                 .unwrap();
             pok_2
-                .challenge_contribution(&BTreeMap::new(), &params_2, &mut chal_bytes_prover)
+                .challenge_contribution(&revealed_msgs_2, &params_2, &mut chal_bytes_prover)
+                .unwrap();
+            pok_3
+                .challenge_contribution(&revealed_msgs_3, &params_3, &mut chal_bytes_prover)
                 .unwrap();
             let challenge_prover =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
             let proof_1 = pok_1.gen_proof(&challenge_prover).unwrap();
             let proof_2 = pok_2.gen_proof(&challenge_prover).unwrap();
+            let proof_3 = pok_3.gen_partial_proof(&challenge_prover, &revealed_indices, &same_msg_idx).unwrap();
 
             // The verifier generates the challenge on its own.
             let mut chal_bytes_verifier = vec![];
             proof_1
-                .challenge_contribution(&BTreeMap::new(), &params_1, &mut chal_bytes_verifier)
+                .challenge_contribution(&revealed_msgs_1, &params_1, &mut chal_bytes_verifier)
                 .unwrap();
             proof_2
-                .challenge_contribution(&BTreeMap::new(), &params_2, &mut chal_bytes_verifier)
+                .challenge_contribution(&revealed_msgs_2, &params_2, &mut chal_bytes_verifier)
+                .unwrap();
+            proof_3
+                .challenge_contribution(&revealed_msgs_3, &params_3, &mut chal_bytes_verifier)
                 .unwrap();
             let challenge_verifier =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
 
             // Response for the same message should be same (this check is made by the verifier)
-            assert_eq!(
+            for i in &same_msg_idx {
+             assert_eq!(
                 proof_1
-                    .get_resp_for_message(same_msg_idx, &BTreeSet::new())
+                    .get_resp_for_message(*i, &revealed_indices)
                     .unwrap(),
                 proof_2
-                    .get_resp_for_message(same_msg_idx, &BTreeSet::new())
+                    .get_resp_for_message(*i, &revealed_indices)
                     .unwrap()
-            );
+                );
+                assert!(proof_3.get_resp_for_message(*i, &revealed_indices).is_err())
+            }
+
+            let missing_resps = proof_1.get_responses(&same_msg_idx, &revealed_indices).unwrap();
 
             proof_1
                 .verify(
-                    &BTreeMap::new(),
+                    &revealed_msgs_1,
                     &challenge_verifier,
                     keypair_1.public_key.clone(),
                     params_1,
@@ -734,12 +922,35 @@ mod tests {
                 .unwrap();
             proof_2
                 .verify(
-                    &BTreeMap::new(),
+                    &revealed_msgs_2,
                     &challenge_verifier,
                     keypair_2.public_key.clone(),
                     params_2,
                 )
                 .unwrap();
+            proof_3
+                .verify_partial(
+                    &revealed_msgs_3,
+                    &challenge_verifier,
+                    keypair_3.public_key.clone(),
+                    params_3,
+                    missing_resps
+                )
+                .unwrap();
+
+            assert!(proof_3.get_responses(&same_msg_idx, &revealed_indices).is_err());
+
+            let mut partial_resp_ids = BTreeSet::new();
+            for i in 0..message_3_count as usize {
+                if (!same_msg_idx.contains(&i)) && !revealed_indices.contains(&i) {
+                    partial_resp_ids.insert(i);
+                }
+            }
+            let partial_resps = proof_3.get_responses(&partial_resp_ids, &revealed_indices).unwrap();
+            for i in partial_resp_ids {
+                assert_eq!(proof_3.get_resp_for_message(i,&revealed_indices).unwrap(), partial_resps.get(&i).unwrap());
+            }
+
         }}
     }
 
@@ -902,12 +1113,13 @@ mod tests {
             )
             .unwrap();
             let proof_1 = pok_1.gen_proof(&challenge).unwrap();
+            let resps = proof_1.$resp_name.as_ref().unwrap();
             for i in 0..message_count as usize {
                 assert_eq!(
                     *proof_1
                         .get_resp_for_message(i, &revealed_indices_1)
                         .unwrap(),
-                    proof_1.$resp_name.0[i]
+                    resps.0[i]
                 );
             }
 
@@ -943,23 +1155,24 @@ mod tests {
                 .get_resp_for_message(5, &revealed_indices_2)
                 .is_err());
 
+            let resps = proof_2.$resp_name.as_ref().unwrap();
             assert_eq!(
                 *proof_2
                     .get_resp_for_message(1, &revealed_indices_2)
                     .unwrap(),
-                proof_2.$resp_name.0[0]
+                resps.0[0]
             );
             assert_eq!(
                 *proof_2
                     .get_resp_for_message(3, &revealed_indices_2)
                     .unwrap(),
-                proof_2.$resp_name.0[1]
+                resps.0[1]
             );
             assert_eq!(
                 *proof_2
                     .get_resp_for_message(4, &revealed_indices_2)
                     .unwrap(),
-                proof_2.$resp_name.0[2]
+                resps.0[2]
             );
 
             let mut revealed_indices_3 = BTreeSet::new();
@@ -989,29 +1202,30 @@ mod tests {
                 .get_resp_for_message(3, &revealed_indices_3)
                 .is_err());
 
+            let resps = proof_3.$resp_name.as_ref().unwrap();
             assert_eq!(
                 *proof_3
                     .get_resp_for_message(1, &revealed_indices_3)
                     .unwrap(),
-                proof_3.$resp_name.0[0]
+                resps.0[0]
             );
             assert_eq!(
                 *proof_3
                     .get_resp_for_message(2, &revealed_indices_3)
                     .unwrap(),
-                proof_3.$resp_name.0[1]
+                resps.0[1]
             );
             assert_eq!(
                 *proof_3
                     .get_resp_for_message(4, &revealed_indices_3)
                     .unwrap(),
-                proof_3.$resp_name.0[2]
+                resps.0[2]
             );
             assert_eq!(
                 *proof_3
                     .get_resp_for_message(5, &revealed_indices_3)
                     .unwrap(),
-                proof_3.$resp_name.0[3]
+                resps.0[3]
             );
 
             // Reveal one message only
@@ -1032,18 +1246,19 @@ mod tests {
                 )
                 .unwrap();
                 let proof = pok.gen_proof(&challenge).unwrap();
+                let resps = proof.$resp_name.as_ref().unwrap();
                 for j in 0..message_count as usize {
                     if i == j {
                         assert!(proof.get_resp_for_message(j, &revealed_indices).is_err());
                     } else if i < j {
                         assert_eq!(
                             *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                            proof.$resp_name.0[j - 1]
+                            resps.0[j - 1]
                         );
                     } else {
                         assert_eq!(
                             *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                            proof.$resp_name.0[j]
+                            resps.0[j]
                         );
                     }
                 }

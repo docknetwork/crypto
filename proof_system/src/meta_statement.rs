@@ -64,6 +64,10 @@ impl EqualWitnesses {
     pub fn is_valid(&self) -> bool {
         self.0.len() > 1
     }
+
+    pub fn has_wit_ref(&self, wit_ref: &WitnessRef) -> bool {
+        self.0.contains(wit_ref)
+    }
 }
 
 impl MetaStatements {

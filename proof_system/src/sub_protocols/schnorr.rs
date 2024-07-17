@@ -1,6 +1,13 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec, UniformRand};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+    mem,
+    rand::RngCore,
+    vec::Vec,
+    UniformRand,
+};
 use schnorr_pok::{SchnorrChallengeContributor, SchnorrCommitment};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -9,6 +16,7 @@ use crate::{
     statement_proof::{PedersenCommitmentProof, StatementProof},
 };
 
+use crate::statement_proof::PedersenCommitmentPartialProof;
 use schnorr_pok::error::SchnorrError;
 
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
@@ -90,6 +98,26 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
         ))
     }
 
+    pub fn gen_partial_proof_contribution<E: Pairing<G1Affine = G>>(
+        &mut self,
+        challenge: &G::ScalarField,
+        skip_responses_for: &BTreeSet<usize>,
+    ) -> Result<StatementProof<E>, ProofSystemError> {
+        Ok(StatementProof::PedersenCommitmentPartial(
+            self.gen_partial_proof_contribution_as_struct(challenge, skip_responses_for)?,
+        ))
+    }
+
+    pub fn gen_partial_proof_contribution_g2<E: Pairing<G2Affine = G>>(
+        &mut self,
+        challenge: &G::ScalarField,
+        skip_responses_for: &BTreeSet<usize>,
+    ) -> Result<StatementProof<E>, ProofSystemError> {
+        Ok(StatementProof::PedersenCommitmentG2Partial(
+            self.gen_partial_proof_contribution_as_struct(challenge, skip_responses_for)?,
+        ))
+    }
+
     pub fn gen_proof_contribution_as_struct(
         &mut self,
         challenge: &G::ScalarField,
@@ -104,6 +132,28 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
         Ok(PedersenCommitmentProof::new(commitment.t, responses))
     }
 
+    pub fn gen_partial_proof_contribution_as_struct(
+        &mut self,
+        challenge: &G::ScalarField,
+        skip_responses_for: &BTreeSet<usize>,
+    ) -> Result<PedersenCommitmentPartialProof<G>, ProofSystemError> {
+        if self.commitment_to_randomness.is_none() {
+            return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
+                self.id,
+            ));
+        }
+        let commitment = self.commitment_to_randomness.take().unwrap();
+        let all_wits = mem::take(&mut self.witnesses);
+        let mut wits = BTreeMap::new();
+        for (i, w) in all_wits.unwrap().into_iter().enumerate() {
+            if !skip_responses_for.contains(&i) {
+                wits.insert(i, w);
+            }
+        }
+        let responses = commitment.partial_response(wits, challenge)?;
+        Ok(PedersenCommitmentPartialProof::new(commitment.t, responses))
+    }
+
     pub fn verify_proof_contribution(
         &self,
         challenge: &G::ScalarField,
@@ -112,6 +162,21 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
         proof
             .response
             .is_valid(self.commitment_key, &self.commitment, &proof.t, challenge)
+    }
+
+    pub fn verify_partial_proof_contribution(
+        &self,
+        challenge: &G::ScalarField,
+        proof: &PedersenCommitmentPartialProof<G>,
+        missing_responses: BTreeMap<usize, G::ScalarField>,
+    ) -> Result<(), SchnorrError> {
+        proof.response.is_valid(
+            self.commitment_key,
+            &self.commitment,
+            &proof.t,
+            challenge,
+            missing_responses,
+        )
     }
 
     pub fn compute_challenge_contribution<W: Write>(

@@ -14,10 +14,10 @@ use dock_crypto_utils::msm::WindowTable;
 /// Range proof for values in arbitrary ranges where each value `v_i` belongs to interval `[min_i, max_i)`
 /// Uses the range proof for perfect ranges of form `[0, base^l)` where upper bound is a power of the base.
 /// It splits a single range check of the form `min_i <= v_i < max_i` into 2 as `0 <= v_i - min_i` and `0 <= max_i - 1 - v_i`
-/// and creates proofs both checks. Along the proofs, it outputs commitments to `v_i - min_i` and `max_i - 1 - v_i` as
+/// and creates proofs for both checks. Along the proofs, it outputs commitments to `v_i - min_i` and `max_i - 1 - v_i` as
 /// `g * (v_i - min_i) + h * {r_i}_1` and `g * (max_i - 1 - v_i) + h * {r_i}_2` respectively and both which can be
 /// transformed to `g * v_i + h * {r_i}_1`, `g * v_i + h * {r_i}_2` by the verifier and the prover proves that
-/// `v_i` in `g * v_i + h * r_i` in is same as `v_i` in `g * v_i + h * {r_i}_1`, `g * v_i + h * {r_i}_2`
+/// `v_i` in `g * v_i + h * r_i` is same as `v_i` in `g * v_i + h * {r_i}_1` and `g * v_i + h * {r_i}_2`
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProofArbitraryRange<G: AffineRepr> {
     pub V: Vec<G>,

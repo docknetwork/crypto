@@ -201,8 +201,8 @@ pub struct SchnorrCommit<E: Pairing> {
 )]
 #[serde(bound = "")]
 pub struct SchnorrResponse<F: PrimeField> {
-    #[serde_as(as = "ArkObjectBytes")]
-    pub s_y: F,
+    #[serde_as(as = "Option<ArkObjectBytes>")]
+    pub s_y: Option<F>,
     #[serde_as(as = "ArkObjectBytes")]
     pub s_sigma: F,
     #[serde_as(as = "ArkObjectBytes")]
@@ -212,7 +212,6 @@ pub struct SchnorrResponse<F: PrimeField> {
     #[serde_as(as = "ArkObjectBytes")]
     pub s_delta_rho: F,
 }
-
 /// Randomized membership witness
 #[serde_as]
 #[derive(
@@ -503,8 +502,8 @@ impl<E: Pairing> SchnorrChallengeContributor for NonMembershipSchnorrCommit<E> {
 }
 
 impl<F: PrimeField> SchnorrResponse<F> {
-    pub fn get_response_for_element(&self) -> &F {
-        &self.s_y
+    pub fn get_response_for_element(&self) -> Option<&F> {
+        self.s_y.as_ref()
     }
 }
 
@@ -702,7 +701,26 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         let s_delta_rho = blindings.r_delta_rho + (*challenge * blindings.delta_rho);
 
         SchnorrResponse {
-            s_y,
+            s_y: Some(s_y),
+            s_sigma,
+            s_rho,
+            s_delta_sigma,
+            s_delta_rho,
+        }
+    }
+
+    fn compute_partial_responses(
+        blindings: &Blindings<E::ScalarField>,
+        challenge: &E::ScalarField,
+    ) -> SchnorrResponse<E::ScalarField> {
+        // Response phase of Schnorr
+        let s_sigma = blindings.r_sigma + (*challenge * blindings.sigma);
+        let s_rho = blindings.r_rho + (*challenge * blindings.rho);
+        let s_delta_sigma = blindings.r_delta_sigma + (*challenge * blindings.delta_sigma);
+        let s_delta_rho = blindings.r_delta_rho + (*challenge * blindings.delta_rho);
+
+        SchnorrResponse {
+            s_y: None,
             s_sigma,
             s_rho,
             s_delta_sigma,
@@ -725,6 +743,37 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         prk: &ProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
         let (p, q) = Self::verify_proof_except_pairings(
+            None,
+            randomized_witness,
+            schnorr_commit,
+            schnorr_response,
+            pairing_extra,
+            accumulator_value,
+            challenge,
+            prk,
+        )?;
+        let R_E = E::multi_pairing([p, q], [params.into().P_tilde, pk.into().0]);
+        if R_E != schnorr_commit.R_E {
+            return Err(VBAccumulatorError::PairingResponseInvalid);
+        }
+
+        Ok(())
+    }
+
+    fn verify_partial_proof(
+        resp_for_element: &E::ScalarField,
+        randomized_witness: &RandomizedWitness<E::G1Affine>,
+        schnorr_commit: &SchnorrCommit<E>,
+        schnorr_response: &SchnorrResponse<E::ScalarField>,
+        pairing_extra: Option<E::G1>,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        prk: &ProvingKey<E::G1Affine>,
+    ) -> Result<(), VBAccumulatorError> {
+        let (p, q) = Self::verify_proof_except_pairings(
+            Some(resp_for_element),
             randomized_witness,
             schnorr_commit,
             schnorr_response,
@@ -754,6 +803,38 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), VBAccumulatorError> {
         let (p, q) = Self::verify_proof_except_pairings(
+            None,
+            randomized_witness,
+            schnorr_commit,
+            schnorr_response,
+            pairing_extra,
+            accumulator_value,
+            challenge,
+            prk,
+        )?;
+        pairing_checker.add_multiple_sources_and_target(
+            &[p, q],
+            [params.into().P_tilde, pk.into().0],
+            &schnorr_commit.R_E,
+        );
+        Ok(())
+    }
+
+    fn verify_partial_proof_with_randomized_pairing_checker(
+        resp_for_element: &E::ScalarField,
+        randomized_witness: &RandomizedWitness<E::G1Affine>,
+        schnorr_commit: &SchnorrCommit<E>,
+        schnorr_response: &SchnorrResponse<E::ScalarField>,
+        pairing_extra: Option<E::G1>,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        prk: &ProvingKey<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        let (p, q) = Self::verify_proof_except_pairings(
+            Some(resp_for_element),
             randomized_witness,
             schnorr_commit,
             schnorr_response,
@@ -773,6 +854,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
     /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this
     /// protocol or others) and the pairing equations are combined in a randomized pairing check.
     fn verify_proof_except_pairings(
+        resp_for_element: Option<&E::ScalarField>,
         randomized_witness: &RandomizedWitness<E::G1Affine>,
         schnorr_commit: &SchnorrCommit<E>,
         schnorr_response: &SchnorrResponse<E::ScalarField>,
@@ -784,6 +866,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         let (context, X_table, Y_table, Z_table, T_sigma_table, T_rho_table, E_C_table) =
             Self::get_tables(prk, randomized_witness);
         Self::verify_schnorr_proofs(
+            resp_for_element,
             schnorr_commit,
             schnorr_response,
             challenge,
@@ -794,7 +877,8 @@ pub(crate) trait ProofProtocol<E: Pairing> {
             &T_rho_table,
         )?;
 
-        Ok(Self::get_g1_for_pairing_checks(
+        Self::get_g1_for_pairing_checks(
+            resp_for_element,
             schnorr_response,
             pairing_extra,
             accumulator_value,
@@ -802,7 +886,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
             &context,
             &E_C_table,
             &Z_table,
-        ))
+        )
     }
 
     /// There are multiple multiplications with X, Y and Z which can be done in variable time so use wNAF.
@@ -841,6 +925,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
     /// The verifier recomputes various `R_`s values given the responses from the proof and the challenge
     /// and compares them with the `R_`s from the proof for equality
     fn verify_schnorr_proofs(
+        resp_for_element: Option<&E::ScalarField>,
         schnorr_commit: &SchnorrCommit<E>,
         schnorr_response: &SchnorrResponse<E::ScalarField>,
         challenge: &E::ScalarField,
@@ -850,6 +935,13 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         T_sigma_table: &[E::G1],
         T_rho_table: &[E::G1],
     ) -> Result<(), VBAccumulatorError> {
+        let s_y = if let Some(r) = resp_for_element {
+            r
+        } else if let Some(r) = schnorr_response.s_y.as_ref() {
+            r
+        } else {
+            return Err(VBAccumulatorError::MissingSchnorrResponseForElement);
+        };
         // R_sigma = schnorr_response.s_sigma * prk.X - challenge * randomized_witness.T_sigma
         let mut R_sigma = context
             .mul_with_table(X_table, &schnorr_response.s_sigma)
@@ -869,9 +961,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         }
 
         // R_delta_sigma = schnorr_response.s_y * randomized_witness.T_sigma - schnorr_response.s_delta_sigma * prk.X;
-        let mut R_delta_sigma = context
-            .mul_with_table(T_sigma_table, &schnorr_response.s_y)
-            .unwrap();
+        let mut R_delta_sigma = context.mul_with_table(T_sigma_table, s_y).unwrap();
         R_delta_sigma -= context
             .mul_with_table(X_table, &schnorr_response.s_delta_sigma)
             .unwrap();
@@ -880,9 +970,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         }
 
         // R_delta_rho = schnorr_response.s_y * randomized_witness.T_rho - schnorr_response.s_delta_rho * prk.Y;
-        let mut R_delta_rho = context
-            .mul_with_table(T_rho_table, &schnorr_response.s_y)
-            .unwrap();
+        let mut R_delta_rho = context.mul_with_table(T_rho_table, s_y).unwrap();
         R_delta_rho -= context
             .mul_with_table(Y_table, &schnorr_response.s_delta_rho)
             .unwrap();
@@ -893,6 +981,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
     }
 
     fn get_g1_for_pairing_checks(
+        resp_for_element: Option<&E::ScalarField>,
         schnorr_response: &SchnorrResponse<E::ScalarField>,
         pairing_extra: Option<E::G1>,
         accumulator_value: &E::G1Affine,
@@ -900,16 +989,21 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         context: &WnafContext,
         E_C_table: &[E::G1],
         Z_table: &[E::G1],
-    ) -> (E::G1Affine, E::G1Affine) {
+    ) -> Result<(E::G1Affine, E::G1Affine), VBAccumulatorError> {
+        let s_y = if let Some(r) = resp_for_element {
+            r
+        } else if let Some(r) = schnorr_response.s_y.as_ref() {
+            r
+        } else {
+            return Err(VBAccumulatorError::MissingSchnorrResponseForElement);
+        };
         // R_E = e(E_C, params.P_tilde)^s_y * e(prk.Z, params.P_tilde)^(-s_delta_sigma - s_delta_rho) * e(prk.Z, Q_tilde)^(-s_sigma - s_rho) * e(V, params.P_tilde)^-challenge * e(E_C, Q_tilde)^challenge * pairing_extra
         // Here `pairing_extra` refers to `E_d * -challenge` and `K * -s_v` and is used to for creating the pairings `e(E_d, P_tilde)^challenge` as `e(challenge * E_d, P_tilde)` and `e(K, P_tilde)^{-s_v}` as `e(-s_v * K, P_tilde)`
         // Thus, R_E = e(s_y * E_C, params.P_tilde) * e((s_delta_sigma - s_delta_rho) * Z, params.P_tilde) * e((s_sigma - s_rho) * Z, Q_tilde) * e(-challenge * V, params.P_tilde) * e(challenge * E_C, Q_tilde) * e(challenge * E_d, P_tilde) * e(-s_v * K, P_tilde)
         // Further simplifying, R_E = e(s_y * E_C + (s_delta_sigma - s_delta_rho) * Z + -challenge * V + challenge * E_d + -s_v * K, params.P_tilde) * e((s_sigma - s_rho) * Z + challenge * E_C, Q_tilde)
 
         // s_y * E_C
-        let E_C_p = context
-            .mul_with_table(E_C_table, &schnorr_response.s_y)
-            .unwrap();
+        let E_C_p = context.mul_with_table(E_C_table, s_y).unwrap();
         // (s_delta_sigma - s_delta_rho) * Z
         let z_p = context
             .mul_with_table(
@@ -935,7 +1029,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         // challenge * E_C
         let E_C_q = context.mul_with_table(E_C_table, challenge).unwrap();
         let q = z_q + E_C_q;
-        (p.into_affine(), q.into_affine())
+        Ok((p.into_affine(), q.into_affine()))
     }
 }
 
@@ -1003,6 +1097,21 @@ impl<E: Pairing> MembershipProofProtocol<E> {
         challenge: &E::ScalarField,
     ) -> Result<MembershipProof<E>, VBAccumulatorError> {
         let resp = Self::compute_responses(&self.element, &self.schnorr_blindings.0, challenge);
+        Ok(MembershipProof {
+            randomized_witness: self.randomized_witness.clone(),
+            schnorr_commit: self.schnorr_commit.clone(),
+            schnorr_response: MembershipSchnorrResponse(resp),
+        })
+    }
+
+    /// Create membership proof once the overall challenge is ready. Delegates to [`compute_partial_responses`]
+    ///
+    /// [`compute_responses`]: ProofProtocol::compute_responses
+    pub fn gen_partial_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<MembershipProof<E>, VBAccumulatorError> {
+        let resp = Self::compute_partial_responses(&self.schnorr_blindings.0, challenge);
         Ok(MembershipProof {
             randomized_witness: self.randomized_witness.clone(),
             schnorr_commit: self.schnorr_commit.clone(),
@@ -1130,13 +1239,32 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
         self,
         challenge: &E::ScalarField,
     ) -> Result<NonMembershipProof<E>, VBAccumulatorError> {
+        let resp = Self::compute_responses(&self.element, &self.schnorr_blindings.C, challenge);
+        self._gen_proof(resp, challenge)
+    }
+
+    /// Create membership proof once the overall challenge is ready. Computes the response for `witness.d`
+    /// and then delegates to [`compute_partial_responses`]
+    ///
+    /// [`compute_responses`]: ProofProtocol::compute_responses
+    pub fn gen_partial_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<NonMembershipProof<E>, VBAccumulatorError> {
+        let resp = Self::compute_partial_responses(&self.schnorr_blindings.C, challenge);
+        self._gen_proof(resp, challenge)
+    }
+
+    fn _gen_proof(
+        self,
+        resp: SchnorrResponse<E::ScalarField>,
+        challenge: &E::ScalarField,
+    ) -> Result<NonMembershipProof<E>, VBAccumulatorError> {
         // For d != 0
         let challenge_times_d = *challenge * self.d;
         let s_u = self.schnorr_blindings.r_u + challenge_times_d;
         let s_v = self.schnorr_blindings.r_v + (*challenge * self.schnorr_blindings.tau);
         let s_w = self.schnorr_blindings.r_w - (challenge_times_d * self.schnorr_blindings.pi);
-
-        let resp = Self::compute_responses(&self.element, &self.schnorr_blindings.C, challenge);
 
         Ok(NonMembershipProof {
             randomized_witness: self.randomized_witness.clone(),
@@ -1196,6 +1324,29 @@ impl<E: Pairing> MembershipProof<E> {
         )
     }
 
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        prk: impl AsRef<ProvingKey<E::G1Affine>>,
+    ) -> Result<(), VBAccumulatorError> {
+        <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_partial_proof(
+            resp_for_element,
+            &self.randomized_witness.0,
+            &self.schnorr_commit.0,
+            &self.schnorr_response.0,
+            None,
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            prk.as_ref(),
+        )
+    }
+
     pub fn verify_with_randomized_pairing_checker(
         &self,
         accumulator_value: &E::G1Affine,
@@ -1219,9 +1370,34 @@ impl<E: Pairing> MembershipProof<E> {
         )
     }
 
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        prk: impl AsRef<ProvingKey<E::G1Affine>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_partial_proof_with_randomized_pairing_checker(
+            resp_for_element,
+            &self.randomized_witness.0,
+            &self.schnorr_commit.0,
+            &self.schnorr_response.0,
+            None,
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            prk.as_ref(),
+            pairing_checker
+        )
+    }
+
     /// Get response for Schnorr protocol for the member. This is useful when the member is also used
     /// in another relation that is proven along this protocol.
-    pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
+    pub fn get_schnorr_response_for_element(&self) -> Option<&E::ScalarField> {
         self.schnorr_response.0.get_response_for_element()
     }
 }
@@ -1275,6 +1451,32 @@ impl<E: Pairing> NonMembershipProof<E> {
         )
     }
 
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        prk: &NonMembershipProvingKey<E::G1Affine>,
+    ) -> Result<(), VBAccumulatorError> {
+        let params = params.into();
+        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk)?;
+
+        <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_partial_proof(
+            resp_for_element,
+            &self.randomized_witness.C,
+            &self.schnorr_commit.C,
+            &self.schnorr_response.C,
+            Some(pairing_extra),
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            &prk.XYZ,
+        )
+    }
+
     pub fn verify_with_randomized_pairing_checker(
         &self,
         accumulator_value: &E::G1Affine,
@@ -1301,9 +1503,37 @@ impl<E: Pairing> NonMembershipProof<E> {
         )
     }
 
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        prk: &NonMembershipProvingKey<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        let params = params.into();
+        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk)?;
+
+        <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_partial_proof_with_randomized_pairing_checker(
+            resp_for_element,
+            &self.randomized_witness.C,
+            &self.schnorr_commit.C,
+            &self.schnorr_response.C,
+            Some(pairing_extra),
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            &prk.XYZ,
+            pairing_checker
+        )
+    }
+
     /// Get response for Schnorr protocol for the non-member. This is useful when the non-member is also used
     /// in another relation that is proven along this protocol.
-    pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
+    pub fn get_schnorr_response_for_element(&self) -> Option<&E::ScalarField> {
         self.schnorr_response.C.get_response_for_element()
     }
 

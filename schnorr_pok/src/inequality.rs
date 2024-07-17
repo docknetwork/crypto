@@ -30,7 +30,10 @@ use core::mem;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol};
+use crate::{
+    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
+    partial::PartialPokTwoDiscreteLogs,
+};
 use dock_crypto_utils::{commitment::PedersenCommitmentKey, serde_utils::ArkObjectBytes};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -339,7 +342,7 @@ pub struct UnknownDiscreteLogInequalityProof<G: AffineRepr> {
     /// For proving knowledge of `alpha` and `beta` in `c = h * alpha - z * beta`
     pub sc_c: PokTwoDiscreteLogs<G>,
     /// For proving knowledge of `alpha` and `beta` in `0 = g * alpha - y * beta`
-    pub sc_zero: PokTwoDiscreteLogs<G>,
+    pub sc_zero: PartialPokTwoDiscreteLogs<G>,
 }
 
 impl<G: AffineRepr> UnknownDiscreteLogInequalityProtocol<G> {
@@ -402,7 +405,7 @@ impl<G: AffineRepr> UnknownDiscreteLogInequalityProtocol<G> {
 
     pub fn gen_proof(mut self, challenge: &G::ScalarField) -> UnknownDiscreteLogInequalityProof<G> {
         let sc_c = mem::take(&mut self.sc_c).gen_proof(challenge);
-        let sc_zero = mem::take(&mut self.sc_zero).gen_proof(challenge);
+        let sc_zero = mem::take(&mut self.sc_zero).gen_partial_proof();
         UnknownDiscreteLogInequalityProof {
             c: self.c,
             sc_c,
@@ -475,19 +478,26 @@ impl<G: AffineRepr> UnknownDiscreteLogInequalityProof<G> {
             return Err(SchnorrError::InvalidProofOfEquality);
         }
         // alpha and beta are same in both protocols
-        if self.sc_c.response1 != self.sc_zero.response1 {
-            return Err(SchnorrError::InvalidProofOfEquality);
-        }
-        if self.sc_c.response2 != self.sc_zero.response2 {
-            return Err(SchnorrError::InvalidProofOfEquality);
-        }
+        // if self.sc_c.response1 != self.sc_zero.response1 {
+        //     return Err(SchnorrError::InvalidProofOfEquality);
+        // }
+        // if self.sc_c.response2 != self.sc_zero.response2 {
+        //     return Err(SchnorrError::InvalidProofOfEquality);
+        // }
         let zero = G::zero();
         let minus_z = z.into_group().neg().into_affine();
         let minus_y = y.into_group().neg().into_affine();
         if !self.sc_c.verify(&self.c, h, &minus_z, challenge) {
             return Err(SchnorrError::InvalidProofOfEquality);
         }
-        if !self.sc_zero.verify(&zero, g, &minus_y, challenge) {
+        if !self.sc_zero.verify(
+            &zero,
+            g,
+            &minus_y,
+            challenge,
+            &self.sc_c.response1,
+            &self.sc_c.response2,
+        ) {
             return Err(SchnorrError::InvalidProofOfEquality);
         }
         Ok(())

@@ -15,7 +15,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use ark_serialize::CanonicalSerialize;
 use ark_std::{
     cmp::Ordering,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::Write,
     rand::{Rng, RngCore},
     vec,
@@ -160,6 +160,7 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
                 self.id,
             ));
         }
+        let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::BoundCheckLegoGroth16(
             BoundCheckLegoGroth16Proof {
                 snark_proof: self.snark_proof.take().unwrap(),
@@ -167,7 +168,7 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
                     .sp
                     .take()
                     .unwrap()
-                    .gen_proof_contribution_as_struct(challenge)?,
+                    .gen_partial_proof_contribution_as_struct(challenge, &skip_for)?,
             },
         ))
     }
@@ -180,6 +181,7 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
         comm_key: &[E::G1Affine],
         pvk: &PreparedVerifyingKey<E>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         let pub_inp = &[
             E::ScalarField::from(self.min),
@@ -206,8 +208,8 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
 
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.snark_proof.d);
-
-        sp.verify_proof_contribution(challenge, &proof.sp)
+        let missing_resp = BTreeMap::from([(0, resp_for_message)]);
+        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
@@ -216,10 +218,13 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
         challenge: &E::ScalarField,
         proof: &BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>,
         comm_key: &[E::G1Affine],
+        resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
-        sp.verify_proof_contribution(challenge, &proof.sp)
+        let missing_resp = BTreeMap::from([(0, resp_for_message)]);
+        // The aggregated snark proof is verified outside of this function, in  `Proof::verify`
+        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

@@ -479,7 +479,7 @@ impl<E: Pairing> CredentialWithoutOpenings<E> {
         )?;
         Ok((
             Self {
-                max_attributes_per_commitment: max_attributes_per_commitment,
+                max_attributes_per_commitment,
                 attributes,
                 commitments,
                 signature,

@@ -1,6 +1,10 @@
 use crate::{extend_some::ExtendSome, misc::rand};
 use ark_ff::PrimeField;
-use ark_std::{rand::RngCore, vec::Vec};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    rand::RngCore,
+    vec::Vec,
+};
 use core::result::Result;
 
 /// Trait implemented by a signature scheme params that can sign multiple messages
@@ -53,4 +57,61 @@ pub fn split_messages_and_blindings<
     (l == params.supported_message_count())
         .then_some((messages, indexed_blindings))
         .ok_or_else(|| l)
+}
+
+// TODO: Document this and rename
+pub fn schnorr_responses_to_msg_index_map<T>(
+    witnesses: Vec<T>,
+    revealed_msg_ids: &BTreeSet<usize>,
+    skip_responses_for: &BTreeSet<usize>,
+) -> BTreeMap<usize, T> {
+    let mut wits = BTreeMap::new();
+    let mut shift = 0;
+    for (i, w) in witnesses.into_iter().enumerate() {
+        let mut msg_idx = i + shift;
+        while revealed_msg_ids.contains(&msg_idx) {
+            shift += 1;
+            msg_idx += 1;
+        }
+        if !skip_responses_for.contains(&msg_idx) {
+            wits.insert(i, w);
+        }
+    }
+    wits
+}
+
+// TODO: Document this and rename
+pub fn msg_index_map_to_schnorr_response_map<'a, T>(
+    missing_responses: BTreeMap<usize, T>,
+    revealed_msg_ids: impl IntoIterator<Item = &'a usize> + Clone,
+) -> BTreeMap<usize, T> {
+    let mut adjusted_missing = BTreeMap::new();
+    for (i, w) in missing_responses {
+        let mut adj_i = i;
+        for j in revealed_msg_ids.clone().into_iter() {
+            if i > *j {
+                adj_i -= 1;
+            }
+        }
+        adjusted_missing.insert(adj_i, w);
+    }
+    adjusted_missing
+}
+
+pub fn msg_index_to_schnorr_response_index(
+    msg_idx: usize,
+    revealed_msg_ids: &BTreeSet<usize>,
+) -> Option<usize> {
+    // Revealed messages are not part of Schnorr protocol
+    if revealed_msg_ids.contains(&msg_idx) {
+        return None;
+    }
+    // Adjust message index as the revealed messages are not part of the Schnorr protocol
+    let mut adjusted_idx = msg_idx;
+    for i in revealed_msg_ids {
+        if *i < msg_idx {
+            adjusted_idx -= 1;
+        }
+    }
+    Some(adjusted_idx)
 }

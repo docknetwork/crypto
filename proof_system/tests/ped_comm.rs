@@ -76,7 +76,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality() {
     )
     .into_affine();
 
-    let mut statements = Statements::new();
+    let mut statements = Statements::<Bls12_381>::new();
     statements.add(PedersenCommitmentStmt::new_statement_from_params(
         bases_1.clone(),
         commitment_1,
@@ -303,7 +303,7 @@ fn pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reus
     )
     .into_affine();
 
-    let mut all_setup_params = vec![];
+    let mut all_setup_params = Vec::<SetupParams<Bls12_381>>::new();
     all_setup_params.push(SetupParams::PedersenCommitmentKey(bases));
     all_setup_params.push(SetupParams::PedersenCommitmentKeyG2(bases_2));
 

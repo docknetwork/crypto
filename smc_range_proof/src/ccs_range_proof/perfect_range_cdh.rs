@@ -227,7 +227,7 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         );
 
         let resp_d = cfg_iter!(self.pok_sigs)
-            .map(|p| *p.get_resp_for_message())
+            .map(|p| *p.get_resp_for_message().unwrap())
             .collect::<Vec<_>>();
         check_commitment_for_prefect_range::<E>(
             self.base,

@@ -38,6 +38,256 @@ use test_utils::{
 };
 use vb_accumulator::positive::Accumulator;
 
+// #[test]
+// fn pok_of_3_macs_and_message_equality() {
+// // Prove knowledge of 3 BBS+ signatures and 3 of the messages are same among them.
+// let mut rng = StdRng::seed_from_u64(0u64);
+//
+// // 1st BBS+ sig
+// let msg_count_1 = 6;
+// let (msgs_1, params_1, sk_1, sig_1) = bbdt16_mac_setup(&mut rng, msg_count_1 as u32);
+//
+// // 2nd BBS+ sig
+// let msg_count_2 = 10;
+// let (mut msgs_2, params_2, sk_2, _) = bbdt16_mac_setup(&mut rng, msg_count_2 as u32);
+//
+// // 3rd BBS+ sig
+// let msg_count_3 = 12;
+// let (mut msgs_3, params_3, sk_3, _) = bbdt16_mac_setup(&mut rng, msg_count_3 as u32);
+//
+// // Make 3 messages same
+// msgs_2[9] = msgs_1[5];
+// msgs_3[9] = msgs_1[5];
+// msgs_2[8] = msgs_1[4];
+// msgs_3[8] = msgs_1[4];
+// msgs_2[7] = msgs_1[3];
+// msgs_3[7] = msgs_1[3];
+//
+// msgs_3[5] = msgs_3[7];
+//
+// let mac_2 =
+// MAC::<G1Affine>::new(&mut rng, &msgs_2, &sk_2, &params_2).unwrap();
+// mac_2
+// .verify(&msgs_2, &sk_2, &params_2)
+// .unwrap();
+//
+// let sig_3 =
+// MAC::<G1Affine>::new(&mut rng, &msgs_3, &sk_3, &params_3).unwrap();
+// sig_3
+// .verify(&msgs_3, &sk_3, &params_3)
+// .unwrap();
+//
+// // Prepare revealed messages for the proof of knowledge of 1st signature
+// let mut revealed_indices_1 = BTreeSet::new();
+// revealed_indices_1.insert(0);
+// revealed_indices_1.insert(2);
+//
+// let mut revealed_msgs_1 = BTreeMap::new();
+// let mut unrevealed_msgs_1 = BTreeMap::new();
+// for i in 0..msg_count_1 {
+// if revealed_indices_1.contains(&i) {
+// revealed_msgs_1.insert(i, msgs_1[i]);
+// } else {
+// unrevealed_msgs_1.insert(i, msgs_1[i]);
+// }
+// }
+//
+// // Prepare revealed messages for the proof of knowledge of 2nd signature
+// let mut revealed_indices_2 = BTreeSet::new();
+// revealed_indices_2.insert(1);
+// revealed_indices_2.insert(3);
+// revealed_indices_2.insert(5);
+//
+// let mut revealed_msgs_2 = BTreeMap::new();
+// let mut unrevealed_msgs_2 = BTreeMap::new();
+// for i in 0..msg_count_2 {
+// if revealed_indices_2.contains(&i) {
+// revealed_msgs_2.insert(i, msgs_2[i]);
+// } else {
+// unrevealed_msgs_2.insert(i, msgs_2[i]);
+// }
+// }
+//
+// let unrevealed_msgs_3 = msgs_3
+// .iter()
+// .enumerate()
+// .map(|(i, m)| (i, *m))
+// .collect::<BTreeMap<_, _>>();
+//
+// // Since proving knowledge of 3 BBS+ signatures, add 3 statements, all of the same type though.
+// let mut prover_statements = Statements::new();
+// prover_statements.add(PoKOfMAC::new_statement_from_params(
+// params_1.clone(),
+// revealed_msgs_1.clone(),
+// ));
+// prover_statements.add(PoKOfMAC::new_statement_from_params(
+// params_2.clone(),
+// revealed_msgs_2.clone(),
+// ));
+// prover_statements.add(PoKOfMAC::new_statement_from_params(
+// params_3.clone(),
+// BTreeMap::new(),
+// ));
+//
+// // Since 3 of the messages are being proven equal, add a `MetaStatement` describing that
+// let mut meta_statements = MetaStatements::new();
+// meta_statements.add_witness_equality(EqualWitnesses(
+// vec![(0, 5), (1, 9), (2, 9)] // 0th statement's 5th witness is equal to 1st statement's 9th witness and 2nd statement's 9th witness
+// .into_iter()
+// .collect::<BTreeSet<WitnessRef>>(),
+// ));
+// meta_statements.add_witness_equality(EqualWitnesses(
+// vec![(0, 4), (1, 8), (2, 8)] // 0th statement's 4th witness is equal to 1st statement's 8th witness and 2nd statement's 8th witness
+// .into_iter()
+// .collect::<BTreeSet<WitnessRef>>(),
+// ));
+// meta_statements.add_witness_equality(EqualWitnesses(
+// vec![(0, 3), (1, 7), (2, 7)] // 0th statement's 3rd witness is equal to 1st statement's 7th witness and 2nd statement's 7th witness
+// .into_iter()
+// .collect::<BTreeSet<WitnessRef>>(),
+// ));
+// meta_statements.add_witness_equality(EqualWitnesses(
+// vec![(2, 5), (2, 7)]
+// .into_iter()
+// .collect::<BTreeSet<WitnessRef>>(),
+// ));
+//
+// test_serialization!(Statements<Bls12_381>, prover_statements);
+// test_serialization!(MetaStatements, meta_statements);
+//
+// // Create a proof spec, this is shared between prover and verifier
+// // Context must be known to both prover and verifier
+// let context = Some(b"test".to_vec());
+// let prover_proof_spec = ProofSpec::new(prover_statements, meta_statements.clone(), vec![], context.clone());
+// prover_proof_spec.validate().unwrap();
+//
+// test_serialization!(ProofSpec<Bls12_381>, prover_proof_spec);
+//
+// // Prover now creates/loads it witnesses corresponding to the proof spec
+// let mut witnesses = Witnesses::new();
+// witnesses.add($wit::new_as_witness(
+// sig_1,
+// unrevealed_msgs_1.clone(),
+// ));
+// witnesses.add($wit::new_as_witness(
+// sig_2,
+// unrevealed_msgs_2.clone(),
+// ));
+// witnesses.add($wit::new_as_witness(
+// sig_3,
+// unrevealed_msgs_3,
+// ));
+//
+// test_serialization!(Witnesses<Bls12_381>, witnesses);
+//
+// // Prover now creates the proof using the proof spec and witnesses. This will be sent to the verifier
+// let nonce = Some(b"some nonce".to_vec());
+// let proof = Proof::new::<StdRng, Blake2b512>(
+// &mut rng,
+// prover_proof_spec,
+// witnesses,
+// nonce.clone(),
+// Default::default(),
+// )
+// .unwrap()
+// .0;
+//
+// let mut verifier_statements = Statements::new();
+// verifier_statements.add($verifier_stmt::new_statement_from_params(
+// params_1,
+// keypair_1.public_key.clone(),
+// revealed_msgs_1.clone(),
+// ));
+// verifier_statements.add($verifier_stmt::new_statement_from_params(
+// params_2,
+// keypair_2.public_key.clone(),
+// revealed_msgs_2.clone(),
+// ));
+// verifier_statements.add($verifier_stmt::new_statement_from_params(
+// params_3,
+// keypair_3.public_key.clone(),
+// BTreeMap::new(),
+// ));
+// let verifier_proof_spec = ProofSpec::new(verifier_statements.clone(), meta_statements, vec![], context);
+// verifier_proof_spec.validate().unwrap();
+//
+// test_serialization!(Statements<Bls12_381>, verifier_statements);
+// test_serialization!(ProofSpec<Bls12_381>, verifier_proof_spec);
+//
+// // Proof with no nonce shouldn't verify
+// assert!(proof
+// .clone()
+// .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec.clone(), None, Default::default())
+// .is_err());
+// assert!(proof
+// .clone()
+// .verify::<StdRng, Blake2b512>(
+// &mut rng,
+// verifier_proof_spec.clone(),
+// None,
+// VerifierConfig {
+// use_lazy_randomized_pairing_checks: Some(false),
+// },
+// )
+// .is_err());
+//
+// // Proof with invalid nonce shouldn't verify
+// assert!(proof
+// .clone()
+// .verify::<StdRng, Blake2b512>(
+// &mut rng,
+// verifier_proof_spec.clone(),
+// Some(b"random...".to_vec()),
+// Default::default()
+// )
+// .is_err());
+// assert!(proof
+// .clone()
+// .verify::<StdRng, Blake2b512>(
+// &mut rng,
+// verifier_proof_spec.clone(),
+// Some(b"random...".to_vec()),
+// VerifierConfig {
+// use_lazy_randomized_pairing_checks: Some(false),
+// },
+// )
+// .is_err());
+//
+// test_serialization!(Proof<Bls12_381>, proof);
+//
+// // Verifier verifies the proof
+// let start = Instant::now();
+// proof
+// .clone()
+// .verify::<StdRng, Blake2b512>(
+// &mut rng,
+// verifier_proof_spec.clone(),
+// nonce.clone(),
+// Default::default(),
+// )
+// .unwrap();
+// println!(
+// "Time to verify proof with 3 BBS+ signatures: {:?}",
+// start.elapsed()
+// );
+//
+// let start = Instant::now();
+// proof
+// .verify::<StdRng, Blake2b512>(
+// &mut rng,
+// verifier_proof_spec,
+// nonce,
+// VerifierConfig {
+// use_lazy_randomized_pairing_checks: Some(false),
+// },
+// )
+// .unwrap();
+// println!(
+// "Time to verify proof with 3 BBS+ signatures with randomized pairing check: {:?}",
+// start.elapsed()
+// );
+// }
+
 #[test]
 fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
     // Prove knowledge of 3 KVAC and membership in accumulator. Membership proof verification is keyed
@@ -160,7 +410,7 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
         .collect::<BTreeMap<_, _>>();
 
     // Prove knowledge of 3 MACs, add 3 statements
-    let mut statements = Statements::new();
+    let mut statements = Statements::<Bls12_381>::new();
     statements.add(PoKOfMAC::new_statement_from_params(
         params_1.clone(),
         revealed_msgs_1.clone(),
@@ -173,6 +423,7 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
         params_3.clone(),
         BTreeMap::new(),
     ));
+
     statements.add(VBAccumulatorMembershipKV::new(*pos_accumulator.value()));
     statements.add(KBUniversalAccumulatorMembershipKV::new(
         *uni_accumulator.mem_value(),
@@ -339,7 +590,7 @@ fn pok_of_knowledge_of_macs_with_reusing_setup_params() {
     let msgs_4: Vec<Fr> = (0..msg_count).map(|_| Fr::rand(&mut rng)).collect();
     let mac_4 = MAC::<G1Affine>::new(&mut rng, &msgs_4, &sk_2, &params_2).unwrap();
 
-    let mut all_setup_params = vec![];
+    let mut all_setup_params = Vec::<SetupParams<Bls12_381>>::new();
     all_setup_params.push(SetupParams::BBDT16MACParams(params_1.clone()));
     all_setup_params.push(SetupParams::BBDT16MACParams(params_2.clone()));
 
@@ -478,7 +729,7 @@ fn requesting_blind_mac() {
         .unwrap();
 
     // Requester proves knowledge of committed messages
-    let mut statements = Statements::new();
+    let mut statements = Statements::<Bls12_381>::new();
     let mut bases = vec![mac_params.g];
     let mut committed_msgs = vec![blinding];
     for i in committed_indices.iter() {

@@ -15,8 +15,11 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 
-use schnorr_pok::discrete_log::{
-    PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
+use schnorr_pok::{
+    discrete_log::{
+        PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
+    },
+    partial::Partial2PokTwoDiscreteLogs,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -61,7 +64,7 @@ pub struct PoKOfSignatureG1<E: Pairing> {
     /// For relation `T1 * message + u * delta_1 = 0`
     pub sc_T1_x: PokTwoDiscreteLogs<E::G1Affine>,
     /// For relation `T2 * message + v * delta_2 = 0`
-    pub sc_T2_x: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_T2_x: Partial2PokTwoDiscreteLogs<E::G1Affine>,
     /// `R_3` from the paper
     pub R_3: PairingOutput<E>,
 }
@@ -148,7 +151,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let sc_T1 = mem::take(&mut self.sc_T1).gen_proof(challenge);
         let sc_T2 = mem::take(&mut self.sc_T2).gen_proof(challenge);
         let sc_T1_x = mem::take(&mut self.sc_T1_x).gen_proof(challenge);
-        let sc_T2_x = mem::take(&mut self.sc_T2_x).gen_proof(challenge);
+        let sc_T2_x = mem::take(&mut self.sc_T2_x).gen_partial2_proof(challenge);
         Ok(PoKOfSignatureG1 {
             T1: self.T1,
             T2: self.T2,
@@ -275,11 +278,6 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         if !self.sc_T2.verify(&self.T2, &proving_key.Y, challenge) {
             return Err(ShortGroupSigError::InvalidProof);
         }
-        // Check that `message` is same in `T1 * message + u * delta_1 = 0` and `T2 * message + v * delta_2 = 0`
-        let s_message = self.sc_T1_x.response1;
-        if s_message != self.sc_T2_x.response1 {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
         let zero = E::G1Affine::zero();
         if !self
             .sc_T1_x
@@ -287,10 +285,13 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         {
             return Err(ShortGroupSigError::InvalidProof);
         };
-        if !self
-            .sc_T2_x
-            .verify(&zero, &self.T2, &proving_key.Y, challenge)
-        {
+        if !self.sc_T2_x.verify(
+            &zero,
+            &self.T2,
+            &proving_key.Y,
+            challenge,
+            &self.sc_T1_x.response1,
+        ) {
             return Err(ShortGroupSigError::InvalidProof);
         }
         Ok(())

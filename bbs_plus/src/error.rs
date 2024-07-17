@@ -59,6 +59,10 @@ pub enum BBSPlusError {
     SenderEitherNotReadyForResponseOrAlreadySentIt(ParticipantId),
     ReceiverEitherNotReadyForHashedKeysOrAlreadyVerifiedIt(ParticipantId),
     SSError(SSError),
+    MissingResponsesNeededForPartialSchnorrProofVerification,
+    MissingResponsesProvidedForFullSchnorrProofVerification,
+    NeedEitherPartialOrCompleteSchnorrResponse,
+    CommonIndicesFoundInRevealedAndSkip,
 }
 
 impl From<SchnorrError> for BBSPlusError {

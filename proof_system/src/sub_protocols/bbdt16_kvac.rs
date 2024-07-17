@@ -3,7 +3,11 @@ use crate::{
     sub_protocols::merge_indexed_messages_with_blindings,
 };
 use ark_ec::{pairing::Pairing, AffineRepr};
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+    rand::RngCore,
+};
 use dock_crypto_utils::{
     expect_equality,
     iter::take_while_satisfy,
@@ -123,15 +127,45 @@ impl<'a, G: AffineRepr> PoKOfMACSubProtocol<'a, G> {
         Ok(StatementProof::PoKOfBBDT16MAC(proof))
     }
 
-    pub fn verify_proof_contribution(
+    pub fn gen_partial_proof_contribution<E: Pairing<G1Affine = G>>(
+        &mut self,
+        challenge: &G::ScalarField,
+        revealed_msg_ids: &BTreeSet<usize>,
+        skip_responses_for: &BTreeSet<usize>,
+    ) -> Result<StatementProof<E>, ProofSystemError> {
+        if self.protocol.is_none() {
+            return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
+                self.id,
+            ));
+        }
+        let protocol = self.protocol.take().unwrap();
+        let proof = protocol.gen_partial_proof(challenge, revealed_msg_ids, skip_responses_for)?;
+        Ok(StatementProof::PoKOfBBDT16MAC(proof))
+    }
+
+    pub fn verify_schnorr_proof_contribution(
         &self,
         challenge: &G::ScalarField,
         proof: &PoKOfMAC<G>,
     ) -> Result<(), KVACError> {
-        proof.verify_schnorr_proofs(self.revealed_messages, challenge, &self.mac_params)
+        proof.verify_schnorr_proof(self.revealed_messages, challenge, &self.mac_params)
     }
 
-    pub fn verify_full_proof_contribution(
+    pub fn verify_partial_schnorr_proof_contribution(
+        &self,
+        challenge: &G::ScalarField,
+        proof: &PoKOfMAC<G>,
+        missing_responses: BTreeMap<usize, G::ScalarField>,
+    ) -> Result<(), KVACError> {
+        proof.verify_partial_schnorr_proof(
+            self.revealed_messages,
+            challenge,
+            &self.mac_params,
+            missing_responses,
+        )
+    }
+
+    pub fn verify_mac_and_schnorr_proof_contribution(
         &self,
         challenge: &G::ScalarField,
         proof: &PoKOfMAC<G>,
@@ -142,6 +176,22 @@ impl<'a, G: AffineRepr> PoKOfMACSubProtocol<'a, G> {
             challenge,
             secret_key,
             &self.mac_params,
+        )
+    }
+
+    pub fn verify_mac_and_partial_schnorr_proof_contribution(
+        &self,
+        challenge: &G::ScalarField,
+        proof: &PoKOfMAC<G>,
+        secret_key: &SecretKey<G::ScalarField>,
+        missing_responses: BTreeMap<usize, G::ScalarField>,
+    ) -> Result<(), KVACError> {
+        proof.verify_partial(
+            self.revealed_messages,
+            challenge,
+            secret_key,
+            &self.mac_params,
+            missing_responses,
         )
     }
 }

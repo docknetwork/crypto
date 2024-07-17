@@ -27,14 +27,21 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
+use core::mem;
 use dock_crypto_utils::{
     misc::rand,
     randomized_pairing_check::RandomizedPairingChecker,
     serde_utils::*,
-    signature::{split_messages_and_blindings, MessageOrBlinding, MultiMessageSignatureParams},
+    signature::{
+        msg_index_map_to_schnorr_response_map, msg_index_to_schnorr_response_index,
+        schnorr_responses_to_msg_index_map, split_messages_and_blindings, MessageOrBlinding,
+        MultiMessageSignatureParams,
+    },
 };
 use itertools::multiunzip;
-use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
+use schnorr_pok::{
+    error::SchnorrError, partial::PartialSchnorrResponse, SchnorrCommitment, SchnorrResponse,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -80,7 +87,8 @@ pub struct PoKOfSignature23G1Proof<E: Pairing> {
     /// Proof of relation `\sum_{j \notin D}{h_j * m_j} - B_bar * 1/r - A_bar * e * 1/r = g + \sum_{i \in D}{h_i * m_i}`
     #[serde_as(as = "ArkObjectBytes")]
     pub T: E::G1Affine,
-    pub sc_resp: SchnorrResponse<E::G1Affine>,
+    pub sc_resp: Option<SchnorrResponse<E::G1Affine>>,
+    pub sc_partial_resp: Option<PartialSchnorrResponse<E::G1Affine>>,
 }
 
 impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
@@ -177,7 +185,33 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
             A_bar: self.A_bar,
             B_bar: self.B_bar,
             T: self.sc_comm.t,
-            sc_resp,
+            sc_resp: Some(sc_resp),
+            sc_partial_resp: None,
+        })
+    }
+
+    pub fn gen_partial_proof(
+        mut self,
+        challenge: &E::ScalarField,
+        revealed_msg_ids: &BTreeSet<usize>,
+        skip_responses_for: &BTreeSet<usize>,
+    ) -> Result<PoKOfSignature23G1Proof<E>, BBSPlusError> {
+        if !skip_responses_for.is_disjoint(revealed_msg_ids) {
+            return Err(BBSPlusError::CommonIndicesFoundInRevealedAndSkip);
+        }
+        let wits = schnorr_responses_to_msg_index_map(
+            mem::take(&mut self.sc_wits),
+            revealed_msg_ids,
+            skip_responses_for,
+        );
+        let sc_resp = self.sc_comm.partial_response(wits, challenge)?;
+
+        Ok(PoKOfSignature23G1Proof {
+            A_bar: self.A_bar,
+            B_bar: self.B_bar,
+            T: self.sc_comm.t,
+            sc_resp: None,
+            sc_partial_resp: Some(sc_resp),
         })
     }
 
@@ -216,25 +250,7 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         pk: impl Into<PreparedPublicKeyG2<E>>,
         params: impl Into<PreparedSignatureParams23G1<E>>,
     ) -> Result<(), BBSPlusError> {
-        let params = params.into();
-        let g1 = params.g1;
-        let g2 = params.g2;
-        let h = params.h;
-        self.verify_except_pairings(revealed_msgs, challenge, g1, h)?;
-
-        // Verify the randomized signature
-        if !E::multi_pairing(
-            [
-                E::G1Prepared::from(self.A_bar),
-                E::G1Prepared::from(-(self.B_bar.into_group())),
-            ],
-            [pk.into().0, g2],
-        )
-        .is_zero()
-        {
-            return Err(BBSPlusError::PairingCheckFailed);
-        }
-        Ok(())
+        self._verify(revealed_msgs, challenge, pk, params, None)
     }
 
     pub fn verify_with_randomized_pairing_checker(
@@ -245,13 +261,50 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         params: impl Into<PreparedSignatureParams23G1<E>>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), BBSPlusError> {
-        let params = params.into();
-        let g1 = params.g1;
-        let g2 = params.g2;
-        let h = params.h;
-        self.verify_except_pairings(revealed_msgs, challenge, g1, h)?;
-        pairing_checker.add_sources(&self.A_bar, pk.into().0, &self.B_bar, g2);
-        Ok(())
+        self._verify_with_randomized_pairing_checker(
+            revealed_msgs,
+            challenge,
+            pk,
+            params,
+            pairing_checker,
+            None,
+        )
+    }
+
+    pub fn verify_partial(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParams23G1<E>>,
+        missing_responses: BTreeMap<usize, E::ScalarField>,
+    ) -> Result<(), BBSPlusError> {
+        self._verify(
+            revealed_msgs,
+            challenge,
+            pk,
+            params,
+            Some(missing_responses),
+        )
+    }
+
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParams23G1<E>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+        missing_responses: BTreeMap<usize, E::ScalarField>,
+    ) -> Result<(), BBSPlusError> {
+        self._verify_with_randomized_pairing_checker(
+            revealed_msgs,
+            challenge,
+            pk,
+            params,
+            pairing_checker,
+            Some(missing_responses),
+        )
     }
 
     /// Get the response from post-challenge phase of the Schnorr protocol for the given message index
@@ -261,18 +314,30 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         msg_idx: usize,
         revealed_msg_ids: &BTreeSet<usize>,
     ) -> Result<&E::ScalarField, BBSPlusError> {
-        // Revealed messages are not part of Schnorr protocol
-        if revealed_msg_ids.contains(&msg_idx) {
-            return Err(BBSPlusError::InvalidMsgIdxForResponse(msg_idx));
+        let adjusted_idx = msg_index_to_schnorr_response_index(msg_idx, revealed_msg_ids)
+            .ok_or_else(|| BBSPlusError::InvalidMsgIdxForResponse(msg_idx))?;
+        if let Some(resp) = self.sc_resp.as_ref() {
+            Ok(resp.get_response(adjusted_idx)?)
+        } else if let Some(resp) = self.sc_partial_resp.as_ref() {
+            return Ok(resp.get_response(adjusted_idx)?);
+        } else {
+            Err(BBSPlusError::NeedEitherPartialOrCompleteSchnorrResponse)
         }
-        // Adjust message index as the revealed messages are not part of the Schnorr protocol
-        let mut adjusted_idx = msg_idx;
-        for i in revealed_msg_ids {
-            if *i < msg_idx {
-                adjusted_idx -= 1;
-            }
+    }
+
+    pub fn get_responses(
+        &self,
+        msg_ids: &BTreeSet<usize>,
+        revealed_msg_ids: &BTreeSet<usize>,
+    ) -> Result<BTreeMap<usize, E::ScalarField>, BBSPlusError> {
+        let mut resps = BTreeMap::new();
+        for msg_idx in msg_ids {
+            resps.insert(
+                *msg_idx,
+                *self.get_resp_for_message(*msg_idx, revealed_msg_ids)?,
+            );
         }
-        Ok(self.sc_resp.get_response(adjusted_idx)?)
+        Ok(resps)
     }
 
     /// For the verifier to independently calculate the challenge
@@ -292,12 +357,60 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         )
     }
 
+    pub fn _verify(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParams23G1<E>>,
+        missing_responses: Option<BTreeMap<usize, E::ScalarField>>,
+    ) -> Result<(), BBSPlusError> {
+        let params = params.into();
+        let g1 = params.g1;
+        let g2 = params.g2;
+        let h = params.h;
+        self.verify_except_pairings(revealed_msgs, challenge, g1, h, missing_responses)?;
+
+        // Verify the randomized signature
+        if !E::multi_pairing(
+            [
+                E::G1Prepared::from(self.A_bar),
+                E::G1Prepared::from(-(self.B_bar.into_group())),
+            ],
+            [pk.into().0, g2],
+        )
+        .is_zero()
+        {
+            return Err(BBSPlusError::PairingCheckFailed);
+        }
+        Ok(())
+    }
+
+    pub fn _verify_with_randomized_pairing_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParams23G1<E>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+        missing_responses: Option<BTreeMap<usize, E::ScalarField>>,
+    ) -> Result<(), BBSPlusError> {
+        let params = params.into();
+        let g1 = params.g1;
+        let g2 = params.g2;
+        let h = params.h;
+        self.verify_except_pairings(revealed_msgs, challenge, g1, h, missing_responses)?;
+        pairing_checker.add_sources(&self.A_bar, pk.into().0, &self.B_bar, g2);
+        Ok(())
+    }
+
     pub fn verify_schnorr_proofs(
         &self,
         revealed_msgs: &BTreeMap<usize, E::ScalarField>,
         challenge: &E::ScalarField,
         g1: E::G1Affine,
         h: Vec<E::G1Affine>,
+        missing_responses: Option<BTreeMap<usize, E::ScalarField>>,
     ) -> Result<(), BBSPlusError> {
         let mut bases = Vec::with_capacity(2 + h.len() - revealed_msgs.len());
         let mut bases_revealed = Vec::with_capacity(revealed_msgs.len());
@@ -315,14 +428,35 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         bases.push(self.B_bar);
         let pr = -E::G1::msm_unchecked(&bases_revealed, &exponents) - g1;
         let pr = pr.into_affine();
-        match self.sc_resp.is_valid(&bases, &pr, &self.T, challenge) {
-            Ok(()) => (),
-            Err(SchnorrError::InvalidResponse) => {
-                return Err(BBSPlusError::SecondSchnorrVerificationFailed)
+        if let Some(resp) = &self.sc_resp {
+            if missing_responses.is_some() {
+                return Err(BBSPlusError::MissingResponsesProvidedForFullSchnorrProofVerification);
             }
-            Err(other) => return Err(BBSPlusError::SchnorrError(other)),
+            return match resp.is_valid(&bases, &pr, &self.T, challenge) {
+                Ok(()) => Ok(()),
+                Err(SchnorrError::InvalidResponse) => {
+                    Err(BBSPlusError::SecondSchnorrVerificationFailed)
+                }
+                Err(other) => Err(BBSPlusError::SchnorrError(other)),
+            };
         }
-        Ok(())
+        if let Some(resp) = &self.sc_partial_resp {
+            if missing_responses.is_none() {
+                return Err(BBSPlusError::MissingResponsesNeededForPartialSchnorrProofVerification);
+            }
+            let adjusted_missing = msg_index_map_to_schnorr_response_map(
+                missing_responses.unwrap(),
+                revealed_msgs.keys(),
+            );
+            return match resp.is_valid(&bases, &pr, &self.T, challenge, adjusted_missing) {
+                Ok(()) => Ok(()),
+                Err(SchnorrError::InvalidResponse) => {
+                    Err(BBSPlusError::SecondSchnorrVerificationFailed)
+                }
+                Err(other) => Err(BBSPlusError::SchnorrError(other)),
+            };
+        }
+        Err(BBSPlusError::NeedEitherPartialOrCompleteSchnorrResponse)
     }
 
     /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this
@@ -333,11 +467,12 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         challenge: &E::ScalarField,
         g1: E::G1Affine,
         h: Vec<E::G1Affine>,
+        missing_responses: Option<BTreeMap<usize, E::ScalarField>>,
     ) -> Result<(), BBSPlusError> {
         if self.A_bar.is_zero() {
             return Err(BBSPlusError::ZeroSignature);
         }
-        self.verify_schnorr_proofs(revealed_msgs, challenge, g1, h)
+        self.verify_schnorr_proofs(revealed_msgs, challenge, g1, h, missing_responses)
     }
 }
 

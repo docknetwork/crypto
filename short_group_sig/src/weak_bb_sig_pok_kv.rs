@@ -11,9 +11,11 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
-
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
-use schnorr_pok::discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol};
+use schnorr_pok::{
+    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
+    partial::Partial1PokTwoDiscreteLogs,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -43,7 +45,8 @@ pub struct PoKOfSignatureG1KV<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: G,
     /// For proving relation `A_bar = g1 * r - A' * m`
-    pub sc: PokTwoDiscreteLogs<G>,
+    pub sc: Option<PokTwoDiscreteLogs<G>>,
+    pub sc_partial: Option<Partial1PokTwoDiscreteLogs<G>>,
 }
 
 impl<G: AffineRepr> PoKOfSignatureG1KVProtocol<G> {
@@ -110,7 +113,18 @@ impl<G: AffineRepr> PoKOfSignatureG1KVProtocol<G> {
         PoKOfSignatureG1KV {
             A_prime: self.A_prime,
             A_bar: self.A_bar,
-            sc,
+            sc: Some(sc),
+            sc_partial: None,
+        }
+    }
+
+    pub fn gen_partial_proof(mut self, challenge: &G::ScalarField) -> PoKOfSignatureG1KV<G> {
+        let sc = mem::take(&mut self.sc).gen_partial1_proof(challenge);
+        PoKOfSignatureG1KV {
+            A_prime: self.A_prime,
+            A_bar: self.A_bar,
+            sc: None,
+            sc_partial: Some(sc),
         }
     }
 
@@ -142,17 +156,58 @@ impl<G: AffineRepr> PoKOfSignatureG1KV<G> {
         self.verify_schnorr_proof(g1, challenge)
     }
 
+    pub fn verify_partial(
+        &self,
+        resp_for_message: &G::ScalarField,
+        challenge: &G::ScalarField,
+        secret_key: impl AsRef<G::ScalarField>,
+        g1: &G,
+    ) -> Result<(), ShortGroupSigError> {
+        if self.A_bar != (self.A_prime * secret_key.as_ref()).into() {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
+        self.verify_partial_schnorr_proof(resp_for_message, g1, challenge)
+    }
+
     pub fn verify_schnorr_proof(
         &self,
         g1: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), ShortGroupSigError> {
-        if !self.sc.verify(
-            &self.A_bar,
-            g1,
-            &self.A_prime.into_group().neg().into(),
-            challenge,
-        ) {
+        if !self
+            .sc
+            .as_ref()
+            .ok_or_else(|| ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse)?
+            .verify(
+                &self.A_bar,
+                g1,
+                &self.A_prime.into_group().neg().into(),
+                challenge,
+            )
+        {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
+        Ok(())
+    }
+
+    pub fn verify_partial_schnorr_proof(
+        &self,
+        resp_for_message: &G::ScalarField,
+        g1: &G,
+        challenge: &G::ScalarField,
+    ) -> Result<(), ShortGroupSigError> {
+        if !self
+            .sc_partial
+            .as_ref()
+            .ok_or_else(|| ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse)?
+            .verify(
+                &self.A_bar,
+                g1,
+                &self.A_prime.into_group().neg().into(),
+                challenge,
+                resp_for_message,
+            )
+        {
             return Err(ShortGroupSigError::InvalidProof);
         }
         Ok(())
@@ -163,17 +218,24 @@ impl<G: AffineRepr> PoKOfSignatureG1KV<G> {
         g1: &G,
         mut writer: W,
     ) -> Result<(), ShortGroupSigError> {
+        let t = if let Some(sc) = &self.sc {
+            &sc.t
+        } else if let Some(sc) = &self.sc_partial {
+            &sc.t
+        } else {
+            return Err(ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse);
+        };
         PoKOfSignatureG1KVProtocol::compute_challenge_contribution(
             &self.A_prime,
             &self.A_bar,
             g1,
-            &self.sc.t,
+            t,
             &mut writer,
         )
     }
 
-    pub fn get_resp_for_message(&self) -> &G::ScalarField {
-        &self.sc.response2
+    pub fn get_resp_for_message(&self) -> Option<&G::ScalarField> {
+        self.sc.as_ref().map(|s| &s.response2)
     }
 }
 

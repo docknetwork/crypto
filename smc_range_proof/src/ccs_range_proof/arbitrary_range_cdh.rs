@@ -333,10 +333,10 @@ impl<E: Pairing> CCSArbitraryRangeProof<E> {
         );
 
         let resp_d_min = cfg_iter!(self.pok_sigs_min)
-            .map(|p| *p.get_resp_for_message())
+            .map(|p| *p.get_resp_for_message().unwrap())
             .collect::<Vec<_>>();
         let resp_d_max = cfg_iter!(self.pok_sigs_max)
-            .map(|p| *p.get_resp_for_message())
+            .map(|p| *p.get_resp_for_message().unwrap())
             .collect::<Vec<_>>();
         check_commitment_for_arbitrary_range::<E>(
             self.base,

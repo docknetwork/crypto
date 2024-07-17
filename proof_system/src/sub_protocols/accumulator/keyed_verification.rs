@@ -76,7 +76,7 @@ macro_rules! impl_struct_and_funcs {
                     ));
                 }
                 let protocol = self.protocol.take().unwrap();
-                let proof = protocol.gen_proof(challenge)?;
+                let proof = protocol.gen_partial_proof(challenge)?;
                 Ok(StatementProof::$sp_variant(proof))
             }
 
@@ -84,9 +84,14 @@ macro_rules! impl_struct_and_funcs {
                 &self,
                 challenge: &G::ScalarField,
                 proof: &$proof<G>,
+                resp_for_element: G::ScalarField,
             ) -> Result<(), ProofSystemError> {
                 proof
-                    .verify_schnorr_proof(&self.accumulator_value, challenge)
+                    .verify_partial_schnorr_proof(
+                        &resp_for_element,
+                        &self.accumulator_value,
+                        challenge,
+                    )
                     .map_err(|e| ProofSystemError::$error_variant(self.id as u32, e))
             }
 
@@ -95,9 +100,15 @@ macro_rules! impl_struct_and_funcs {
                 challenge: &G::ScalarField,
                 proof: &$proof<G>,
                 secret_key: &SecretKey<G::ScalarField>,
+                resp_for_element: G::ScalarField,
             ) -> Result<(), ProofSystemError> {
                 proof
-                    .verify(&self.accumulator_value, secret_key, challenge)
+                    .verify_partial(
+                        &resp_for_element,
+                        &self.accumulator_value,
+                        secret_key,
+                        challenge,
+                    )
                     .map_err(|e| ProofSystemError::$error_variant(self.id as u32, e))
             }
         }

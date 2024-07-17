@@ -11,7 +11,10 @@ use core::mem;
 use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
 };
-use schnorr_pok::discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol};
+use schnorr_pok::{
+    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
+    partial::Partial1PokTwoDiscreteLogs,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -45,7 +48,8 @@ pub struct PoKOfSignatureG1<E: Pairing> {
     pub A_prime: E::G1Affine,
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
-    pub sc: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc: Option<PokTwoDiscreteLogs<E::G1Affine>>,
+    pub sc_partial: Option<Partial1PokTwoDiscreteLogs<E::G1Affine>>,
 }
 
 impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
@@ -112,7 +116,18 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         PoKOfSignatureG1 {
             A_prime: self.A_prime,
             A_bar: self.A_bar,
-            sc,
+            sc: Some(sc),
+            sc_partial: None,
+        }
+    }
+
+    pub fn gen_partial_proof(mut self, challenge: &E::ScalarField) -> PoKOfSignatureG1<E> {
+        let sc = mem::take(&mut self.sc).gen_partial1_proof(challenge);
+        PoKOfSignatureG1 {
+            A_prime: self.A_prime,
+            A_bar: self.A_bar,
+            sc: None,
+            sc_partial: Some(sc),
         }
     }
 
@@ -140,18 +155,19 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         g2: impl Into<E::G2Prepared>,
     ) -> Result<(), ShortGroupSigError> {
         self.verify_except_pairings(challenge, g1)?;
-        if !E::multi_pairing(
-            [
-                E::G1Prepared::from(self.A_bar),
-                E::G1Prepared::from(-(self.A_prime.into_group())),
-            ],
-            [g2.into(), pk.into()],
-        )
-        .is_zero()
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-        Ok(())
+        self._pairing_check(pk, g2)
+    }
+
+    pub fn verify_partial(
+        &self,
+        resp_for_message: &E::ScalarField,
+        challenge: &E::ScalarField,
+        pk: impl Into<E::G2Prepared>,
+        g1: &E::G1Affine,
+        g2: impl Into<E::G2Prepared>,
+    ) -> Result<(), ShortGroupSigError> {
+        self.verify_partial_except_pairings(resp_for_message, challenge, g1)?;
+        self._pairing_check(pk, g2)
     }
 
     pub fn verify_with_randomized_pairing_checker(
@@ -167,6 +183,20 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         Ok(())
     }
 
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        resp_for_message: &E::ScalarField,
+        challenge: &E::ScalarField,
+        pk: impl Into<E::G2Prepared>,
+        g1: &E::G1Affine,
+        g2: impl Into<E::G2Prepared>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), ShortGroupSigError> {
+        self.verify_partial_except_pairings(resp_for_message, challenge, g1)?;
+        pairing_checker.add_sources(&self.A_prime, pk.into(), &self.A_bar, g2);
+        Ok(())
+    }
+
     pub fn verify_except_pairings(
         &self,
         challenge: &E::ScalarField,
@@ -175,15 +205,46 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         if self.A_prime.is_zero() {
             return Err(ShortGroupSigError::InvalidProof);
         }
-        if !self.sc.verify(
-            &self.A_bar,
-            g1,
-            &self.A_prime.into_group().neg().into(),
-            challenge,
-        ) {
+        if let Some(sc) = &self.sc {
+            if !sc.verify(
+                &self.A_bar,
+                g1,
+                &self.A_prime.into_group().neg().into(),
+                challenge,
+            ) {
+                Err(ShortGroupSigError::InvalidProof)
+            } else {
+                Ok(())
+            }
+        } else {
+            Err(ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse)
+        }
+    }
+
+    pub fn verify_partial_except_pairings(
+        &self,
+        resp_for_message: &E::ScalarField,
+        challenge: &E::ScalarField,
+        g1: &E::G1Affine,
+    ) -> Result<(), ShortGroupSigError> {
+        if self.A_prime.is_zero() {
             return Err(ShortGroupSigError::InvalidProof);
         }
-        Ok(())
+        if let Some(sc) = &self.sc_partial {
+            if !sc.verify(
+                &self.A_bar,
+                g1,
+                &self.A_prime.into_group().neg().into(),
+                challenge,
+                resp_for_message,
+            ) {
+                return Err(ShortGroupSigError::InvalidProof);
+            } else {
+                Ok(())
+            }
+        } else {
+            Err(ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse)
+        }
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -191,17 +252,43 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         g1: &E::G1Affine,
         writer: W,
     ) -> Result<(), ShortGroupSigError> {
+        let t = if let Some(sc) = &self.sc {
+            &sc.t
+        } else if let Some(sc) = &self.sc_partial {
+            &sc.t
+        } else {
+            return Err(ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse);
+        };
         PoKOfSignatureG1Protocol::<E>::compute_challenge_contribution(
             &self.A_bar,
             &self.A_prime,
             g1,
-            &self.sc.t,
+            t,
             writer,
         )
     }
 
-    pub fn get_resp_for_message(&self) -> &E::ScalarField {
-        &self.sc.response2
+    pub fn get_resp_for_message(&self) -> Option<&E::ScalarField> {
+        self.sc.as_ref().map(|s| &s.response2)
+    }
+
+    fn _pairing_check(
+        &self,
+        pk: impl Into<E::G2Prepared>,
+        g2: impl Into<E::G2Prepared>,
+    ) -> Result<(), ShortGroupSigError> {
+        if !E::multi_pairing(
+            [
+                E::G1Prepared::from(self.A_bar),
+                E::G1Prepared::from(-(self.A_prime.into_group())),
+            ],
+            [g2.into(), pk.into()],
+        )
+        .is_zero()
+        {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
+        Ok(())
     }
 }
 

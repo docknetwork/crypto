@@ -5,7 +5,12 @@ use crate::{
 };
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, UniformRand};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+    rand::RngCore,
+    vec, UniformRand,
+};
 use dock_crypto_utils::commitment::PedersenCommitmentKey;
 use schnorr_pok::inequality::DiscreteLogInequalityProtocol;
 
@@ -125,6 +130,7 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
             .take()
             .unwrap()
             .gen_proof(challenge);
+        let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::Inequality(InequalityProof {
             proof,
             comm: self.comm.take().unwrap(),
@@ -132,7 +138,7 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
                 .sp
                 .take()
                 .unwrap()
-                .gen_proof_contribution_as_struct(challenge)?,
+                .gen_partial_proof_contribution_as_struct(challenge, &skip_for)?,
         }))
     }
 
@@ -141,6 +147,7 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
         challenge: &G::ScalarField,
         proof: &InequalityProof<G>,
         comm_key_as_slice: &[G],
+        resp_for_message: G::ScalarField,
     ) -> Result<(), ProofSystemError> {
         proof
             .proof
@@ -151,10 +158,12 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
                 &self.comm_key,
             )
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
+
+        let missing_resp = BTreeMap::from([(0, resp_for_message)]);
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key_as_slice, proof.comm);
 
-        sp.verify_proof_contribution(challenge, &proof.sp)
+        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

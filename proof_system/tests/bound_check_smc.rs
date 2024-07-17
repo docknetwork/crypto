@@ -159,7 +159,11 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
 
         let res =
             proof.verify::<StdRng, Blake2b512>(rng, proof_spec_verifier, None, Default::default());
-        assert_eq!(res.is_ok(), valid_proof);
+        if valid_proof {
+            res.unwrap();
+        } else {
+            assert!(res.is_err());
+        }
     }
 
     let min = 100;

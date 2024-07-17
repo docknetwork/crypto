@@ -70,6 +70,15 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {
             self.0.clone().gen_proof(challenge)?,
         ))
     }
+
+    pub fn gen_partial_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<KBUniversalAccumulatorMembershipProof<E>, VBAccumulatorError> {
+        Ok(KBUniversalAccumulatorMembershipProof(
+            self.0.clone().gen_partial_proof(challenge)?,
+        ))
+    }
 }
 
 impl<E: Pairing> KBUniversalAccumulatorMembershipProof<E> {
@@ -108,7 +117,38 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProof<E> {
         )
     }
 
-    pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0
+            .verify_partial(resp_for_element, accumulator_value, challenge, pk, params)
+    }
+
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify_partial_with_randomized_pairing_checker(
+            resp_for_element,
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            pairing_checker,
+        )
+    }
+
+    pub fn get_schnorr_response_for_element(&self) -> Option<&E::ScalarField> {
         self.0.get_schnorr_response_for_element()
     }
 }
@@ -146,6 +186,15 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProofProtocol<E> {
             self.0.clone().gen_proof(challenge)?,
         ))
     }
+
+    pub fn gen_partial_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<KBUniversalAccumulatorNonMembershipProof<E>, VBAccumulatorError> {
+        Ok(KBUniversalAccumulatorNonMembershipProof(
+            self.0.clone().gen_partial_proof(challenge)?,
+        ))
+    }
 }
 
 impl<E: Pairing> KBUniversalAccumulatorNonMembershipProof<E> {
@@ -176,6 +225,37 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProof<E> {
         )
     }
 
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0
+            .verify_partial(resp_for_element, accumulator_value, challenge, pk, params)
+    }
+
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify_partial_with_randomized_pairing_checker(
+            resp_for_element,
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            pairing_checker,
+        )
+    }
+
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &E::G1Affine,
@@ -184,7 +264,7 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProof<E> {
         self.0.challenge_contribution(accumulator_value, writer)
     }
 
-    pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
+    pub fn get_schnorr_response_for_element(&self) -> Option<&E::ScalarField> {
         self.0.get_schnorr_response_for_element()
     }
 }

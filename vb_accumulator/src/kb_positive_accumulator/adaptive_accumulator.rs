@@ -39,7 +39,9 @@ impl<E: Pairing> KBPositiveAccumulator<E> {
         Self(NonAdaptivePositiveAccumulator::initialize(rng, params_gen))
     }
 
-    /// Add an element to the accumulator. Returns the membership witness of that element
+    /// Add an element to the accumulator. Returns the membership witness of that element.
+    /// Whats actually added to the accumulator is the randomness used in the BB signature on the
+    /// element
     pub fn add<D: Default + DynDigest + Clone>(
         &self,
         element: &E::ScalarField,

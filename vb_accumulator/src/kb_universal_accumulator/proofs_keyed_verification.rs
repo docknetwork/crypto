@@ -132,6 +132,15 @@ impl<G: AffineRepr> KBUniversalAccumulatorMembershipProofProtocol<G> {
             self.0.clone().gen_proof(challenge)?,
         ))
     }
+
+    pub fn gen_partial_proof(
+        self,
+        challenge: &G::ScalarField,
+    ) -> Result<KBUniversalAccumulatorMembershipProof<G>, VBAccumulatorError> {
+        Ok(KBUniversalAccumulatorMembershipProof(
+            self.0.clone().gen_partial_proof(challenge)?,
+        ))
+    }
 }
 
 impl<G: AffineRepr> KBUniversalAccumulatorMembershipProof<G> {
@@ -142,6 +151,17 @@ impl<G: AffineRepr> KBUniversalAccumulatorMembershipProof<G> {
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
         self.0.verify(accumulator, secret_key, challenge)
+    }
+
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: &G,
+        secret_key: &SecretKey<G::ScalarField>,
+        challenge: &G::ScalarField,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0
+            .verify_partial(resp_for_element, accumulator, secret_key, challenge)
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -160,11 +180,21 @@ impl<G: AffineRepr> KBUniversalAccumulatorMembershipProof<G> {
         self.0.verify_schnorr_proof(accumulator, challenge)
     }
 
+    pub fn verify_partial_schnorr_proof(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: &G,
+        challenge: &G::ScalarField,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0
+            .verify_partial_schnorr_proof(resp_for_element, accumulator, challenge)
+    }
+
     pub fn to_keyed_proof(&self) -> KBUniversalAccumulatorKeyedMembershipProof<G> {
         KBUniversalAccumulatorKeyedMembershipProof(self.0.to_keyed_proof())
     }
 
-    pub fn get_schnorr_response_for_element(&self) -> &G::ScalarField {
+    pub fn get_schnorr_response_for_element(&self) -> Option<&G::ScalarField> {
         self.0.get_schnorr_response_for_element()
     }
 }
@@ -203,6 +233,15 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipProofProtocol<G> {
             self.0.clone().gen_proof(challenge)?,
         ))
     }
+
+    pub fn gen_partial_proof(
+        self,
+        challenge: &G::ScalarField,
+    ) -> Result<KBUniversalAccumulatorNonMembershipProof<G>, VBAccumulatorError> {
+        Ok(KBUniversalAccumulatorNonMembershipProof(
+            self.0.clone().gen_partial_proof(challenge)?,
+        ))
+    }
 }
 
 impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipProof<G> {
@@ -213,6 +252,17 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipProof<G> {
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
         self.0.verify(accumulator, secret_key, challenge)
+    }
+
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: &G,
+        secret_key: &SecretKey<G::ScalarField>,
+        challenge: &G::ScalarField,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0
+            .verify_partial(resp_for_element, accumulator, secret_key, challenge)
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -231,11 +281,21 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipProof<G> {
         self.0.verify_schnorr_proof(accumulator, challenge)
     }
 
+    pub fn verify_partial_schnorr_proof(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: &G,
+        challenge: &G::ScalarField,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0
+            .verify_partial_schnorr_proof(resp_for_element, accumulator, challenge)
+    }
+
     pub fn to_keyed_proof(&self) -> KBUniversalAccumulatorKeyedNonMembershipProof<G> {
         KBUniversalAccumulatorKeyedNonMembershipProof(self.0.to_keyed_proof())
     }
 
-    pub fn get_schnorr_response_for_element(&self) -> &G::ScalarField {
+    pub fn get_schnorr_response_for_element(&self) -> Option<&G::ScalarField> {
         self.0.get_schnorr_response_for_element()
     }
 }

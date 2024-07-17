@@ -141,7 +141,11 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_bulletproofs_plus_plus() {
         let start = Instant::now();
         let res =
             proof.verify::<StdRng, Blake2b512>(rng, proof_spec_verifier, None, Default::default());
-        assert_eq!(res.is_ok(), valid_proof);
+        if valid_proof {
+            res.unwrap();
+        } else {
+            assert!(res.is_err());
+        }
         println!(
             "Time taken to verify proof of Bulletproofs++ bound check of 1 message in signature over {} messages {:?}",
             msgs.len(),

@@ -93,8 +93,12 @@ impl<E: Pairing> From<PublicKeyG2<E>> for PreparedPublicKeyG2<E> {
     Deserialize,
 )]
 pub struct SignatureG1<E: Pairing>(
-    #[serde_as(as = "ArkObjectBytes")] pub E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")] pub E::ScalarField,
+    /// g1 * 1 / (sk_0 + message + sk_1 * randomness)
+    #[serde_as(as = "ArkObjectBytes")]
+    pub E::G1Affine,
+    /// randomness
+    #[serde_as(as = "ArkObjectBytes")]
+    pub E::ScalarField,
 );
 
 impl<E: Pairing> SignatureG1<E> {

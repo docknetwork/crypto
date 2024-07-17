@@ -6,7 +6,14 @@ use crate::{
 };
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+    rand::RngCore,
+    vec,
+    vec::Vec,
+    UniformRand,
+};
 use bulletproofs_plus_plus::{
     prelude::{ProofArbitraryRange, Prover},
     setup::SetupParams,
@@ -86,8 +93,8 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         commitments: &[G],
     ) -> Result<(), ProofSystemError> {
         // blinding used to prove knowledge of message. The caller of this method ensures
-        // that this will be same as the one used proving knowledge of the corresponding message in BBS+
-        // signature, thus allowing them to be proved equal.
+        // that this will be same as the one used proving knowledge of the corresponding message in
+        // the signature, thus allowing them to be proved equal.
         let blinding = if blinding.is_none() {
             G::ScalarField::rand(rng)
         } else {
@@ -152,6 +159,7 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
             self.bpp_randomness.take().unwrap(),
         )?;
         let proof = prover.prove(rng, self.setup_params.clone(), transcript)?;
+        let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::BoundCheckBpp(BoundCheckBppProof {
             bpp_proof: ProofArbitraryRange {
                 proof,
@@ -161,12 +169,12 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
                 .sp1
                 .take()
                 .unwrap()
-                .gen_proof_contribution_as_struct(challenge)?,
+                .gen_partial_proof_contribution_as_struct(challenge, &skip_for)?,
             sp2: self
                 .sp2
                 .take()
                 .unwrap()
-                .gen_proof_contribution_as_struct(challenge)?,
+                .gen_partial_proof_contribution_as_struct(challenge, &skip_for)?,
         }))
     }
 
@@ -176,6 +184,7 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         proof: &BoundCheckBppProof<G>,
         comm_key: &[G],
         transcript: &mut impl Transcript,
+        resp_for_message: G::ScalarField,
     ) -> Result<(), ProofSystemError> {
         proof
             .bpp_proof
@@ -183,20 +192,16 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
             .map_err(|e| {
                 ProofSystemError::BulletproofsPlusPlusProofContributionFailed(self.id as u32, e)
             })?;
-        if !proof.check_schnorr_responses_consistency()? {
-            return Err(ProofSystemError::DifferentResponsesForSchnorrProtocolInBpp(
-                self.id,
-            ));
-        }
         let (comm_1, comm_2) = self.get_commitments_to_values(&proof.bpp_proof)?;
 
         // NOTE: value of id is dummy
         let sp1 = SchnorrProtocol::new(10000, comm_key, comm_1);
         let sp2 = SchnorrProtocol::new(10000, comm_key, comm_2);
 
-        sp1.verify_proof_contribution(challenge, &proof.sp1)
+        let missing_resp = BTreeMap::from([(0, resp_for_message)]);
+        sp1.verify_partial_proof_contribution(challenge, &proof.sp1, missing_resp.clone())
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
-        sp2.verify_proof_contribution(challenge, &proof.sp2)
+        sp2.verify_partial_proof_contribution(challenge, &proof.sp2, missing_resp)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

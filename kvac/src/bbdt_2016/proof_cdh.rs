@@ -33,11 +33,17 @@ use core::mem;
 use dock_crypto_utils::{
     misc::rand,
     serde_utils::ArkObjectBytes,
-    signature::{split_messages_and_blindings, MessageOrBlinding, MultiMessageSignatureParams},
+    signature::{
+        msg_index_map_to_schnorr_response_map, msg_index_to_schnorr_response_index,
+        schnorr_responses_to_msg_index_map, split_messages_and_blindings, MessageOrBlinding,
+        MultiMessageSignatureParams,
+    },
 };
 use itertools::multiunzip;
 use schnorr_pok::{
     discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
+    error::SchnorrError,
+    partial::PartialSchnorrResponse,
     SchnorrCommitment, SchnorrResponse,
 };
 use serde::{Deserialize, Serialize};
@@ -95,7 +101,8 @@ pub struct PoKOfMAC<G: AffineRepr> {
     pub sc_C: PokTwoDiscreteLogs<G>,
     #[serde_as(as = "ArkObjectBytes")]
     pub t_msgs: G,
-    pub sc_resp_msgs: SchnorrResponse<G>,
+    pub sc_resp_msgs: Option<SchnorrResponse<G>>,
+    pub sc_partial_resp_msgs: Option<PartialSchnorrResponse<G>>,
 }
 
 impl<G: AffineRepr> PoKOfMACProtocol<G> {
@@ -200,7 +207,35 @@ impl<G: AffineRepr> PoKOfMACProtocol<G> {
             d: self.d,
             sc_C,
             t_msgs: self.sc_comm_msgs.t,
-            sc_resp_msgs,
+            sc_resp_msgs: Some(sc_resp_msgs),
+            sc_partial_resp_msgs: None,
+        })
+    }
+
+    pub fn gen_partial_proof(
+        mut self,
+        challenge: &G::ScalarField,
+        revealed_msg_ids: &BTreeSet<usize>,
+        skip_responses_for: &BTreeSet<usize>,
+    ) -> Result<PoKOfMAC<G>, KVACError> {
+        if !skip_responses_for.is_disjoint(revealed_msg_ids) {
+            return Err(KVACError::CommonIndicesFoundInRevealedAndSkip);
+        }
+        let sc_C = mem::take(&mut self.sc_C).gen_proof(challenge);
+        let wits = schnorr_responses_to_msg_index_map(
+            mem::take(&mut self.sc_wits_msgs),
+            revealed_msg_ids,
+            skip_responses_for,
+        );
+        let sc_resp_msgs = self.sc_comm_msgs.partial_response(wits, challenge)?;
+        Ok(PoKOfMAC {
+            B_0: self.B_0,
+            C: self.C,
+            d: self.d,
+            sc_C,
+            t_msgs: self.sc_comm_msgs.t,
+            sc_resp_msgs: None,
+            sc_partial_resp_msgs: Some(sc_resp_msgs),
         })
     }
 
@@ -242,53 +277,43 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         secret_key: &SecretKey<G::ScalarField>,
         params: &MACParams<G>,
     ) -> Result<(), KVACError> {
-        if self.C != (self.B_0 * secret_key.0).into() {
-            return Err(KVACError::InvalidRandomizedMAC);
-        }
-        self.verify_schnorr_proofs(revealed_msgs, challenge, params)?;
-        Ok(())
+        self._verify(revealed_msgs, challenge, secret_key, params, None)
     }
 
-    /// Create a new sub-proof that can be verified by someone with the secret key
-    pub fn to_keyed_proof(&self) -> KeyedProof<G> {
-        KeyedProof {
-            B_0: self.B_0,
-            C: self.C,
-        }
+    pub fn verify_partial(
+        &self,
+        revealed_msgs: &BTreeMap<usize, G::ScalarField>,
+        challenge: &G::ScalarField,
+        secret_key: &SecretKey<G::ScalarField>,
+        params: &MACParams<G>,
+        missing_responses: BTreeMap<usize, G::ScalarField>,
+    ) -> Result<(), KVACError> {
+        self._verify(
+            revealed_msgs,
+            challenge,
+            secret_key,
+            params,
+            Some(missing_responses),
+        )
     }
 
-    pub fn verify_schnorr_proofs(
+    pub fn verify_schnorr_proof(
         &self,
         revealed_msgs: &BTreeMap<usize, G::ScalarField>,
         challenge: &G::ScalarField,
         params: &MACParams<G>,
     ) -> Result<(), KVACError> {
-        if !self.sc_C.verify(
-            &(self.C.into_group() - self.d).into(),
-            &self.B_0,
-            &params.g,
-            challenge,
-        ) {
-            return Err(KVACError::InvalidSchnorrProof);
-        }
-        let mut bases = Vec::with_capacity(2 + params.g_vec.len() - revealed_msgs.len());
-        let mut bases_revealed = Vec::with_capacity(1 + revealed_msgs.len());
-        let mut exponents = Vec::with_capacity(1 + revealed_msgs.len());
-        for i in 0..params.g_vec.len() {
-            if revealed_msgs.contains_key(&i) {
-                let message = revealed_msgs.get(&i).unwrap();
-                bases_revealed.push(params.g_vec[i]);
-                exponents.push(*message);
-            } else {
-                bases.push(params.g_vec[i]);
-            }
-        }
-        bases.push(self.d);
-        bases.push(params.g);
-        let y = -G::Group::msm_unchecked(&bases_revealed, &exponents) - params.h;
-        self.sc_resp_msgs
-            .is_valid(&bases, &y.into(), &self.t_msgs, challenge)?;
-        Ok(())
+        self._verify_schnorr_proof(revealed_msgs, challenge, params, None)
+    }
+
+    pub fn verify_partial_schnorr_proof(
+        &self,
+        revealed_msgs: &BTreeMap<usize, G::ScalarField>,
+        challenge: &G::ScalarField,
+        params: &MACParams<G>,
+        missing_responses: BTreeMap<usize, G::ScalarField>,
+    ) -> Result<(), KVACError> {
+        self._verify_schnorr_proof(revealed_msgs, challenge, params, Some(missing_responses))
     }
 
     /// Get the response from post-challenge phase of the Schnorr protocol for the given message index
@@ -298,19 +323,38 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         msg_idx: usize,
         revealed_msg_ids: &BTreeSet<usize>,
     ) -> Result<&G::ScalarField, KVACError> {
-        // Revealed messages are not part of Schnorr protocol
-        if revealed_msg_ids.contains(&msg_idx) {
-            return Err(KVACError::InvalidMsgIdxForResponse(msg_idx));
+        let adjusted_idx = msg_index_to_schnorr_response_index(msg_idx, revealed_msg_ids)
+            .ok_or_else(|| KVACError::InvalidMsgIdxForResponse(msg_idx))?;
+        if let Some(resp) = self.sc_resp_msgs.as_ref() {
+            Ok(resp.get_response(adjusted_idx)?)
+        } else if let Some(resp) = self.sc_partial_resp_msgs.as_ref() {
+            Ok(resp.get_response(adjusted_idx)?)
+        } else {
+            Err(KVACError::NeedEitherPartialOrCompleteSchnorrResponse)
         }
-        // Adjust message index as the revealed messages are not part of the Schnorr protocol
-        let mut adjusted_idx = msg_idx;
-        for i in revealed_msg_ids {
-            if *i < msg_idx {
-                adjusted_idx -= 1;
-            }
+    }
+
+    pub fn get_responses(
+        &self,
+        msg_ids: &BTreeSet<usize>,
+        revealed_msg_ids: &BTreeSet<usize>,
+    ) -> Result<BTreeMap<usize, G::ScalarField>, KVACError> {
+        let mut resps = BTreeMap::new();
+        for msg_idx in msg_ids {
+            resps.insert(
+                *msg_idx,
+                *self.get_resp_for_message(*msg_idx, revealed_msg_ids)?,
+            );
         }
-        // 2 added to the index, since 0th and 1st index are reserved for `s'` and `r2`
-        Ok(self.sc_resp_msgs.get_response(adjusted_idx)?)
+        Ok(resps)
+    }
+
+    /// Create a new sub-proof that can be verified by someone with the secret key
+    pub fn to_keyed_proof(&self) -> KeyedProof<G> {
+        KeyedProof {
+            B_0: self.B_0,
+            C: self.C,
+        }
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -329,6 +373,80 @@ impl<G: AffineRepr> PoKOfMAC<G> {
             params,
             writer,
         )
+    }
+
+    pub fn _verify(
+        &self,
+        revealed_msgs: &BTreeMap<usize, G::ScalarField>,
+        challenge: &G::ScalarField,
+        secret_key: &SecretKey<G::ScalarField>,
+        params: &MACParams<G>,
+        missing_responses: Option<BTreeMap<usize, G::ScalarField>>,
+    ) -> Result<(), KVACError> {
+        if self.C != (self.B_0 * secret_key.0).into() {
+            return Err(KVACError::InvalidRandomizedMAC);
+        }
+        self._verify_schnorr_proof(revealed_msgs, challenge, params, missing_responses)?;
+        Ok(())
+    }
+
+    pub fn _verify_schnorr_proof(
+        &self,
+        revealed_msgs: &BTreeMap<usize, G::ScalarField>,
+        challenge: &G::ScalarField,
+        params: &MACParams<G>,
+        missing_responses: Option<BTreeMap<usize, G::ScalarField>>,
+    ) -> Result<(), KVACError> {
+        if !self.sc_C.verify(
+            &(self.C.into_group() - self.d).into(),
+            &self.B_0,
+            &params.g,
+            challenge,
+        ) {
+            return Err(KVACError::InvalidSchnorrProof);
+        }
+        let mut bases =
+            Vec::with_capacity(2 + params.supported_message_count() - revealed_msgs.len());
+        let mut bases_revealed = Vec::with_capacity(revealed_msgs.len());
+        let mut exponents = Vec::with_capacity(revealed_msgs.len());
+        for i in 0..params.supported_message_count() {
+            if revealed_msgs.contains_key(&i) {
+                let message = revealed_msgs.get(&i).unwrap();
+                bases_revealed.push(params.g_vec[i]);
+                exponents.push(*message);
+            } else {
+                bases.push(params.g_vec[i]);
+            }
+        }
+        bases.push(self.d);
+        bases.push(params.g);
+        let y = -G::Group::msm_unchecked(&bases_revealed, &exponents) - params.h;
+        if let Some(resp) = &self.sc_resp_msgs {
+            if missing_responses.is_some() {
+                return Err(KVACError::MissingResponsesProvidedForFullSchnorrProofVerification);
+            }
+            return match resp.is_valid(&bases, &y.into(), &self.t_msgs, challenge) {
+                Ok(()) => Ok(()),
+                Err(SchnorrError::InvalidResponse) => Err(KVACError::InvalidSchnorrProof),
+                Err(other) => Err(KVACError::SchnorrError(other)),
+            };
+        } else if let Some(resp) = &self.sc_partial_resp_msgs {
+            if missing_responses.is_none() {
+                return Err(KVACError::MissingResponsesNeededForPartialSchnorrProofVerification);
+            }
+            let adjusted_missing = msg_index_map_to_schnorr_response_map(
+                missing_responses.unwrap(),
+                revealed_msgs.keys(),
+            );
+            return match resp.is_valid(&bases, &y.into(), &self.t_msgs, challenge, adjusted_missing)
+            {
+                Ok(()) => Ok(()),
+                Err(SchnorrError::InvalidResponse) => Err(KVACError::InvalidSchnorrProof),
+                Err(other) => Err(KVACError::SchnorrError(other)),
+            };
+        } else {
+            Err(KVACError::NeedEitherPartialOrCompleteSchnorrResponse)
+        }
     }
 }
 
@@ -421,7 +539,7 @@ mod tests {
         let keyed_proof = proof.to_keyed_proof();
         keyed_proof.verify(sk.as_ref()).unwrap();
         proof
-            .verify_schnorr_proofs(&revealed_msgs, &challenge_verifier, &params)
+            .verify_schnorr_proof(&revealed_msgs, &challenge_verifier, &params)
             .unwrap();
     }
 
@@ -432,60 +550,83 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let message_1_count = 10;
-        let message_2_count = 7;
-        let mut messages_1 = (0..message_1_count - 1)
+        let message_2_count = 9;
+        let message_3_count = 8;
+        let same_msg_idx = BTreeSet::from([0, 3, 4, 7]);
+        let mut messages_1 = (0..message_1_count - same_msg_idx.len() as u32)
             .map(|_| Fr::rand(&mut rng))
             .collect::<Vec<_>>();
-        let mut messages_2 = (0..message_2_count - 1)
+        let mut messages_2 = (0..message_2_count - same_msg_idx.len() as u32)
+            .map(|_| Fr::rand(&mut rng))
+            .collect::<Vec<_>>();
+        let mut messages_3 = (0..message_3_count - same_msg_idx.len() as u32)
             .map(|_| Fr::rand(&mut rng))
             .collect::<Vec<_>>();
         let params_1 = MACParams::<G1Affine>::new::<Blake2b512>(b"test1", message_1_count);
         let params_2 = MACParams::<G1Affine>::new::<Blake2b512>(b"test2", message_2_count);
+        let params_3 = MACParams::<G1Affine>::new::<Blake2b512>(b"test3", message_3_count);
 
         let sk_1 = SecretKey::new(&mut rng);
         let sk_2 = SecretKey::new(&mut rng);
+        let sk_3 = SecretKey::new(&mut rng);
 
-        let same_msg_idx = 4;
-        let same_msg = Fr::rand(&mut rng);
-        messages_1.insert(same_msg_idx, same_msg);
-        messages_2.insert(same_msg_idx, same_msg);
-
-        // A particular message is same
-        assert_eq!(messages_1[same_msg_idx], messages_2[same_msg_idx]);
-        assert_ne!(messages_1, messages_2);
+        let same_msgs = same_msg_idx
+            .clone()
+            .into_iter()
+            .map(|i| (i, Fr::rand(&mut rng)))
+            .collect::<BTreeMap<usize, Fr>>();
+        for (i, m) in &same_msgs {
+            messages_1.insert(*i, m.clone());
+            messages_2.insert(*i, m.clone());
+            messages_3.insert(*i, m.clone());
+        }
 
         let mac_1 = MAC::new(&mut rng, &messages_1, &sk_1, &params_1).unwrap();
         mac_1.verify(&messages_1, &sk_1, &params_1).unwrap();
         let mac_2 = MAC::new(&mut rng, &messages_2, &sk_2, &params_2).unwrap();
         mac_2.verify(&messages_2, &sk_2, &params_2).unwrap();
+        let mac_3 = MAC::new(&mut rng, &messages_3, &sk_3, &params_3).unwrap();
+        mac_3.verify(&messages_3, &sk_3, &params_3).unwrap();
+
+        let revealed_indices = BTreeSet::from([2, 5, 6]);
+
+        let mut revealed_msgs_1 = BTreeMap::new();
+        let mut revealed_msgs_2 = BTreeMap::new();
+        let mut revealed_msgs_3 = BTreeMap::new();
+        for i in revealed_indices.iter() {
+            revealed_msgs_1.insert(*i, messages_1[*i]);
+            revealed_msgs_2.insert(*i, messages_2[*i]);
+            revealed_msgs_3.insert(*i, messages_3[*i]);
+        }
 
         // Add the same blinding for the message which has to be proven equal across MACs
-        let same_blinding = Fr::rand(&mut rng);
+        let same_blindings = same_msg_idx
+            .clone()
+            .into_iter()
+            .map(|i| (i, Fr::rand(&mut rng)))
+            .collect::<BTreeMap<usize, Fr>>();
 
         let mut blindings_1 = BTreeMap::new();
-        blindings_1.insert(same_msg_idx, same_blinding);
-
         let mut blindings_2 = BTreeMap::new();
-        blindings_2.insert(same_msg_idx, same_blinding);
+        let mut blindings_3 = BTreeMap::new();
+        for (i, b) in &same_blindings {
+            blindings_1.insert(*i, *b);
+            blindings_2.insert(*i, *b);
+            blindings_3.insert(*i, *b);
+        }
 
         // Add some more blindings randomly,
-        blindings_1.insert(0, Fr::rand(&mut rng));
         blindings_1.insert(1, Fr::rand(&mut rng));
-        blindings_2.insert(2, Fr::rand(&mut rng));
-
-        // Blinding for the same message is kept same
-        assert_eq!(
-            blindings_1.get(&same_msg_idx),
-            blindings_2.get(&same_msg_idx)
-        );
-        assert_ne!(blindings_1, blindings_2);
+        blindings_3.insert(2, Fr::rand(&mut rng));
 
         let pok_1 = PoKOfMACProtocol::init(
             &mut rng,
             &mac_1,
             &params_1,
             messages_1.iter().enumerate().map(|(idx, message)| {
-                if let Some(blinding) = blindings_1.remove(&idx) {
+                if revealed_indices.contains(&idx) {
+                    MessageOrBlinding::RevealMessage(message)
+                } else if let Some(blinding) = blindings_1.remove(&idx) {
                     MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
                 } else {
                     MessageOrBlinding::BlindMessageRandomly(message)
@@ -498,7 +639,24 @@ mod tests {
             &mac_2,
             &params_2,
             messages_2.iter().enumerate().map(|(idx, message)| {
-                if let Some(blinding) = blindings_2.remove(&idx) {
+                if revealed_indices.contains(&idx) {
+                    MessageOrBlinding::RevealMessage(message)
+                } else if let Some(blinding) = blindings_2.remove(&idx) {
+                    MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
+                } else {
+                    MessageOrBlinding::BlindMessageRandomly(message)
+                }
+            }),
+        )
+        .unwrap();
+        let pok_3 = PoKOfMACProtocol::init(
+            &mut rng,
+            &mac_3,
+            &params_3,
+            messages_3.iter().enumerate().map(|(idx, message)| {
+                if revealed_indices.contains(&idx) {
+                    MessageOrBlinding::RevealMessage(message)
+                } else if let Some(blinding) = blindings_3.remove(&idx) {
                     MessageOrBlinding::BlindMessageWithConcreteBlinding { message, blinding }
                 } else {
                     MessageOrBlinding::BlindMessageRandomly(message)
@@ -511,23 +669,58 @@ mod tests {
 
         let proof_1 = pok_1.gen_proof(&challenge).unwrap();
         let proof_2 = pok_2.gen_proof(&challenge).unwrap();
+        let proof_3 = pok_3
+            .gen_partial_proof(&challenge, &revealed_indices, &same_msg_idx)
+            .unwrap();
 
         // Response for the same message should be same (this check is made by the verifier)
-        assert_eq!(
-            proof_1
-                .get_resp_for_message(same_msg_idx, &BTreeSet::new())
-                .unwrap(),
-            proof_2
-                .get_resp_for_message(same_msg_idx, &BTreeSet::new())
-                .unwrap()
-        );
+        for i in &same_msg_idx {
+            assert_eq!(
+                proof_1.get_resp_for_message(*i, &revealed_indices).unwrap(),
+                proof_2.get_resp_for_message(*i, &revealed_indices).unwrap()
+            );
+            assert!(proof_3.get_resp_for_message(*i, &revealed_indices).is_err())
+        }
+
+        let missing_resps = proof_1
+            .get_responses(&same_msg_idx, &revealed_indices)
+            .unwrap();
 
         proof_1
-            .verify(&BTreeMap::new(), &challenge, &sk_1, &params_1)
+            .verify(&revealed_msgs_1, &challenge, &sk_1, &params_1)
             .unwrap();
         proof_2
-            .verify(&BTreeMap::new(), &challenge, &sk_2, &params_2)
+            .verify(&revealed_msgs_2, &challenge, &sk_2, &params_2)
             .unwrap();
+        proof_3
+            .verify_partial(
+                &revealed_msgs_3,
+                &challenge,
+                &sk_3,
+                &params_3,
+                missing_resps,
+            )
+            .unwrap();
+
+        assert!(proof_3
+            .get_responses(&same_msg_idx, &revealed_indices)
+            .is_err());
+
+        let mut partial_resp_ids = BTreeSet::new();
+        for i in 0..message_3_count as usize {
+            if !same_msg_idx.contains(&i) && !revealed_indices.contains(&i) {
+                partial_resp_ids.insert(i);
+            }
+        }
+        let partial_resps = proof_3
+            .get_responses(&partial_resp_ids, &revealed_indices)
+            .unwrap();
+        for i in partial_resp_ids {
+            assert_eq!(
+                proof_3.get_resp_for_message(i, &revealed_indices).unwrap(),
+                partial_resps.get(&i).unwrap()
+            );
+        }
     }
 
     #[test]
@@ -562,12 +755,13 @@ mod tests {
         )
         .unwrap();
         let proof_1 = pok_1.gen_proof(&challenge).unwrap();
+        let resps = proof_1.sc_resp_msgs.as_ref().unwrap();
         for i in 0..message_count as usize {
             assert_eq!(
                 *proof_1
                     .get_resp_for_message(i, &revealed_indices_1)
                     .unwrap(),
-                proof_1.sc_resp_msgs.0[i]
+                resps.0[i]
             );
         }
 
@@ -603,23 +797,24 @@ mod tests {
             .get_resp_for_message(5, &revealed_indices_2)
             .is_err());
 
+        let resps = proof_2.sc_resp_msgs.as_ref().unwrap();
         assert_eq!(
             *proof_2
                 .get_resp_for_message(1, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_msgs.0[0]
+            resps.0[0]
         );
         assert_eq!(
             *proof_2
                 .get_resp_for_message(3, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_msgs.0[1]
+            resps.0[1]
         );
         assert_eq!(
             *proof_2
                 .get_resp_for_message(4, &revealed_indices_2)
                 .unwrap(),
-            proof_2.sc_resp_msgs.0[2]
+            resps.0[2]
         );
 
         let mut revealed_indices_3 = BTreeSet::new();
@@ -649,29 +844,30 @@ mod tests {
             .get_resp_for_message(3, &revealed_indices_3)
             .is_err());
 
+        let resps = proof_3.sc_resp_msgs.as_ref().unwrap();
         assert_eq!(
             *proof_3
                 .get_resp_for_message(1, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_msgs.0[0]
+            resps.0[0]
         );
         assert_eq!(
             *proof_3
                 .get_resp_for_message(2, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_msgs.0[1]
+            resps.0[1]
         );
         assert_eq!(
             *proof_3
                 .get_resp_for_message(4, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_msgs.0[2]
+            resps.0[2]
         );
         assert_eq!(
             *proof_3
                 .get_resp_for_message(5, &revealed_indices_3)
                 .unwrap(),
-            proof_3.sc_resp_msgs.0[3]
+            resps.0[3]
         );
 
         // Reveal one message only
@@ -692,18 +888,19 @@ mod tests {
             )
             .unwrap();
             let proof = pok.gen_proof(&challenge).unwrap();
+            let resps = proof.sc_resp_msgs.as_ref().unwrap();
             for j in 0..message_count as usize {
                 if i == j {
                     assert!(proof.get_resp_for_message(j, &revealed_indices).is_err());
                 } else if i < j {
                     assert_eq!(
                         *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                        proof.sc_resp_msgs.0[j - 1]
+                        resps.0[j - 1]
                     );
                 } else {
                     assert_eq!(
                         *proof.get_resp_for_message(j, &revealed_indices).unwrap(),
-                        proof.sc_resp_msgs.0[j]
+                        resps.0[j]
                     );
                 }
             }

@@ -1,5 +1,9 @@
 use ark_ec::pairing::Pairing;
-use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+    rand::RngCore,
+};
 use bbs_plus::{
     error::BBSPlusError,
     prelude::{
@@ -147,6 +151,23 @@ macro_rules! impl_bbs_subprotocol {
             Ok(StatementProof::$stmt_proof(proof))
         }
 
+        pub fn gen_partial_proof_contribution(
+            &mut self,
+            challenge: &E::ScalarField,
+            revealed_msg_ids: &BTreeSet<usize>,
+            skip_responses_for: &BTreeSet<usize>,
+        ) -> Result<StatementProof<E>, ProofSystemError> {
+            if self.protocol.is_none() {
+                return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
+                    self.id,
+                ));
+            }
+            let protocol = self.protocol.take().unwrap();
+            let proof =
+                protocol.gen_partial_proof(challenge, revealed_msg_ids, skip_responses_for)?;
+            Ok(StatementProof::$stmt_proof(proof))
+        }
+
         pub fn verify_proof_contribution(
             &self,
             challenge: &E::ScalarField,
@@ -164,6 +185,34 @@ macro_rules! impl_bbs_subprotocol {
                     c,
                 ),
                 None => proof.verify(self.revealed_messages, challenge, pk, params),
+            }
+        }
+
+        pub fn verify_partial_proof_contribution(
+            &self,
+            challenge: &E::ScalarField,
+            proof: &$proof<E>,
+            pk: impl Into<PreparedPublicKeyG2<E>>,
+            params: impl Into<$prepared_params<E>>,
+            pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+            missing_responses: BTreeMap<usize, E::ScalarField>,
+        ) -> Result<(), BBSPlusError> {
+            match pairing_checker {
+                Some(c) => proof.verify_partial_with_randomized_pairing_checker(
+                    self.revealed_messages,
+                    challenge,
+                    pk,
+                    params,
+                    c,
+                    missing_responses,
+                ),
+                None => proof.verify_partial(
+                    self.revealed_messages,
+                    challenge,
+                    pk,
+                    params,
+                    missing_responses,
+                ),
             }
         }
     };

@@ -46,6 +46,7 @@ pub enum VBAccumulatorError {
     KVACError(KVACError),
     SSError(SSError),
     OTError(OTError),
+    MissingSchnorrResponseForElement,
 }
 
 impl From<SchnorrError> for VBAccumulatorError {

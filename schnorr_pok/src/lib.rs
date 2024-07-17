@@ -53,15 +53,19 @@ use crate::error::SchnorrError;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_iter, fmt::Debug, io::Write, ops::Add, vec::Vec};
+use ark_std::{
+    cfg_iter,
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+    io::Write,
+    ops::Add,
+    vec::Vec,
+};
 use digest::Digest;
-use zeroize::{Zeroize, ZeroizeOnDrop};
-
-use dock_crypto_utils::hashing_utils::field_elem_from_try_and_incr;
-
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{hashing_utils::field_elem_from_try_and_incr, serde_utils::*};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use dock_crypto_utils::expect_equality;
 #[cfg(feature = "parallel")]
@@ -71,6 +75,7 @@ pub mod discrete_log;
 pub mod discrete_log_pairing;
 pub mod error;
 pub mod inequality;
+pub mod partial;
 
 /// Trait implemented by Schnorr-based protocols for returning their contribution to the overall challenge.
 /// i.e. overall challenge is of form Hash({m_i}), and this function returns the bytecode for m_j for some j.
@@ -102,10 +107,7 @@ pub struct SchnorrCommitment<G: AffineRepr> {
     pub t: G,
 }
 
-impl<G> SchnorrCommitment<G>
-where
-    G: AffineRepr,
-{
+impl<G: AffineRepr> SchnorrCommitment<G> {
     /// Create commitment as `bases[0] * blindings[0] + bases[1] * blindings[1] + ... + bases[i] * blindings[i]`
     /// for step-1 of the protocol. Extra `bases` or `blindings` are ignored.
     pub fn new(bases: &[G], blindings: Vec<G::ScalarField>) -> Self {
@@ -132,10 +134,7 @@ where
     }
 }
 
-impl<G> SchnorrChallengeContributor for SchnorrCommitment<G>
-where
-    G: AffineRepr,
-{
+impl<G: AffineRepr> SchnorrChallengeContributor for SchnorrCommitment<G> {
     /// The commitment's contribution to the overall challenge of the protocol, i.e. overall challenge is
     /// of form Hash({m_i}), and this function returns the bytecode for m_j for some j. Note that
     /// it does not include the bases or the commitment (`g_i`  and `y` in `{g_i} * {x_i} = y`) and
@@ -154,10 +153,7 @@ pub struct SchnorrResponse<G: AffineRepr>(
     #[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G::ScalarField>,
 );
 
-impl<G> SchnorrResponse<G>
-where
-    G: AffineRepr,
-{
+impl<G: AffineRepr> SchnorrResponse<G> {
     /// Check if response is valid and thus validity of Schnorr proof
     /// `bases[0]*responses[0] + bases[0]*responses[0] + ... + bases[i]*responses[i] - y*challenge == t`
     pub fn is_valid(
@@ -191,13 +187,30 @@ where
         }
     }
 
+    pub fn get_responses(
+        &self,
+        ids: &BTreeSet<usize>,
+    ) -> Result<BTreeMap<usize, G::ScalarField>, SchnorrError> {
+        let mut resp = BTreeMap::new();
+        for i in ids {
+            match self.0.get(*i) {
+                Some(r) => {
+                    resp.insert(*i, *r);
+                }
+                _ => return Err(SchnorrError::IndexOutOfBounds(*i, self.0.len())),
+            }
+        }
+        Ok(resp)
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }
     // TODO: Add function for challenge contribution (bytes that are hashed)
 }
 
-/// Uses try-and-increment. Vulnerable to side channel attacks.
+/// Uses try-and-increment. Vulnerable to side channel attacks. But this is only used when its input
+/// is public data.
 pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes: &[u8]) -> F {
     field_elem_from_try_and_incr::<F, D>(challenge_bytes)
 }
@@ -205,14 +218,12 @@ pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
-    use ark_ec::{pairing::Pairing, VariableBaseMSM};
+    use ark_bls12_381::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
+    use ark_ec::VariableBaseMSM;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
-
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[macro_export]
     macro_rules! test_serialization {
@@ -248,16 +259,14 @@ mod tests {
             let count = 10;
             let bases = (0..count)
                 .into_iter()
-                .map(|_| <Bls12_381 as Pairing>::$group_element_proj::rand(&mut rng).into_affine())
+                .map(|_| $group_element_proj::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
             let witnesses = (0..count)
                 .into_iter()
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<Vec<_>>();
 
-            let y =
-                <<Bls12_381 as Pairing>::$group_element_proj>::msm_unchecked(&bases, &witnesses)
-                    .into_affine();
+            let y = $group_element_proj::msm_unchecked(&bases, &witnesses).into_affine();
 
             let blindings = (0..count)
                 .into_iter()
@@ -265,10 +274,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let comm = SchnorrCommitment::new(&bases, blindings);
-            test_serialization!(
-                SchnorrCommitment<<Bls12_381 as Pairing>::$group_element_affine>,
-                comm
-            );
+            test_serialization!(SchnorrCommitment<$group_element_affine>, comm);
 
             let challenge = Fr::rand(&mut rng);
 
@@ -278,16 +284,13 @@ mod tests {
 
             drop(comm);
 
-            test_serialization!(
-                SchnorrResponse<<Bls12_381 as Pairing>::$group_element_affine>,
-                resp
-            );
+            test_serialization!(SchnorrResponse<$group_element_affine>, resp);
         };
     }
 
     #[test]
     fn schnorr_vector() {
-        test_schnorr_in_group!(G1, G1Affine);
-        test_schnorr_in_group!(G2, G2Affine);
+        test_schnorr_in_group!(G1Projective, G1Affine);
+        test_schnorr_in_group!(G2Projective, G2Affine);
     }
 }

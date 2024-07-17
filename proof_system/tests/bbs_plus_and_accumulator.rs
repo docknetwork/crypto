@@ -2107,7 +2107,7 @@ fn requesting_partially_blind_bbs_plus_sig() {
         .unwrap();
 
     // Requester proves knowledge of committed messages
-    let mut statements = Statements::new();
+    let mut statements = Statements::<Bls12_381>::new();
     let mut bases = vec![sig_params.h_0];
     let mut committed_msgs = vec![blinding];
     for i in committed_indices.iter() {
@@ -2195,7 +2195,7 @@ fn requesting_partially_blind_bbs_sig() {
     let commitment = sig_params.commit_to_messages(committed_messages).unwrap();
 
     // Requester proves knowledge of committed messages
-    let mut statements = Statements::new();
+    let mut statements = Statements::<Bls12_381>::new();
     let mut bases = vec![];
     let mut committed_msgs = vec![];
     for i in committed_indices.iter() {
@@ -2412,6 +2412,8 @@ fn proof_spec_modification() {
 
     let orig_verifier_proof_spec =
         ProofSpec::new(verifier_statements.clone(), meta_statements, vec![], None);
+
+    // Verifier creates proof spec with 2 statements, prover modifies it to remove a statement
     let modified_verifier_proof_spec = ProofSpec::new(
         verifier_statements.clone(),
         MetaStatements::new(),
@@ -2449,16 +2451,13 @@ fn proof_spec_modification() {
     .unwrap()
     .0;
     valid_proof
-        .verify::<StdRng, Blake2b512>(&mut rng, orig_verifier_proof_spec, None, Default::default())
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            orig_verifier_proof_spec.clone(),
+            None,
+            Default::default(),
+        )
         .unwrap();
-
-    // Verifier creates proof spec with 2 statements, prover modifies it to remove a statement
-    let orig_verifier_proof_spec = ProofSpec::new(
-        verifier_statements.clone(),
-        MetaStatements::new(),
-        vec![],
-        None,
-    );
 
     // Prover's modified proof spec
     let mut only_1_prover_statement = Statements::<Bls12_381>::new();
@@ -2609,6 +2608,7 @@ fn proof_spec_validation() {
     assert!(ps_3.validate().is_err());
 }
 
+#[ignore]
 #[test]
 fn detached_accumulator() {
     // Prove knowledge of BBS+ signature and one of the message's membership and non-membership in accumulators

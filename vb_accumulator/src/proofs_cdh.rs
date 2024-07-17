@@ -20,14 +20,17 @@ use crate::{
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{
+    collections::BTreeMap, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand,
+};
 use core::mem;
 use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
 };
 use schnorr_pok::{
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
-    SchnorrCommitment, SchnorrResponse,
+    partial::PartialSchnorrResponse,
+    SchnorrCommitment,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -83,7 +86,7 @@ pub struct NonMembershipProof<E: Pairing> {
     /// For relation `C_bar = V * r - C' * y - P * d'`
     #[serde_as(as = "ArkObjectBytes")]
     pub t_1: E::G1Affine,
-    pub sc_resp_1: SchnorrResponse<E::G1Affine>,
+    pub sc_resp_1: PartialSchnorrResponse<E::G1Affine>,
     /// For relation `J = Q * d'`
     pub sc_2: PokDiscreteLog<E::G1Affine>,
 }
@@ -121,6 +124,14 @@ impl<E: Pairing> MembershipProofProtocol<E> {
         let proof = self.0.clone().gen_proof(challenge);
         Ok(MembershipProof(proof))
     }
+
+    pub fn gen_partial_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<MembershipProof<E>, VBAccumulatorError> {
+        let proof = self.0.clone().gen_partial_proof(challenge);
+        Ok(MembershipProof(proof))
+    }
 }
 
 impl<E: Pairing> MembershipProof<E> {
@@ -134,6 +145,25 @@ impl<E: Pairing> MembershipProof<E> {
         let params = params.into();
         self.0
             .verify(challenge, pk.into().0, accumulator_value, params.P_tilde)?;
+        Ok(())
+    }
+
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+    ) -> Result<(), VBAccumulatorError> {
+        let params = params.into();
+        self.0.verify_partial(
+            resp_for_element,
+            challenge,
+            pk.into().0,
+            accumulator_value,
+            params.P_tilde,
+        )?;
         Ok(())
     }
 
@@ -156,6 +186,27 @@ impl<E: Pairing> MembershipProof<E> {
         Ok(())
     }
 
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        let params = params.into();
+        self.0.verify_partial_with_randomized_pairing_checker(
+            resp_for_element,
+            challenge,
+            pk.into().0,
+            accumulator_value,
+            params.P_tilde,
+            pairing_checker,
+        )?;
+        Ok(())
+    }
+
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &E::G1Affine,
@@ -165,7 +216,7 @@ impl<E: Pairing> MembershipProof<E> {
         Ok(())
     }
 
-    pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
+    pub fn get_schnorr_response_for_element(&self) -> Option<&E::ScalarField> {
         self.0.get_resp_for_message()
     }
 }
@@ -235,20 +286,41 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
     }
 
     pub fn gen_proof(
-        mut self,
+        self,
         challenge: &E::ScalarField,
     ) -> Result<NonMembershipProof<E>, VBAccumulatorError> {
-        Ok(NonMembershipProof {
-            C_prime: self.C_prime,
-            C_bar: self.C_bar,
-            J: self.J,
-            t_1: self.sc_comm_1.t,
-            sc_resp_1: self.sc_comm_1.response(
-                &[self.sc_wits_1.0, self.sc_wits_1.1, self.sc_wits_1.2],
-                challenge,
-            )?,
-            sc_2: mem::take(&mut self.sc_comm_2).gen_proof(challenge),
-        })
+        let wits = BTreeMap::from([(0, self.sc_wits_1.0), (1, self.sc_wits_1.1)]);
+        // Ok(NonMembershipProof {
+        //     C_prime: self.C_prime,
+        //     C_bar: self.C_bar,
+        //     J: self.J,
+        //     t_1: self.sc_comm_1.t,
+        //     sc_resp_1: self.sc_comm_1.partial_response(
+        //         wits,
+        //         challenge,
+        //     )?,
+        //     sc_2: mem::take(&mut self.sc_comm_2).gen_proof(challenge),
+        // })
+        self._gen_proof(wits, challenge)
+    }
+
+    pub fn gen_partial_proof(
+        self,
+        challenge: &E::ScalarField,
+    ) -> Result<NonMembershipProof<E>, VBAccumulatorError> {
+        let wits = BTreeMap::from([(0, self.sc_wits_1.0)]);
+        // Ok(NonMembershipProof {
+        //     C_prime: self.C_prime,
+        //     C_bar: self.C_bar,
+        //     J: self.J,
+        //     t_1: self.sc_comm_1.t,
+        //     sc_resp_1: self.sc_comm_1.partial_response(
+        //         wits,
+        //         challenge,
+        //     )?,
+        //     sc_2: mem::take(&mut self.sc_comm_2).gen_proof(challenge),
+        // })
+        self._gen_proof(wits, challenge)
     }
 
     pub fn compute_challenge_contribution<W: Write>(
@@ -272,6 +344,21 @@ impl<E: Pairing> NonMembershipProofProtocol<E> {
         t_2.serialize_compressed(&mut writer)?;
         Ok(())
     }
+
+    fn _gen_proof(
+        mut self,
+        wits: BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+    ) -> Result<NonMembershipProof<E>, VBAccumulatorError> {
+        Ok(NonMembershipProof {
+            C_prime: self.C_prime,
+            C_bar: self.C_bar,
+            J: self.J,
+            t_1: self.sc_comm_1.t,
+            sc_resp_1: self.sc_comm_1.partial_response(wits, challenge)?,
+            sc_2: mem::take(&mut self.sc_comm_2).gen_proof(challenge),
+        })
+    }
 }
 
 impl<E: Pairing> NonMembershipProof<E> {
@@ -284,7 +371,7 @@ impl<E: Pairing> NonMembershipProof<E> {
         Q: impl Into<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        self.verify_except_pairing(accumulator_value, challenge, &params, Q)?;
+        self.verify_except_pairing(None, accumulator_value, challenge, &params, Q)?;
         if !E::multi_pairing(
             [
                 E::G1Prepared::from(self.C_bar),
@@ -309,7 +396,60 @@ impl<E: Pairing> NonMembershipProof<E> {
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        self.verify_except_pairing(accumulator_value, challenge, &params, Q)?;
+        self.verify_except_pairing(None, accumulator_value, challenge, &params, Q)?;
+        pairing_checker.add_sources(&self.C_prime, pk.into().0, &self.C_bar, params.P_tilde);
+        Ok(())
+    }
+
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        Q: impl Into<E::G1Affine>,
+    ) -> Result<(), VBAccumulatorError> {
+        let params = params.into();
+        self.verify_except_pairing(
+            Some(resp_for_element),
+            accumulator_value,
+            challenge,
+            &params,
+            Q,
+        )?;
+        if !E::multi_pairing(
+            [
+                E::G1Prepared::from(self.C_bar),
+                E::G1Prepared::from(-(self.C_prime.into_group())),
+            ],
+            [params.P_tilde, pk.into().0],
+        )
+        .is_zero()
+        {
+            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
+        }
+        Ok(())
+    }
+
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        Q: impl Into<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), VBAccumulatorError> {
+        let params = params.into();
+        self.verify_except_pairing(
+            Some(resp_for_element),
+            accumulator_value,
+            challenge,
+            &params,
+            Q,
+        )?;
         pairing_checker.add_sources(&self.C_prime, pk.into().0, &self.C_bar, params.P_tilde);
         Ok(())
     }
@@ -334,12 +474,13 @@ impl<E: Pairing> NonMembershipProof<E> {
         )
     }
 
-    pub fn get_schnorr_response_for_element(&self) -> &E::ScalarField {
-        self.sc_resp_1.get_response(1).unwrap()
+    pub fn get_schnorr_response_for_element(&self) -> Option<&E::ScalarField> {
+        self.sc_resp_1.get_response(1).ok()
     }
 
     fn verify_except_pairing(
         &self,
+        resp_for_element: Option<&E::ScalarField>,
         accumulator_value: E::G1Affine,
         challenge: &E::ScalarField,
         params: &PreparedSetupParams<E>,
@@ -351,6 +492,20 @@ impl<E: Pairing> NonMembershipProof<E> {
         if self.J.is_zero() {
             return Err(VBAccumulatorError::CannotBeZero);
         }
+        if !self.sc_2.verify(&self.J, &Q.into(), challenge) {
+            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
+        }
+
+        // d'(=d*r) is same in both relations
+        let mut missing_responses = BTreeMap::from([(2, self.sc_2.response)]);
+        if !self.sc_resp_1.responses.contains_key(&1) {
+            match resp_for_element {
+                Some(r) => {
+                    missing_responses.insert(1, *r);
+                }
+                _ => return Err(VBAccumulatorError::MissingSchnorrResponseForElement),
+            }
+        }
         self.sc_resp_1.is_valid(
             &[
                 accumulator_value,
@@ -360,14 +515,9 @@ impl<E: Pairing> NonMembershipProof<E> {
             &self.C_bar,
             &self.t_1,
             challenge,
+            missing_responses,
         )?;
-        if !self.sc_2.verify(&self.J, &Q.into(), challenge) {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
-        }
-        // d'(=d*r) is same in both relations
-        if *self.sc_resp_1.get_response(2)? != self.sc_2.response {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
-        }
+
         Ok(())
     }
 }

@@ -21,10 +21,12 @@ use crate::{
     witness::{MembershipWitness, NonMembershipWitness},
 };
 use ark_ec::{AffineRepr, CurveGroup};
-use core::mem;
-
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{fmt::Debug, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{
+    collections::BTreeMap, fmt::Debug, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec,
+    UniformRand,
+};
+use core::mem;
 use digest::Digest;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use kvac::bbdt_2016::keyed_proof::{
@@ -33,7 +35,8 @@ use kvac::bbdt_2016::keyed_proof::{
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
-    SchnorrCommitment, SchnorrResponse,
+    partial::PartialSchnorrResponse,
+    SchnorrCommitment,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -99,7 +102,7 @@ pub struct NonMembershipProof<G: AffineRepr> {
     pub C_bar: G,
     #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
-    pub sc_resp: SchnorrResponse<G>,
+    pub sc_resp: PartialSchnorrResponse<G>,
     pub sc_resp_2: PokDiscreteLog<G>,
 }
 
@@ -315,6 +318,14 @@ impl<G: AffineRepr> MembershipProofProtocol<G> {
         let p = mem::take(&mut self.0).gen_proof(challenge);
         Ok(MembershipProof(p))
     }
+
+    pub fn gen_partial_proof(
+        mut self,
+        challenge: &G::ScalarField,
+    ) -> Result<MembershipProof<G>, VBAccumulatorError> {
+        let p = mem::take(&mut self.0).gen_partial_proof(challenge);
+        Ok(MembershipProof(p))
+    }
 }
 
 impl<G: AffineRepr> MembershipProof<G> {
@@ -325,6 +336,18 @@ impl<G: AffineRepr> MembershipProof<G> {
         challenge: &G::ScalarField,
     ) -> Result<(), VBAccumulatorError> {
         self.0.verify(challenge, &secret_key, accumulator)?;
+        Ok(())
+    }
+
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: &G,
+        secret_key: &SecretKey<G::ScalarField>,
+        challenge: &G::ScalarField,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0
+            .verify_partial(resp_for_element, challenge, &secret_key, accumulator)?;
         Ok(())
     }
 
@@ -346,6 +369,17 @@ impl<G: AffineRepr> MembershipProof<G> {
         Ok(())
     }
 
+    pub fn verify_partial_schnorr_proof(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: &G,
+        challenge: &G::ScalarField,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0
+            .verify_partial_schnorr_proof(resp_for_element, accumulator, challenge)?;
+        Ok(())
+    }
+
     pub fn to_keyed_proof(&self) -> KeyedMembershipProof<G> {
         KeyedMembershipProof(KeyedProof {
             B_0: self.0.A_prime,
@@ -353,7 +387,7 @@ impl<G: AffineRepr> MembershipProof<G> {
         })
     }
 
-    pub fn get_schnorr_response_for_element(&self) -> &G::ScalarField {
+    pub fn get_schnorr_response_for_element(&self) -> Option<&G::ScalarField> {
         self.0.get_resp_for_message()
     }
 }
@@ -480,9 +514,25 @@ impl<G: AffineRepr> NonMembershipProofProtocol<G> {
         mut self,
         challenge: &G::ScalarField,
     ) -> Result<NonMembershipProof<G>, VBAccumulatorError> {
-        let sc_resp = self
-            .sc_comm
-            .response(&[self.sc_wits.0, self.sc_wits.1, self.sc_wits.2], challenge)?;
+        let wits = BTreeMap::from_iter([(0, self.sc_wits.0), (1, self.sc_wits.1)]);
+        let sc_resp = self.sc_comm.partial_response(wits, challenge)?;
+        let sc_resp_2 = mem::take(&mut self.sc_comm_2).gen_proof(challenge);
+        Ok(NonMembershipProof {
+            C_prime: self.C_prime,
+            C_hat: self.C_hat,
+            C_bar: self.C_bar,
+            t: self.sc_comm.t,
+            sc_resp,
+            sc_resp_2,
+        })
+    }
+
+    pub fn gen_partial_proof(
+        mut self,
+        challenge: &G::ScalarField,
+    ) -> Result<NonMembershipProof<G>, VBAccumulatorError> {
+        let wits = BTreeMap::from_iter([(0, self.sc_wits.0)]);
+        let sc_resp = self.sc_comm.partial_response(wits, challenge)?;
         let sc_resp_2 = mem::take(&mut self.sc_comm_2).gen_proof(challenge);
         Ok(NonMembershipProof {
             C_prime: self.C_prime,
@@ -526,13 +576,21 @@ impl<G: AffineRepr> NonMembershipProof<G> {
         params: &SetupParams<G>,
         Q: &G,
     ) -> Result<(), VBAccumulatorError> {
-        if self.C_bar != (self.C_prime * secret_key.0).into() {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
-        }
-        if self.C_hat.is_zero() {
-            return Err(VBAccumulatorError::CannotBeZero);
-        }
-        self.verify_schnorr_proof(accumulator, challenge, params, Q)
+        self.check_common(secret_key)?;
+        self.verify_schnorr_proof(None, accumulator, challenge, params, Q)
+    }
+
+    pub fn verify_partial(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: G,
+        secret_key: &SecretKey<G::ScalarField>,
+        challenge: &G::ScalarField,
+        params: &SetupParams<G>,
+        Q: &G,
+    ) -> Result<(), VBAccumulatorError> {
+        self.check_common(secret_key)?;
+        self.verify_schnorr_proof(Some(resp_for_element), accumulator, challenge, params, Q)
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -557,6 +615,7 @@ impl<G: AffineRepr> NonMembershipProof<G> {
 
     pub fn verify_schnorr_proof(
         &self,
+        resp_for_element: Option<&G::ScalarField>,
         accumulator: G,
         challenge: &G::ScalarField,
         params: &SetupParams<G>,
@@ -567,14 +626,21 @@ impl<G: AffineRepr> NonMembershipProof<G> {
             self.C_prime.into_group().neg().into(),
             params.0.into_group().neg().into(),
         ];
-        self.sc_resp
-            .is_valid(&bases, &self.C_bar, &self.t, challenge)?;
         if !self.sc_resp_2.verify(&self.C_hat, Q, challenge) {
             return Err(VBAccumulatorError::IncorrectRandomizedWitness);
         }
-        if *self.sc_resp.get_response(2)? != self.sc_resp_2.response {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
+
+        let mut missing_responses = BTreeMap::from([(2, self.sc_resp_2.response)]);
+        if !self.sc_resp.responses.contains_key(&1) {
+            match resp_for_element {
+                Some(r) => {
+                    missing_responses.insert(1, *r);
+                }
+                _ => return Err(VBAccumulatorError::MissingSchnorrResponseForElement),
+            }
         }
+        self.sc_resp
+            .is_valid(&bases, &self.C_bar, &self.t, challenge, missing_responses)?;
         Ok(())
     }
 
@@ -587,6 +653,19 @@ impl<G: AffineRepr> NonMembershipProof<G> {
 
     pub fn get_schnorr_response_for_element(&self) -> &G::ScalarField {
         self.sc_resp.get_response(1).unwrap()
+    }
+
+    fn check_common(
+        &self,
+        secret_key: &SecretKey<G::ScalarField>,
+    ) -> Result<(), VBAccumulatorError> {
+        if self.C_bar != (self.C_prime * secret_key.0).into() {
+            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
+        }
+        if self.C_hat.is_zero() {
+            return Err(VBAccumulatorError::CannotBeZero);
+        }
+        Ok(())
     }
 }
 
@@ -933,6 +1012,7 @@ mod tests {
 
             proof
                 .verify_schnorr_proof(
+                    None,
                     accumulator.value().clone(),
                     &challenge_verifier,
                     &params,

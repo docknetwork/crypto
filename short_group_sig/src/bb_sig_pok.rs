@@ -26,8 +26,11 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::{msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker};
 
-use schnorr_pok::discrete_log::{
-    PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
+use schnorr_pok::{
+    discrete_log::{
+        PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
+    },
+    partial::Partial2PokTwoDiscreteLogs,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -82,13 +85,15 @@ pub struct PoKOfSignatureG1<E: Pairing> {
     /// Proof of knowledge of `beta` in `T2 = v * beta`
     pub sc_T2: PokDiscreteLog<E::G1Affine>,
     /// For relation `T1 * message + u * delta_1 = 0`
-    pub sc_T1_x: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_T1_x: Option<PokTwoDiscreteLogs<E::G1Affine>>,
+    /// For relation `T1 * message + u * delta_1 = 0`
+    pub sc_T1_x_partial: Option<Partial2PokTwoDiscreteLogs<E::G1Affine>>,
     /// For relation `T2 * message + v * delta_2 = 0`
-    pub sc_T2_x: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_T2_x: Partial2PokTwoDiscreteLogs<E::G1Affine>,
     /// For relation `T1 * e + u * delta_3 = 0`
     pub sc_T1_e: PokTwoDiscreteLogs<E::G1Affine>,
     /// For relation `T2 * e + v * delta_4 = 0`
-    pub sc_T2_e: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_T2_e: Partial2PokTwoDiscreteLogs<E::G1Affine>,
     /// Commitment to randomness from the 1st step of the Schnorr protocol over the pairing equation.
     pub R_3: PairingOutput<E>,
 }
@@ -212,16 +217,42 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let sc_T1 = mem::take(&mut self.sc_T1).gen_proof(challenge);
         let sc_T2 = mem::take(&mut self.sc_T2).gen_proof(challenge);
         let sc_T1_x = mem::take(&mut self.sc_T1_x).gen_proof(challenge);
-        let sc_T2_x = mem::take(&mut self.sc_T2_x).gen_proof(challenge);
+        let sc_T2_x = mem::take(&mut self.sc_T2_x).gen_partial2_proof(challenge);
         let sc_T1_e = mem::take(&mut self.sc_T1_e).gen_proof(challenge);
-        let sc_T2_e = mem::take(&mut self.sc_T2_e).gen_proof(challenge);
+        let sc_T2_e = mem::take(&mut self.sc_T2_e).gen_partial2_proof(challenge);
         Ok(PoKOfSignatureG1 {
             T1: self.T1,
             T2: self.T2,
             T3: self.T3,
             sc_T1,
             sc_T2,
-            sc_T1_x,
+            sc_T1_x: Some(sc_T1_x),
+            sc_T1_x_partial: None,
+            sc_T2_x,
+            sc_T1_e,
+            sc_T2_e,
+            R_3: self.R_3,
+        })
+    }
+
+    pub fn gen_partial_proof(
+        mut self,
+        challenge: &E::ScalarField,
+    ) -> Result<PoKOfSignatureG1<E>, ShortGroupSigError> {
+        let sc_T1 = mem::take(&mut self.sc_T1).gen_proof(challenge);
+        let sc_T2 = mem::take(&mut self.sc_T2).gen_proof(challenge);
+        let sc_T1_x = mem::take(&mut self.sc_T1_x).gen_partial2_proof(challenge);
+        let sc_T2_x = mem::take(&mut self.sc_T2_x).gen_partial2_proof(challenge);
+        let sc_T1_e = mem::take(&mut self.sc_T1_e).gen_proof(challenge);
+        let sc_T2_e = mem::take(&mut self.sc_T2_e).gen_partial2_proof(challenge);
+        Ok(PoKOfSignatureG1 {
+            T1: self.T1,
+            T2: self.T2,
+            T3: self.T3,
+            sc_T1,
+            sc_T2,
+            sc_T1_x: None,
+            sc_T1_x_partial: Some(sc_T1_x),
             sc_T2_x,
             sc_T1_e,
             sc_T2_e,
@@ -274,22 +305,207 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         g2: impl Into<E::G2Prepared>,
         proving_key: &ProvingKey<E::G1Affine>,
     ) -> Result<(), ShortGroupSigError> {
-        self.verify_except_pairings(challenge, proving_key)?;
-        let s_message = self.sc_T1_x.response1;
-        let e_message = self.sc_T1_e.response1;
+        let sc = self
+            .sc_T1_x
+            .as_ref()
+            .ok_or_else(|| ShortGroupSigError::NeedCompleteSchnorrResponse)?;
+        let s_message = sc.response1;
+        let s_delta_1 = sc.response2;
+        self._verify(s_message, s_delta_1, challenge, pk, g1, g2, proving_key)
+    }
+
+    pub fn verify_with_randomized_pairing_checker(
+        &self,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        g1: impl Into<E::G1Affine>,
+        g2: impl Into<E::G2Prepared>,
+        proving_key: &ProvingKey<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), ShortGroupSigError> {
+        let sc = self
+            .sc_T1_x
+            .as_ref()
+            .ok_or_else(|| ShortGroupSigError::NeedCompleteSchnorrResponse)?;
+        let s_message = sc.response1;
+        let s_delta_1 = sc.response2;
+        self._verify_with_randomized_pairing_checker(
+            s_message,
+            s_delta_1,
+            challenge,
+            pk,
+            g1,
+            g2,
+            proving_key,
+            pairing_checker,
+        )
+    }
+
+    pub fn verify_partial(
+        &self,
+        resp_for_message: &E::ScalarField,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        g1: impl Into<E::G1Affine>,
+        g2: impl Into<E::G2Prepared>,
+        proving_key: &ProvingKey<E::G1Affine>,
+    ) -> Result<(), ShortGroupSigError> {
+        let s_delta_1 = self
+            .sc_T1_x_partial
+            .as_ref()
+            .ok_or_else(|| ShortGroupSigError::NeedCompleteSchnorrResponse)?
+            .response2;
+        self._verify(
+            *resp_for_message,
+            s_delta_1,
+            challenge,
+            pk,
+            g1,
+            g2,
+            proving_key,
+        )
+    }
+
+    pub fn verify_partial_with_randomized_pairing_checker(
+        &self,
+        resp_for_message: &E::ScalarField,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        g1: impl Into<E::G1Affine>,
+        g2: impl Into<E::G2Prepared>,
+        proving_key: &ProvingKey<E::G1Affine>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> Result<(), ShortGroupSigError> {
+        let s_delta_1 = self
+            .sc_T1_x_partial
+            .as_ref()
+            .ok_or_else(|| ShortGroupSigError::NeedCompleteSchnorrResponse)?
+            .response2;
+        self._verify_with_randomized_pairing_checker(
+            *resp_for_message,
+            s_delta_1,
+            challenge,
+            pk,
+            g1,
+            g2,
+            proving_key,
+            pairing_checker,
+        )
+    }
+
+    pub fn verify_except_pairings(
+        &self,
+        resp_for_message: &E::ScalarField,
+        challenge: &E::ScalarField,
+        proving_key: &ProvingKey<E::G1Affine>,
+    ) -> Result<(), ShortGroupSigError> {
+        if !self.sc_T1.verify(&self.T1, &proving_key.X, challenge) {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
+        if !self.sc_T2.verify(&self.T2, &proving_key.Y, challenge) {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
+
+        let e_message = &self.sc_T1_e.response1;
+        let zero = E::G1Affine::zero();
+
+        if let Some(sc) = &self.sc_T1_x {
+            if !sc.verify(&zero, &self.T1, &proving_key.X, challenge) {
+                return Err(ShortGroupSigError::InvalidProof);
+            }
+        } else if let Some(sc) = &self.sc_T1_x_partial {
+            if !sc.verify(&zero, &self.T1, &proving_key.X, challenge, resp_for_message) {
+                return Err(ShortGroupSigError::InvalidProof);
+            }
+        } else {
+            return Err(ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse);
+        };
+        if !self
+            .sc_T2_x
+            .verify(&zero, &self.T2, &proving_key.Y, challenge, resp_for_message)
+        {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
+        if !self
+            .sc_T1_e
+            .verify(&zero, &self.T1, &proving_key.X, challenge)
+        {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
+        if !self
+            .sc_T2_e
+            .verify(&zero, &self.T2, &proving_key.Y, challenge, e_message)
+        {
+            return Err(ShortGroupSigError::InvalidProof);
+        }
+        Ok(())
+    }
+
+    pub fn challenge_contribution<W: Write>(
+        &self,
+        pk: &PublicKeyG2<E>,
+        params: &SignatureParams<E>,
+        proving_key: &ProvingKey<E::G1Affine>,
+        writer: W,
+    ) -> Result<(), ShortGroupSigError> {
+        let t = if let Some(sc) = &self.sc_T1_x {
+            &sc.t
+        } else if let Some(sc) = &self.sc_T1_x_partial {
+            &sc.t
+        } else {
+            return Err(ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse);
+        };
+        PoKOfSignatureG1Protocol::<E>::compute_challenge_contribution(
+            &self.T1,
+            &self.T2,
+            &self.T3,
+            &proving_key,
+            pk,
+            &params.g2,
+            &self.sc_T1.t,
+            &self.sc_T2.t,
+            t,
+            &self.sc_T2_x.t,
+            &self.sc_T1_e.t,
+            &self.sc_T2_e.t,
+            &self.R_3,
+            writer,
+        )
+    }
+
+    pub fn get_resp_for_message(&self) -> Option<&E::ScalarField> {
+        self.sc_T1_x.as_ref().map(|s| &s.response1)
+    }
+
+    pub fn get_resp_for_randomness(&self) -> &E::ScalarField {
+        &self.sc_T1_e.response1
+    }
+
+    fn _verify(
+        &self,
+        resp_for_message: E::ScalarField,
+        resp_for_delta_1: E::ScalarField,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        g1: impl Into<E::G1Affine>,
+        g2: impl Into<E::G2Prepared>,
+        proving_key: &ProvingKey<E::G1Affine>,
+    ) -> Result<(), ShortGroupSigError> {
+        self.verify_except_pairings(&resp_for_message, challenge, proving_key)?;
+        let s_e = self.sc_T1_e.response1;
         let g2_prepared = g2.into();
         let PreparedPublicKeyG2(pk_0_prepared, pk_1_prepared, _) = pk.into();
         let Z_table = WindowTable::new(3, proving_key.Z.into_group());
         if self.R_3
             != E::multi_pairing(
                 [
-                    E::G1Prepared::from(self.T3 * s_message),
-                    E::G1Prepared::from(self.T3 * e_message),
+                    E::G1Prepared::from(self.T3 * resp_for_message),
+                    E::G1Prepared::from(self.T3 * s_e),
                     E::G1Prepared::from(
                         Z_table.multiply(&(self.sc_T1.response.neg() + self.sc_T2.response.neg())),
                     ),
                     E::G1Prepared::from(
-                        Z_table.multiply(&(self.sc_T1_x.response2 + self.sc_T2_x.response2)),
+                        Z_table.multiply(&(resp_for_delta_1 + self.sc_T2_x.response2)),
                     ),
                     E::G1Prepared::from(
                         Z_table.multiply(&(self.sc_T1_e.response2 + self.sc_T2_e.response2)),
@@ -313,8 +529,10 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         Ok(())
     }
 
-    pub fn verify_with_randomized_pairing_checker(
+    fn _verify_with_randomized_pairing_checker(
         &self,
+        resp_for_message: E::ScalarField,
+        resp_for_delta_1: E::ScalarField,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKeyG2<E>>,
         g1: impl Into<E::G1Affine>,
@@ -322,20 +540,20 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         proving_key: &ProvingKey<E::G1Affine>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
     ) -> Result<(), ShortGroupSigError> {
-        let s_message = self.sc_T1_x.response1;
+        self.verify_except_pairings(&resp_for_message, challenge, proving_key)?;
         let e_message = self.sc_T1_e.response1;
         let g2_prepared = g2.into();
         let PreparedPublicKeyG2(pk_0_prepared, pk_1_prepared, _) = pk.into();
         let Z_table = WindowTable::new(3, proving_key.Z.into_group());
         pairing_checker.add_multiple_sources_and_target(
             &[
-                (self.T3 * s_message).into(),
+                (self.T3 * resp_for_message).into(),
                 (self.T3 * e_message).into(),
                 Z_table
                     .multiply(&(self.sc_T1.response.neg() + self.sc_T2.response.neg()))
                     .into(),
                 Z_table
-                    .multiply(&(self.sc_T1_x.response2 + self.sc_T2_x.response2))
+                    .multiply(&(resp_for_delta_1 + self.sc_T2_x.response2))
                     .into(),
                 (Z_table.multiply(&(self.sc_T1_e.response2 + self.sc_T2_e.response2))).into(),
                 (self.T3 * challenge).into(),
@@ -353,91 +571,6 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
             &self.R_3,
         );
         Ok(())
-    }
-
-    pub fn verify_except_pairings(
-        &self,
-        challenge: &E::ScalarField,
-        proving_key: &ProvingKey<E::G1Affine>,
-    ) -> Result<(), ShortGroupSigError> {
-        if !self.sc_T1.verify(&self.T1, &proving_key.X, challenge) {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-        if !self.sc_T2.verify(&self.T2, &proving_key.Y, challenge) {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-
-        // Check that `message` is same in `T1 * message + u * delta_1 = 0` and `T2 * message + v * delta_2 = 0`
-        let s_message = self.sc_T1_x.response1;
-        if s_message != self.sc_T2_x.response1 {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-
-        // Check that `e` is same in `T1 * e + u * delta_3 = 0` and `T2 * e + v * delta_4 = 0`
-        let e_message = self.sc_T1_e.response1;
-        if e_message != self.sc_T2_e.response1 {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-
-        let zero = E::G1Affine::zero();
-        if !self
-            .sc_T1_x
-            .verify(&zero, &self.T1, &proving_key.X, challenge)
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-        if !self
-            .sc_T2_x
-            .verify(&zero, &self.T2, &proving_key.Y, challenge)
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-        if !self
-            .sc_T1_e
-            .verify(&zero, &self.T1, &proving_key.X, challenge)
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-        if !self
-            .sc_T2_e
-            .verify(&zero, &self.T2, &proving_key.Y, challenge)
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-        Ok(())
-    }
-
-    pub fn challenge_contribution<W: Write>(
-        &self,
-        pk: &PublicKeyG2<E>,
-        params: &SignatureParams<E>,
-        proving_key: &ProvingKey<E::G1Affine>,
-        writer: W,
-    ) -> Result<(), ShortGroupSigError> {
-        PoKOfSignatureG1Protocol::<E>::compute_challenge_contribution(
-            &self.T1,
-            &self.T2,
-            &self.T3,
-            &proving_key,
-            pk,
-            &params.g2,
-            &self.sc_T1.t,
-            &self.sc_T2.t,
-            &self.sc_T1_x.t,
-            &self.sc_T2_x.t,
-            &self.sc_T1_e.t,
-            &self.sc_T2_e.t,
-            &self.R_3,
-            writer,
-        )
-    }
-
-    pub fn get_resp_for_message(&self) -> &E::ScalarField {
-        &self.sc_T1_x.response1
-    }
-
-    pub fn get_resp_for_randomness(&self) -> &E::ScalarField {
-        &self.sc_T1_e.response1
     }
 }
 

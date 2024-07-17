@@ -1,7 +1,8 @@
 use crate::{
     error::ProofSystemError,
     statement_proof::{
-        PedersenCommitmentProof, SaverProof, SaverProofWhenAggregatingSnarks, StatementProof,
+        PedersenCommitmentPartialProof, PedersenCommitmentProof, SaverProof,
+        SaverProofWhenAggregatingSnarks, StatementProof,
     },
     sub_protocols::schnorr::SchnorrProtocol,
 };
@@ -13,7 +14,7 @@ use ark_ff::{PrimeField, Zero};
 use ark_groth16::{PreparedVerifyingKey, VerifyingKey};
 use ark_serialize::CanonicalSerialize;
 use ark_std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::Write,
     ops::Add,
     rand::{Rng, RngCore},
@@ -216,10 +217,13 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
                 self.id,
             ));
         }
+        let ciphertext = self.ciphertext.take().unwrap();
         let mut sp_chunks = self.sp_chunks.take().unwrap();
         let mut sp_combined = self.sp_combined.take().unwrap();
+        let skip_for_chunks = BTreeSet::from_iter(0..ciphertext.enc_chunks.len());
+        let skip_for_message = BTreeSet::from([0]);
         Ok(StatementProof::Saver(SaverProof {
-            ciphertext: self.ciphertext.take().unwrap(),
+            ciphertext,
             snark_proof: self.snark_proof.take().unwrap(),
             comm_chunks: sp_chunks.commitment,
             comm_combined: sp_combined.commitment,
@@ -228,8 +232,10 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
                 .take()
                 .unwrap()
                 .gen_proof_contribution_as_struct(challenge)?,
-            sp_chunks: sp_chunks.gen_proof_contribution_as_struct(challenge)?,
-            sp_combined: sp_combined.gen_proof_contribution_as_struct(challenge)?,
+            sp_chunks: sp_chunks
+                .gen_partial_proof_contribution_as_struct(challenge, &skip_for_chunks)?,
+            sp_combined: sp_combined
+                .gen_partial_proof_contribution_as_struct(challenge, &skip_for_message)?,
         }))
     }
 
@@ -247,6 +253,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         pgens: impl Into<PreparedEncryptionGens<E>>,
         pek: impl Into<PreparedEncryptionKey<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         let pek = pek.into();
         let pgens = pgens.into();
@@ -297,6 +304,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
             ck_comm_ct,
             ck_comm_chunks,
             ck_comm_combined,
+            resp_for_message,
         )
     }
 
@@ -307,25 +315,46 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         comm_combined: E::G1Affine,
         comm_chunks: E::G1Affine,
         s_pr_ciphertext: &PedersenCommitmentProof<E::G1Affine>,
-        s_pr_chunks: &PedersenCommitmentProof<E::G1Affine>,
-        s_pr_combined: &PedersenCommitmentProof<E::G1Affine>,
+        s_pr_chunks: &PedersenCommitmentPartialProof<E::G1Affine>,
+        s_pr_combined: &PedersenCommitmentPartialProof<E::G1Affine>,
         ck_comm_ct: &[E::G1Affine],
         ck_comm_chunks: &[E::G1Affine],
         ck_comm_combined: &[E::G1Affine],
+        resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
+        // if ciphertext.enc_chunks.len() != (s_pr_ciphertext.response.len() - 1) {
+        //     return Err(ProofSystemError::UnequalCiphertextChunksAndSchnorrResponses(ciphertext.enc_chunks.len(), s_pr_ciphertext.response.len() - 1))
+        // }
+        // if ciphertext.enc_chunks.len() != (s_pr_chunks.response.len() - 1) {
+        //     return Err(ProofSystemError::UnequalCiphertextChunksAndSchnorrResponses(ciphertext.enc_chunks.len(), s_pr_chunks.response.len() - 1))
+        // }
+        // for i in 0..s_pr_chunks.response.len() - 1 {
+        //     if s_pr_ciphertext.response.0[i] != s_pr_chunks.response.0[i] {
+        //         return Err(ProofSystemError::UnequalResponseOfSaverCiphertextAndChunk(i))
+        //     }
+        // }
+
         // NOTE: value of id is dummy
         let sp_ciphertext = SchnorrProtocol::new(10000, ck_comm_ct, ciphertext.commitment);
         let sp_chunks = SchnorrProtocol::new(10000, ck_comm_chunks, comm_chunks);
         let sp_combined = SchnorrProtocol::new(10000, ck_comm_combined, comm_combined);
 
+        let missing_msg_resp = BTreeMap::from([(0, resp_for_message)]);
+
+        let missing_chunks_resp = BTreeMap::from_iter(
+            s_pr_ciphertext.response.0[..s_pr_ciphertext.response.len() - 1]
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (i, *r)),
+        );
         sp_ciphertext
             .verify_proof_contribution(challenge, s_pr_ciphertext)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
         sp_chunks
-            .verify_proof_contribution(challenge, s_pr_chunks)
+            .verify_partial_proof_contribution(challenge, s_pr_chunks, missing_chunks_resp)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
         sp_combined
-            .verify_proof_contribution(challenge, s_pr_combined)
+            .verify_partial_proof_contribution(challenge, s_pr_combined, missing_msg_resp)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
@@ -429,7 +458,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
             != saver::utils::chunks_count::<E::ScalarField>(chunk_bit_size)
         {
             Err(ProofSystemError::SaverError(
-                saver::error::SaverError::IncompatibleEncryptionKey(
+                SaverError::IncompatibleEncryptionKey(
                     saver::utils::chunks_count::<E::ScalarField>(chunk_bit_size) as usize,
                     encryption_key.supported_chunks_count()? as usize,
                 ),

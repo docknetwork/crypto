@@ -107,6 +107,9 @@ pub enum ProofSystemError {
     KVACError(KVACError),
     BBDT16KVACProtocolInvalidMessageCount(usize, usize),
     BBDT16KVACProofContributionFailed(u32, KVACError),
+    UnequalCiphertextChunksAndSchnorrResponses(usize, usize),
+    UnequalResponseOfSaverCiphertextAndChunk(usize),
+    ResponseForWitnessNotFoundForStatement(usize),
 }
 
 impl From<SchnorrError> for ProofSystemError {

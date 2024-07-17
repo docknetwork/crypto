@@ -12,6 +12,10 @@ pub enum ShortGroupSigError {
     Serialization(SerializationError),
     InvalidProof,
     InvalidMembershipCorrectnessProof,
+    MissingResponsesNeededForPartialSchnorrProofVerification,
+    NeedEitherPartialOrCompleteSchnorrResponse,
+    NeedPartialSchnorrResponse,
+    NeedCompleteSchnorrResponse,
 }
 
 impl From<SchnorrError> for ShortGroupSigError {

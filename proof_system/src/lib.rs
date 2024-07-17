@@ -140,9 +140,6 @@
 //!
 //! *Note*: The design is tentative and will likely change as more protocols are integrated.
 //!
-//! *TODO*: Each of the above protocol uses a Schnorr protocol and the response for that protocol's witness is compared for
-//! equality with the response for Schnorr protocol used in BBS+/PS signatures (see `check_resp_for_equalities`). This cost (verify time and proof size)
-//! can be avoided by making protocols except the ones proving knowledge of BBS+/PS signatures not generate Schnorr responses.
 //!
 //! [`Statement`]: crate::statement::Statement
 //! [`MetaStatement`]: crate::meta_statement::MetaStatement

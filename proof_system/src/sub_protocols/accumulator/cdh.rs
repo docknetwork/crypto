@@ -114,7 +114,7 @@ macro_rules! impl_cdh_protocol_struct_and_funcs {
                     ));
                 }
                 let protocol = self.protocol.take().unwrap();
-                let proof = protocol.gen_proof(challenge)?;
+                let proof = protocol.gen_partial_proof(challenge)?;
                 Ok(StatementProof::$statement_proof_variant(proof))
             }
 
@@ -125,16 +125,24 @@ macro_rules! impl_cdh_protocol_struct_and_funcs {
                 pk: impl Into<PreparedPublicKey<E>>,
                 params: impl Into<PreparedSetupParams<E>>,
                 pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+                resp_for_element: E::ScalarField,
             ) -> Result<(), ProofSystemError> {
                 match pairing_checker {
-                    Some(c) => proof.verify_with_randomized_pairing_checker(
+                    Some(c) => proof.verify_partial_with_randomized_pairing_checker(
+                        &resp_for_element,
                         &self.accumulator_value,
                         challenge,
                         pk,
                         params,
                         c,
                     ),
-                    None => proof.verify(&self.accumulator_value, challenge, pk, params),
+                    None => proof.verify_partial(
+                        &resp_for_element,
+                        &self.accumulator_value,
+                        challenge,
+                        pk,
+                        params,
+                    ),
                 }
                 .map_err(|e| ProofSystemError::$error_type(self.id as u32, e))
             }
@@ -262,7 +270,7 @@ impl<'a, E: Pairing> VBAccumulatorNonMembershipCDHSubProtocol<'a, E> {
             ));
         }
         let protocol = self.protocol.take().unwrap();
-        let proof = protocol.gen_proof(challenge)?;
+        let proof = protocol.gen_partial_proof(challenge)?;
         Ok(StatementProof::VBAccumulatorNonMembershipCDH(proof))
     }
 
@@ -273,9 +281,11 @@ impl<'a, E: Pairing> VBAccumulatorNonMembershipCDHSubProtocol<'a, E> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        resp_for_element: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         match pairing_checker {
-            Some(c) => proof.verify_with_randomized_pairing_checker(
+            Some(c) => proof.verify_partial_with_randomized_pairing_checker(
+                &resp_for_element,
                 self.accumulator_value,
                 challenge,
                 pk,
@@ -283,7 +293,14 @@ impl<'a, E: Pairing> VBAccumulatorNonMembershipCDHSubProtocol<'a, E> {
                 self.Q,
                 c,
             ),
-            None => proof.verify(self.accumulator_value, challenge, pk, params, self.Q),
+            None => proof.verify_partial(
+                &resp_for_element,
+                self.accumulator_value,
+                challenge,
+                pk,
+                params,
+                self.Q,
+            ),
         }
         .map_err(|e| ProofSystemError::VBAccumProofContributionFailed(self.id as u32, e))
     }
@@ -366,7 +383,7 @@ impl<'a, E: Pairing> KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E> {
             ));
         }
         let protocol = self.protocol.take().unwrap();
-        let proof = protocol.gen_proof(challenge)?;
+        let proof = protocol.gen_partial_proof(challenge)?;
         Ok(StatementProof::KBPositiveAccumulatorMembershipCDH(proof))
     }
 
@@ -377,9 +394,11 @@ impl<'a, E: Pairing> KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E> {
         pk: impl Into<KBAccumPreparedPk<E>>,
         params: impl Into<KBAccumPreparedParams<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        resp_for_element: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         match pairing_checker {
-            Some(c) => proof.verify_with_randomized_pairing_checker(
+            Some(c) => proof.verify_partial_with_randomized_pairing_checker(
+                &resp_for_element,
                 &self.accumulator_value,
                 challenge,
                 pk,
@@ -387,7 +406,8 @@ impl<'a, E: Pairing> KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E> {
                 self.proving_key,
                 c,
             ),
-            None => proof.verify(
+            None => proof.verify_partial(
+                &resp_for_element,
                 &self.accumulator_value,
                 challenge,
                 pk,

@@ -967,7 +967,7 @@ fn requesting_partially_blind_ps_sig() {
         MessageCommitment::new_iter(blinding_m_pairs.as_ref(), &h, &sig_params).collect();
 
     // Requester proves knowledge of committed messages
-    let mut statements = Statements::new();
+    let mut statements = Statements::<Bls12_381>::new();
     for comm in &commitments {
         statements.add(PedersenCommitmentStmt::new_statement_from_params(
             vec![sig_params.g, h],

@@ -7,7 +7,6 @@ pub enum SaverError {
     InvalidDecomposition,
     LegoGroth16Error(LegoGroth16Error),
     SynthesisError(SynthesisError),
-    AtLeastOneNonNoneRequired,
     VectorShorterThanExpected(usize, usize),
     MalformedEncryptionKey(usize, usize),
     MalformedDecryptionKey(usize, usize),

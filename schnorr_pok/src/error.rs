@@ -14,6 +14,9 @@ pub enum SchnorrError {
     Serialization(SerializationError),
     ValueMustNotBeEqual,
     InvalidProofOfEquality,
+    MissingBlindingAtIndex(usize),
+    MissingResponseAtIndex(usize),
+    FoundCommonIndexInOwnAndReceivedResponses(usize),
 }
 
 impl From<SerializationError> for SchnorrError {
