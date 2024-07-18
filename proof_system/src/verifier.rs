@@ -505,27 +505,6 @@ impl<E: Pairing> Proof<E> {
                     StatementProof::PoKPSSignature(p) => {
                         let sig_params = s.get_params(&proof_spec.setup_params, s_idx)?;
                         let pk = s.get_public_key(&proof_spec.setup_params, s_idx)?;
-                        // // Check witness equalities for this statement.
-                        // let revealed_msg_ids: Vec<_> =
-                        //     s.revealed_messages.keys().copied().collect();
-                        // for i in 0..sig_params.supported_message_count() {
-                        //     let w_ref = (s_idx, i);
-                        //     for j in 0..witness_equalities.len() {
-                        //         if witness_equalities[j].contains(&w_ref) {
-                        //             let resp = p.response_for_message(
-                        //                 i,
-                        //                 revealed_msg_ids.iter().copied(),
-                        //             )?;
-                        //             Self::check_response_for_equality(
-                        //                 s_idx,
-                        //                 i,
-                        //                 j,
-                        //                 &mut responses_for_equalities,
-                        //                 resp,
-                        //             )?;
-                        //         }
-                        //     }
-                        // }
                         transcript.set_label(PS_LABEL);
                         p.challenge_contribution(&mut transcript, pk, sig_params)?;
                     }
@@ -1295,37 +1274,38 @@ impl<E: Pairing> Proof<E> {
                     let pub_inp = s
                         .get_public_inputs(&proof_spec.setup_params, s_idx)?
                         .to_vec();
-                    let mut resp = BTreeMap::new();
-                    for i in 0..verifying_key.commit_witness_count as usize {
-                        let wit_ref = (s_idx, i);
-                        for (i, eq) in disjoint_equalities.iter().enumerate() {
-                            if eq.has_wit_ref(&wit_ref) {
-                                if let Some(r) = resp_for_equalities.get(&i) {
-                                    resp.insert(i, *r);
-                                } else {
-                                    return Err(
-                                        ProofSystemError::ResponseForWitnessNotFoundForStatement(
-                                            s_idx,
-                                        ),
-                                    );
-                                }
-                                // Exit loop because equalities are disjoint
-                                break;
-                            }
-                        }
-                    }
 
                     match proof {
-                        StatementProof::R1CSLegoGroth16(ref r1cs_proof) => sp
-                            .verify_proof_contribution(
+                        StatementProof::R1CSLegoGroth16(ref r1cs_proof) => {
+                            for w_id in 0..verifying_key.commit_witness_count as usize {
+                                let w_ref = (s_idx, w_id);
+                                for (i, eq) in disjoint_equalities.iter().enumerate() {
+                                    if eq.has_wit_ref(&w_ref) {
+                                        let resp =
+                                            r1cs_proof.get_schnorr_response_for_message(w_id)?;
+                                        if let Some(r) = resp_for_equalities.get(&i) {
+                                            if resp != r {
+                                                return Err(
+                                                    ProofSystemError::WitnessResponseNotEqual(
+                                                        s_idx, w_id,
+                                                    ),
+                                                );
+                                            }
+                                        } else {
+                                            resp_for_equalities.insert(i, *resp);
+                                        }
+                                    }
+                                }
+                            }
+                            sp.verify_proof_contribution(
                                 &challenge,
                                 &pub_inp,
                                 r1cs_proof,
                                 r1cs_comm_keys.get(s_idx).unwrap(),
                                 derived_lego_vk.get(s_idx).unwrap(),
                                 &mut pairing_checker,
-                                resp,
-                            )?,
+                            )?
+                        }
                         StatementProof::R1CSLegoGroth16WithAggregation(ref r1cs_proof) => {
                             let agg_idx = agg_lego_stmts.get(&s_idx).ok_or_else(|| {
                                 ProofSystemError::InvalidStatementProofIndex(s_idx)
@@ -1333,11 +1313,31 @@ impl<E: Pairing> Proof<E> {
                             agg_lego[*agg_idx].0.push(r1cs_proof.commitment);
                             agg_lego[*agg_idx].1.push(pub_inp);
 
+                            for w_id in 0..verifying_key.commit_witness_count as usize {
+                                let w_ref = (s_idx, w_id);
+                                for (i, eq) in disjoint_equalities.iter().enumerate() {
+                                    if eq.has_wit_ref(&w_ref) {
+                                        let resp =
+                                            r1cs_proof.get_schnorr_response_for_message(w_id)?;
+                                        if let Some(r) = resp_for_equalities.get(&i) {
+                                            if resp != r {
+                                                return Err(
+                                                    ProofSystemError::WitnessResponseNotEqual(
+                                                        s_idx, w_id,
+                                                    ),
+                                                );
+                                            }
+                                        } else {
+                                            resp_for_equalities.insert(i, *resp);
+                                        }
+                                    }
+                                }
+                            }
+
                             sp.verify_proof_contribution_using_prepared_when_aggregating_snark(
                                 &challenge,
                                 r1cs_proof,
                                 r1cs_comm_keys.get(s_idx).unwrap(),
-                                resp,
                             )?
                         }
                         _ => {
@@ -1774,14 +1774,12 @@ impl<E: Pairing> Proof<E> {
                 if let Some(r) = resp_for_equalities.get(&i) {
                     resp = Some(*r);
                 } else {
-                    return Err(ProofSystemError::ResponseForWitnessNotFoundForStatement(
-                        s_idx,
-                    ));
+                    return Err(ProofSystemError::NoResponseFoundForWitnessRef(s_idx, 0));
                 }
                 // Exit loop because equalities are disjoint
                 break;
             }
         }
-        resp.ok_or_else(|| ProofSystemError::ResponseForWitnessNotFoundForStatement(s_idx))
+        resp.ok_or_else(|| ProofSystemError::NoResponseFoundForWitnessRef(s_idx, 0))
     }
 }

@@ -101,6 +101,8 @@ pub struct PoKOfMAC<G: AffineRepr> {
     pub sc_C: PokTwoDiscreteLogs<G>,
     #[serde_as(as = "ArkObjectBytes")]
     pub t_msgs: G,
+    /// The following could be achieved by using Either<SchnorrResponse, PartialSchnorrResponse> but serialization
+    /// for Either is not supported out of the box and had to be implemented
     pub sc_resp_msgs: Option<SchnorrResponse<G>>,
     pub sc_partial_resp_msgs: Option<PartialSchnorrResponse<G>>,
 }

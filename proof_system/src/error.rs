@@ -110,6 +110,7 @@ pub enum ProofSystemError {
     UnequalCiphertextChunksAndSchnorrResponses(usize, usize),
     UnequalResponseOfSaverCiphertextAndChunk(usize),
     ResponseForWitnessNotFoundForStatement(usize),
+    NoResponseFoundForWitnessRef(usize, usize),
 }
 
 impl From<SchnorrError> for ProofSystemError {

@@ -7,13 +7,7 @@ use crate::{
 };
 use ark_ec::pairing::Pairing;
 use ark_serialize::CanonicalSerialize;
-use ark_std::{
-    collections::{BTreeMap, BTreeSet},
-    io::Write,
-    rand::RngCore,
-    vec::Vec,
-    UniformRand,
-};
+use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use legogroth16::{
     calculate_d,
@@ -156,15 +150,13 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
                 self.id,
             ));
         }
-        let comm_wit_count = self.proving_key.as_ref().unwrap().vk.commit_witness_count as usize;
-        let skip_responses_for = BTreeSet::from_iter(0..comm_wit_count);
         Ok(StatementProof::R1CSLegoGroth16(R1CSLegoGroth16Proof {
             snark_proof: self.snark_proof.take().unwrap(),
             sp: self
                 .sp
                 .take()
                 .unwrap()
-                .gen_partial_proof_contribution_as_struct(challenge, &skip_responses_for)?,
+                .gen_proof_contribution_as_struct(challenge)?,
         }))
     }
 
@@ -177,7 +169,6 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
         comm_key: &[E::G1Affine],
         pvk: &PreparedVerifyingKey<E>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
-        missing_responses: BTreeMap<usize, E::ScalarField>,
     ) -> Result<(), ProofSystemError> {
         let snark_proof = &proof.snark_proof;
         match pairing_checker {
@@ -201,7 +192,7 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.snark_proof.d);
 
-        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_responses)
+        sp.verify_proof_contribution(challenge, &proof.sp)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
@@ -210,11 +201,10 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
         challenge: &E::ScalarField,
         proof: &R1CSLegoGroth16ProofWhenAggregatingSnarks<E>,
         comm_key: &[E::G1Affine],
-        missing_responses: BTreeMap<usize, E::ScalarField>,
     ) -> Result<(), ProofSystemError> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
-        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_responses)
+        sp.verify_proof_contribution(challenge, &proof.sp)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

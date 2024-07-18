@@ -284,10 +284,17 @@ pub struct BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E: Pairing> {
 pub struct R1CSLegoGroth16Proof<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub snark_proof: legogroth16::Proof<E>,
-    pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
+    pub sp: PedersenCommitmentProof<E::G1Affine>,
 }
 
 impl<E: Pairing> R1CSLegoGroth16Proof<E> {
+    pub fn get_schnorr_response_for_message(
+        &self,
+        index: usize,
+    ) -> Result<&E::ScalarField, ProofSystemError> {
+        self.sp.response.get_response(index).map_err(|e| e.into())
+    }
+
     pub fn for_aggregation(&self) -> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
         R1CSLegoGroth16ProofWhenAggregatingSnarks {
             commitment: self.snark_proof.d,
@@ -304,7 +311,16 @@ impl<E: Pairing> R1CSLegoGroth16Proof<E> {
 pub struct R1CSLegoGroth16ProofWhenAggregatingSnarks<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub commitment: E::G1Affine,
-    pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
+    pub sp: PedersenCommitmentProof<E::G1Affine>,
+}
+
+impl<E: Pairing> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
+    pub fn get_schnorr_response_for_message(
+        &self,
+        index: usize,
+    ) -> Result<&E::ScalarField, ProofSystemError> {
+        self.sp.response.get_response(index).map_err(|e| e.into())
+    }
 }
 
 #[serde_as]

@@ -87,6 +87,8 @@ pub struct PoKOfSignature23G1Proof<E: Pairing> {
     /// Proof of relation `\sum_{j \notin D}{h_j * m_j} - B_bar * 1/r - A_bar * e * 1/r = g + \sum_{i \in D}{h_i * m_i}`
     #[serde_as(as = "ArkObjectBytes")]
     pub T: E::G1Affine,
+    /// The following could be achieved by using Either<SchnorrResponse, PartialSchnorrResponse> but serialization
+    /// for Either is not supported out of the box and had to be implemented
     pub sc_resp: Option<SchnorrResponse<E::G1Affine>>,
     pub sc_partial_resp: Option<PartialSchnorrResponse<E::G1Affine>>,
 }
