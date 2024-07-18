@@ -1762,6 +1762,9 @@ impl<E: Pairing> Proof<E> {
         Ok(())
     }
 
+    /// Get the response for a witness from the tracked responses of witness equalities. Expects the response
+    /// to exists else throws error. This is not to be called for signature proof protocols but others whose
+    /// responses are expected to come from them or pedersen commitment protocols.  
     fn get_resp_for_message(
         s_idx: usize,
         disjoint_equalities: &[EqualWitnesses],

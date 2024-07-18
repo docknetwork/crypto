@@ -160,6 +160,7 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
                 self.id,
             ));
         }
+        // Don't generated response for index 0 since its response will come from proofs of one of the signatures.
         let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::BoundCheckLegoGroth16(
             BoundCheckLegoGroth16Proof {

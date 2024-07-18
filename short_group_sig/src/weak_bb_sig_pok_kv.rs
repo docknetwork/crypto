@@ -45,6 +45,8 @@ pub struct PoKOfSignatureG1KV<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: G,
     /// For proving relation `A_bar = g1 * r - A' * m`
+    /// The following could be achieved by using Either<PokTwoDiscreteLogs, Partial1PokTwoDiscreteLogs> but serialization
+    /// for Either is not supported out of the box and had to be implemented
     pub sc: Option<PokTwoDiscreteLogs<G>>,
     pub sc_partial: Option<Partial1PokTwoDiscreteLogs<G>>,
 }

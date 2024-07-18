@@ -221,6 +221,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         let mut sp_chunks = self.sp_chunks.take().unwrap();
         let mut sp_combined = self.sp_combined.take().unwrap();
         let skip_for_chunks = BTreeSet::from_iter(0..ciphertext.enc_chunks.len());
+        // Don't generated response for index 0 since its response will come from proofs of one of the signatures.
         let skip_for_message = BTreeSet::from([0]);
         Ok(StatementProof::Saver(SaverProof {
             ciphertext,

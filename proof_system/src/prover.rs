@@ -1132,6 +1132,8 @@ impl<E: Pairing> Proof<E> {
         }
     }
 
+    /// Get indices of witnesses of statement index `s_id` for which response should not be generated since it already exists.
+    /// If the response didn't exists, then the given `resp_generated` will be updated
     fn get_responses_to_skip(
         s_id: usize,
         total_msgs: usize,

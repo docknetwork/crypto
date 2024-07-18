@@ -16,6 +16,11 @@
 //! the prover. i.e. given `y = g * x` and `z = h * k`, prover and verifier know `g`, `h`, `y` and `z` and
 //! prover additionally knows `x` but not `k`.
 //!
+//! Also impelements partial Schnorr proof where response for some witnesses is not generated. This is useful
+//! when several Schnorr protocols are executed together and they share some witnesses. The response for those
+//! witnesses will be generated in one Schnorr proof while the other protocols will generate partial Schnorr
+//! proofs where responses for those witnesses will be missing.  
+//!
 //! We outline the steps of Schnorr protocol.
 //! Prover wants to prove knowledge of `x` in `y = g * x` (`y` and `g` are public knowledge)
 //! **Step 1**: Prover generates randomness `r`, and sends `t = g * r` to Verifier.

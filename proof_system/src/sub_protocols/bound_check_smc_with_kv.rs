@@ -197,6 +197,7 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
                 BoundCheckSmcWithKVInnerProof::CLS(p)
             }
         };
+        // Don't generated response for index 0 since its response will come from proofs of one of the signatures.
         let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::BoundCheckSmcWithKV(
             BoundCheckSmcWithKVProof {

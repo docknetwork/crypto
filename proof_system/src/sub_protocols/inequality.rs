@@ -130,6 +130,7 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
             .take()
             .unwrap()
             .gen_proof(challenge);
+        // Don't generated response for index 0 since its response will come from proofs of one of the signatures.
         let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::Inequality(InequalityProof {
             proof,

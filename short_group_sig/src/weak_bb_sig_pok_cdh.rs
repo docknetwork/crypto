@@ -48,6 +48,8 @@ pub struct PoKOfSignatureG1<E: Pairing> {
     pub A_prime: E::G1Affine,
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
+    /// The following could be achieved by using Either<PokTwoDiscreteLogs, Partial1PokTwoDiscreteLogs> but serialization
+    /// for Either is not supported out of the box and had to be implemented
     pub sc: Option<PokTwoDiscreteLogs<E::G1Affine>>,
     pub sc_partial: Option<Partial1PokTwoDiscreteLogs<E::G1Affine>>,
 }

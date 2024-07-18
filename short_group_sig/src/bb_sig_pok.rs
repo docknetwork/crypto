@@ -84,6 +84,8 @@ pub struct PoKOfSignatureG1<E: Pairing> {
     pub sc_T1: PokDiscreteLog<E::G1Affine>,
     /// Proof of knowledge of `beta` in `T2 = v * beta`
     pub sc_T2: PokDiscreteLog<E::G1Affine>,
+    /// The following could be achieved by using Either<PokTwoDiscreteLogs, Partial2PokTwoDiscreteLogs> but serialization
+    /// for Either is not supported out of the box and had to be implemented
     /// For relation `T1 * message + u * delta_1 = 0`
     pub sc_T1_x: Option<PokTwoDiscreteLogs<E::G1Affine>>,
     /// For relation `T1 * message + u * delta_1 = 0`

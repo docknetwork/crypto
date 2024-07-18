@@ -165,6 +165,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
                 BoundCheckSmcInnerProof::CLS(p)
             }
         };
+        // Don't generated response for index 0 since its response will come from proofs of one of the signatures.
         let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::BoundCheckSmc(BoundCheckSmcProof {
             proof,

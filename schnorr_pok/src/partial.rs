@@ -18,16 +18,25 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 
 /// Response during step 3 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
+/// This is called partial because it does not contain the responses for all the witnesses. This is
+/// used when more than one Schnorr protocol is used and some witnesses are to be proved equal among them.
+/// Also useful in case of a single Schnorr protocol if some witnesses are to be proved equal.
+/// Eg. when proving knowledge of witnesses `m1`, `m2`, `m3`, `m4` in `C = G1 * m1 + G2 * m2 + G3 * m3 + G4 * m4`,
+/// if `m1` and `m3` are also witnesses of another Schnorr protocol then this will contain only the responses
+/// for `m2` and `m4`. During verification, the responses for `m1` and `m3` will be given to it.
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct PartialSchnorrResponse<G: AffineRepr> {
+    /// Key of the map is the witness index and value is the response for that witnesses.
     #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
     pub responses: BTreeMap<usize, G::ScalarField>,
     pub total_responses: usize,
 }
 
+/// Proof of knowledge of discrete log but does not contain the response as the response comes from another protocol
+/// running with it which has the same witness (discrete log)
 #[serde_as]
 #[derive(
     Default,
@@ -45,6 +54,9 @@ pub struct PartialPokDiscreteLog<G: AffineRepr> {
     pub t: G,
 }
 
+/// Proof of knowledge of 2 discrete logs but contains the response of only 1, i.e. when proving knowledge of witnesses
+/// `a` and `b` in `C = G * a + H * b`, contains the response only for witness `a`. This is because response for `b` will
+/// come from another Schnorr protocol which also has `b` as one of the witnesses
 #[serde_as]
 #[derive(
     Default,
@@ -64,6 +76,9 @@ pub struct Partial1PokTwoDiscreteLogs<G: AffineRepr> {
     pub response1: G::ScalarField,
 }
 
+/// Proof of knowledge of 2 discrete logs but contains the response of only 1, i.e. when proving knowledge of witnesses
+/// `a` and `b` in `C = G * a + H * b`, contains the response only for witness `b`. This is because response for `a` will
+/// come from another Schnorr protocol which also has `a` as one of the witnesses
 #[serde_as]
 #[derive(
     Default,
@@ -83,7 +98,28 @@ pub struct Partial2PokTwoDiscreteLogs<G: AffineRepr> {
     pub response2: G::ScalarField,
 }
 
+/// Proof of knowledge of 2 discrete logs but contains the response for neither, i.e. when proving knowledge of witnesses
+/// `a` and `b` in `C = G * a + H * b`, contains no response. This is because response for `a` and `b` will come from
+/// another Schnorr protocol which also has `a` and `b` as their witnesses
+#[serde_as]
+#[derive(
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
+pub struct PartialPokTwoDiscreteLogs<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub t: G,
+}
+
 impl<G: AffineRepr> SchnorrCommitment<G> {
+    /// The key of the map is the index for which response has to be generated.
     pub fn partial_response(
         &self,
         witnesses: BTreeMap<usize, G::ScalarField>,
@@ -110,28 +146,13 @@ impl<G: AffineRepr> PokDiscreteLogProtocol<G> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
-pub struct PartialPokTwoDiscreteLogs<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
-    pub t: G,
-}
-
 impl<G: AffineRepr> PokTwoDiscreteLogsProtocol<G> {
+    /// Generate proof when no response has to be generated.
     pub fn gen_partial_proof(self) -> PartialPokTwoDiscreteLogs<G> {
         PartialPokTwoDiscreteLogs { t: self.t }
     }
 
+    /// Generate proof when only response for witness1 has to be generated.
     pub fn gen_partial1_proof(self, challenge: &G::ScalarField) -> Partial1PokTwoDiscreteLogs<G> {
         Partial1PokTwoDiscreteLogs {
             t: self.t,
@@ -139,6 +160,7 @@ impl<G: AffineRepr> PokTwoDiscreteLogsProtocol<G> {
         }
     }
 
+    /// Generate proof when only response for witness2 has to be generated.
     pub fn gen_partial2_proof(self, challenge: &G::ScalarField) -> Partial2PokTwoDiscreteLogs<G> {
         Partial2PokTwoDiscreteLogs {
             t: self.t,
@@ -148,6 +170,8 @@ impl<G: AffineRepr> PokTwoDiscreteLogsProtocol<G> {
 }
 
 impl<G: AffineRepr> PartialSchnorrResponse<G> {
+    /// Keys of `missing_responses` are the witness indices whose response was generated while creating this. Instead
+    /// these comes from some other Schnorr protocol.
     pub fn is_valid(
         &self,
         bases: &[G],
@@ -189,6 +213,7 @@ impl<G: AffineRepr> PartialSchnorrResponse<G> {
         }
     }
 
+    /// Get indices for which it does not have any response. These responses will be fetched from other protocols.
     pub fn get_missing_response_indices(&self) -> BTreeSet<usize> {
         let mut ids = BTreeSet::new();
         for i in 0..self.total_responses {

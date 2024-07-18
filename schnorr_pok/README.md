@@ -7,7 +7,7 @@ Refer [this](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) for more details o
 
 Also implements the proof of knowledge of discrete log in pairing groups, i.e. given prover and verifier
 both know (`A1`, `Y1`), and prover additionally knows `B1`, prove that `e(A1, B1) = Y1`. Similarly,
-proving `e(A2, B2) = Y2` when only prover knows `A2` but both know (`B2`, `Y2`). See [`discrete_log_pairing`]
+proving `e(A2, B2) = Y2` when only prover knows `A2` but both know (`B2`, `Y2`). See [`discrete_log_pairing`].
 
 Also implements the proof of **inequality of discrete log** (a value committed in a Pedersen commitment),
 either with a public value or with another discrete log in [`Inequality`]. eg. Given a message `m`,
@@ -15,21 +15,26 @@ its commitment `C = g * m + h * r` and a public value `v`, proving that `m` ≠ 
 `m1` and `m2` and their commitments `C1 = g * m1 + h * r1` and `C2 = g * m2 + h * r2`, proving `m1` ≠ `m2`
 
 Also implements the proof of **inequality of discrete log** when only one of the discrete log is known to
-the prover. i.e. given `y = g * x` and `z = h * k`, prover and verifier know `g`, `h`, `y` and `z` and prover additionally 
-knows `x` but not `k`.
+the prover. i.e. given `y = g * x` and `z = h * k`, prover and verifier know `g`, `h`, `y` and `z` and
+prover additionally knows `x` but not `k`.
+
+Also impelements partial Schnorr proof where response for some witnesses is not generated. This is useful
+when several Schnorr protocols are executed together and they share some witnesses. The response for those
+witnesses will be generated in one Schnorr proof while the other protocols will generate partial Schnorr
+proofs where responses for those witnesses will be missing.  
 
 We outline the steps of Schnorr protocol.
-Prover wants to prove knowledge of `x` in `y = g * x` (`y` and `g` are public knowledge)  
-**Step 1**: Prover generates randomness `r`, and sends `t = g * r` to Verifier.  
-**Step 2**: Verifier generates random challenge `c` and send to Prover.  
-**Step 3**: Prover produces `s = r + x*c`, and sends s to Verifier.  
-**Step 4**: Verifier checks that `g * s = (y * c) + t`.  
+Prover wants to prove knowledge of `x` in `y = g * x` (`y` and `g` are public knowledge)
+**Step 1**: Prover generates randomness `r`, and sends `t = g * r` to Verifier.
+**Step 2**: Verifier generates random challenge `c` and send to Prover.
+**Step 3**: Prover produces `s = r + x*c`, and sends s to Verifier.
+**Step 4**: Verifier checks that `g * s = (y * c) + t`.
 
-For proving knowledge of multiple messages like `x_1` and `x_2` in `y = g_1*x_1 + g_2*x_2`:  
-**Step 1**: Prover generates randomness `r_1` and `r_2`, and sends `t = g_1*r_1 + g_2*r_2` to Verifier  
-**Step 2**: Verifier generates random challenge `c` and send to Prover  
-**Step 3**: Prover produces `s_1 = r_1 + x_1*c` and `s_2 = r_2 + x_2*c`, and sends `s_1` and `s_2` to Verifier  
-**Step 4**: Verifier checks that `g_1*s_1 + g_2*s_2 = y*c + t`  
+For proving knowledge of multiple messages like `x_1` and `x_2` in `y = g_1*x_1 + g_2*x_2`:
+**Step 1**: Prover generates randomness `r_1` and `r_2`, and sends `t = g_1*r_1 + g_2*r_2` to Verifier
+**Step 2**: Verifier generates random challenge `c` and send to Prover
+**Step 3**: Prover produces `s_1 = r_1 + x_1*c` and `s_2 = r_2 + x_2*c`, and sends `s_1` and `s_2` to Verifier
+**Step 4**: Verifier checks that `g_1*s_1 + g_2*s_2 = y*c + t`
 
 Above can be generalized to more than 2 `x`s
 
