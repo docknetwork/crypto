@@ -1,5 +1,5 @@
 use crate::{
-    bbs_sharp::setup::{MACParams, PublicKey, SecretKey},
+    bbs_sharp::setup::{MACParams, SecretKey, SignerPublicKey, UserPublicKey},
     error::KVACError,
 };
 use ark_ec::{AffineRepr, CurveGroup};
@@ -47,9 +47,9 @@ pub struct MAC<G: AffineRepr> {
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct ProofOfValidityOfMAC<G: AffineRepr> {
-    /// For proving `B = A * sk` where `sk` is the secret key and `B = g_0 + signer_pk + g_1 * m_1 + g_2 * m_2 + ... g_n * m_n`
+    /// For proving `B = A * sk` where `sk` is the secret key and `B = g_0 + user_pk + g_1 * m_1 + g_2 * m_2 + ... g_n * m_n`
     pub sc_B: PokDiscreteLog<G>,
-    /// For proving knowledge of secret key, i.e. `pk = g * sk`
+    /// For proving knowledge of secret key, i.e. `pk = g_tilde * sk`
     pub sc_pk: PokDiscreteLog<G>,
 }
 
@@ -57,7 +57,7 @@ impl<G: AffineRepr> MAC<G> {
     pub fn new<R: RngCore>(
         rng: &mut R,
         messages: &[G::ScalarField],
-        user_public_key: &PublicKey<G>,
+        user_public_key: &UserPublicKey<G>,
         signer_secret_key: &SecretKey<G::ScalarField>,
         params: impl AsRef<MACParams<G>>,
     ) -> Result<Self, KVACError> {
@@ -86,7 +86,7 @@ impl<G: AffineRepr> MAC<G> {
     pub fn verify(
         &self,
         messages: &[G::ScalarField],
-        user_public_key: &PublicKey<G>,
+        user_public_key: &UserPublicKey<G>,
         sk: impl AsRef<G::ScalarField>,
         params: impl AsRef<MACParams<G>>,
     ) -> Result<(), KVACError> {
@@ -115,7 +115,7 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         rng: &mut R,
         mac: &MAC<G>,
         secret_key: &SecretKey<G::ScalarField>,
-        public_key: &PublicKey<G>,
+        public_key: &SignerPublicKey<G>,
         params: impl AsRef<MACParams<G>>,
     ) -> Self {
         let witness = secret_key.0;
@@ -125,10 +125,10 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         let mut challenge_bytes = vec![];
         // As witness has to be proven same in both protocols.
         let p1 = PokDiscreteLogProtocol::init(witness, blinding, &mac.A);
-        let p2 = PokDiscreteLogProtocol::init(witness, blinding, &params.g);
+        let p2 = PokDiscreteLogProtocol::init(witness, blinding, &params.g_tilde);
         p1.challenge_contribution(&mac.A, &B, &mut challenge_bytes)
             .unwrap();
-        p2.challenge_contribution(&params.g, &public_key.0, &mut challenge_bytes)
+        p2.challenge_contribution(&params.g_tilde, &public_key.0, &mut challenge_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         Self {
@@ -141,8 +141,8 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         &self,
         mac: &MAC<G>,
         messages: &[G::ScalarField],
-        user_public_key: &PublicKey<G>,
-        signer_public_key: &PublicKey<G>,
+        user_public_key: &UserPublicKey<G>,
+        signer_public_key: &SignerPublicKey<G>,
         params: impl AsRef<MACParams<G>>,
     ) -> Result<(), KVACError> {
         if self.sc_B.response != self.sc_pk.response {
@@ -158,7 +158,7 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
             .challenge_contribution(&mac.A, &B, &mut challenge_bytes)
             .unwrap();
         self.sc_pk
-            .challenge_contribution(&params.g, &signer_public_key.0, &mut challenge_bytes)
+            .challenge_contribution(&params.g_tilde, &signer_public_key.0, &mut challenge_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         if !self.sc_B.verify(&B, &mac.A, &challenge) {
@@ -166,7 +166,7 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         }
         if !self
             .sc_pk
-            .verify(&signer_public_key.0, &params.g, &challenge)
+            .verify(&signer_public_key.0, &params.g_tilde, &challenge)
         {
             return Err(KVACError::InvalidMACProof);
         }
@@ -190,10 +190,10 @@ mod tests {
             .collect::<Vec<_>>();
         let params = MACParams::<Affine>::new::<Sha256>(b"test", message_count);
         let signer_sk = SecretKey::new(&mut rng);
-        let signer_pk = PublicKey::new(&signer_sk, &params.g);
+        let signer_pk = SignerPublicKey::new_from_params(&signer_sk, &params);
 
         let user_sk = SecretKey::new(&mut rng);
-        let user_pk = PublicKey::new(&user_sk, &params.g);
+        let user_pk = UserPublicKey::new_from_params(&user_sk, &params);
 
         // Signer sends the following 2 items to the user
         let mac = MAC::new(&mut rng, &messages, &user_pk, &signer_sk, &params).unwrap();

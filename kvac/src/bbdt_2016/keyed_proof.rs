@@ -197,13 +197,13 @@ impl<G: AffineRepr> ProofOfValidityOfKeyedProof<G> {
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         if !self.sc_pk.verify(pk, g_0, &challenge) {
-            return Err(KVACError::InvalidKeyedProof);
+            return Err(KVACError::InvalidProofOfValidity);
         }
         if !self
             .sc_proof
             .verify(C, B_0, &challenge, &self.sc_pk.response)
         {
-            return Err(KVACError::InvalidKeyedProof);
+            return Err(KVACError::InvalidProofOfValidity);
         }
         Ok(())
     }

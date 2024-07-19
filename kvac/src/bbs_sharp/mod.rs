@@ -12,6 +12,7 @@
 //! For efficiency and avoiding correlation (when signer and verifier collude), the user gets a batch of
 //! "helper data" to let him create several proofs.
 
+pub mod hol;
 pub mod mac;
 pub mod proof;
 pub mod setup;

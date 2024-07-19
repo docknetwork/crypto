@@ -30,6 +30,8 @@ pub struct MACParams<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub g_0: G,
     #[serde_as(as = "ArkObjectBytes")]
+    pub g_tilde: G,
+    #[serde_as(as = "ArkObjectBytes")]
     pub g: G,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
     pub g_vec: Vec<G>,
@@ -54,14 +56,21 @@ pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct PublicKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+pub struct UserPublicKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+pub struct SignerPublicKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
 
 impl<G: AffineRepr> MACParams<G> {
     pub fn new<D: Digest>(label: &[u8], message_count: u32) -> Self {
         assert_ne!(message_count, 0);
-        // Group element by hashing `label`||`g_0`, `label`||`g`, and `label`||`g_i` for i in 1 to message_count.
-        let (g_0, g, g_vec) = join!(
+        // Group element by hashing `label`||`g_0`, `label`||`g`, `label`||`g_tilde`, and `label`||`g_i` for i in 1 to message_count.
+        let (g_0, g, g_tilde, g_vec) = join!(
             affine_group_element_from_byte_slices!(label, b" : g_0"),
+            affine_group_element_from_byte_slices!(label, b" : g_tilde"),
             affine_group_element_from_byte_slices!(label, b" : g"),
             {
                 let g: Vec<_> = n_projective_group_elements::<G, D>(
@@ -73,7 +82,12 @@ impl<G: AffineRepr> MACParams<G> {
             }
         );
 
-        Self { g_0, g, g_vec }
+        Self {
+            g_0,
+            g,
+            g_tilde,
+            g_vec,
+        }
     }
 
     pub fn commit_to_messages<'a, MI>(
@@ -99,7 +113,7 @@ impl<G: AffineRepr> MACParams<G> {
     pub fn b<'a, MI>(
         &self,
         indexed_messages_sorted_by_index: MI,
-        user_public_key: &'a PublicKey<G>,
+        user_public_key: &'a UserPublicKey<G>,
     ) -> Result<G::Group, KVACError>
     where
         MI: IntoIterator<Item = (usize, &'a G::ScalarField)>,
@@ -127,14 +141,28 @@ impl<F: PrimeField> SecretKey<F> {
     }
 }
 
-impl<G: AffineRepr> PublicKey<G> {
+impl<G: AffineRepr> UserPublicKey<G> {
     pub fn new<'a>(sk: &SecretKey<G::ScalarField>, g: impl Into<&'a G>) -> Self {
         Self((g.into().mul_bigint(sk.0.into_bigint())).into_affine())
+    }
+
+    pub fn new_from_params(sk: &SecretKey<G::ScalarField>, params: &MACParams<G>) -> Self {
+        Self::new(sk, &params.g)
     }
 
     /// Return `pk + g * blinding`
     pub fn get_blinded<'a>(&self, blinding: &G::ScalarField, g: impl Into<&'a G>) -> Self {
         Self((g.into().mul_bigint(blinding.into_bigint()) + self.0).into_affine())
+    }
+}
+
+impl<G: AffineRepr> SignerPublicKey<G> {
+    pub fn new<'a>(sk: &SecretKey<G::ScalarField>, g_tilde: impl Into<&'a G>) -> Self {
+        Self((g_tilde.into().mul_bigint(sk.0.into_bigint())).into_affine())
+    }
+
+    pub fn new_from_params(sk: &SecretKey<G::ScalarField>, params: &MACParams<G>) -> Self {
+        Self::new(sk, &params.g_tilde)
     }
 }
 
@@ -144,7 +172,13 @@ impl<F: PrimeField> AsRef<F> for SecretKey<F> {
     }
 }
 
-impl<G: AffineRepr> AsRef<G> for PublicKey<G> {
+impl<G: AffineRepr> AsRef<G> for UserPublicKey<G> {
+    fn as_ref(&self) -> &G {
+        &self.0
+    }
+}
+
+impl<G: AffineRepr> AsRef<G> for SignerPublicKey<G> {
     fn as_ref(&self) -> &G {
         &self.0
     }

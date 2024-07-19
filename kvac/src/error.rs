@@ -26,6 +26,8 @@ pub enum KVACError {
     MissingResponsesNeededForPartialSchnorrProofVerification,
     MissingResponsesProvidedForFullSchnorrProofVerification,
     CommonIndicesFoundInRevealedAndSkip,
+    InvalidProofOfValidity,
+    MissingProofOfValidity,
 }
 
 impl From<InvalidPair<usize>> for KVACError {
