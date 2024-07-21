@@ -1,0 +1,31 @@
+[package]
+name = "syra"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SyRA: Sybil-Resilient Anonymous Signatures with Applications to Decentralized Identity"
+
+[dependencies]
+ark-serialize.workspace = true
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-std.workspace = true
+digest.workspace = true
+rayon = {workspace = true, optional = true}
+serde.workspace = true
+serde_with.workspace = true
+zeroize.workspace = true
+dock_crypto_utils = { version = "0.20.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.20.0", default-features = false, path = "../schnorr_pok" }
+
+[dev-dependencies]
+blake2.workspace = true
+ark-bls12-381.workspace = true
+
+[features]
+default = [ "parallel" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "schnorr_pok/std", "serde/std"]
+print-trace = [ "ark-std/print-trace", "dock_crypto_utils/print-trace" ]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "schnorr_pok/parallel" ]

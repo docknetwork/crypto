@@ -1,9 +1,10 @@
 <!-- cargo-rdme start -->
 
-# Accumulators based on bilinear map (pairings)
+# Accumulators, based on bilinear map (pairings) and without them
 
 ## vb_accumulator
 Dynamic Positive and Universal accumulators according to the paper: [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777)
+
 Implements
 - a dynamic positive accumulator [`PositiveAccumulator`], that supports membership proofs.
 - a dynamic universal accumulator [`UniversalAccumulator`], that supports membership and non-membership proofs.
@@ -11,7 +12,7 @@ Implements
   These are essentially proofs of knowledge of a weak-BB signature
 - an alternate and more efficient protocol of zero knowledge proof of membership and non-membership based on a more
   efficient protocol for proving knowledge of a weak-BB signature. This isn't described in the paper.
-- keyed verification proofs of membership and non-membership where the verifier knows the secret key
+- keyed verification proofs of membership and non-membership where the verifier knows the secret key. Such accumulator don't need pairings
 
 Allows
 - single and batch updates (additions, removals or both) to the accumulators.
@@ -26,13 +27,14 @@ The implementation tries to use the same variable names as the paper and thus vi
 
 ## kb_accumulator
 Dynamic Positive and Universal accumulators according to the paper: [Efficient Constructions of Pairing Based Accumulators](https://eprint.iacr.org/2021/638)
+
 Implements
 - a dynamic positive accumulator [`KBPositiveAccumulator`], that supports membership proofs. Based on construction 2 in the paper.
 - a dynamic universal accumulator [`KBUniversalAccumulator`], that supports membership and non-membership proofs. Based on construction 3 in the paper
 - zero knowledge proofs of membership and non-membership in the accumulators. These are essentially proofs of knowledge of a
   BB signature and weak-BB signature.
 - an alternate and more efficient protocol for membership and non-membership proofs
-- keyed verification proofs of membership and non-membership where the verifier knows the secret key
+- keyed verification proofs of membership and non-membership where the verifier knows the secret key. Such accumulator don't need pairings
 
 Allows batch updates to the accumulator and the witness using the techniques from `vb_accumulator`
 

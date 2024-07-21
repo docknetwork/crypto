@@ -379,10 +379,10 @@ impl<E: Pairing> CredentialShowProtocol<E> {
         if let Some(ct) = &self.ct {
             P1.serialize_compressed(&mut writer)?;
             apk.unwrap().serialize_compressed(&mut writer)?;
-            ct.ct.enc1.serialize_compressed(&mut writer)?;
+            ct.ct.encrypted.serialize_compressed(&mut writer)?;
             ct.com1.serialize_compressed(&mut writer)?;
             ct.ciphertext_rand_protocol
-                .challenge_contribution(P1, &ct.ct.enc2, &mut writer)?;
+                .challenge_contribution(P1, &ct.ct.eph_pk, &mut writer)?;
         }
         Ok(())
     }
@@ -603,7 +603,7 @@ impl<E: Pairing> CredentialShow<E> {
                 if P1
                     .mul(ct_proof.z1)
                     .add(&apk.0.mul(ct_proof.ciphertext_rand_proof.response))
-                    .sub(ct.enc1.mul_bigint(challenge.into_bigint()))
+                    .sub(ct.encrypted.mul_bigint(challenge.into_bigint()))
                     .into_affine()
                     != ct_proof.com1
                 {
@@ -612,7 +612,7 @@ impl<E: Pairing> CredentialShow<E> {
 
                 if !ct_proof
                     .ciphertext_rand_proof
-                    .verify(&ct.enc2, P1, challenge)
+                    .verify(&ct.eph_pk, P1, challenge)
                 {
                     return Err(DelegationError::InvalidAuditShow);
                 }
@@ -622,7 +622,7 @@ impl<E: Pairing> CredentialShow<E> {
                 let t3_prep = E::G2Prepared::from(ct_proof.t3);
 
                 if !E::multi_pairing(
-                    [ct.enc2, (-P1.into_group()).into_affine()],
+                    [ct.eph_pk, (-P1.into_group()).into_affine()],
                     [t1_prep.clone(), t3_prep.clone()],
                 )
                 .is_zero()
@@ -630,7 +630,7 @@ impl<E: Pairing> CredentialShow<E> {
                     return Err(DelegationError::InvalidAuditShow);
                 }
                 if !E::multi_pairing(
-                    [ct.enc2, (-self.core.C3.into_group()).into_affine()],
+                    [ct.eph_pk, (-self.core.C3.into_group()).into_affine()],
                     [t2_prep.clone(), t3_prep.clone()],
                 )
                 .is_zero()
@@ -639,7 +639,7 @@ impl<E: Pairing> CredentialShow<E> {
                 }
                 if !E::multi_pairing(
                     [
-                        (-ct.enc1.into_group()).into_affine(),
+                        (-ct.encrypted.into_group()).into_affine(),
                         ct_proof.C6,
                         ct_proof.C7,
                     ],

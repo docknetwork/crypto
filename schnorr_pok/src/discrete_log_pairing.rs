@@ -132,10 +132,10 @@ macro_rules! impl_protocol {
 
 impl_protocol!(
     /// Protocol for proving knowledge of discrete log in group G1, i.e. given public `Y` and `B`, prove knowledge of `A` in `e(A, B) = Y`
-    PokG1DiscreteLogInPairingProtocol, PokG1DiscreteLogInPairing, E::G1Affine, E::G2Affine, E::G2Prepared, pair_g2_g1
+    PoKG1DiscreteLogInPairingProtocol, PoKG1DiscreteLogInPairing, E::G1Affine, E::G2Affine, E::G2Prepared, pair_g2_g1
 );
 
-impl<E: Pairing> PokG1DiscreteLogInPairing<E> {
+impl<E: Pairing> PoKG1DiscreteLogInPairing<E> {
     pub fn verify_with_randomized_pairing_checker(
         &self,
         y: &PairingOutput<E>,
@@ -149,10 +149,10 @@ impl<E: Pairing> PokG1DiscreteLogInPairing<E> {
 
 impl_protocol!(
     /// Protocol for proving knowledge of discrete log in group G2, i.e. given public `Y` and `A`, prove knowledge of `B` in `e(A, B) = Y`
-    PokG2DiscreteLogInPairingProtocol, PokG2DiscreteLogInPairing, E::G2Affine, E::G1Affine, E::G1Prepared, pair_g1_g2
+    PoKG2DiscreteLogInPairingProtocol, PoKG2DiscreteLogInPairing, E::G2Affine, E::G1Affine, E::G1Prepared, pair_g1_g2
 );
 
-impl<E: Pairing> PokG2DiscreteLogInPairing<E> {
+impl<E: Pairing> PoKG2DiscreteLogInPairing<E> {
     pub fn verify_with_randomized_pairing_checker(
         &self,
         y: &PairingOutput<E>,
@@ -261,16 +261,16 @@ mod tests {
         }
 
         check!(
-            PokG1DiscreteLogInPairingProtocol,
-            PokG1DiscreteLogInPairing,
+            PoKG1DiscreteLogInPairingProtocol,
+            PoKG1DiscreteLogInPairing,
             G1Affine,
             G2Affine,
             G2Prepared,
             pair_g2_g1
         );
         check!(
-            PokG2DiscreteLogInPairingProtocol,
-            PokG2DiscreteLogInPairing,
+            PoKG2DiscreteLogInPairingProtocol,
+            PoKG2DiscreteLogInPairing,
             G2Affine,
             G1Affine,
             G1Prepared,

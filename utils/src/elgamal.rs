@@ -1,9 +1,12 @@
 //! Elgamal encryption
 
+use crate::serde_utils::ArkObjectBytes;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{ops::Neg, rand::RngCore, vec::Vec, UniformRand};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(
@@ -36,12 +39,25 @@ pub fn keygen<R: RngCore, G: AffineRepr>(
 }
 
 /// Elgamal encryption of a group element `m`
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[serde_as]
+#[derive(
+    Default,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
 pub struct Ciphertext<G: AffineRepr> {
     /// `m + r * pk`
-    pub enc1: G,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub encrypted: G,
     /// Ephemeral public key `r * gen`
-    pub enc2: G,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub eph_pk: G,
 }
 
 impl<G: AffineRepr> Ciphertext<G> {
@@ -53,19 +69,29 @@ impl<G: AffineRepr> Ciphertext<G> {
         gen: &G,
     ) -> (Self, G::ScalarField) {
         let alpha = G::ScalarField::rand(rng);
-        let alpha_bi = alpha.into_bigint();
-        let enc1 = (public_key.mul_bigint(alpha_bi) + msg).into_affine();
         (
-            Self {
-                enc1,
-                enc2: gen.mul_bigint(alpha_bi).into_affine(),
-            },
+            Self::new_given_randomness(msg, &alpha, public_key, gen),
             alpha,
         )
     }
 
+    /// Returns the ciphertext
+    pub fn new_given_randomness(
+        msg: &G,
+        randomness: &G::ScalarField,
+        public_key: &G,
+        gen: &G,
+    ) -> Self {
+        let b = randomness.into_bigint();
+        let enc1 = (public_key.mul_bigint(b) + msg).into_affine();
+        Self {
+            encrypted: enc1,
+            eph_pk: gen.mul_bigint(b).into_affine(),
+        }
+    }
+
     pub fn decrypt(&self, secret_key: &G::ScalarField) -> G {
-        (self.enc2.mul(secret_key).neg() + self.enc1).into_affine()
+        (self.eph_pk.mul(secret_key).neg() + self.encrypted).into_affine()
     }
 }
 

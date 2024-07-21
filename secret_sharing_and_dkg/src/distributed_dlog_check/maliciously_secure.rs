@@ -22,8 +22,8 @@ use dock_crypto_utils::{
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log_pairing::{
-        PokG1DiscreteLogInPairing, PokG1DiscreteLogInPairingProtocol, PokG2DiscreteLogInPairing,
-        PokG2DiscreteLogInPairingProtocol,
+        PoKG1DiscreteLogInPairing, PoKG1DiscreteLogInPairingProtocol, PoKG2DiscreteLogInPairing,
+        PoKG2DiscreteLogInPairingProtocol,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -372,8 +372,8 @@ impl_protocol!(
     ComputationShareG1,
     ComputationShareG1Proof,
     deal_secret_in_g1,
-    PokG1DiscreteLogInPairingProtocol,
-    PokG1DiscreteLogInPairing,
+    PoKG1DiscreteLogInPairingProtocol,
+    PoKG1DiscreteLogInPairing,
     G1Af<E>,
     G2Af<E>,
     pair_g2_g1
@@ -386,8 +386,8 @@ impl_protocol!(
     ComputationShareG2,
     ComputationShareG2Proof,
     deal_secret_in_g2,
-    PokG2DiscreteLogInPairingProtocol,
-    PokG2DiscreteLogInPairing,
+    PoKG2DiscreteLogInPairingProtocol,
+    PoKG2DiscreteLogInPairing,
     G2Af<E>,
     G1Af<E>,
     pair_g1_g2

@@ -19,7 +19,8 @@ members = [
     "merlin",
     "bulletproofs_plus_plus",
     "smc_range_proof",
-    "short_group_sig"
+    "short_group_sig",
+    "syra"
 ]
 resolver = "2"
 
