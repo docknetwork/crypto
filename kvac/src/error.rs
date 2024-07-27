@@ -28,6 +28,9 @@ pub enum KVACError {
     CommonIndicesFoundInRevealedAndSkip,
     InvalidProofOfValidity,
     MissingProofOfValidity,
+    IncompatibleWithHardwareSignatureTypeProvidedDuringInitialization,
+    MissingVerifierPubKeyForDesignatedVerifierProof,
+    InvalidPoKOfPublicKey,
 }
 
 impl From<InvalidPair<usize>> for KVACError {

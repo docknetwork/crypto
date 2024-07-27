@@ -1230,7 +1230,7 @@ mod tests {
 
         /// Update an accumulator with a batch of updates, update existing witnesses of given elements and check that new witnesses are valid
         fn check_batch_witness_update_using_secret_key(
-            current_accm: &PositiveAccumulator<Bls12_381>,
+            current_accm: &PositiveAccumulator<G1Affine>,
             additions: Vec<Fr>,
             removals: &[Fr],
             elements: &[Fr],
@@ -1239,7 +1239,7 @@ mod tests {
             params: &SetupParams<Bls12_381>,
             state: &mut dyn State<Fr>,
         ) -> (
-            PositiveAccumulator<Bls12_381>,
+            PositiveAccumulator<G1Affine>,
             Vec<MembershipWitness<G1Affine>>,
         ) {
             let accumulator_new = current_accm

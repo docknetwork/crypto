@@ -5,7 +5,7 @@ use crate::{
     prelude::SecretKey,
     witness::{MembershipWitness, Witness},
 };
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{batch_inversion, One, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, vec, vec::Vec};
@@ -75,14 +75,14 @@ impl<G: AffineRepr> From<G> for KBUniversalAccumulatorNonMembershipWitness<G> {
 
 // Any change to accumulator changes for membership and non-membership witness
 
-impl<E: Pairing> KBUniversalAccumulator<E> {
+impl<G: AffineRepr> KBUniversalAccumulator<G> {
     /// Update the membership witness on adding an element. Call this on the accumulator before update
     pub fn update_mem_wit_on_addition(
         &self,
-        wit: &KBUniversalAccumulatorMembershipWitness<E::G1Affine>,
-        member: &E::ScalarField,
-        addition: &E::ScalarField,
-    ) -> KBUniversalAccumulatorMembershipWitness<E::G1Affine> {
+        wit: &KBUniversalAccumulatorMembershipWitness<G>,
+        member: &G::ScalarField,
+        addition: &G::ScalarField,
+    ) -> KBUniversalAccumulatorMembershipWitness<G> {
         wit.0
             .update_after_addition(member, addition, self.mem.value())
             .into()
@@ -91,10 +91,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update the membership witness on removal of an element. Call this on the accumulator after update
     pub fn update_mem_wit_on_removal(
         &self,
-        wit: &KBUniversalAccumulatorMembershipWitness<E::G1Affine>,
-        member: &E::ScalarField,
-        removal: &E::ScalarField,
-    ) -> Result<KBUniversalAccumulatorMembershipWitness<E::G1Affine>, VBAccumulatorError> {
+        wit: &KBUniversalAccumulatorMembershipWitness<G>,
+        member: &G::ScalarField,
+        removal: &G::ScalarField,
+    ) -> Result<KBUniversalAccumulatorMembershipWitness<G>, VBAccumulatorError> {
         Ok(wit
             .0
             .update_after_removal(member, removal, self.mem.value())?
@@ -104,13 +104,20 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update the membership witnesses on addition of a batch of elements. Call this on the accumulator before update
     pub fn update_mem_wit_using_secret_key_on_batch_additions(
         &self,
-        additions: &[E::ScalarField],
-        members: &[E::ScalarField],
-        old_witnesses: &[KBUniversalAccumulatorMembershipWitness<E::G1Affine>],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
-        let old: Vec<E::G1Affine> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
-        let (_, new) = MembershipWitness::<E::G1Affine>::compute_update_using_secret_key_after_batch_additions(additions, members, &old, &self.mem.0, sk)?;
+        additions: &[G::ScalarField],
+        members: &[G::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorMembershipWitness<G>],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorMembershipWitness<G>>, VBAccumulatorError> {
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
+        let (_, new) =
+            MembershipWitness::<G>::compute_update_using_secret_key_after_batch_additions(
+                additions,
+                members,
+                &old,
+                &self.mem.0,
+                sk,
+            )?;
         Ok(cfg_into_iter!(new)
             .map(|w| MembershipWitness(w).into())
             .collect())
@@ -119,14 +126,14 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update the membership witnesses on removal of a batch of elements. Call this on the accumulator before update
     pub fn update_mem_wit_using_secret_key_on_batch_removals(
         &self,
-        removals: &[E::ScalarField],
-        members: &[E::ScalarField],
-        old_witnesses: &[KBUniversalAccumulatorMembershipWitness<E::G1Affine>],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
-        let old: Vec<E::G1Affine> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
+        removals: &[G::ScalarField],
+        members: &[G::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorMembershipWitness<G>],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorMembershipWitness<G>>, VBAccumulatorError> {
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
         let (_, new) =
-            MembershipWitness::<E::G1Affine>::compute_update_using_secret_key_after_batch_removals(
+            MembershipWitness::<G>::compute_update_using_secret_key_after_batch_removals(
                 removals,
                 members,
                 &old,
@@ -141,22 +148,21 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update the membership witnesses on addition and removal of a batch of elements. Call this on the accumulator before update
     pub fn update_mem_wit_using_secret_key_on_batch_updates(
         &self,
-        additions: &[E::ScalarField],
-        removals: &[E::ScalarField],
-        members: &[E::ScalarField],
-        old_witnesses: &[KBUniversalAccumulatorMembershipWitness<E::G1Affine>],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
-        let old: Vec<E::G1Affine> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
-        let (_, new) =
-            MembershipWitness::<E::G1Affine>::compute_update_using_secret_key_after_batch_updates(
-                additions,
-                removals,
-                members,
-                &old,
-                &self.mem.0,
-                sk,
-            )?;
+        additions: &[G::ScalarField],
+        removals: &[G::ScalarField],
+        members: &[G::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorMembershipWitness<G>],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorMembershipWitness<G>>, VBAccumulatorError> {
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
+        let (_, new) = MembershipWitness::<G>::compute_update_using_secret_key_after_batch_updates(
+            additions,
+            removals,
+            members,
+            &old,
+            &self.mem.0,
+            sk,
+        )?;
         Ok(cfg_into_iter!(new)
             .map(|w| MembershipWitness(w).into())
             .collect())
@@ -165,10 +171,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update the non-membership witness on adding an element. Call this on the accumulator after update
     pub fn update_non_mem_wit_on_addition(
         &self,
-        wit: &KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
-        non_member: &E::ScalarField,
-        addition: &E::ScalarField,
-    ) -> Result<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
+        wit: &KBUniversalAccumulatorNonMembershipWitness<G>,
+        non_member: &G::ScalarField,
+        addition: &G::ScalarField,
+    ) -> Result<KBUniversalAccumulatorNonMembershipWitness<G>, VBAccumulatorError> {
         Ok(wit
             .0
             .update_after_removal(non_member, addition, self.non_mem.value())?
@@ -178,10 +184,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update the non-membership witness on removal of an element. Call this on the accumulator before update
     pub fn update_non_mem_wit_on_removal(
         &self,
-        wit: &KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
-        non_member: &E::ScalarField,
-        removal: &E::ScalarField,
-    ) -> KBUniversalAccumulatorNonMembershipWitness<E::G1Affine> {
+        wit: &KBUniversalAccumulatorNonMembershipWitness<G>,
+        non_member: &G::ScalarField,
+        removal: &G::ScalarField,
+    ) -> KBUniversalAccumulatorNonMembershipWitness<G> {
         wit.0
             .update_after_addition(non_member, removal, self.non_mem.value())
             .into()
@@ -190,15 +196,14 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update the non-membership witnesses on addition of a batch of elements. Call this on the accumulator before update
     pub fn update_non_mem_wit_using_secret_key_on_batch_additions(
         &self,
-        additions: &[E::ScalarField],
-        non_members: &[E::ScalarField],
-        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>, VBAccumulatorError>
-    {
-        let old: Vec<E::G1Affine> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
+        additions: &[G::ScalarField],
+        non_members: &[G::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<G>],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<G>>, VBAccumulatorError> {
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
         let (_, new) =
-            MembershipWitness::<E::G1Affine>::compute_update_using_secret_key_after_batch_removals(
+            MembershipWitness::<G>::compute_update_using_secret_key_after_batch_removals(
                 additions,
                 non_members,
                 &old,
@@ -213,12 +218,11 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update the non-membership witnesses on removal of a batch of elements. Call this on the accumulator before update
     pub fn update_non_mem_wit_using_secret_key_on_batch_removals(
         &self,
-        removals: &[E::ScalarField],
-        non_members: &[E::ScalarField],
-        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>, VBAccumulatorError>
-    {
+        removals: &[G::ScalarField],
+        non_members: &[G::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<G>],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<G>>, VBAccumulatorError> {
         self.update_witnesses_using_secret_key_on_non_mem_accum_update(
             removals,
             non_members,
@@ -230,23 +234,21 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update the non-membership witnesses on addition and removal of a batch of elements. Call this on the accumulator before update
     pub fn update_non_mem_wit_using_secret_key_on_batch_updates(
         &self,
-        additions: &[E::ScalarField],
-        removals: &[E::ScalarField],
-        non_members: &[E::ScalarField],
-        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>, VBAccumulatorError>
-    {
-        let old: Vec<E::G1Affine> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
-        let (_, new) =
-            MembershipWitness::<E::G1Affine>::compute_update_using_secret_key_after_batch_updates(
-                removals,
-                additions,
-                non_members,
-                &old,
-                &self.non_mem.0,
-                sk,
-            )?;
+        additions: &[G::ScalarField],
+        removals: &[G::ScalarField],
+        non_members: &[G::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<G>],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<G>>, VBAccumulatorError> {
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
+        let (_, new) = MembershipWitness::<G>::compute_update_using_secret_key_after_batch_updates(
+            removals,
+            additions,
+            non_members,
+            &old,
+            &self.non_mem.0,
+            sk,
+        )?;
         Ok(cfg_into_iter!(new)
             .map(|w| MembershipWitness(w).into())
             .collect())
@@ -254,12 +256,11 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn update_non_mem_wit_using_secret_key_on_domain_extension(
         &self,
-        new_elements: &[E::ScalarField],
-        non_members: &[E::ScalarField],
-        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>, VBAccumulatorError>
-    {
+        new_elements: &[G::ScalarField],
+        non_members: &[G::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<G>],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<G>>, VBAccumulatorError> {
         // Domain extension is adding elements to the non-membership accumulator
         self.update_witnesses_using_secret_key_on_non_mem_accum_update(
             new_elements,
@@ -272,20 +273,20 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Call this on the accumulator before update
     pub fn generate_omega_for_membership_witnesses(
         &self,
-        additions: &[E::ScalarField],
-        removals: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Omega<E::G1Affine> {
+        additions: &[G::ScalarField],
+        removals: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Omega<G> {
         Omega::new(additions, removals, self.mem.value(), sk)
     }
 
     /// Call this on the accumulator before update
     pub fn generate_omega_for_non_membership_witnesses(
         &self,
-        additions: &[E::ScalarField],
-        removals: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Omega<E::G1Affine> {
+        additions: &[G::ScalarField],
+        removals: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Omega<G> {
         Omega::new(removals, additions, self.non_mem.value(), sk)
     }
 
@@ -294,26 +295,26 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Call this on the accumulator before update
     pub fn generate_omega_for_non_membership_witnesses_on_domain_extension(
         &self,
-        new_elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Omega<E::G1Affine> {
+        new_elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Omega<G> {
         Omega::new(new_elements, &[], self.non_mem.value(), sk)
     }
 
     /// Update both membership and non-membership witnesses in a single call. Call this on the accumulator before update
     pub fn update_both_wit_using_secret_key_on_batch_updates(
         &self,
-        additions: &[E::ScalarField],
-        removals: &[E::ScalarField],
-        members: &[E::ScalarField],
-        old_mem_witnesses: &[KBUniversalAccumulatorMembershipWitness<E::G1Affine>],
-        non_members: &[E::ScalarField],
-        old_non_mem_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>],
-        sk: &SecretKey<E::ScalarField>,
+        additions: &[G::ScalarField],
+        removals: &[G::ScalarField],
+        members: &[G::ScalarField],
+        old_mem_witnesses: &[KBUniversalAccumulatorMembershipWitness<G>],
+        non_members: &[G::ScalarField],
+        old_non_mem_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<G>],
+        sk: &SecretKey<G::ScalarField>,
     ) -> Result<
         (
-            Vec<KBUniversalAccumulatorMembershipWitness<E::G1Affine>>,
-            Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>,
+            Vec<KBUniversalAccumulatorMembershipWitness<G>>,
+            Vec<KBUniversalAccumulatorNonMembershipWitness<G>>,
         ),
         VBAccumulatorError,
     > {
@@ -330,15 +331,15 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
         let alpha = &sk.0;
 
         // (additions[0] + alpha), (additions[0] + alpha)*(additions[1] + alpha), ..., (additions[0] + alpha)*(additions[1] + alpha)*...(additions[m-1] + alpha)
-        let mut factors_add = vec![E::ScalarField::one(); m];
+        let mut factors_add = vec![G::ScalarField::one(); m];
         // (removals[0] + alpha), (removals[0] + alpha)*(removals[1] + alpha), ..., (removals[0] + alpha)*(removals[1] + alpha)*...(removals[n-1] + alpha)
-        let mut factors_rem = vec![E::ScalarField::one(); n];
+        let mut factors_rem = vec![G::ScalarField::one(); n];
         // For each of the p members, mem_add_poly[i] = (additions[1] - members[i])*(additions[2] - members[i])*...(additions[m-1] - members[i]), (additions[2] - members[i])*(additions[3] - members[i])*...(additions[m-1] - members[i]), .., 1
-        let mut mem_add_poly = vec![vec![E::ScalarField::one(); m]; p];
+        let mut mem_add_poly = vec![vec![G::ScalarField::one(); m]; p];
         // For each of the p members, mem_rem_poly[i] = 1, (removals[0] - members[i]), (removals[0] - x)*(removals[1] - members[i]), ..., (removals[0] - members[i])*(removals[1] - members[i])*...(removals[n-2] - members[i])
-        let mut mem_rem_poly = vec![vec![E::ScalarField::one(); n]; p];
-        let mut non_mem_add_poly = vec![vec![E::ScalarField::one(); n]; q];
-        let mut non_mem_rem_poly = vec![vec![E::ScalarField::one(); m]; q];
+        let mut mem_rem_poly = vec![vec![G::ScalarField::one(); n]; p];
+        let mut non_mem_add_poly = vec![vec![G::ScalarField::one(); n]; q];
+        let mut non_mem_rem_poly = vec![vec![G::ScalarField::one(); m]; q];
 
         if !additions.is_empty() {
             factors_add[0] = additions[0] + alpha;
@@ -380,12 +381,12 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             .map(|i| {
                 (
                     if additions.is_empty() {
-                        E::ScalarField::one()
+                        G::ScalarField::one()
                     } else {
                         mem_add_poly[i][0] * (additions[0] - members[i])
                     },
                     if removals.is_empty() {
-                        E::ScalarField::one()
+                        G::ScalarField::one()
                     } else {
                         mem_rem_poly[i][n - 1] * (removals[n - 1] - members[i])
                     },
@@ -396,12 +397,12 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             .map(|i| {
                 (
                     if removals.is_empty() {
-                        E::ScalarField::one()
+                        G::ScalarField::one()
                     } else {
                         non_mem_add_poly[i][0] * (removals[0] - non_members[i])
                     },
                     if additions.is_empty() {
-                        E::ScalarField::one()
+                        G::ScalarField::one()
                     } else {
                         non_mem_rem_poly[i][m - 1] * (additions[m - 1] - non_members[i])
                     },
@@ -412,8 +413,8 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
         batch_inversion(&mut mem_d_D);
         batch_inversion(&mut non_mem_d_D);
 
-        let one = E::ScalarField::one();
-        let zero = E::ScalarField::zero;
+        let one = G::ScalarField::one();
+        let zero = G::ScalarField::zero;
 
         let mem_v_AD = cfg_into_iter!(0..p)
             .map(|j| {
@@ -429,7 +430,7 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
                 mem_poly_v_A
                     - (mem_poly_v_D
                         * if additions.is_empty() {
-                            E::ScalarField::one()
+                            G::ScalarField::one()
                         } else {
                             factors_add[m - 1]
                         })
@@ -450,7 +451,7 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
                 non_mem_poly_v_A
                     - (non_mem_poly_v_D
                         * if removals.is_empty() {
-                            E::ScalarField::one()
+                            G::ScalarField::one()
                         } else {
                             factors_rem[n - 1]
                         })
@@ -494,22 +495,22 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             })
             .collect::<Vec<_>>();
 
-        let new_mem_wits = cfg_into_iter!(E::G1::normalize_batch(&new_mem_wits))
-            .map(|w| w.into())
-            .collect::<Vec<KBUniversalAccumulatorMembershipWitness<E::G1Affine>>>();
-        let new_non_mem_wits = cfg_into_iter!(E::G1::normalize_batch(&new_non_mem_wits))
-            .map(|w| w.into())
-            .collect::<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>>();
+        let new_mem_wits = cfg_into_iter!(G::Group::normalize_batch(&new_mem_wits))
+            .map(|w| KBUniversalAccumulatorMembershipWitness(MembershipWitness(w)))
+            .collect::<Vec<KBUniversalAccumulatorMembershipWitness<G>>>();
+        let new_non_mem_wits = cfg_into_iter!(G::Group::normalize_batch(&new_non_mem_wits))
+            .map(|w| KBUniversalAccumulatorNonMembershipWitness(MembershipWitness(w)))
+            .collect::<Vec<KBUniversalAccumulatorNonMembershipWitness<G>>>();
         Ok((new_mem_wits, new_non_mem_wits))
     }
 
     /// Call this on the accumulator before update
     pub fn generate_omega_for_both_witnesses(
         &self,
-        additions: &[E::ScalarField],
-        removals: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (Omega<E::G1Affine>, Omega<E::G1Affine>) {
+        additions: &[G::ScalarField],
+        removals: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (Omega<G>, Omega<G>) {
         Omega::new_for_kb_universal_accumulator(
             additions,
             removals,
@@ -522,15 +523,14 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Update non-membership witnesses when the non-membership accumulator is updated
     fn update_witnesses_using_secret_key_on_non_mem_accum_update(
         &self,
-        new_elements: &[E::ScalarField],
-        non_members: &[E::ScalarField],
-        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>, VBAccumulatorError>
-    {
-        let old: Vec<E::G1Affine> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
+        new_elements: &[G::ScalarField],
+        non_members: &[G::ScalarField],
+        old_witnesses: &[KBUniversalAccumulatorNonMembershipWitness<G>],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<G>>, VBAccumulatorError> {
+        let old: Vec<G> = cfg_iter!(old_witnesses).map(|w| w.0 .0).collect();
         let (_, new) =
-            MembershipWitness::<E::G1Affine>::compute_update_using_secret_key_after_batch_additions(
+            MembershipWitness::<G>::compute_update_using_secret_key_after_batch_additions(
                 new_elements,
                 non_members,
                 &old,

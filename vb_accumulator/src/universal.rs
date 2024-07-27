@@ -95,41 +95,41 @@ use zeroize::Zeroize;
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct UniversalAccumulator<E: Pairing> {
+pub struct UniversalAccumulator<G: AffineRepr> {
     /// This is the accumulated value. It is considered a digest of state of the accumulator.
     #[serde_as(as = "ArkObjectBytes")]
-    pub V: E::G1Affine,
+    pub V: G,
     /// This is f_V(alpha) and is the discrete log of `V` wrt. P from setup parameters. Accumulator
     /// manager persists it for efficient computation of non-membership witnesses
     #[serde_as(as = "ArkObjectBytes")]
-    pub f_V: E::ScalarField,
+    pub f_V: G::ScalarField,
     /// The maximum elements the accumulator can store
     pub max_size: u64,
 }
 
-impl<E: Pairing> AsRef<E::G1Affine> for UniversalAccumulator<E> {
-    fn as_ref(&self) -> &E::G1Affine {
+impl<G: AffineRepr> AsRef<G> for UniversalAccumulator<G> {
+    fn as_ref(&self) -> &G {
         self.value()
     }
 }
 
-impl<E: Pairing> Accumulator<E> for UniversalAccumulator<E> {
-    fn value(&self) -> &E::G1Affine {
+impl<G: AffineRepr> Accumulator<G> for UniversalAccumulator<G> {
+    fn value(&self) -> &G {
         &self.V
     }
 
     /// Create an `UniversalAccumulator` using the accumulated value. This is used for (non)membership verification
     /// purposes only
-    fn from_accumulated(accumulated: E::G1Affine) -> Self {
+    fn from_accumulated(accumulated: G) -> Self {
         Self {
-            f_V: E::ScalarField::zero(),
+            f_V: G::ScalarField::zero(),
             V: accumulated,
             max_size: 0,
         }
     }
 }
 
-impl<E: Pairing> UniversalAccumulator<E> {
+impl<G: AffineRepr> UniversalAccumulator<G> {
     /// Create a new universal accumulator. Given the max size, it generates `max_size-n+1` initial elements
     /// as mentioned in the paper. `n` elements are passed as argument `xs`. These are generated
     /// once for each curve as they depend on the order of the scalar field and then reused.
@@ -138,11 +138,11 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// the `max_size + 1` are generated randomly.
     pub fn initialize<R: RngCore>(
         rng: &mut R,
-        params_gen: impl AsRef<E::G1Affine>,
+        params_gen: impl AsRef<G>,
         max_size: u64,
-        sk: &SecretKey<E::ScalarField>,
-        xs: Vec<E::ScalarField>,
-        initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
+        sk: &SecretKey<G::ScalarField>,
+        xs: Vec<G::ScalarField>,
+        initial_elements_store: &mut dyn InitialElementsStore<G::ScalarField>,
     ) -> Self {
         let f_V = Self::compute_initial(rng, max_size, sk, xs, initial_elements_store);
 
@@ -160,10 +160,10 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// is present for legacy purposes. This will likely be removed.
     pub fn initialize_with_all_random<R: RngCore>(
         rng: &mut R,
-        params_gen: impl AsRef<E::G1Affine>,
+        params_gen: impl AsRef<G>,
         max_size: u64,
-        sk: &SecretKey<E::ScalarField>,
-        initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
+        sk: &SecretKey<G::ScalarField>,
+        initial_elements_store: &mut dyn InitialElementsStore<G::ScalarField>,
     ) -> Self {
         let f_V = Self::compute_random_initial(rng, max_size, sk, initial_elements_store);
         let V = params_gen
@@ -178,8 +178,8 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// generated and `f_V = (y_1 + alpha) * (y_2 + alpha) *...*(y_n + alpha)` has been calculated
     /// where `y_i` are the initial elements and `alpha` is the secret key
     pub fn initialize_given_f_V(
-        f_V: E::ScalarField,
-        params_gen: impl AsRef<E::G1Affine>,
+        f_V: G::ScalarField,
+        params_gen: impl AsRef<G>,
         max_size: u64,
     ) -> Self {
         let V = params_gen
@@ -194,10 +194,10 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// invocation of this function, several evaluations of this function can be multiplied to get the
     /// final `f_V`
     pub fn compute_initial_f_V(
-        initial_elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> E::ScalarField {
-        let mut f_V = E::ScalarField::one();
+        initial_elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> G::ScalarField {
+        let mut f_V = G::ScalarField::one();
         for elem in initial_elements {
             // Each of the random values should be preserved by the manager and should not be removed (check before removing)
             // from the accumulator
@@ -218,14 +218,14 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Check if element is part of the initial elements. Such elements should not be added or removed from the accumulator
     pub fn is_element_acceptable(
         &self,
-        element: &E::ScalarField,
-        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
+        element: &G::ScalarField,
+        initial_elements_store: &dyn InitialElementsStore<G::ScalarField>,
     ) -> bool {
         !initial_elements_store.has(element)
     }
 
     /// Update the accumulated values with the given ones
-    pub fn get_updated(&self, f_V: E::ScalarField, V: E::G1Affine) -> Self {
+    pub fn get_updated(&self, f_V: G::ScalarField, V: G) -> Self {
         Self {
             V,
             f_V,
@@ -236,9 +236,9 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Compute new accumulated value after addition.
     pub fn compute_new_post_add(
         &self,
-        element: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::ScalarField, E::G1Affine) {
+        element: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G::ScalarField, G) {
         let (y_plus_alpha, V) = self._compute_new_post_add(element, sk);
         let f_V = y_plus_alpha * self.f_V;
         (f_V, V)
@@ -247,10 +247,10 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Add an element to the accumulator and state. Reads and writes to state. Described in section 2 of the paper
     pub fn add(
         &self,
-        element: E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
-        state: &mut dyn State<E::ScalarField>,
+        element: G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<G::ScalarField>,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         if self.max_size() == state.size() {
             return Err(VBAccumulatorError::AccumulatorFull);
@@ -269,9 +269,9 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Compute new accumulated value after batch addition.
     pub fn compute_new_post_add_batch(
         &self,
-        elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::ScalarField, E::G1Affine) {
+        elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G::ScalarField, G) {
         let (mut d_alpha, V) = self._compute_new_post_add_batch(elements, sk);
         let f_V = d_alpha * self.f_V;
         d_alpha.zeroize();
@@ -281,10 +281,10 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Add a batch of members in the accumulator. Reads and writes to state. Described in section 3 of the paper
     pub fn add_batch(
         &self,
-        elements: Vec<E::ScalarField>,
-        sk: &SecretKey<E::ScalarField>,
-        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
-        state: &mut dyn State<E::ScalarField>,
+        elements: Vec<G::ScalarField>,
+        sk: &SecretKey<G::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<G::ScalarField>,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         if self.max_size() < (state.size() + elements.len() as u64) {
             return Err(VBAccumulatorError::BatchExceedsAccumulatorCapacity);
@@ -303,9 +303,9 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Compute new accumulated value after removal
     pub fn compute_new_post_remove(
         &self,
-        element: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::ScalarField, E::G1Affine) {
+        element: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G::ScalarField, G) {
         let (mut y_plus_alpha_inv, V) = self._compute_new_post_remove(element, sk);
         let f_V = y_plus_alpha_inv * self.f_V;
         y_plus_alpha_inv.zeroize();
@@ -315,10 +315,10 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Remove an element from the accumulator and state. Reads and writes to state. Described in section 2 of the paper
     pub fn remove(
         &self,
-        element: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
-        state: &mut dyn State<E::ScalarField>,
+        element: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<G::ScalarField>,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         if !self.is_element_acceptable(element, initial_elements_store) {
             return Err(VBAccumulatorError::ProhibitedElement);
@@ -335,9 +335,9 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Compute new accumulated value after batch removal
     pub fn compute_new_post_remove_batch(
         &self,
-        elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::ScalarField, E::G1Affine) {
+        elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G::ScalarField, G) {
         let (mut d_alpha_inv, V) = self._compute_new_post_remove_batch(elements, sk);
         let f_V = d_alpha_inv * self.f_V;
         d_alpha_inv.zeroize();
@@ -347,10 +347,10 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Removing a batch of members from the accumulator. Reads and writes to state. Described in section 3 of the paper
     pub fn remove_batch(
         &self,
-        elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
-        state: &mut dyn State<E::ScalarField>,
+        elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<G::ScalarField>,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         for element in elements.iter() {
             if !self.is_element_acceptable(element, initial_elements_store) {
@@ -366,10 +366,10 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Compute new accumulated value after batch additions and removals
     pub fn compute_new_post_batch_updates(
         &self,
-        additions: &[E::ScalarField],
-        removals: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::ScalarField, E::G1Affine) {
+        additions: &[G::ScalarField],
+        removals: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G::ScalarField, G) {
         let (mut d_alpha, V) = self._compute_new_post_batch_updates(additions, removals, sk);
         let f_V = d_alpha * self.f_V;
         d_alpha.zeroize();
@@ -379,11 +379,11 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Adding and removing batches of elements from the accumulator. Reads and writes to state. Described in section 3 of the paper
     pub fn batch_updates(
         &self,
-        additions: Vec<E::ScalarField>,
-        removals: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-        initial_elements_store: &dyn InitialElementsStore<E::ScalarField>,
-        state: &mut dyn State<E::ScalarField>,
+        additions: Vec<G::ScalarField>,
+        removals: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+        initial_elements_store: &dyn InitialElementsStore<G::ScalarField>,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         if self.max_size() < (state.size() + additions.len() as u64 - removals.len() as u64) {
             return Err(VBAccumulatorError::BatchExceedsAccumulatorCapacity);
@@ -406,10 +406,10 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
     pub fn compute_d_given_members(
-        non_member: &E::ScalarField,
-        members: &[E::ScalarField],
-    ) -> E::ScalarField {
-        let mut d = E::ScalarField::one();
+        non_member: &G::ScalarField,
+        members: &[G::ScalarField],
+    ) -> G::ScalarField {
+        let mut d = G::ScalarField::one();
         for member in members {
             d *= *member - non_member;
         }
@@ -422,11 +422,11 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Described in section 2 of the paper
     pub fn compute_non_membership_witness_given_d(
         &self,
-        d: E::ScalarField,
-        non_member: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-        params_gen: impl AsRef<E::G1Affine>,
-    ) -> Result<NonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
+        d: G::ScalarField,
+        non_member: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+        params_gen: impl AsRef<G>,
+    ) -> Result<NonMembershipWitness<G>, VBAccumulatorError> {
         if d.is_zero() {
             return Err(VBAccumulatorError::CannotBeZero);
         }
@@ -443,15 +443,15 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// Get non-membership witness for an element absent from accumulator. Described in section 2 of the paper
     pub fn get_non_membership_witness<'a>(
         &self,
-        non_member: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
+        non_member: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
         state: &'a dyn UniversalAccumulatorState<
             'a,
-            E::ScalarField,
-            ElementIterator = impl Iterator<Item = &'a E::ScalarField>,
+            G::ScalarField,
+            ElementIterator = impl Iterator<Item = &'a G::ScalarField>,
         >,
-        params_gen: impl AsRef<E::G1Affine>,
-    ) -> Result<NonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
+        params_gen: impl AsRef<G>,
+    ) -> Result<NonMembershipWitness<G>, VBAccumulatorError> {
         if state.has(non_member) {
             return Err(VBAccumulatorError::ElementPresent);
         }
@@ -460,7 +460,7 @@ impl<E: Pairing> UniversalAccumulator<E> {
         // d = f_V(-y).
         // This is expensive as a product involving all accumulated elements is needed. This can use parallelization.
         // But rayon will not work with wasm, look at https://github.com/GoogleChromeLabs/wasm-bindgen-rayon.
-        let mut d = E::ScalarField::one();
+        let mut d = G::ScalarField::one();
         for member in state.elements() {
             d *= *member - non_member;
         }
@@ -475,10 +475,10 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// them in 1 invocation of this function, they can be partitioned and each partition can be passed
     /// to 1 invocation of this function and later outputs from all invocations are multiplied
     pub fn compute_d_for_batch_given_members(
-        non_members: &[E::ScalarField],
-        members: &[E::ScalarField],
-    ) -> Vec<E::ScalarField> {
-        let mut ds = vec![E::ScalarField::one(); non_members.len()];
+        non_members: &[G::ScalarField],
+        members: &[G::ScalarField],
+    ) -> Vec<G::ScalarField> {
+        let mut ds = vec![G::ScalarField::one(); non_members.len()];
         for member in members {
             for (i, t) in cfg_into_iter!(non_members)
                 .map(|e| *member - *e)
@@ -496,17 +496,17 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// for each member `y_i`
     pub fn compute_non_membership_witnesses_for_batch_given_d(
         &self,
-        d: Vec<E::ScalarField>,
-        non_members: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-        params_gen: impl AsRef<E::G1Affine>,
-    ) -> Result<Vec<NonMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
+        d: Vec<G::ScalarField>,
+        non_members: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+        params_gen: impl AsRef<G>,
+    ) -> Result<Vec<NonMembershipWitness<G>>, VBAccumulatorError> {
         if cfg_iter!(d).any(|&x| x.is_zero()) {
             return Err(VBAccumulatorError::CannotBeZero);
         }
-        let f_V_alpha_minus_d: Vec<E::ScalarField> = cfg_iter!(d).map(|d| self.f_V - *d).collect();
+        let f_V_alpha_minus_d: Vec<G::ScalarField> = cfg_iter!(d).map(|d| self.f_V - *d).collect();
 
-        let mut y_plus_alpha_inv: Vec<E::ScalarField> =
+        let mut y_plus_alpha_inv: Vec<G::ScalarField> =
             cfg_iter!(non_members).map(|y| *y + sk.0).collect();
         batch_inversion(&mut y_plus_alpha_inv);
 
@@ -521,7 +521,7 @@ impl<E: Pairing> UniversalAccumulator<E> {
             params_gen.as_ref().into_group(),
             P_multiple.as_slice(),
         );
-        let wits_affine = E::G1::normalize_batch(&wits);
+        let wits_affine = G::Group::normalize_batch(&wits);
         cfg_iter_mut!(y_plus_alpha_inv).for_each(|y| y.zeroize());
         wits.iter_mut().for_each(|w| w.zeroize());
         cfg_iter_mut!(wits).for_each(|y| y.zeroize());
@@ -537,15 +537,15 @@ impl<E: Pairing> UniversalAccumulator<E> {
     /// it uses windowed multiplication and batch invert. Will throw error even if one element is not present
     pub fn get_non_membership_witnesses_for_batch<'a>(
         &self,
-        non_members: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
+        non_members: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
         state: &'a dyn UniversalAccumulatorState<
             'a,
-            E::ScalarField,
-            ElementIterator = impl Iterator<Item = &'a E::ScalarField>,
+            G::ScalarField,
+            ElementIterator = impl Iterator<Item = &'a G::ScalarField>,
         >,
-        params_gen: impl AsRef<E::G1Affine>,
-    ) -> Result<Vec<NonMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
+        params_gen: impl AsRef<G>,
+    ) -> Result<Vec<NonMembershipWitness<G>>, VBAccumulatorError> {
         for element in non_members {
             if state.has(element) {
                 return Err(VBAccumulatorError::ElementPresent);
@@ -559,7 +559,7 @@ impl<E: Pairing> UniversalAccumulator<E> {
         // `(elements_{m-1} - member_0)*(elements_{m-1} - member_1)*..(elements_{m-1} - member_{n-1})*`
 
         // `d_for_witnesses` stores `d` corresponding to each of `elements`
-        let mut d_for_witnesses = vec![E::ScalarField::one(); non_members.len()];
+        let mut d_for_witnesses = vec![G::ScalarField::one(); non_members.len()];
         // Since iterating state is expensive, compute iteration over it once
         for member in state.elements() {
             for (i, t) in cfg_into_iter!(non_members)
@@ -582,10 +582,12 @@ impl<E: Pairing> UniversalAccumulator<E> {
 
     /// Check if element is absent in accumulator. Described in section 2 of the paper
     /// This takes `self` as an argument, but the secret `f_V` isn't used; thus it can be passed as 0.
-    pub fn verify_non_membership_given_accumulated(
-        V: &E::G1Affine,
-        non_member: &E::ScalarField,
-        witness: &NonMembershipWitness<E::G1Affine>,
+    pub fn verify_non_membership_given_accumulated<
+        E: Pairing<G1Affine = G, ScalarField = G::ScalarField>,
+    >(
+        V: &G,
+        non_member: &G::ScalarField,
+        witness: &NonMembershipWitness<G>,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
     ) -> bool {
@@ -618,28 +620,28 @@ impl<E: Pairing> UniversalAccumulator<E> {
 
     /// Check if element is absent in accumulator. Described in section 2 of the paper
     /// This takes `self` as an argument, but the secret `f_V` isn't used; thus it can be passed as 0.
-    pub fn verify_non_membership(
+    pub fn verify_non_membership<E: Pairing<G1Affine = G, ScalarField = G::ScalarField>>(
         &self,
-        non_member: &E::ScalarField,
-        witness: &NonMembershipWitness<E::G1Affine>,
+        non_member: &G::ScalarField,
+        witness: &NonMembershipWitness<G>,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
     ) -> bool {
         Self::verify_non_membership_given_accumulated(self.value(), non_member, witness, pk, params)
     }
 
-    pub fn from_value(f_V: E::ScalarField, V: E::G1Affine, max_size: u64) -> Self {
+    pub fn from_value(f_V: G::ScalarField, V: G, max_size: u64) -> Self {
         Self { f_V, V, max_size }
     }
 
     fn compute_initial<R: RngCore>(
         rng: &mut R,
         max_size: u64,
-        sk: &SecretKey<E::ScalarField>,
-        xs: Vec<E::ScalarField>,
-        initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
-    ) -> E::ScalarField {
-        let mut f_V = E::ScalarField::one();
+        sk: &SecretKey<G::ScalarField>,
+        xs: Vec<G::ScalarField>,
+        initial_elements_store: &mut dyn InitialElementsStore<G::ScalarField>,
+    ) -> G::ScalarField {
+        let mut f_V = G::ScalarField::one();
         for x in xs {
             f_V *= x + sk.0;
             initial_elements_store.add(x);
@@ -654,7 +656,7 @@ impl<E: Pairing> UniversalAccumulator<E> {
         // but as `xs.len <<< max_size` in practice, didn't feel right to make the function accept
         // one more argument and make caller decide one more thing.
         for _ in 0..(max_size + 1) {
-            let elem = E::ScalarField::rand(rng);
+            let elem = G::ScalarField::rand(rng);
             f_V *= elem + sk.0;
             initial_elements_store.add(elem);
         }
@@ -664,14 +666,14 @@ impl<E: Pairing> UniversalAccumulator<E> {
     fn compute_random_initial<R: RngCore>(
         rng: &mut R,
         max_size: u64,
-        sk: &SecretKey<E::ScalarField>,
-        initial_elements_store: &mut dyn InitialElementsStore<E::ScalarField>,
-    ) -> E::ScalarField {
-        let mut f_V = E::ScalarField::one();
+        sk: &SecretKey<G::ScalarField>,
+        initial_elements_store: &mut dyn InitialElementsStore<G::ScalarField>,
+    ) -> G::ScalarField {
+        let mut f_V = G::ScalarField::one();
         for _ in 0..max_size + 1 {
             // Each of the random values should be preserved by the manager and should not be removed (check before removing)
             // from the accumulator
-            let elem = E::ScalarField::rand(rng);
+            let elem = G::ScalarField::rand(rng);
             f_V *= elem + sk.0;
             initial_elements_store.add(elem);
         }
@@ -684,12 +686,10 @@ pub mod tests {
     use super::*;
     use crate::{persistence::test::*, setup::Keypair, test_serialization};
 
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     use ark_ff::MontFp;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use std::time::{Duration, Instant};
-
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     /// Setup a universal accumulator, its keys, params and state for testing.
     pub fn setup_universal_accum(
@@ -698,7 +698,7 @@ pub mod tests {
     ) -> (
         SetupParams<Bls12_381>,
         Keypair<Bls12_381>,
-        UniversalAccumulator<Bls12_381>,
+        UniversalAccumulator<G1Affine>,
         InMemoryInitialElements<Fr>,
         InMemoryState<Fr>,
     ) {
@@ -725,25 +725,25 @@ pub mod tests {
         let (params, keypair, accumulator, initial_elements, _) =
             setup_universal_accum(&mut rng, max);
 
-        let accumulator_1: UniversalAccumulator<Bls12_381> =
+        let accumulator_1: UniversalAccumulator<G1Affine> =
             UniversalAccumulator::initialize_given_f_V(accumulator.f_V, &params, max);
         assert_eq!(accumulator, accumulator_1);
 
         let initial = initial_elements.db.into_iter().collect::<Vec<Fr>>();
         let mut chunks = initial.chunks(30);
-        let f_V_1 = UniversalAccumulator::<Bls12_381>::compute_initial_f_V(
+        let f_V_1 = UniversalAccumulator::<G1Affine>::compute_initial_f_V(
             chunks.next().unwrap(),
             &keypair.secret_key,
         );
-        let f_V_2 = UniversalAccumulator::<Bls12_381>::compute_initial_f_V(
+        let f_V_2 = UniversalAccumulator::<G1Affine>::compute_initial_f_V(
             chunks.next().unwrap(),
             &keypair.secret_key,
         );
-        let f_V_3 = UniversalAccumulator::<Bls12_381>::compute_initial_f_V(
+        let f_V_3 = UniversalAccumulator::<G1Affine>::compute_initial_f_V(
             chunks.next().unwrap(),
             &keypair.secret_key,
         );
-        let f_V_4 = UniversalAccumulator::<Bls12_381>::compute_initial_f_V(
+        let f_V_4 = UniversalAccumulator::<G1Affine>::compute_initial_f_V(
             chunks.next().unwrap(),
             &keypair.secret_key,
         );
@@ -752,7 +752,7 @@ pub mod tests {
         let initial: Vec<Fr> = initial_elements_for_bls12_381!(Fr);
         assert_eq!(initial.len(), 12);
         let mut initial_elements_1 = InMemoryInitialElements::new();
-        let accumulator_1: UniversalAccumulator<Bls12_381> = UniversalAccumulator::initialize(
+        let accumulator_1: UniversalAccumulator<G1Affine> = UniversalAccumulator::initialize(
             &mut rng,
             &params,
             max,
@@ -779,7 +779,7 @@ pub mod tests {
         let (params, keypair, mut accumulator, initial_elements, mut state) =
             setup_universal_accum(&mut rng, max);
 
-        test_serialization!(UniversalAccumulator<Bls12_381>, accumulator);
+        test_serialization!(UniversalAccumulator<G1Affine>, accumulator);
 
         let mut total_mem_check_time = Duration::default();
         let mut total_non_mem_check_time = Duration::default();
@@ -899,7 +899,7 @@ pub mod tests {
             ));
 
             let members = state.db.iter().copied().collect::<Vec<_>>();
-            let d = UniversalAccumulator::<Bls12_381>::compute_d_given_members(&elem, &members);
+            let d = UniversalAccumulator::<G1Affine>::compute_d_given_members(&elem, &members);
             assert_eq!(
                 accumulator
                     .compute_non_membership_witness_given_d(d, &elem, &keypair.secret_key, &params)
@@ -928,10 +928,10 @@ pub mod tests {
             setup_universal_accum(&mut rng, max);
 
         // Create more accumulators to compare. Same elements will be added and removed from them as accumulator_1
-        let mut accumulator_2: UniversalAccumulator<Bls12_381> = accumulator_1.clone();
+        let mut accumulator_2: UniversalAccumulator<G1Affine> = accumulator_1.clone();
         let mut state_2 = InMemoryState::<Fr>::new();
 
-        let mut accumulator_3: UniversalAccumulator<Bls12_381> = accumulator_1.clone();
+        let mut accumulator_3: UniversalAccumulator<G1Affine> = accumulator_1.clone();
         let mut state_3 = InMemoryState::<Fr>::new();
 
         let additions: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
@@ -1063,7 +1063,7 @@ pub mod tests {
         }
 
         let members = state_3.db.iter().copied().collect::<Vec<_>>();
-        let d = UniversalAccumulator::<Bls12_381>::compute_d_for_batch_given_members(
+        let d = UniversalAccumulator::<G1Affine>::compute_d_for_batch_given_members(
             &removals, &members,
         );
         assert_eq!(
@@ -1091,22 +1091,22 @@ pub mod tests {
         let members: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
         let non_member = Fr::rand(&mut rng);
 
-        let d = UniversalAccumulator::<Bls12_381>::compute_d_given_members(&non_member, &members);
+        let d = UniversalAccumulator::<G1Affine>::compute_d_given_members(&non_member, &members);
 
         let mut chunks = members.chunks(3);
-        let d1 = UniversalAccumulator::<Bls12_381>::compute_d_given_members(
+        let d1 = UniversalAccumulator::<G1Affine>::compute_d_given_members(
             &non_member,
             chunks.next().unwrap(),
         );
-        let d2 = UniversalAccumulator::<Bls12_381>::compute_d_given_members(
+        let d2 = UniversalAccumulator::<G1Affine>::compute_d_given_members(
             &non_member,
             chunks.next().unwrap(),
         );
-        let d3 = UniversalAccumulator::<Bls12_381>::compute_d_given_members(
+        let d3 = UniversalAccumulator::<G1Affine>::compute_d_given_members(
             &non_member,
             chunks.next().unwrap(),
         );
-        let d4 = UniversalAccumulator::<Bls12_381>::compute_d_given_members(
+        let d4 = UniversalAccumulator::<G1Affine>::compute_d_given_members(
             &non_member,
             chunks.next().unwrap(),
         );
@@ -1115,25 +1115,25 @@ pub mod tests {
         // Check that `d` computed for a batch of elements (non-members) when all members are available is
         // same as when `d` is computed over chunks of members and then multiplied
         let non_members = vec![Fr::rand(&mut rng), Fr::rand(&mut rng), Fr::rand(&mut rng)];
-        let d = UniversalAccumulator::<Bls12_381>::compute_d_for_batch_given_members(
+        let d = UniversalAccumulator::<G1Affine>::compute_d_for_batch_given_members(
             &non_members,
             &members,
         );
 
         let mut chunks = members.chunks(3);
-        let d1 = UniversalAccumulator::<Bls12_381>::compute_d_for_batch_given_members(
+        let d1 = UniversalAccumulator::<G1Affine>::compute_d_for_batch_given_members(
             &non_members,
             chunks.next().unwrap(),
         );
-        let d2 = UniversalAccumulator::<Bls12_381>::compute_d_for_batch_given_members(
+        let d2 = UniversalAccumulator::<G1Affine>::compute_d_for_batch_given_members(
             &non_members,
             chunks.next().unwrap(),
         );
-        let d3 = UniversalAccumulator::<Bls12_381>::compute_d_for_batch_given_members(
+        let d3 = UniversalAccumulator::<G1Affine>::compute_d_for_batch_given_members(
             &non_members,
             chunks.next().unwrap(),
         );
-        let d4 = UniversalAccumulator::<Bls12_381>::compute_d_for_batch_given_members(
+        let d4 = UniversalAccumulator::<G1Affine>::compute_d_for_batch_given_members(
             &non_members,
             chunks.next().unwrap(),
         );

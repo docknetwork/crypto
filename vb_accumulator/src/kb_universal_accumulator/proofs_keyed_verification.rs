@@ -420,7 +420,7 @@ mod tests {
         persistence::test::InMemoryState,
         setup_keyed_verification::{PublicKey, SetupParams},
     };
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use ark_bls12_381::{Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -436,7 +436,7 @@ mod tests {
         SetupParams<G1Affine>,
         SecretKey<Fr>,
         PublicKey<G1Affine>,
-        KBUniversalAccumulator<Bls12_381>,
+        KBUniversalAccumulator<G1Affine>,
         Vec<Fr>,
         InMemoryState<Fr>,
         InMemoryState<Fr>,

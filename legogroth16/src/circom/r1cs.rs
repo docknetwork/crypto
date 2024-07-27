@@ -162,10 +162,9 @@ mod serialization {
             compress: Compress,
             validate: Validate,
         ) -> Result<Self, SerializationError> {
-            // let t: u8 = CanonicalDeserialize::deserialize(&mut reader)?;
             match u8::deserialize_with_mode(&mut reader, compress, validate)? {
-                0u8 => Ok(Curve::Bn128),
-                1u8 => Ok(Curve::Bls12_381),
+                0u8 => Ok(Self::Bn128),
+                1u8 => Ok(Self::Bls12_381),
                 _ => Err(SerializationError::InvalidData),
             }
         }

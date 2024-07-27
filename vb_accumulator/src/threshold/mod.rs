@@ -287,7 +287,7 @@ pub fn compute_masked_arguments_to_multiply<F: PrimeField>(
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     use ark_ff::Zero;
     use std::time::Instant;
 
@@ -345,7 +345,7 @@ pub mod tests {
             trusted_party_keygen::<_, Fr>(&mut rng, threshold_signers, total_signers);
 
         let params = SetupParams::<Bls12_381>::generate_using_rng(&mut rng);
-        let mut accumulator = PositiveAccumulator::<Bls12_381>::initialize(&params);
+        let mut accumulator = PositiveAccumulator::<G1Affine>::initialize(&params);
         let mut state = InMemoryState::new();
         let secret_key = SecretKey(sk);
         let secret_key_shares = cfg_iter!(sk_shares)
@@ -549,7 +549,7 @@ pub mod tests {
             trusted_party_keygen::<_, Fr>(&mut rng, threshold_signers, total_signers);
 
         let params = SetupParams::<Bls12_381>::generate_using_rng(&mut rng);
-        let mut accumulator = PositiveAccumulator::<Bls12_381>::initialize(&params);
+        let mut accumulator = PositiveAccumulator::<G1Affine>::initialize(&params);
         let mut state = InMemoryState::new();
         let secret_key = SecretKey(sk);
         let secret_key_shares = cfg_iter!(sk_shares)

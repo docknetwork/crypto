@@ -37,8 +37,8 @@ pub enum VBAccumulatorError {
     #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
-    InvalidMembershipCorrectnessProof,
-    InvalidNonMembershipCorrectnessProof,
+    InvalidMembershipValidityProof,
+    InvalidNonMembershipValidityProof,
     IncorrectRandomizedWitness,
     InvalidWitness,
     ShortGroupSigError(ShortGroupSigError),

@@ -251,7 +251,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use crate::kb_positive_accumulator::adaptive_accumulator::tests::setup_kb_positive_accum;
-    use ark_bls12_381::{Fr, G1Affine};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -276,7 +276,7 @@ mod tests {
         for _ in 0..count {
             let elem = Fr::rand(&mut rng);
             let wit = accumulator
-                .add::<Blake2b512>(&elem, &sk, &params, &mut state)
+                .add::<Blake2b512, Bls12_381>(&elem, &sk, &params, &mut state)
                 .unwrap();
             members.push(elem);
             mem_witnesses.push(wit);

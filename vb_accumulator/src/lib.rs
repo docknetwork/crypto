@@ -65,6 +65,8 @@ pub mod proofs_cdh;
 pub mod proofs_keyed_verification;
 pub mod setup;
 pub mod setup_keyed_verification;
+#[cfg(test)]
+mod tests;
 pub mod threshold;
 pub mod universal;
 pub mod universal_init_constants;
@@ -84,7 +86,7 @@ pub mod prelude {
 
 #[cfg(test)]
 #[macro_use]
-pub mod tests {
+pub mod serialization_test {
     #[macro_export]
     macro_rules! test_serialization {
         ($obj_type:ty, $obj: expr) => {

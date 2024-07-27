@@ -684,7 +684,7 @@ start.elapsed()
     let accum_member_4 = msgs[accum_member_4_idx];
 
     let mem_4_wit = kb_pos_accumulator
-        .add::<Blake2b512>(
+        .add::<Blake2b512, Bls12_381>(
             &accum_member_4,
             &kb_pos_accum_sk,
             &kb_pos_accum_params,

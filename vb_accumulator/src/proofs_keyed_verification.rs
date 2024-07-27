@@ -21,6 +21,7 @@ use crate::{
     witness::{MembershipWitness, NonMembershipWitness},
 };
 use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::BTreeMap, fmt::Debug, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec,
@@ -35,7 +36,7 @@ use kvac::bbdt_2016::keyed_proof::{
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
-    partial::PartialSchnorrResponse,
+    partial::{PartialPokDiscreteLog, PartialSchnorrResponse},
     SchnorrCommitment,
 };
 use serde::{Deserialize, Serialize};
@@ -135,21 +136,21 @@ pub struct ProofOfInvalidityOfKeyedNonMembershipProof<G: AffineRepr>(
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct MembershipWitnessCorrectnessProof<G: AffineRepr> {
+pub struct MembershipWitnessValidityProof<G: AffineRepr> {
     pub wit_proof: PokDiscreteLog<G>,
-    pub sk_proof: PokDiscreteLog<G>,
+    pub sk_proof: PartialPokDiscreteLog<G>,
 }
 
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct NonMembershipWitnessCorrectnessProof<G: AffineRepr> {
+pub struct NonMembershipWitnessValidityProof<G: AffineRepr> {
     pub wit_proof: PokDiscreteLog<G>,
-    pub sk_proof: PokDiscreteLog<G>,
+    pub sk_proof: PartialPokDiscreteLog<G>,
 }
 
-impl<G: AffineRepr> MembershipWitnessCorrectnessProof<G> {
+impl<G: AffineRepr> MembershipWitnessValidityProof<G> {
     pub fn new<R: RngCore, D: Digest>(
         rng: &mut R,
         accumulator: &G,
@@ -173,7 +174,7 @@ impl<G: AffineRepr> MembershipWitnessCorrectnessProof<G> {
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         let wit_proof = wit_protocol.gen_proof(&challenge);
-        let sk_proof = sk_protocol.gen_proof(&challenge);
+        let sk_proof = sk_protocol.gen_partial_proof();
         Self {
             wit_proof,
             sk_proof,
@@ -188,9 +189,6 @@ impl<G: AffineRepr> MembershipWitnessCorrectnessProof<G> {
         public_key: &PublicKey<G>,
         params: &SetupParams<G>,
     ) -> Result<(), VBAccumulatorError> {
-        if self.wit_proof.response != self.sk_proof.response {
-            return Err(VBAccumulatorError::InvalidMembershipCorrectnessProof);
-        }
         let mut challenge_bytes = vec![];
         let y = Self::compute_y(accumulator, witness, member);
         self.wit_proof
@@ -201,10 +199,15 @@ impl<G: AffineRepr> MembershipWitnessCorrectnessProof<G> {
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         if !self.wit_proof.verify(&y, &witness.0, &challenge) {
-            return Err(VBAccumulatorError::InvalidMembershipCorrectnessProof);
+            return Err(VBAccumulatorError::InvalidMembershipValidityProof);
         }
-        if !self.sk_proof.verify(&public_key.0, &params.0, &challenge) {
-            return Err(VBAccumulatorError::InvalidMembershipCorrectnessProof);
+        if !self.sk_proof.verify(
+            &public_key.0,
+            &params.0,
+            &challenge,
+            &self.wit_proof.response,
+        ) {
+            return Err(VBAccumulatorError::InvalidMembershipValidityProof);
         }
         Ok(())
     }
@@ -214,7 +217,7 @@ impl<G: AffineRepr> MembershipWitnessCorrectnessProof<G> {
     }
 }
 
-impl<G: AffineRepr> NonMembershipWitnessCorrectnessProof<G> {
+impl<G: AffineRepr> NonMembershipWitnessValidityProof<G> {
     pub fn new<R: RngCore, D: Digest>(
         rng: &mut R,
         accumulator: &G,
@@ -238,7 +241,7 @@ impl<G: AffineRepr> NonMembershipWitnessCorrectnessProof<G> {
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         let wit_proof = wit_protocol.gen_proof(&challenge);
-        let sk_proof = sk_protocol.gen_proof(&challenge);
+        let sk_proof = sk_protocol.gen_partial_proof();
         Self {
             wit_proof,
             sk_proof,
@@ -253,8 +256,8 @@ impl<G: AffineRepr> NonMembershipWitnessCorrectnessProof<G> {
         public_key: &PublicKey<G>,
         params: &SetupParams<G>,
     ) -> Result<(), VBAccumulatorError> {
-        if self.wit_proof.response != self.sk_proof.response {
-            return Err(VBAccumulatorError::InvalidMembershipCorrectnessProof);
+        if witness.d.is_zero() {
+            return Err(VBAccumulatorError::InvalidMembershipValidityProof);
         }
         let mut challenge_bytes = vec![];
         let y = Self::compute_y(accumulator, witness, non_member, params);
@@ -266,10 +269,15 @@ impl<G: AffineRepr> NonMembershipWitnessCorrectnessProof<G> {
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
         if !self.wit_proof.verify(&y, &witness.C, &challenge) {
-            return Err(VBAccumulatorError::InvalidMembershipCorrectnessProof);
+            return Err(VBAccumulatorError::InvalidMembershipValidityProof);
         }
-        if !self.sk_proof.verify(&public_key.0, &params.0, &challenge) {
-            return Err(VBAccumulatorError::InvalidMembershipCorrectnessProof);
+        if !self.sk_proof.verify(
+            &public_key.0,
+            &params.0,
+            &challenge,
+            &self.wit_proof.response,
+        ) {
+            return Err(VBAccumulatorError::InvalidMembershipValidityProof);
         }
         Ok(())
     }
@@ -738,7 +746,7 @@ mod tests {
         positive::PositiveAccumulator,
         universal::UniversalAccumulator,
     };
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use ark_bls12_381::{Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -750,7 +758,7 @@ mod tests {
         SetupParams<G1Affine>,
         SecretKey<Fr>,
         PublicKey<G1Affine>,
-        PositiveAccumulator<Bls12_381>,
+        PositiveAccumulator<G1Affine>,
         InMemoryState<Fr>,
     ) {
         let params = SetupParams::<G1Affine>::new::<Blake2b512>(b"test");
@@ -770,7 +778,7 @@ mod tests {
         SetupParams<G1Affine>,
         SecretKey<Fr>,
         PublicKey<G1Affine>,
-        UniversalAccumulator<Bls12_381>,
+        UniversalAccumulator<G1Affine>,
         InMemoryInitialElements<Fr>,
         InMemoryState<Fr>,
     ) {
@@ -812,7 +820,7 @@ mod tests {
             let w = accumulator
                 .get_membership_witness(&elems[i], &secret_key, &state)
                 .unwrap();
-            let correctness_proof = MembershipWitnessCorrectnessProof::new::<StdRng, Blake2b512>(
+            let correctness_proof = MembershipWitnessValidityProof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 accumulator.value(),
                 &w,
@@ -944,7 +952,7 @@ mod tests {
             let w = accumulator
                 .get_non_membership_witness(&elem, &secret_key, &mut state, &params)
                 .unwrap();
-            let correctness_proof = NonMembershipWitnessCorrectnessProof::new::<StdRng, Blake2b512>(
+            let correctness_proof = NonMembershipWitnessValidityProof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 accumulator.value(),
                 &w,

@@ -24,21 +24,21 @@ use serde::{Deserialize, Serialize};
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct KBUniversalAccumulator<E: Pairing> {
+pub struct KBUniversalAccumulator<G: AffineRepr> {
     /// The accumulator accumulating all the members
-    pub mem: PositiveAccumulator<E>,
+    pub mem: PositiveAccumulator<G>,
     /// The accumulator accumulating all the non-members
-    pub non_mem: PositiveAccumulator<E>,
+    pub non_mem: PositiveAccumulator<G>,
 }
 
-impl<E: Pairing> KBUniversalAccumulator<E> {
+impl<G: AffineRepr> KBUniversalAccumulator<G> {
     /// Initialize a new accumulator. `domain` is the set of all possible accumulator members. Initialization includes adding
     /// the `domain` to the accumulator, accumulating all non-members
     pub fn initialize(
-        params_gen: impl AsRef<E::G1Affine>,
-        sk: &SecretKey<E::ScalarField>,
-        domain: Vec<E::ScalarField>,
-        non_mem_state: &mut dyn State<E::ScalarField>,
+        params_gen: impl AsRef<G>,
+        sk: &SecretKey<G::ScalarField>,
+        domain: Vec<G::ScalarField>,
+        non_mem_state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let mem = PositiveAccumulator::initialize(params_gen);
         let mut non_mem = mem.clone();
@@ -47,14 +47,14 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     }
 
     pub fn initialize_given_initialized_non_members_accumulator(
-        params_gen: impl AsRef<E::G1Affine>,
-        non_mem: PositiveAccumulator<E>,
+        params_gen: impl AsRef<G>,
+        non_mem: PositiveAccumulator<G>,
     ) -> Self {
         let mem = PositiveAccumulator::initialize(params_gen);
         Self { mem, non_mem }
     }
 
-    pub fn initialize_empty(params_gen: impl AsRef<E::G1Affine>) -> Self {
+    pub fn initialize_empty(params_gen: impl AsRef<G>) -> Self {
         let mem = PositiveAccumulator::initialize(params_gen);
         let non_mem = mem.clone();
         Self { mem, non_mem }
@@ -63,9 +63,9 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Add new elements to an already initialized accumulator that were not part of its `domain`.
     pub fn extend_domain(
         &self,
-        sk: &SecretKey<E::ScalarField>,
-        new_elements: Vec<E::ScalarField>,
-        non_mem_state: &mut dyn State<E::ScalarField>,
+        sk: &SecretKey<G::ScalarField>,
+        new_elements: Vec<G::ScalarField>,
+        non_mem_state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let mut new = self.clone();
         new.non_mem = new.non_mem.add_batch(new_elements, sk, non_mem_state)?;
@@ -75,10 +75,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Add an element to the accumulator updating both the internal accumulators.
     pub fn add(
         &self,
-        element: E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-        mem_state: &mut dyn State<E::ScalarField>,
-        non_mem_state: &mut dyn State<E::ScalarField>,
+        element: G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+        mem_state: &mut dyn State<G::ScalarField>,
+        non_mem_state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let mut new = self.clone();
         // Remove from non-membership accumulator
@@ -91,10 +91,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     /// Remove an element from the accumulator updating both the internal accumulators.
     pub fn remove(
         &self,
-        element: E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-        mem_state: &mut dyn State<E::ScalarField>,
-        non_mem_state: &mut dyn State<E::ScalarField>,
+        element: G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+        mem_state: &mut dyn State<G::ScalarField>,
+        non_mem_state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let mut new = self.clone();
         new.mem = new.mem.remove(&element, sk, mem_state)?;
@@ -104,10 +104,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn add_batch(
         &self,
-        elements: Vec<E::ScalarField>,
-        sk: &SecretKey<E::ScalarField>,
-        mem_state: &mut dyn State<E::ScalarField>,
-        non_mem_state: &mut dyn State<E::ScalarField>,
+        elements: Vec<G::ScalarField>,
+        sk: &SecretKey<G::ScalarField>,
+        mem_state: &mut dyn State<G::ScalarField>,
+        non_mem_state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         for element in &elements {
             self.non_mem.check_before_remove(element, non_mem_state)?;
@@ -126,10 +126,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn remove_batch(
         &self,
-        elements: Vec<E::ScalarField>,
-        sk: &SecretKey<E::ScalarField>,
-        mem_state: &mut dyn State<E::ScalarField>,
-        non_mem_state: &mut dyn State<E::ScalarField>,
+        elements: Vec<G::ScalarField>,
+        sk: &SecretKey<G::ScalarField>,
+        mem_state: &mut dyn State<G::ScalarField>,
+        non_mem_state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         for element in &elements {
             self.mem.check_before_remove(element, mem_state)?;
@@ -148,11 +148,11 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn batch_updates(
         &self,
-        additions: Vec<E::ScalarField>,
-        removals: Vec<E::ScalarField>,
-        sk: &SecretKey<E::ScalarField>,
-        mem_state: &mut dyn State<E::ScalarField>,
-        non_mem_state: &mut dyn State<E::ScalarField>,
+        additions: Vec<G::ScalarField>,
+        removals: Vec<G::ScalarField>,
+        sk: &SecretKey<G::ScalarField>,
+        mem_state: &mut dyn State<G::ScalarField>,
+        non_mem_state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         for element in &additions {
             self.mem.check_before_add(element, mem_state)?;
@@ -182,10 +182,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn get_membership_witness(
         &self,
-        member: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-        mem_state: &dyn State<E::ScalarField>,
-    ) -> Result<KBUniversalAccumulatorMembershipWitness<E::G1Affine>, VBAccumulatorError> {
+        member: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+        mem_state: &dyn State<G::ScalarField>,
+    ) -> Result<KBUniversalAccumulatorMembershipWitness<G>, VBAccumulatorError> {
         self.mem
             .get_membership_witness(member, sk, mem_state)
             .map(|w| w.into())
@@ -193,10 +193,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn get_membership_witnesses_for_batch(
         &self,
-        members: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-        mem_state: &dyn State<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorMembershipWitness<E::G1Affine>>, VBAccumulatorError> {
+        members: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+        mem_state: &dyn State<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorMembershipWitness<G>>, VBAccumulatorError> {
         self.mem
             .get_membership_witnesses_for_batch(members, sk, mem_state)
             .map(|ws| ws.into_iter().map(|w| w.into()).collect())
@@ -204,10 +204,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn get_non_membership_witness(
         &self,
-        non_member: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-        non_mem_state: &dyn State<E::ScalarField>,
-    ) -> Result<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>, VBAccumulatorError> {
+        non_member: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+        non_mem_state: &dyn State<G::ScalarField>,
+    ) -> Result<KBUniversalAccumulatorNonMembershipWitness<G>, VBAccumulatorError> {
         self.non_mem
             .get_membership_witness(non_member, sk, non_mem_state)
             .map(|w| w.into())
@@ -215,30 +215,29 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn get_non_membership_witnesses_for_batch(
         &self,
-        non_members: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-        non_mem_state: &dyn State<E::ScalarField>,
-    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>>, VBAccumulatorError>
-    {
+        non_members: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+        non_mem_state: &dyn State<G::ScalarField>,
+    ) -> Result<Vec<KBUniversalAccumulatorNonMembershipWitness<G>>, VBAccumulatorError> {
         self.non_mem
             .get_membership_witnesses_for_batch(non_members, sk, non_mem_state)
             .map(|ws| ws.into_iter().map(|w| w.into()).collect())
     }
 
-    pub fn verify_membership(
+    pub fn verify_membership<E: Pairing<G1Affine = G, ScalarField = G::ScalarField>>(
         &self,
-        member: &E::ScalarField,
-        witness: &KBUniversalAccumulatorMembershipWitness<E::G1Affine>,
+        member: &G::ScalarField,
+        witness: &KBUniversalAccumulatorMembershipWitness<G>,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
     ) -> bool {
         self.mem.verify_membership(member, &witness.0, pk, params)
     }
 
-    pub fn verify_non_membership(
+    pub fn verify_non_membership<E: Pairing<G1Affine = G, ScalarField = G::ScalarField>>(
         &self,
-        non_member: &E::ScalarField,
-        witness: &KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>,
+        non_member: &G::ScalarField,
+        witness: &KBUniversalAccumulatorNonMembershipWitness<G>,
         pk: &PublicKey<E>,
         params: &SetupParams<E>,
     ) -> bool {
@@ -246,22 +245,19 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
             .verify_membership(non_member, &witness.0, pk, params)
     }
 
-    pub fn mem_value(&self) -> &E::G1Affine {
+    pub fn mem_value(&self) -> &G {
         self.mem.value()
     }
 
-    pub fn non_mem_value(&self) -> &E::G1Affine {
+    pub fn non_mem_value(&self) -> &G {
         self.non_mem.value()
     }
 
-    pub fn value(&self) -> (&E::G1Affine, &E::G1Affine) {
+    pub fn value(&self) -> (&G, &G) {
         (self.mem.value(), self.non_mem.value())
     }
 
-    pub fn from_accumulated(
-        mem_accumulated: E::G1Affine,
-        non_mem_accumulated: E::G1Affine,
-    ) -> Self {
+    pub fn from_accumulated(mem_accumulated: G, non_mem_accumulated: G) -> Self {
         Self {
             mem: PositiveAccumulator::from_accumulated(mem_accumulated),
             non_mem: PositiveAccumulator::from_accumulated(non_mem_accumulated),
@@ -270,9 +266,9 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn compute_extended(
         &self,
-        new_elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::G1Affine, E::G1Affine) {
+        new_elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G, G) {
         let mem = self.mem.value().clone();
         let non_mem = self.non_mem.compute_new_post_add_batch(new_elements, sk);
         (mem, non_mem)
@@ -280,9 +276,9 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn compute_new_post_add(
         &self,
-        element: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::G1Affine, E::G1Affine) {
+        element: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G, G) {
         // element + sk
         let y_plus_alpha = *element + sk.0;
         // 1/(element + sk)
@@ -302,9 +298,9 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn compute_new_post_remove(
         &self,
-        element: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::G1Affine, E::G1Affine) {
+        element: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G, G) {
         // element + sk
         let y_plus_alpha = *element + sk.0;
         // 1/(element + sk)
@@ -324,9 +320,9 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn compute_new_post_add_batch(
         &self,
-        elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::G1Affine, E::G1Affine) {
+        elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G, G) {
         let (update, update_inv) = Self::compute_update_for_batch(elements, sk);
         let mem = self
             .mem
@@ -343,9 +339,9 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn compute_new_post_remove_batch(
         &self,
-        elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::G1Affine, E::G1Affine) {
+        elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G, G) {
         let (update, update_inv) = Self::compute_update_for_batch(elements, sk);
         let mem = self
             .mem
@@ -362,10 +358,10 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn compute_new_post_batch_updates(
         &self,
-        additions: &[E::ScalarField],
-        removals: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::G1Affine, E::G1Affine) {
+        additions: &[G::ScalarField],
+        removals: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G, G) {
         let (update_mem, update_non_mem) =
             Self::compute_update_for_batches(additions, removals, sk);
         let mem = self
@@ -383,25 +379,25 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn compute_membership_witness(
         &self,
-        member: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-    ) -> KBUniversalAccumulatorMembershipWitness<E::G1Affine> {
+        member: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+    ) -> KBUniversalAccumulatorMembershipWitness<G> {
         self.mem.compute_membership_witness(member, sk).into()
     }
 
     pub fn compute_non_membership_witness(
         &self,
-        member: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-    ) -> KBUniversalAccumulatorNonMembershipWitness<E::G1Affine> {
+        member: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+    ) -> KBUniversalAccumulatorNonMembershipWitness<G> {
         self.non_mem.compute_membership_witness(member, sk).into()
     }
 
     pub fn compute_membership_witnesses_for_batch(
         &self,
-        members: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Vec<KBUniversalAccumulatorMembershipWitness<E::G1Affine>> {
+        members: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Vec<KBUniversalAccumulatorMembershipWitness<G>> {
         self.mem
             .compute_membership_witnesses_for_batch(members, sk)
             .into_iter()
@@ -411,9 +407,9 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
 
     pub fn compute_non_membership_witnesses_for_batch(
         &self,
-        members: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> Vec<KBUniversalAccumulatorNonMembershipWitness<E::G1Affine>> {
+        members: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> Vec<KBUniversalAccumulatorNonMembershipWitness<G>> {
         self.non_mem
             .compute_membership_witnesses_for_batch(members, sk)
             .into_iter()
@@ -422,28 +418,28 @@ impl<E: Pairing> KBUniversalAccumulator<E> {
     }
 
     fn compute_update_for_batch(
-        elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::ScalarField, E::ScalarField) {
-        let update = Poly_d::<E::ScalarField>::eval_direct(&elements, &-sk.0);
+        elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G::ScalarField, G::ScalarField) {
+        let update = Poly_d::<G::ScalarField>::eval_direct(&elements, &-sk.0);
         let update_inv = update.inverse().unwrap();
         (update, update_inv)
     }
 
     fn compute_update_for_batches(
-        additions: &[E::ScalarField],
-        removals: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-    ) -> (E::ScalarField, E::ScalarField) {
+        additions: &[G::ScalarField],
+        removals: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+    ) -> (G::ScalarField, G::ScalarField) {
         let update_add = if !additions.is_empty() {
-            Poly_d::<E::ScalarField>::eval_direct(&additions, &-sk.0)
+            Poly_d::<G::ScalarField>::eval_direct(&additions, &-sk.0)
         } else {
-            E::ScalarField::one()
+            G::ScalarField::one()
         };
         let update_rem = if !removals.is_empty() {
-            Poly_d::<E::ScalarField>::eval_direct(&removals, &-sk.0)
+            Poly_d::<G::ScalarField>::eval_direct(&removals, &-sk.0)
         } else {
-            E::ScalarField::one()
+            G::ScalarField::one()
         };
         let update_mem = update_add * update_rem.inverse().unwrap();
         let update_non_mem = update_mem.inverse().unwrap();
@@ -456,7 +452,7 @@ pub mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
-    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -470,7 +466,7 @@ pub mod tests {
     ) -> (
         SetupParams<Bls12_381>,
         Keypair<Bls12_381>,
-        KBUniversalAccumulator<Bls12_381>,
+        KBUniversalAccumulator<G1Affine>,
         Vec<Fr>,
         InMemoryState<Fr>,
         InMemoryState<Fr>,
@@ -507,7 +503,7 @@ pub mod tests {
         let (params, keypair, mut accumulator, domain, mut mem_state, mut non_mem_state) =
             setup_kb_universal_accum(&mut rng, max);
 
-        let accumulator_ = KBUniversalAccumulator::<Bls12_381>::initialize_empty(&params);
+        let accumulator_ = KBUniversalAccumulator::<G1Affine>::initialize_empty(&params);
         assert_eq!(*accumulator_.mem_value(), *accumulator_.non_mem_value());
         let (mem, non_mem) = accumulator_.compute_extended(&domain, &keypair.secret_key);
         assert_eq!(*accumulator.mem_value(), mem);
@@ -610,11 +606,11 @@ pub mod tests {
             setup_kb_universal_accum(&mut rng, max);
 
         // Create more accumulators to compare. Same elements will be added and removed from them as accumulator_1
-        let mut accumulator_2: KBUniversalAccumulator<Bls12_381> = accumulator_1.clone();
+        let mut accumulator_2: KBUniversalAccumulator<G1Affine> = accumulator_1.clone();
         let mut state_2_mem = mem_state.clone();
         let mut state_2_non_mem = non_mem_state.clone();
 
-        let mut accumulator_3: KBUniversalAccumulator<Bls12_381> = accumulator_1.clone();
+        let mut accumulator_3: KBUniversalAccumulator<G1Affine> = accumulator_1.clone();
         let mut state_3_mem = mem_state.clone();
         let mut state_3_non_mem = non_mem_state.clone();
 

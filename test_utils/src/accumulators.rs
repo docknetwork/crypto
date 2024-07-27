@@ -1,4 +1,4 @@
-use ark_bls12_381::{Bls12_381, Fr};
+use ark_bls12_381::{Bls12_381, Fr, G1Affine};
 use ark_std::{rand::rngs::StdRng, UniformRand};
 use blake2::Blake2b512;
 use std::{collections::HashSet, hash::Hash};
@@ -21,7 +21,7 @@ pub fn setup_positive_accum(
 ) -> (
     SetupParams<Bls12_381>,
     Keypair<Bls12_381>,
-    PositiveAccumulator<Bls12_381>,
+    PositiveAccumulator<G1Affine>,
     InMemoryState<Fr>,
 ) {
     let params = SetupParams::<Bls12_381>::generate_using_rng(rng);
@@ -38,7 +38,7 @@ pub fn setup_universal_accum(
 ) -> (
     SetupParams<Bls12_381>,
     Keypair<Bls12_381>,
-    UniversalAccumulator<Bls12_381>,
+    UniversalAccumulator<G1Affine>,
     InMemoryInitialElements<Fr>,
     InMemoryState<Fr>,
 ) {
@@ -63,7 +63,7 @@ pub fn setup_kb_positive_accum(
     vb_accumulator::kb_positive_accumulator::setup::SetupParams<Bls12_381>,
     SecretKey<Fr>,
     PublicKey<Bls12_381>,
-    KBPositiveAccumulator<Bls12_381>,
+    KBPositiveAccumulator<G1Affine>,
     InMemoryState<Fr>,
 ) {
     let params = vb_accumulator::kb_positive_accumulator::setup::SetupParams::<Bls12_381>::new::<
@@ -82,7 +82,7 @@ pub fn setup_kb_universal_accum(
 ) -> (
     SetupParams<Bls12_381>,
     Keypair<Bls12_381>,
-    KBUniversalAccumulator<Bls12_381>,
+    KBUniversalAccumulator<G1Affine>,
     Vec<Fr>,
     InMemoryState<Fr>,
     InMemoryState<Fr>,
@@ -98,7 +98,7 @@ pub fn setup_kb_universal_accum_given_domain(
 ) -> (
     SetupParams<Bls12_381>,
     Keypair<Bls12_381>,
-    KBUniversalAccumulator<Bls12_381>,
+    KBUniversalAccumulator<G1Affine>,
     InMemoryState<Fr>,
     InMemoryState<Fr>,
 ) {

@@ -1,5 +1,7 @@
 use crate::{
-    bbs_sharp::setup::{MACParams, SecretKey, SignerPublicKey, UserPublicKey},
+    bbs_sharp::setup::{
+        DesignatedVerifierPoKOfPublicKey, MACParams, SecretKey, SignerPublicKey, UserPublicKey,
+    },
     error::KVACError,
 };
 use ark_ec::{AffineRepr, CurveGroup};
@@ -51,6 +53,8 @@ pub struct ProofOfValidityOfMAC<G: AffineRepr> {
     pub sc_B: PokDiscreteLog<G>,
     /// For proving knowledge of secret key, i.e. `pk = g_tilde * sk`
     pub sc_pk: PokDiscreteLog<G>,
+    /// If set, then its a designated verifier proof which only the user can verify
+    pub designated_verifier_pk_proof: Option<DesignatedVerifierPoKOfPublicKey<G>>,
 }
 
 impl<G: AffineRepr> MAC<G> {
@@ -111,12 +115,14 @@ impl<G: AffineRepr> MAC<G> {
 }
 
 impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
+    /// If `user_public_key` is provided, then create a designated verifier proof which only the user can verify
     pub fn new<R: RngCore, D: Digest>(
         rng: &mut R,
         mac: &MAC<G>,
         secret_key: &SecretKey<G::ScalarField>,
         public_key: &SignerPublicKey<G>,
         params: impl AsRef<MACParams<G>>,
+        user_public_key: Option<&UserPublicKey<G>>,
     ) -> Self {
         let witness = secret_key.0;
         let blinding = G::ScalarField::rand(rng);
@@ -130,10 +136,17 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
             .unwrap();
         p2.challenge_contribution(&params.g_tilde, &public_key.0, &mut challenge_bytes)
             .unwrap();
-        let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
+        // Adjust challenge if creating designated verifier proof
+        let mut challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
+        let designated_verifier_pk_proof =
+            user_public_key.map(|pk| DesignatedVerifierPoKOfPublicKey::new(rng, &pk.0, &params.g));
+        if let Some(dvp) = &designated_verifier_pk_proof {
+            challenge = challenge - dvp.challenge;
+        }
         Self {
             sc_B: p1.gen_proof(&challenge),
             sc_pk: p2.gen_proof(&challenge),
+            designated_verifier_pk_proof,
         }
     }
 
@@ -160,7 +173,12 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
         self.sc_pk
             .challenge_contribution(&params.g_tilde, &signer_public_key.0, &mut challenge_bytes)
             .unwrap();
-        let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
+        let mut challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
+        // Adjust challenge if received designated verifier proof
+        if let Some(dvp) = &self.designated_verifier_pk_proof {
+            dvp.verify(&user_public_key.0, &params.g)?;
+            challenge = challenge - dvp.challenge
+        }
         if !self.sc_B.verify(&B, &mac.A, &challenge) {
             return Err(KVACError::InvalidMACProof);
         }
@@ -197,8 +215,44 @@ mod tests {
 
         // Signer sends the following 2 items to the user
         let mac = MAC::new(&mut rng, &messages, &user_pk, &signer_sk, &params).unwrap();
-        let proof =
-            ProofOfValidityOfMAC::new::<_, Sha256>(&mut rng, &mac, &signer_sk, &signer_pk, &params);
+        let proof = ProofOfValidityOfMAC::new::<_, Sha256>(
+            &mut rng, &mac, &signer_sk, &signer_pk, &params, None,
+        );
+        assert!(proof.designated_verifier_pk_proof.is_none());
+
+        // User verifies both
+        mac.verify(&messages, &user_pk, &signer_sk, &params)
+            .unwrap();
+        proof
+            .verify::<Sha256>(&mac, &messages, &user_pk, &signer_pk, params)
+            .unwrap();
+    }
+
+    #[test]
+    fn mac_verification_with_designated_verifier_proof_of_validity() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        let message_count = 10;
+        let messages = (0..message_count)
+            .map(|_| Fr::rand(&mut rng))
+            .collect::<Vec<_>>();
+        let params = MACParams::<Affine>::new::<Sha256>(b"test", message_count);
+        let signer_sk = SecretKey::new(&mut rng);
+        let signer_pk = SignerPublicKey::new_from_params(&signer_sk, &params);
+
+        let user_sk = SecretKey::new(&mut rng);
+        let user_pk = UserPublicKey::new_from_params(&user_sk, &params);
+
+        // Signer sends the following 2 items to the user
+        let mac = MAC::new(&mut rng, &messages, &user_pk, &signer_sk, &params).unwrap();
+        let proof = ProofOfValidityOfMAC::new::<_, Sha256>(
+            &mut rng,
+            &mac,
+            &signer_sk,
+            &signer_pk,
+            &params,
+            Some(&user_pk),
+        );
+        assert!(proof.designated_verifier_pk_proof.is_some());
 
         // User verifies both
         mac.verify(&messages, &user_pk, &signer_sk, &params)

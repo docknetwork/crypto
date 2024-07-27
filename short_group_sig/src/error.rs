@@ -11,7 +11,7 @@ pub enum ShortGroupSigError {
     #[serde(with = "ArkSerializationError")]
     Serialization(SerializationError),
     InvalidProof,
-    InvalidMembershipCorrectnessProof,
+    InvalidMembershipValidityProof,
     MissingResponsesNeededForPartialSchnorrProofVerification,
     NeedEitherPartialOrCompleteSchnorrResponse,
     NeedPartialSchnorrResponse,

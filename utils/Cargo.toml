@@ -33,7 +33,7 @@ aead = {version = "0.5.2", default-features = false, features = [ "alloc" ]}
 blake2.workspace = true
 ark-bls12-381.workspace = true
 chacha20poly1305 = {version = "0.10.1", default-features = false}
-ark-secp256r1 = { version = "^0.4.0", default-features = false }
+ark-secp256r1.workspace = true
 
 [features]
 default = ["parallel"]

@@ -143,14 +143,13 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use crate::{
-        kb_positive_accumulator::adaptive_accumulator::{
-            tests::setup_kb_positive_accum, KBPositiveAccumulator,
+        kb_positive_accumulator::{
+            adaptive_accumulator::{tests::setup_kb_positive_accum, KBPositiveAccumulator},
+            setup::{PublicKey, SetupParams},
         },
         persistence::State,
     };
-    use ark_bls12_381::{Bls12_381, Fr};
-
-    use crate::kb_positive_accumulator::setup::{PublicKey, SetupParams};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     use ark_std::{
         cfg_iter,
         rand::{rngs::StdRng, SeedableRng},
@@ -173,7 +172,7 @@ mod tests {
         for _ in 0..count {
             let elem = Fr::rand(&mut rng);
             let wit = accumulator
-                .add::<Blake2b512>(&elem, &sk, &params, &mut state)
+                .add::<Blake2b512, Bls12_381>(&elem, &sk, &params, &mut state)
                 .unwrap();
             accumulator
                 .verify_membership(&elem, &wit, &pk, &params)
@@ -186,7 +185,7 @@ mod tests {
         let mut i = count - 1;
         loop {
             let new_accumulator = accumulator
-                .remove::<Blake2b512>(&members[i], &sk, &mut state)
+                .remove::<Blake2b512, Bls12_381>(&members[i], &sk, &mut state)
                 .unwrap();
             let mut j = i;
             while j > 0 {
@@ -240,10 +239,15 @@ mod tests {
 
         // Add elements in `additions_1`, compute witnesses for them, then add `additions_2`
         let wits = accumulator
-            .add_batch::<Blake2b512>(additions_1.clone(), &sk, &params, &mut state)
+            .add_batch::<Blake2b512, Bls12_381>(additions_1.clone(), &sk, &params, &mut state)
             .unwrap();
         let witnesses_1 = accumulator
-            .get_witnesses_for_batch::<Blake2b512>(&additions_1, &sk, &params, &mut state)
+            .get_witnesses_for_batch::<Blake2b512, Bls12_381>(
+                &additions_1,
+                &sk,
+                &params,
+                &mut state,
+            )
             .unwrap();
         assert_eq!(wits, witnesses_1);
         for i in 0..witnesses_1.len() {
@@ -253,7 +257,7 @@ mod tests {
         }
 
         let witnesses_2 = accumulator
-            .add_batch::<Blake2b512>(additions_2.clone(), &sk, &params, &mut state)
+            .add_batch::<Blake2b512, Bls12_381>(additions_2.clone(), &sk, &params, &mut state)
             .unwrap();
         for i in 0..witnesses_2.len() {
             accumulator
@@ -275,7 +279,7 @@ mod tests {
 
         // Remove elements in `removals` and update witnesses for `additions_2`
         let accumulator_2 = accumulator
-            .remove_batch::<Blake2b512>(&removals, &sk, &mut state)
+            .remove_batch::<Blake2b512, Bls12_381>(&removals, &sk, &mut state)
             .unwrap();
         for i in 0..witnesses_1.len() {
             assert!(accumulator_2
@@ -317,7 +321,7 @@ mod tests {
         }
 
         let witnesses_3 = accumulator_2
-            .get_witnesses_for_batch::<Blake2b512>(&remaining, &sk, &params, &mut state)
+            .get_witnesses_for_batch::<Blake2b512, Bls12_381>(&remaining, &sk, &params, &mut state)
             .unwrap();
         for i in 0..witnesses_3.len() {
             accumulator_2
@@ -330,7 +334,7 @@ mod tests {
 
         /// Update an accumulator with a batch of updates, update existing witnesses of given elements and check that new witnesses are valid
         fn check_batch_witness_update_using_secret_key(
-            current_accm: &KBPositiveAccumulator<Bls12_381>,
+            current_accm: &KBPositiveAccumulator<G1Affine>,
             additions: Vec<Fr>,
             removals: &[Fr],
             elements: &[Fr],
@@ -340,11 +344,17 @@ mod tests {
             pk: &PublicKey<Bls12_381>,
             params: &SetupParams<Bls12_381>,
         ) -> (
-            KBPositiveAccumulator<Bls12_381>,
+            KBPositiveAccumulator<G1Affine>,
             Vec<KBPositiveAccumulatorWitness<Bls12_381>>,
         ) {
             let (accumulator_new, _wits) = current_accm
-                .batch_updates::<Blake2b512>(additions.clone(), removals, sk, params, state)
+                .batch_updates::<Blake2b512, Bls12_381>(
+                    additions.clone(),
+                    removals,
+                    sk,
+                    params,
+                    state,
+                )
                 .unwrap();
             if !removals.is_empty() {
                 for i in 0..old_witnesses.len() {
@@ -356,7 +366,9 @@ mod tests {
 
             let removed_members = cfg_into_iter!(removals)
                 .map(|r| {
-                    KBPositiveAccumulator::<Bls12_381>::accumulator_member::<Blake2b512>(r, sk)
+                    KBPositiveAccumulator::<G1Affine>::accumulator_member::<Blake2b512, Bls12_381>(
+                        r, sk,
+                    )
                 })
                 .collect::<Vec<_>>();
             let new_witnesses =
@@ -370,7 +382,7 @@ mod tests {
             assert_eq!(new_witnesses.len(), old_witnesses.len());
             for i in 0..new_witnesses.len() {
                 accumulator_new
-                    .verify_membership(&elements[i], &new_witnesses[i], pk, params)
+                    .verify_membership::<Bls12_381>(&elements[i], &new_witnesses[i], pk, params)
                     .unwrap();
             }
             (accumulator_new, new_witnesses)
@@ -388,7 +400,7 @@ mod tests {
             &params,
         );
         let verification_accumulator_4 =
-            KBPositiveAccumulator::<Bls12_381>::from_accumulated(*accumulator_4.value());
+            KBPositiveAccumulator::<G1Affine>::from_accumulated(*accumulator_4.value());
 
         let (accumulator_4_new, witnesses_6) = check_batch_witness_update_using_secret_key(
             &accumulator_2_cloned,
@@ -402,7 +414,7 @@ mod tests {
             &params,
         );
         let _verification_accumulator_4_new =
-            KBPositiveAccumulator::<Bls12_381>::from_accumulated(*accumulator_4_new.value());
+            KBPositiveAccumulator::<G1Affine>::from_accumulated(*accumulator_4_new.value());
 
         let (_accumulator_5_new, _) = check_batch_witness_update_using_secret_key(
             &accumulator_4_new,
@@ -424,7 +436,11 @@ mod tests {
         );
 
         let removed_members = cfg_into_iter!(additions_2.as_slice())
-            .map(|r| KBPositiveAccumulator::<Bls12_381>::accumulator_member::<Blake2b512>(r, &sk))
+            .map(|r| {
+                KBPositiveAccumulator::<G1Affine>::accumulator_member::<Blake2b512, Bls12_381>(
+                    r, &sk,
+                )
+            })
             .collect::<Vec<_>>();
 
         for k in 0..additions_2.len() {
@@ -457,13 +473,13 @@ mod tests {
         for _ in 0..10 {
             let elem = Fr::rand(&mut rng);
             accumulator
-                .add::<Blake2b512>(&elem, &sk, &params, &mut state)
+                .add::<Blake2b512, Bls12_381>(&elem, &sk, &params, &mut state)
                 .unwrap();
             members.push(elem)
         }
 
         let witnesses = accumulator
-            .get_witnesses_for_batch::<Blake2b512>(&members, &sk, &params, &mut state)
+            .get_witnesses_for_batch::<Blake2b512, Bls12_381>(&members, &sk, &params, &mut state)
             .unwrap();
         for i in 0..10 {
             accumulator
@@ -479,28 +495,40 @@ mod tests {
             .map(|i| additions_1[i])
             .collect();
         let removed_members_1 = cfg_iter!(removals_1)
-            .map(|r| KBPositiveAccumulator::<Bls12_381>::accumulator_member::<Blake2b512>(r, &sk))
+            .map(|r| {
+                KBPositiveAccumulator::<G1Affine>::accumulator_member::<Blake2b512, Bls12_381>(
+                    r, &sk,
+                )
+            })
             .collect::<Vec<_>>();
         let removals_2: Vec<Fr> = vec![0, 1, 6, 9]
             .into_iter()
             .map(|i| additions_2[i])
             .collect();
         let removed_members_2 = cfg_iter!(removals_2)
-            .map(|r| KBPositiveAccumulator::<Bls12_381>::accumulator_member::<Blake2b512>(r, &sk))
+            .map(|r| {
+                KBPositiveAccumulator::<G1Affine>::accumulator_member::<Blake2b512, Bls12_381>(
+                    r, &sk,
+                )
+            })
             .collect::<Vec<_>>();
         let removals_3: Vec<Fr> = vec![0, 1, 6, 9]
             .into_iter()
             .map(|i| additions_3[i])
             .collect();
         let removed_members_3 = cfg_iter!(removals_3)
-            .map(|r| KBPositiveAccumulator::<Bls12_381>::accumulator_member::<Blake2b512>(r, &sk))
+            .map(|r| {
+                KBPositiveAccumulator::<G1Affine>::accumulator_member::<Blake2b512, Bls12_381>(
+                    r, &sk,
+                )
+            })
             .collect::<Vec<_>>();
 
         accumulator
-            .add_batch::<Blake2b512>(additions_1.clone(), &sk, &params, &mut state)
+            .add_batch::<Blake2b512, Bls12_381>(additions_1.clone(), &sk, &params, &mut state)
             .unwrap();
         let accumulator_1 = accumulator
-            .remove_batch::<Blake2b512>(&removals_1, &sk, &mut state)
+            .remove_batch::<Blake2b512, Bls12_381>(&removals_1, &sk, &mut state)
             .unwrap();
         for i in 0..witnesses.len() {
             assert!(accumulator_1
@@ -526,10 +554,10 @@ mod tests {
         }
 
         accumulator_1
-            .add_batch::<Blake2b512>(additions_2.clone(), &sk, &params, &mut state)
+            .add_batch::<Blake2b512, Bls12_381>(additions_2.clone(), &sk, &params, &mut state)
             .unwrap();
         let accumulator_2 = accumulator_1
-            .remove_batch::<Blake2b512>(&removals_2, &sk, &mut state)
+            .remove_batch::<Blake2b512, Bls12_381>(&removals_2, &sk, &mut state)
             .unwrap();
         for i in 0..witnesses.len() {
             assert!(accumulator_2
@@ -555,10 +583,10 @@ mod tests {
         }
 
         accumulator_2
-            .add_batch::<Blake2b512>(additions_3.clone(), &sk, &params, &mut state)
+            .add_batch::<Blake2b512, Bls12_381>(additions_3.clone(), &sk, &params, &mut state)
             .unwrap();
         let accumulator_3 = accumulator_2
-            .remove_batch::<Blake2b512>(&removals_3, &sk, &mut state)
+            .remove_batch::<Blake2b512, Bls12_381>(&removals_3, &sk, &mut state)
             .unwrap();
         for i in 0..witnesses.len() {
             assert!(accumulator_3
@@ -596,7 +624,7 @@ mod tests {
         let (params, sk, pk, mut accumulator, mut state) = setup_kb_positive_accum(&mut rng);
 
         accumulator
-            .add_batch::<Blake2b512>(initial_additions, &sk, &params, &mut state)
+            .add_batch::<Blake2b512, Bls12_381>(initial_additions, &sk, &params, &mut state)
             .unwrap();
 
         let mut omegas = vec![];
@@ -604,7 +632,7 @@ mod tests {
 
         // Witness that will be updated with multiple batches
         let wit = accumulator
-            .get_witness::<Blake2b512>(member, &sk, &params, &mut state)
+            .get_witness::<Blake2b512, Bls12_381>(member, &sk, &params, &mut state)
             .unwrap();
 
         // This witness is updated with only 1 batch in each iteration of the loop below
@@ -617,7 +645,7 @@ mod tests {
                 &sk,
             );
             let new = accumulator
-                .batch_updates::<Blake2b512>(
+                .batch_updates::<Blake2b512, Bls12_381>(
                     additions[i].clone(),
                     &removals[i],
                     &sk,
@@ -628,7 +656,9 @@ mod tests {
             accumulator = new.0;
             let removed = cfg_into_iter!(removals[i].as_slice())
                 .map(|r| {
-                    KBPositiveAccumulator::<Bls12_381>::accumulator_member::<Blake2b512>(r, &sk)
+                    KBPositiveAccumulator::<G1Affine>::accumulator_member::<Blake2b512, Bls12_381>(
+                        r, &sk,
+                    )
                 })
                 .collect::<Vec<_>>();
             wit_temp = wit_temp
@@ -716,11 +746,16 @@ mod tests {
         let elements: Vec<Fr> = (0..12).map(|_| Fr::rand(&mut rng)).collect();
 
         accumulator
-            .add_batch::<Blake2b512>(vec![e0, elements[0], elements[1]], &sk, &params, &mut state)
+            .add_batch::<Blake2b512, Bls12_381>(
+                vec![e0, elements[0], elements[1]],
+                &sk,
+                &params,
+                &mut state,
+            )
             .unwrap();
 
         let wit = accumulator
-            .get_witness::<Blake2b512>(&e0, &sk, &params, &mut state)
+            .get_witness::<Blake2b512, Bls12_381>(&e0, &sk, &params, &mut state)
             .unwrap();
 
         let mut wit_temp = wit.clone();
@@ -735,7 +770,7 @@ mod tests {
             removed_members.push(
                 cfg_into_iter!(removals.last().unwrap())
                     .map(|r| {
-                        KBPositiveAccumulator::<Bls12_381>::accumulator_member::<Blake2b512>(r, &sk)
+                        KBPositiveAccumulator::<G1Affine>::accumulator_member::<Blake2b512, Bls12_381>(r, &sk)
                     })
                     .collect::<Vec<_>>(),
             );
@@ -746,7 +781,7 @@ mod tests {
             );
             omegas.push(omega);
             let new = accumulator
-                .batch_updates::<Blake2b512>(
+                .batch_updates::<Blake2b512, Bls12_381>(
                     additions.last().unwrap().clone(),
                     removals.last().unwrap(),
                     &sk,

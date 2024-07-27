@@ -2,7 +2,7 @@ use crate::error::KVACError;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{rand::RngCore, vec::Vec};
+use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::{
     affine_group_element_from_byte_slices, concat_slices,
@@ -63,6 +63,22 @@ pub struct UserPublicKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct SignerPublicKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+
+/// Designated verifier proof of knowledge of a public key.
+#[serde_as]
+#[derive(
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct DesignatedVerifierPoKOfPublicKey<G: AffineRepr> {
+    /// The commitment to randomness
+    #[serde_as(as = "ArkObjectBytes")]
+    pub t: G,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub challenge: G::ScalarField,
+    #[serde_as(as = "ArkObjectBytes")]
+    pub response: G::ScalarField,
+}
 
 impl<G: AffineRepr> MACParams<G> {
     pub fn new<D: Digest>(label: &[u8], message_count: u32) -> Self {
@@ -151,8 +167,17 @@ impl<G: AffineRepr> UserPublicKey<G> {
     }
 
     /// Return `pk + g * blinding`
-    pub fn get_blinded<'a>(&self, blinding: &G::ScalarField, g: impl Into<&'a G>) -> Self {
+    pub fn get_blinded_for_schnorr_sig<'a>(
+        &self,
+        blinding: &G::ScalarField,
+        g: impl Into<&'a G>,
+    ) -> Self {
         Self((g.into().mul_bigint(blinding.into_bigint()) + self.0).into_affine())
+    }
+
+    /// Return `pk * blinding`
+    pub fn get_blinded_for_ecdsa(&self, blinding: &G::ScalarField) -> Self {
+        Self(self.0.mul_bigint(blinding.into_bigint()).into_affine())
     }
 }
 
@@ -163,6 +188,38 @@ impl<G: AffineRepr> SignerPublicKey<G> {
 
     pub fn new_from_params(sk: &SecretKey<G::ScalarField>, params: &MACParams<G>) -> Self {
         Self::new(sk, &params.g_tilde)
+    }
+}
+
+impl<G: AffineRepr> DesignatedVerifierPoKOfPublicKey<G> {
+    pub fn new<'a, R: RngCore>(
+        rng: &mut R,
+        public_key: impl Into<&'a G>,
+        g: impl Into<&'a G>,
+    ) -> Self {
+        let challenge = G::ScalarField::rand(rng);
+        let response = G::ScalarField::rand(rng);
+        let g = g.into();
+        let pk = public_key.into();
+        let t = (*g * response - *pk * challenge).into_affine();
+        Self {
+            t,
+            challenge,
+            response,
+        }
+    }
+
+    pub fn verify<'a>(
+        &self,
+        public_key: impl Into<&'a G>,
+        g: impl Into<&'a G>,
+    ) -> Result<(), KVACError> {
+        let g = g.into();
+        let pk = public_key.into();
+        if (*g * self.response - *pk * self.challenge).into_affine() != self.t {
+            return Err(KVACError::InvalidPoKOfPublicKey);
+        }
+        Ok(())
     }
 }
 

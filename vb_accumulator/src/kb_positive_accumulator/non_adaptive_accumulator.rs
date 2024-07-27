@@ -5,7 +5,7 @@ use crate::{
     persistence::State,
     prelude::{Accumulator, SecretKey},
 };
-use ark_ec::pairing::Pairing;
+use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
@@ -16,30 +16,28 @@ use serde_with::serde_as;
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
-pub struct NonAdaptivePositiveAccumulator<E: Pairing>(
-    #[serde_as(as = "ArkObjectBytes")] pub E::G1Affine,
-);
+pub struct NonAdaptivePositiveAccumulator<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
 
-impl<E: Pairing> Accumulator<E> for NonAdaptivePositiveAccumulator<E> {
-    fn value(&self) -> &E::G1Affine {
+impl<G: AffineRepr> Accumulator<G> for NonAdaptivePositiveAccumulator<G> {
+    fn value(&self) -> &G {
         &self.0
     }
 
-    fn from_accumulated(accumulated: E::G1Affine) -> Self {
+    fn from_accumulated(accumulated: G) -> Self {
         NonAdaptivePositiveAccumulator(accumulated)
     }
 }
 
-impl<E: Pairing> NonAdaptivePositiveAccumulator<E> {
-    pub fn initialize<R: RngCore>(rng: &mut R, params_gen: impl AsRef<E::G1Affine>) -> Self {
-        let u = E::ScalarField::rand(rng);
+impl<G: AffineRepr> NonAdaptivePositiveAccumulator<G> {
+    pub fn initialize<R: RngCore>(rng: &mut R, params_gen: impl AsRef<G>) -> Self {
+        let u = G::ScalarField::rand(rng);
         Self((*params_gen.as_ref() * u).into())
     }
 
     pub fn add(
         &self,
-        element: E::ScalarField,
-        state: &mut dyn State<E::ScalarField>,
+        element: G::ScalarField,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<(), VBAccumulatorError> {
         self.check_before_add(&element, state)?;
         state.add(element);
@@ -48,9 +46,9 @@ impl<E: Pairing> NonAdaptivePositiveAccumulator<E> {
 
     pub fn remove(
         &self,
-        element: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-        state: &mut dyn State<E::ScalarField>,
+        element: &G::ScalarField,
+        sk: &SecretKey<G::ScalarField>,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._remove(element, sk, state)?;
         Ok(Self(acc_pub))
@@ -58,8 +56,8 @@ impl<E: Pairing> NonAdaptivePositiveAccumulator<E> {
 
     pub fn add_batch(
         &self,
-        elements: Vec<E::ScalarField>,
-        state: &mut dyn State<E::ScalarField>,
+        elements: Vec<G::ScalarField>,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<(), VBAccumulatorError> {
         for element in elements.iter() {
             self.check_before_add(element, state)?;
@@ -72,9 +70,9 @@ impl<E: Pairing> NonAdaptivePositiveAccumulator<E> {
 
     pub fn remove_batch(
         &self,
-        elements: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-        state: &mut dyn State<E::ScalarField>,
+        elements: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         let (_, acc_pub) = self._remove_batch(elements, sk, state)?;
         Ok(Self(acc_pub))
@@ -82,10 +80,10 @@ impl<E: Pairing> NonAdaptivePositiveAccumulator<E> {
 
     pub fn batch_updates(
         &self,
-        additions: Vec<E::ScalarField>,
-        removals: &[E::ScalarField],
-        sk: &SecretKey<E::ScalarField>,
-        state: &mut dyn State<E::ScalarField>,
+        additions: Vec<G::ScalarField>,
+        removals: &[G::ScalarField],
+        sk: &SecretKey<G::ScalarField>,
+        state: &mut dyn State<G::ScalarField>,
     ) -> Result<Self, VBAccumulatorError> {
         for element in additions.iter() {
             self.check_before_add(element, state)?;
@@ -108,7 +106,7 @@ impl<E: Pairing> NonAdaptivePositiveAccumulator<E> {
 pub mod tests {
     use super::*;
     use crate::{persistence::test::*, prelude::SetupParams, setup::Keypair, test_serialization};
-    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     use ark_ec::AffineRepr;
     use ark_ff::Field;
     use ark_std::{
@@ -124,7 +122,7 @@ pub mod tests {
         let keypair = Keypair::<Bls12_381>::generate_using_rng(&mut rng, &params);
         let mut accumulator = NonAdaptivePositiveAccumulator::initialize(&mut rng, &params);
         let mut state = InMemoryState::new();
-        test_serialization!(NonAdaptivePositiveAccumulator<Bls12_381>, accumulator);
+        test_serialization!(NonAdaptivePositiveAccumulator<G1Affine>, accumulator);
 
         let count = 100;
         let mut elems = vec![];
@@ -186,7 +184,7 @@ pub mod tests {
         let params = SetupParams::<Bls12_381>::generate_using_rng(&mut rng);
         let keypair = Keypair::<Bls12_381>::generate_using_rng(&mut rng, &params);
         let mut accumulator_1 =
-            NonAdaptivePositiveAccumulator::<Bls12_381>::initialize(&mut rng, &params);
+            NonAdaptivePositiveAccumulator::<G1Affine>::initialize(&mut rng, &params);
         let mut state_1 = InMemoryState::new();
 
         // Create more accumulators to compare. Same elements will be added and removed from them as accumulator_1
@@ -200,7 +198,7 @@ pub mod tests {
         let additions: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
         let removals: Vec<Fr> = vec![0, 1, 6, 9].into_iter().map(|i| additions[i]).collect();
 
-        let mut old: <Bls12_381 as Pairing>::G1Affine = *accumulator_1.value();
+        let mut old: G1Affine = *accumulator_1.value();
         // Add one by one
         for i in 0..additions.len() {
             let elem = additions[i];

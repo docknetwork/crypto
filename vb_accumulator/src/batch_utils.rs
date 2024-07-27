@@ -772,16 +772,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, G1Affine};
-    use ark_ec::pairing::Pairing;
+    use ark_bls12_381::{Fr, G1Affine};
     use ark_ff::One;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
     use std::time::Instant;
-
-    type Fr = <Bls12_381 as Pairing>::ScalarField;
 
     #[test]
     fn polys() {

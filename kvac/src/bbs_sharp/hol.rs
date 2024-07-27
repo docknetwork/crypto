@@ -1,4 +1,4 @@
-//! Protocol between the user and signer to create blinded tokens in half-offline mode. Follows protocol in
+//! Protocol between the user and signer to create blinded tokens in half-offline (HOL) mode. Follows protocol in
 //! Fig. 8 but this supports batching
 
 use super::setup::{MACParams, SecretKey, SignerPublicKey, UserPublicKey};
