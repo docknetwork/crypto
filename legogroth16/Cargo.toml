@@ -23,7 +23,7 @@ ark-r1cs-std = { workspace = true, optional = true }
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ], optional = true }
 derivative = { version = "2.0", features = ["use_core"], optional = true }
 rayon = { workspace = true, optional = true }
-wasmer = { version = "3.3.0", optional = true, default-features = false }
+wasmer = { version = "4.3.6", optional = true, default-features = false }
 fnv = { version = "1.0.3", default-features = false, optional = true }
 num-bigint = { version = "0.4", default-features = false, optional = true }
 log = "0.4"

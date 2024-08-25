@@ -61,7 +61,8 @@ pub struct IssuerPublicKey<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub vk: E::G2Affine,
     // NOTE: w and w_hat don't need to be part of the issuer's public key. These could be agreed upon between each
-    // pair of user and verifier and chosen such that they are random (hash string to group)
+    // pair of user and verifier and chosen such that they are random (hash string to group).
+    // Or they could be made part of setup params by generating them transparently (hashing public strings to group elements).
     #[serde_as(as = "ArkObjectBytes")]
     pub w: E::G1Affine,
     #[serde_as(as = "ArkObjectBytes")]
@@ -73,7 +74,8 @@ pub struct IssuerPublicKey<E: Pairing> {
 pub struct PreparedIssuerPublicKey<E: Pairing> {
     pub vk: E::G2Affine,
     // NOTE: w and w_hat don't need to be part of the issuer's public key. These could be agreed upon between each
-    // pair of user and verifier and chosen such that they are random (hash string to group)
+    // pair of user and verifier and chosen such that they are random (hash string to group).
+    // Or they could be made part of setup params by generating them transparently (hashing public strings to group elements).
     pub w: E::G1Affine,
     pub w_hat: E::G2Affine,
     pub vk_prepared: E::G2Prepared,

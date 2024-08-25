@@ -129,7 +129,7 @@ pub struct PseudonymProof<E: Pairing> {
 }
 
 impl<E: Pairing> PseudonymGenProtocol<E> {
-    /// `Z` is the context (ctx, msg) pair mapped (hashed) to a group element
+    /// `Z` is the context ctx mapped (hashed) to a group element
     /// `s` is the user-id which was the message in the VRF and `blinding` is the randomness used for `s` in the Schnorr protocol.
     /// This will be set by the caller when this is used in conjunction with another Schnorr protocol and `s` has to be
     /// proved equal to the witness.
@@ -441,10 +441,11 @@ mod tests {
         // Verifier gives message and context to user
         let context = b"test-context";
         let msg = b"test-message";
-        let mut pair = vec![];
-        pair.extend_from_slice(context);
-        pair.extend_from_slice(msg);
-        let Z = affine_group_elem_from_try_and_incr::<G1Affine, Blake2b512>(&pair);
+
+        // Generate Z from context
+        let mut Z_bytes = vec![];
+        Z_bytes.extend_from_slice(context);
+        let Z = affine_group_elem_from_try_and_incr::<G1Affine, Blake2b512>(&Z_bytes);
 
         // User generates a pseudonym
         let start = Instant::now();
@@ -461,6 +462,8 @@ mod tests {
         protocol
             .challenge_contribution(&Z, &mut chal_bytes)
             .unwrap();
+        // Add message to the transcript (message contributes to challenge)
+        chal_bytes.extend_from_slice(msg);
         let challenge_prover = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
         let proof = protocol.gen_proof(&challenge_prover);
         println!("Time to create proof {:?}", start.elapsed());
@@ -469,6 +472,8 @@ mod tests {
         let start = Instant::now();
         let mut chal_bytes = vec![];
         proof.challenge_contribution(&Z, &mut chal_bytes).unwrap();
+        // Add message to the transcript (message contributes to challenge)
+        chal_bytes.extend_from_slice(msg);
         let challenge_verifier = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
         proof
             .verify(&challenge_verifier, Z, prepared_ipk.clone(), params.clone())

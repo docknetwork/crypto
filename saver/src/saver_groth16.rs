@@ -319,9 +319,12 @@ mod tests {
 
             println!("For chunk_bit_size {}, encryption key has compressed size {} and uncompressed size {}", chunk_bit_size, ek.compressed_size(), ek.uncompressed_size());
 
+            let start = Instant::now();
             let (ct, r) =
                 Encryption::encrypt_decomposed_message(&mut rng, msgs.clone(), &ek, g_i).unwrap();
+            println!("Time taken to encrypt: {:?}", start.elapsed());
 
+            let start = Instant::now();
             let (m_, _) = Encryption::decrypt_to_chunks(
                 &ct[0],
                 &ct[1..n as usize + 1],
@@ -331,6 +334,7 @@ mod tests {
                 chunk_bit_size,
             )
             .unwrap();
+            println!("Time taken to decrypt: {:?}", start.elapsed());
 
             assert_eq!(m_, msgs);
 
