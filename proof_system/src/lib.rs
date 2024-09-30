@@ -112,6 +112,8 @@
 //!
 //! - test `pok_of_3_bbs_plus_sig_and_message_equality` proves knowledge of 3 BBS+ signatures and also that certain
 //!   messages are equal among them without revealing them.
+//! - test `pok_of_bbs_plus_sig_and_inequality_with_public_value` proves knowledge of a BBS+ signature and also that
+//!   certain message is not equal to a public value without revealing the message
 //! - test `pok_of_bbs_plus_sig_and_accumulator` proves knowledge of a BBS+ signature and also that certain messages
 //!   are present and absent in the 2 accumulators respectively.
 //! - test `pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig` proves knowledge of a BBS+ signature and opening
@@ -136,7 +138,7 @@
 //!   is bounded by a given value, etc [here](tests/r1cs). The Circom compiler output and circuits are [here](tests/r1cs/circom).
 //!   The circuits were compiled and tested for BLS12-381 curve.
 //!
-//! *Note*: This design is largely inspired from my work at Hyperledger Ursa.
+//! *Note*: This design is inspired from my work at Hyperledger Ursa.
 //!
 //! *Note*: The design is tentative and will likely change as more protocols are integrated.
 //!

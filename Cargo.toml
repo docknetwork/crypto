@@ -20,8 +20,8 @@ members = [
     "bulletproofs_plus_plus",
     "smc_range_proof",
     "short_group_sig",
-    "syra"
-]
+    "syra",
+    "verifiable_encryption"]
 resolver = "2"
 
 [workspace.package]

@@ -155,7 +155,7 @@ impl<G: AffineRepr> PublicKeyBase<G> {
     }
 }
 
-/// Return the Lagrange basis polynomial at x = 0 given the `x` coordinates
+/// Return the Lagrange basis polynomial at x = 0 given the `x` coordinates.
 /// `(x_coords[0]) * (x_coords[1]) * ... / ((x_coords[0] - i) * (x_coords[1] - i) * ...)`
 /// Assumes all `x` coordinates are distinct and appropriate number of coordinates are provided
 pub fn lagrange_basis_at_0<F: PrimeField>(x_coords: &[ShareId], i: ShareId) -> Result<F, SSError> {

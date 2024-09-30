@@ -1,7 +1,7 @@
 //! A collection of utilities used by our other libraries in this workspace.
 //!
 //! - Pedersen commitment
-//! - Elgamal encryption
+//! - Elgamal encryption, including Hashed Elgamal
 //! - finite field utilities like inner product, weighted inner product, hadamard product, etc.
 //! - multiscalar multiplication (MSM) like Fixed Base MSM
 //! - polynomial utilities like multiplying polynomials, creating polynomial from roots, etc.
@@ -21,7 +21,7 @@ pub mod extend_some;
 pub mod serde_utils;
 pub mod ecies;
 
-/// Elgamal encryption
+/// Elgamal encryption and variations - plain Elgamal, hashed-Elgamal and batched hashed-Elgamal
 pub mod elgamal;
 
 /// Finite field utilities like inner product, weighted inner product, hadamard product, etc

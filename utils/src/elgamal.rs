@@ -1,13 +1,23 @@
-//! Elgamal encryption
+//! Elgamal encryption and some variations
+//! Implements:
+//! 1. Plain Elgamal scheme where the message to be encrypted is a group element (of the same group as the public key)
+//! 2. Hashed Elgamal where the message to be encrypted is a field element.
+//! 3. A more efficient, batched hashed Elgamal where multiple messages, each being a field element, are encrypted for the same public key.  
 
-use crate::serde_utils::ArkObjectBytes;
+use crate::{
+    aliases::FullDigest, hashing_utils::hash_to_field, msm::WindowTable,
+    serde_utils::ArkObjectBytes,
+};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{ops::Neg, rand::RngCore, vec::Vec, UniformRand};
+use ark_std::{cfg_iter, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 #[derive(
     Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
@@ -90,8 +100,208 @@ impl<G: AffineRepr> Ciphertext<G> {
         }
     }
 
+    /// Returns the ciphertext but takes the window tables for the public key and generator. Useful when a lot
+    /// of encryptions have to be done using the same public key
+    pub fn new_given_randomness_and_window_tables(
+        msg: &G,
+        randomness: &G::ScalarField,
+        public_key: &WindowTable<G::Group>,
+        gen: &WindowTable<G::Group>,
+    ) -> Self {
+        let enc1 = (public_key.multiply(randomness) + msg).into_affine();
+        Self {
+            encrypted: enc1,
+            eph_pk: gen.multiply(randomness).into_affine(),
+        }
+    }
+
     pub fn decrypt(&self, secret_key: &G::ScalarField) -> G {
         (self.eph_pk.mul(secret_key).neg() + self.encrypted).into_affine()
+    }
+}
+
+/// Hashed Elgamal. Encryption of a field element `m`. The shared secret is hashed to a field element
+/// and the result is added to the message to get the ciphertext.
+#[serde_as]
+#[derive(
+    Default,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
+pub struct HashedElgamalCiphertext<G: AffineRepr> {
+    /// `m + Hash(r * pk)`
+    #[serde_as(as = "ArkObjectBytes")]
+    pub encrypted: G::ScalarField,
+    /// Ephemeral public key `r * gen`
+    #[serde_as(as = "ArkObjectBytes")]
+    pub eph_pk: G,
+}
+
+impl<G: AffineRepr> HashedElgamalCiphertext<G> {
+    /// Returns the ciphertext and randomness created for encryption
+    pub fn new<R: RngCore, D: FullDigest>(
+        rng: &mut R,
+        msg: &G::ScalarField,
+        public_key: &G,
+        gen: &G,
+    ) -> (Self, G::ScalarField) {
+        let alpha = G::ScalarField::rand(rng);
+        (
+            Self::new_given_randomness::<D>(msg, &alpha, public_key, gen),
+            alpha,
+        )
+    }
+
+    /// Returns the ciphertext
+    pub fn new_given_randomness<D: FullDigest>(
+        msg: &G::ScalarField,
+        randomness: &G::ScalarField,
+        public_key: &G,
+        gen: &G,
+    ) -> Self {
+        let b = randomness.into_bigint();
+        let shared_secret = public_key.mul_bigint(b).into_affine();
+        Self {
+            encrypted: Self::otp::<D>(shared_secret) + msg,
+            eph_pk: gen.mul_bigint(b).into_affine(),
+        }
+    }
+
+    /// Returns the ciphertext but takes the window tables for the public key and generator. Useful when a lot
+    /// of encryptions have to be done using the same public key
+    pub fn new_given_randomness_and_window_tables<D: FullDigest>(
+        msg: &G::ScalarField,
+        randomness: &G::ScalarField,
+        public_key: &WindowTable<G::Group>,
+        gen: &WindowTable<G::Group>,
+    ) -> Self {
+        let shared_secret = public_key.multiply(randomness).into_affine();
+        Self {
+            encrypted: Self::otp::<D>(shared_secret) + msg,
+            eph_pk: gen.multiply(randomness).into_affine(),
+        }
+    }
+
+    pub fn decrypt<D: FullDigest>(&self, secret_key: &G::ScalarField) -> G::ScalarField {
+        let shared_secret = self.eph_pk.mul(secret_key).into_affine();
+        self.encrypted - Self::otp::<D>(shared_secret)
+    }
+
+    /// Return a OTP (One Time Pad) by hashing the shared secret.
+    pub fn otp<D: FullDigest>(shared_secret: G) -> G::ScalarField {
+        let mut bytes = Vec::with_capacity(shared_secret.compressed_size());
+        shared_secret.serialize_uncompressed(&mut bytes).unwrap();
+        hash_to_field::<G::ScalarField, D>(b"", &bytes)
+    }
+}
+
+/// Hashed Elgamal variant for encrypting a batch of messages. Encryption of vector of field elements.
+/// Generates a batch of OTPs (One Time Pad) by hashing the concatenation of the shared secret and the
+/// message index, corresponding to which the OTP is created. The OTPs are then added to the corresponding
+/// message to get the ciphertext. This is an efficient mechanism of encrypting multiple messages to the same
+/// public key as there is only 1 shared secret created by a scalar multiplication and one randomness chosen
+/// by the encryptor
+#[serde_as]
+#[derive(
+    Default,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
+)]
+pub struct BatchedHashedElgamalCiphertext<G: AffineRepr> {
+    /// `m_i + Hash((r * pk) || i)`
+    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    pub encrypted: Vec<G::ScalarField>,
+    /// Ephemeral public key `r * gen`
+    #[serde_as(as = "ArkObjectBytes")]
+    pub eph_pk: G,
+}
+
+impl<G: AffineRepr> BatchedHashedElgamalCiphertext<G> {
+    /// Returns the ciphertext and randomness created for encryption
+    pub fn new<R: RngCore, D: FullDigest>(
+        rng: &mut R,
+        msgs: &[G::ScalarField],
+        public_key: &G,
+        gen: &G,
+    ) -> (Self, G::ScalarField) {
+        let alpha = G::ScalarField::rand(rng);
+        (
+            Self::new_given_randomness::<D>(msgs, &alpha, public_key, gen),
+            alpha,
+        )
+    }
+
+    /// Returns the ciphertext
+    pub fn new_given_randomness<D: FullDigest>(
+        msgs: &[G::ScalarField],
+        randomness: &G::ScalarField,
+        public_key: &G,
+        gen: &G,
+    ) -> Self {
+        let b = randomness.into_bigint();
+        let shared_secret = public_key.mul_bigint(b).into_affine();
+        Self {
+            encrypted: Self::enc_with_otp::<D>(&msgs, &shared_secret),
+            eph_pk: gen.mul_bigint(b).into_affine(),
+        }
+    }
+
+    /// Returns the ciphertext but takes the window tables for the public key and generator. Useful when a lot
+    /// of encryptions have to be done using the same public key
+    pub fn new_given_randomness_and_window_tables<D: FullDigest>(
+        msgs: &[G::ScalarField],
+        randomness: &G::ScalarField,
+        public_key: &WindowTable<G::Group>,
+        gen: &WindowTable<G::Group>,
+    ) -> Self {
+        let shared_secret = public_key.multiply(randomness).into_affine();
+        Self {
+            encrypted: Self::enc_with_otp::<D>(&msgs, &shared_secret),
+            eph_pk: gen.multiply(randomness).into_affine(),
+        }
+    }
+
+    pub fn decrypt<D: FullDigest>(&self, secret_key: &G::ScalarField) -> Vec<G::ScalarField> {
+        let shared_secret = self.eph_pk.mul(secret_key).into_affine();
+        cfg_iter!(self.encrypted)
+            .enumerate()
+            .map(|(i, e)| *e - Self::otp::<D>(&shared_secret, i as u32))
+            .collect::<Vec<_>>()
+    }
+
+    pub fn batch_size(&self) -> usize {
+        self.encrypted.len()
+    }
+
+    /// Return a OTP (One Time Pad) by hashing the shared secret along with the message index.
+    pub fn otp<D: FullDigest>(shared_secret: &G, msg_idx: u32) -> G::ScalarField {
+        let mut bytes = Vec::with_capacity(shared_secret.compressed_size());
+        shared_secret.serialize_uncompressed(&mut bytes).unwrap();
+        msg_idx.serialize_uncompressed(&mut bytes).unwrap();
+        hash_to_field::<G::ScalarField, D>(b"", &bytes)
+    }
+
+    fn enc_with_otp<D: FullDigest>(
+        msgs: &[G::ScalarField],
+        shared_secret: &G,
+    ) -> Vec<G::ScalarField> {
+        cfg_iter!(msgs)
+            .enumerate()
+            .map(|(i, m)| Self::otp::<D>(shared_secret, i as u32) + m)
+            .collect::<Vec<_>>()
     }
 }
 
@@ -103,6 +313,8 @@ pub mod tests {
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
+    use blake2::Blake2b512;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn encrypt_decrypt() {
@@ -115,6 +327,70 @@ pub mod tests {
             let msg = G::Group::rand(rng).into_affine();
             let (ciphertext, _) = Ciphertext::new(rng, &msg, &pk.0, &gen);
             assert_eq!(ciphertext.decrypt(&sk.0), msg);
+        }
+
+        check::<G1Affine>(&mut rng);
+        check::<G2Affine>(&mut rng);
+    }
+
+    #[test]
+    fn hashed_encrypt_decrypt() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        fn check<G: AffineRepr>(rng: &mut StdRng) {
+            let gen = G::Group::rand(rng).into_affine();
+            let (sk, pk) = keygen(rng, &gen);
+
+            let msg = G::ScalarField::rand(rng);
+            let (ciphertext, _) =
+                HashedElgamalCiphertext::new::<_, Blake2b512>(rng, &msg, &pk.0, &gen);
+            assert_eq!(ciphertext.decrypt::<Blake2b512>(&sk.0), msg);
+        }
+
+        check::<G1Affine>(&mut rng);
+        check::<G2Affine>(&mut rng);
+    }
+
+    #[test]
+    fn hashed_encrypt_decrypt_batch() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        fn check<G: AffineRepr>(rng: &mut StdRng) {
+            let gen = G::Group::rand(rng).into_affine();
+            let (sk, pk) = keygen(rng, &gen);
+            let count = 10;
+
+            let msgs = (0..count)
+                .map(|_| G::ScalarField::rand(rng))
+                .collect::<Vec<_>>();
+            let mut enc_time = Duration::default();
+            let mut dec_time = Duration::default();
+            for i in 0..count {
+                let start = Instant::now();
+                let (ciphertext, _) =
+                    HashedElgamalCiphertext::new::<_, Blake2b512>(rng, &msgs[i], &pk.0, &gen);
+                enc_time += start.elapsed();
+                let start = Instant::now();
+                assert_eq!(ciphertext.decrypt::<Blake2b512>(&sk.0), msgs[i]);
+                dec_time += start.elapsed();
+            }
+            println!(
+                "For encryption {} messages one by one, time to encrypt {:?} and to decrypt: {:?}",
+                count, enc_time, dec_time
+            );
+
+            let start = Instant::now();
+            let (ciphertext, _) =
+                BatchedHashedElgamalCiphertext::new::<_, Blake2b512>(rng, &msgs, &pk.0, &gen);
+            enc_time = start.elapsed();
+            let start = Instant::now();
+            assert_eq!(ciphertext.decrypt::<Blake2b512>(&sk.0), msgs);
+            dec_time = start.elapsed();
+
+            println!(
+                "For encryption {} messages in batch, time to encrypt {:?} and to decrypt: {:?}",
+                count, enc_time, dec_time
+            );
         }
 
         check::<G1Affine>(&mut rng);

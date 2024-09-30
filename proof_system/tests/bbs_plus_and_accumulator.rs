@@ -407,6 +407,7 @@ macro_rules! gen_tests {
 
             let nonce = Some(b"test-nonce".to_vec());
 
+            let start = Instant::now();
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 prover_proof_spec.clone(),
@@ -416,6 +417,10 @@ macro_rules! gen_tests {
             )
             .unwrap()
             .0;
+            println!(
+                "Time to create a proof with a BBS+ signature and VB positive accumulator membership: {:?}",
+                start.elapsed()
+            );
 
             test_serialization!(Proof<Bls12_381>, proof);
 
@@ -623,6 +628,7 @@ macro_rules! gen_tests {
 
             test_serialization!(ProofSpec<Bls12_381>, prover_proof_spec);
 
+            let start = Instant::now();
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 prover_proof_spec.clone(),
@@ -632,6 +638,10 @@ macro_rules! gen_tests {
             )
             .unwrap()
             .0;
+            println!(
+                "Time to crate a proof with a BBS+ signature and VB universal accumulator membership: {:?}",
+                start.elapsed()
+            );
 
             test_serialization!(Proof<Bls12_381>, proof);
 
@@ -735,6 +745,7 @@ macro_rules! gen_tests {
 
             test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
+            let start = Instant::now();
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec.clone(),
@@ -744,6 +755,10 @@ macro_rules! gen_tests {
             )
             .unwrap()
             .0;
+            println!(
+                "Time to create a proof with a BBS+ signature and VB universal accumulator non-membership: {:?}",
+                start.elapsed()
+            );
 
             test_serialization!(Proof<Bls12_381>, proof);
 
@@ -850,6 +865,7 @@ macro_rules! gen_tests {
 
             test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
+            let start = Instant::now();
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec.clone(),
@@ -859,6 +875,10 @@ macro_rules! gen_tests {
             )
             .unwrap()
             .0;
+            println!(
+                "Time to create a proof with a BBS+ signature and KB universal accumulator membership: {:?}",
+                start.elapsed()
+            );
 
             test_serialization!(Proof<Bls12_381>, proof);
 
@@ -961,6 +981,7 @@ macro_rules! gen_tests {
 
             test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
+            let start = Instant::now();
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec.clone(),
@@ -970,6 +991,10 @@ macro_rules! gen_tests {
             )
             .unwrap()
             .0;
+            println!(
+                "Time to create a proof with a BBS+ signature and KB universal accumulator non-membership: {:?}",
+                start.elapsed()
+            );
 
             test_serialization!(Proof<Bls12_381>, proof);
 
@@ -1081,6 +1106,7 @@ macro_rules! gen_tests {
 
             let nonce = Some(b"test-nonce".to_vec());
 
+            let start = Instant::now();
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec.clone(),
@@ -1090,6 +1116,10 @@ macro_rules! gen_tests {
             )
             .unwrap()
             .0;
+            println!(
+                "Time to create proof with a BBS+ signature and KB positive accumulator membership: {:?}",
+                start.elapsed()
+            );
 
             test_serialization!(Proof<Bls12_381>, proof);
 
@@ -1279,6 +1309,7 @@ macro_rules! gen_tests {
 
             test_serialization!(ProofSpec<Bls12_381>, proof_spec);
 
+            let start = Instant::now();
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec.clone(),
@@ -1288,6 +1319,7 @@ macro_rules! gen_tests {
             )
             .unwrap()
             .0;
+            println!("Time to create proof with a BBS+ signature and 6 accumulator membership and non-membership checks: {:?}", start.elapsed());
 
             test_serialization!(Proof<Bls12_381>, proof);
 
@@ -1828,6 +1860,7 @@ macro_rules! gen_tests {
             ));
             test_serialization!(Witnesses<Bls12_381>, witnesses);
 
+            let start = Instant::now();
             let proof = Proof::new::<StdRng, Blake2b512>(
                 &mut rng,
                 proof_spec.clone(),
@@ -1837,6 +1870,10 @@ macro_rules! gen_tests {
             )
                 .unwrap()
                 .0;
+            println!(
+                "Time to create proof with 4 BBS+ signatures: {:?}",
+                start.elapsed()
+            );
 
             let mut statements = Statements::new();
             statements.add($verifier_stmt::new_statement_from_params_ref(

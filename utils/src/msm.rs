@@ -120,6 +120,26 @@ pub mod tests {
         let group_elem_affine = group_elem.into_affine();
         let table = context.table(group_elem);
 
+        let mut g1 = G1::rand(&mut rng).into_affine();
+        let mut g2 = G2::rand(&mut rng).into_affine();
+        let e = Fr::rand(&mut rng);
+
+        let start = Instant::now();
+        g1 = (g1 * e).into_affine();
+        println!("G1 scalar multiplication time {:?}", start.elapsed());
+
+        let start = Instant::now();
+        g2 = (g2 * e).into_affine();
+        println!("G2 scalar multiplication time {:?}", start.elapsed());
+
+        let start = Instant::now();
+        let mut _gt = <Bls12_381 as Pairing>::pairing(g1, g2);
+        println!("pairing time {:?}", start.elapsed());
+
+        let start = Instant::now();
+        _gt = _gt * e;
+        println!("GT multiplication time {:?}", start.elapsed());
+
         let mut d0 = Duration::default();
         let mut d1 = Duration::default();
         let mut d2 = Duration::default();
