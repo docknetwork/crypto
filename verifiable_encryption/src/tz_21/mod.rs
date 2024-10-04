@@ -18,11 +18,13 @@
 //!
 //! More docs in the corresponding modules.
 
+// TODO: Replace asserts with error handling in non-test code.
+
 #[macro_use]
 pub mod util;
 
-pub mod dkgith;
-pub mod dkgith_batched_elgamal;
-pub mod rdkgith;
-pub mod rdkgith_batched_elgamal;
 pub mod seed_tree;
+
+pub mod dkgith;
+pub mod encryption;
+pub mod rdkgith;

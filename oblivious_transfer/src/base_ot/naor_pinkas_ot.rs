@@ -1,21 +1,18 @@
 //! OT based on the paper [Efficient oblivious transfer protocols](https://dl.acm.org/doi/10.5555/365411.365502).
 //! Protocol is described in section 3.1. Allows to run `m` instances of 1-of-n chosen message OTs.
 
+use crate::{configs::OTConfig, error::OTError, util::xor, Message};
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, log2, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::{ExtendableOutput, Update};
-use itertools::Itertools;
-
-use crate::{util::xor, Message};
 use dock_crypto_utils::msm::WindowTable;
+use itertools::Itertools;
+use sha3::Shake256;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-use crate::{configs::OTConfig, error::OTError};
-use sha3::Shake256;
 
 /// Setup for running multiple 1-of-n OTs
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]

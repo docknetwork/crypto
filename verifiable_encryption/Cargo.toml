@@ -17,12 +17,12 @@ serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
 dock_crypto_utils = { version = "0.20.0", default-features = false, path = "../utils" }
-sha3 = { version = "0.10.6", default-features = false }
 itertools.workspace = true
 secret_sharing_and_dkg = { version = "0.13.0", default-features = false, path = "../secret_sharing_and_dkg" }
 
 [dev-dependencies]
 blake2.workspace = true
+sha3 = { version = "0.10.6", default-features = false }
 ark-bls12-381.workspace = true
 ark-secp256r1 = { version = "^0.4.0", default-features = false }
 

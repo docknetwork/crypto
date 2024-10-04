@@ -3,16 +3,19 @@
 
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::rand::RngCore;
+use ark_std::{rand::RngCore, vec, vec::Vec};
 use digest::{ExtendableOutput, Update, XofReader};
 use dock_crypto_utils::{aliases::FullDigest, hashing_utils::hash_to_field};
-use sha3::Shake256;
 use zeroize::Zeroize;
 
+pub const DEFAULT_SEED_SIZE: usize = 16;
+pub const DEFAULT_SALT_SIZE: usize = 32;
+
 /// Type of a node of the tree.
-pub type Seed<const SEED_SIZE: usize> = [u8; SEED_SIZE];
+pub type Seed<const SEED_SIZE: usize = DEFAULT_SEED_SIZE> = [u8; SEED_SIZE];
 /// A path of the tree from top to leaf (excluding root node) that lets you create the whole tree except a particular leaf.
-pub type TreeOpening<const SEED_SIZE: usize, const DEPTH: usize> = [Seed<SEED_SIZE>; DEPTH];
+pub type TreeOpening<const DEPTH: usize, const SEED_SIZE: usize = DEFAULT_SEED_SIZE> =
+    [Seed<SEED_SIZE>; DEPTH];
 
 /// A binary tree of `DEPTH` depth and `NUM_LEAVES` number of leaves and `NUM_TOTAL_NODES` denotes the number of
 /// leaf and non-leaf nodes. Compile time checks ensure the relation between these constants.
@@ -25,7 +28,7 @@ pub struct SeedTree<
     const NUM_LEAVES: usize,
     const DEPTH: usize,
     const NUM_TOTAL_NODES: usize,
-    const SEED_SIZE: usize,
+    const SEED_SIZE: usize = DEFAULT_SEED_SIZE,
 >(pub [Seed<SEED_SIZE>; NUM_TOTAL_NODES]);
 
 impl<
@@ -53,14 +56,17 @@ impl<
     const CHECK_NODE_COUNT: () = assert!((2 * NUM_LEAVES - 1) == NUM_TOTAL_NODES);
 
     /// Create a new tree.
-    pub fn create<R: RngCore>(rng: &mut R, salt: &[u8], rep_index: usize) -> Self {
+    pub fn create<R: RngCore, D: Default + Update + ExtendableOutput>(
+        rng: &mut R,
+        salt: &[u8],
+        rep_index: usize,
+    ) -> Self {
         let root_seed = Self::random_seed(rng);
-        Self::create_given_root_node(root_seed, salt, rep_index)
+        Self::create_given_root_node::<D>(root_seed, salt, rep_index)
     }
 
     /// Given a root node, generate rest of nodes deterministically.
-    // pub fn create_given_root_node<D: Digest + Update + ExtendableOutput>(root_seed: &Seed, salt: &[u8], rep_index: usize) -> Self {
-    pub fn create_given_root_node(
+    pub fn create_given_root_node<D: Default + Update + ExtendableOutput>(
         root_seed: Seed<SEED_SIZE>,
         salt: &[u8],
         rep_index: usize,
@@ -75,8 +81,7 @@ impl<
 
         for i in 0..NUM_LEAVES - 1 {
             // Create 2 children of node at index [i] and set the left and right child nodes to them
-            // let (left, right) = Self::expand::<D>(&nodes[i as usize], salt, rep_index, i);
-            let (left, right) = Self::expand(&nodes[i], salt, rep_index, i as u16);
+            let (left, right) = Self::expand::<D>(&nodes[i], salt, rep_index, i as u16);
             nodes[Self::left_child_index(i as u16) as usize] = left;
             nodes[Self::right_child_index(i as u16) as usize] = right;
         }
@@ -94,25 +99,23 @@ impl<
     }
 
     /// Return the leaf of the tree but as a finite field element.
+    // In the referred implementation, salt and rep_index are added to but they don't need to be added
+    // as they are already added when creating the tree
     pub fn get_leaf_as_finite_field_element<F: PrimeField, D: FullDigest>(
         &self,
         leaf_index: u16,
-        salt: &[u8],
-        rep_index: usize,
         domain_separator: &[u8],
     ) -> F {
         let leaf = self.get_leaf(leaf_index);
         let mut bytes = vec![];
-        salt.serialize_compressed(&mut bytes).unwrap();
         leaf.serialize_compressed(&mut bytes).unwrap();
         leaf_index.serialize_compressed(&mut bytes).unwrap();
-        rep_index.serialize_compressed(&mut bytes).unwrap();
         hash_to_field::<F, D>(domain_separator, &bytes)
     }
 
     /// Return nodes on a path from leaf level till root level - 1 (excluding root node as root node can create the whole tree)
     ///  that allow reconstructing all leaves at indices except `unopened_leaf_index`
-    pub fn open_seeds(&self, unopened_leaf_index: u16) -> TreeOpening<SEED_SIZE, DEPTH> {
+    pub fn open_seeds(&self, unopened_leaf_index: u16) -> TreeOpening<DEPTH, SEED_SIZE> {
         assert!((unopened_leaf_index as usize) < NUM_LEAVES);
         let mut current = unopened_leaf_index + Self::num_non_leaf_nodes();
         let mut out = [Self::zero_seed(); DEPTH];
@@ -131,9 +134,9 @@ impl<
     }
 
     /// Given a `TreeOpening`, create all the nodes of the tree except the leaf at `unopened_leaf_index`
-    pub fn reconstruct_tree(
+    pub fn reconstruct_tree<D: Default + Update + ExtendableOutput>(
         unopened_leaf_index: u16,
-        tree_opening: &TreeOpening<SEED_SIZE, DEPTH>,
+        tree_opening: &TreeOpening<DEPTH, SEED_SIZE>,
         salt: &[u8],
         rep_index: usize,
     ) -> Self {
@@ -150,38 +153,35 @@ impl<
             unopened_node_index = Self::parent_index(unopened_node_index);
             next_insert += 1;
         }
-        debug_assert_eq!(nodes[0], Self::zero_seed());
+        let zero_seed = Self::zero_seed();
+        debug_assert_eq!(nodes[0], zero_seed);
 
-        let zero_seed = nodes[0]; // we'll never have the root
-                                  // Iterate over all the non-leaf nodes except root node on the path to the leaf at `unopened_leaf_index`
-                                  // to eventually set the leaves except the leaf at `unopened_leaf_index`
+        // Iterate over all the non-leaf nodes except root node on the path to the leaf at `unopened_leaf_index`
+        // to eventually set the leaves except the leaf at `unopened_leaf_index`
         for i in 1..NUM_LEAVES - 1 {
             if nodes[i] != zero_seed {
-                let (left, right) = Self::expand(&nodes[i], salt, rep_index as u16, i as u16);
+                let (left, right) = Self::expand::<D>(&nodes[i], salt, rep_index as u16, i as u16);
                 nodes[Self::left_child_index(i as u16) as usize] = left;
                 nodes[Self::right_child_index(i as u16) as usize] = right;
             }
         }
-        debug_assert_eq!(nodes[0], Self::zero_seed());
+        debug_assert_eq!(nodes[0], zero_seed);
 
         Self(nodes)
     }
 
     /// Given a parent node, create its 2 children nodes
-    // fn expand<D: Digest + Update + ExtendableOutput>(node: &Seed, salt: &[u8], rep_index: u16, node_index: u16) -> (Seed, Seed) {
-    fn expand(
+    fn expand<D: Default + Update + ExtendableOutput>(
         node: &Seed<SEED_SIZE>,
         salt: &[u8],
         rep_index: u16,
         node_index: u16,
     ) -> (Seed<SEED_SIZE>, Seed<SEED_SIZE>) {
-        // let mut hasher = D::new();
-        // Digest::update(&mut hasher, &salt);
-        let mut hasher = Shake256::default();
-        hasher.update(&salt);
-        hasher.update(&rep_index.to_le_bytes());
-        hasher.update(&node_index.to_le_bytes());
-        hasher.update(node);
+        let mut hasher = D::default();
+        Update::update(&mut hasher, &salt);
+        Update::update(&mut hasher, &rep_index.to_le_bytes());
+        Update::update(&mut hasher, &node_index.to_le_bytes());
+        Update::update(&mut hasher, node);
         let mut reader = hasher.finalize_xof();
         let mut left = [0u8; SEED_SIZE];
         let mut right = [0u8; SEED_SIZE];
@@ -247,6 +247,7 @@ pub fn get_depth(num_leaves: u16) -> u16 {
 mod tests {
     use super::*;
     use ark_std::rand::{prelude::StdRng, SeedableRng};
+    use sha3::Shake256;
 
     fn random_vec(len: usize) -> Vec<u8> {
         let mut rng = StdRng::from_entropy();
@@ -265,7 +266,7 @@ mod tests {
         let salt = random_vec(32);
         let rep_index = 5;
 
-        let tree = SeedTree::<NUM_LEAVES, DEPTH, NUM_NODES, SEED_SIZE>::create(
+        let tree = SeedTree::<NUM_LEAVES, DEPTH, NUM_NODES, SEED_SIZE>::create::<_, Shake256>(
             &mut rng,
             salt.as_slice(),
             rep_index,
@@ -289,7 +290,7 @@ mod tests {
         let salt = random_vec(32);
         let rep_index = 5;
 
-        let tree = SeedTree::<NUM_LEAVES, DEPTH, NUM_NODES, SEED_SIZE>::create(
+        let tree = SeedTree::<NUM_LEAVES, DEPTH, NUM_NODES, SEED_SIZE>::create::<_, Shake256>(
             &mut rng,
             salt.as_slice(),
             rep_index,
@@ -297,12 +298,9 @@ mod tests {
 
         for unopened_party in 0..NUM_LEAVES - 1 {
             let opening_data = tree.open_seeds(unopened_party as u16);
-            let tree2 = SeedTree::<NUM_LEAVES, DEPTH, NUM_NODES, SEED_SIZE>::reconstruct_tree(
-                unopened_party as u16,
-                &opening_data,
-                &salt,
-                rep_index,
-            );
+            let tree2 = SeedTree::<NUM_LEAVES, DEPTH, NUM_NODES, SEED_SIZE>::reconstruct_tree::<
+                Shake256,
+            >(unopened_party as u16, &opening_data, &salt, rep_index);
 
             for i in 0..NUM_LEAVES {
                 if i != unopened_party {

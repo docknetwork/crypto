@@ -18,17 +18,24 @@
 //! encryption of the witness. Eg, for the j-th share of i-th witness, ciphertext is `CT_j = OTP_{i,j} + F_i(j)`. Multiplying `CT_j` by its
 //! Lagrange coefficient `l_j` and multiplying each of the `t` revealed shares of i-th witness with their Lagrange coefficient `l_k` as `F_i(k) * l_k`
 //! and adding these gives `CT_j * l_j + \sum_{k!=j}{F_i(k) * l_k} = OTP_{i,j} * l_j + F_i(j) * l_j + \sum_{k!=j}{F_i(k) * l_k} = OTP_{i,j} * l_j + x_i`.
-//! 7. Now decryptor can decrypt a ciphertext by computing Lagrange coefficient `l_j` and one time pad `OTP_{i,j}` to get witness `x_i`  
+//! 7. Now decryptor can decrypt a ciphertext by computing Lagrange coefficient `l_j` and one time pad `OTP_{i,j}` to get witness `x_i`
+//!
+//! The encryption scheme used in generic and either the hashed Elgamal shown in the paper can be used or a more
+//! efficient version of hashed Elgamal can be used where rather than generating a new shared secret for each witness's share,
+//! only 1 shared secret is generated per party and then independent OTPs are derived for each witness share by "appending" counters
+//! to that shared secret.
 
-use crate::{error::VerifiableEncryptionError, tz_21::util::get_unique_indices_to_hide};
+use crate::{
+    error::VerifiableEncryptionError,
+    tz_21::{encryption::BatchCiphertext, util::get_unique_indices_to_hide},
+};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut, rand::RngCore, UniformRand};
+use ark_std::{boxed::Box, cfg_into_iter, cfg_iter, cfg_iter_mut, rand::RngCore, vec, vec::Vec};
 use digest::{Digest, DynDigest};
 use dock_crypto_utils::{
     aliases::FullDigest,
-    elgamal::HashedElgamalCiphertext,
     ff::{powers, powers_starting_from},
     hashing_utils::hash_to_field,
     msm::WindowTable,
@@ -41,37 +48,41 @@ use secret_sharing_and_dkg::{
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+/// Ciphertext and the proof of encryption. `CT` is the variant of Elgamal encryption used. See test for usage
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RdkgithProof<
+    G: AffineRepr,
+    CT: BatchCiphertext<G>,
     const NUM_PARTIES: usize,
     const THRESHOLD: usize,
     const NUM_PARTIES_MINUS_THRESHOLD: usize,
-    G: AffineRepr,
 > {
     pub challenge: Vec<u8>,
     /// Commitment to the coefficients of polynomials
     pub poly_commitments: [G; THRESHOLD],
     /// Ciphertexts of the shares. The first element of the tuple is the party index
     // Following could be made a map indexed with u16 to speed up computation (lookups) by trading off memory
-    pub ciphertexts: [(u16, Vec<HashedElgamalCiphertext<G>>); NUM_PARTIES_MINUS_THRESHOLD],
-    /// Revealed shares and randomness used for encryption. The first element of the tuple is the party index
-    pub shares_and_enc_rands: [(u16, Vec<(G::ScalarField, G::ScalarField)>); THRESHOLD],
+    pub ciphertexts: [(u16, CT); NUM_PARTIES_MINUS_THRESHOLD],
+    /// Revealed shares and randomness used for encryption. The first element of the tuple is the party index, second is the
+    /// shares of each witness for that party
+    pub shares_and_enc_rands: [(u16, Vec<G::ScalarField>, CT::Randomness); THRESHOLD],
 }
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CompressedCiphertext<const SUBSET_SIZE: usize, G: AffineRepr>(
-    [Vec<HashedElgamalCiphertext<G>>; SUBSET_SIZE],
+pub struct CompressedCiphertext<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>(
+    [CT; SUBSET_SIZE],
     /// This is helper data for making the decryptor more efficient. The decryptor could compute this
     /// on its own from the proof.
     [G::ScalarField; SUBSET_SIZE],
 );
 
 impl<
+        G: AffineRepr,
+        CT: BatchCiphertext<G>,
         const NUM_PARTIES: usize,
         const THRESHOLD: usize,
         const NUM_PARTIES_MINUS_THRESHOLD: usize,
-        G: AffineRepr,
-    > RdkgithProof<NUM_PARTIES, THRESHOLD, NUM_PARTIES_MINUS_THRESHOLD, G>
+    > RdkgithProof<G, CT, NUM_PARTIES, THRESHOLD, NUM_PARTIES_MINUS_THRESHOLD>
 {
     // assert_eq! does not compile in stable Rust
     const CHECK_THRESHOLD: () = assert!(THRESHOLD + NUM_PARTIES_MINUS_THRESHOLD == NUM_PARTIES);
@@ -102,26 +113,24 @@ impl<
 
         let mut commitments = [G::zero(); THRESHOLD];
         let mut polys = Vec::with_capacity(witness_count);
-        let mut shares = Vec::with_capacity(witness_count);
-        let mut enc_rands: Vec<[G::ScalarField; NUM_PARTIES]> = Vec::with_capacity(witness_count);
-        let mut cts: [Vec<HashedElgamalCiphertext<G>>; NUM_PARTIES] =
-            [(); NUM_PARTIES].map(|_| vec![HashedElgamalCiphertext::<G>::default(); witness_count]);
+        let mut shares: [Vec<G::ScalarField>; NUM_PARTIES] =
+            [(); NUM_PARTIES].map(|_| vec![G::ScalarField::zero(); witness_count]);
+        // Create randomness for encryption of each share
+        let mut enc_rands: [CT::Randomness; NUM_PARTIES] =
+            [(); NUM_PARTIES].map(|_| CT::get_randomness_from_rng(rng, witness_count));
+        let mut cts: [CT; NUM_PARTIES] = [(); NUM_PARTIES].map(|_| CT::default());
 
         // Secret share each witness such that `THRESHOLD` + 1 shares are needed to reconstruct
-        for w in witnesses {
+        for (i, w) in witnesses.into_iter().enumerate() {
             let (s, mut poly) =
                 deal_secret::<R, G::ScalarField>(rng, w, THRESHOLD as u16 + 1, NUM_PARTIES as u16)
                     .unwrap();
-            shares.push(s);
+            for j in 0..NUM_PARTIES {
+                shares[j][i] = s.0[j].share;
+            }
             // 0th coefficient is the witness
             poly.coeffs.remove(0);
             polys.push(poly);
-            // Create randomness for encryption of each share
-            let mut r = [G::ScalarField::zero(); NUM_PARTIES];
-            for i in 0..NUM_PARTIES {
-                r[i] = G::ScalarField::rand(rng);
-            }
-            enc_rands.push(r);
         }
         // Commit to coefficients of the polynomials
         cfg_iter_mut!(commitments)
@@ -134,23 +143,14 @@ impl<
             });
         // Encrypt each share
         cfg_iter_mut!(cts).enumerate().for_each(|(i, ct)| {
-            cfg_iter_mut!(ct).enumerate().for_each(|(j, ct_j)| {
-                *ct_j = HashedElgamalCiphertext::new_given_randomness_and_window_tables::<D>(
-                    &shares[j].0[i].share,
-                    &enc_rands[j][i],
-                    &enc_key_table,
-                    &enc_gen_table,
-                );
-            });
+            *ct = CT::new::<D>(&shares[i], &enc_rands[i], &enc_key_table, &enc_gen_table);
         });
 
         for i in 0..THRESHOLD {
             hash_elem!(commitments[i], hasher, to_hash);
         }
         for i in 0..NUM_PARTIES {
-            for j in 0..witness_count {
-                hash_elem!(cts[i][j], hasher, to_hash);
-            }
+            hash_elem!(cts[i], hasher, to_hash);
         }
 
         let challenge = Box::new(hasher).finalize().to_vec();
@@ -161,10 +161,16 @@ impl<
             NUM_PARTIES as u16,
         );
 
-        let mut ciphertexts: [(u16, Vec<HashedElgamalCiphertext<G>>); NUM_PARTIES_MINUS_THRESHOLD] =
-            [(); NUM_PARTIES_MINUS_THRESHOLD].map(|_| (0, Vec::with_capacity(witness_count)));
-        let mut shares_and_enc_rands: [(u16, Vec<(G::ScalarField, G::ScalarField)>); THRESHOLD] =
-            [(); THRESHOLD].map(|_| (0, Vec::with_capacity(witness_count)));
+        let mut ciphertexts: [(u16, CT); NUM_PARTIES_MINUS_THRESHOLD] =
+            [(); NUM_PARTIES_MINUS_THRESHOLD].map(|_| (0, CT::default()));
+        let mut shares_and_enc_rands: [(u16, Vec<G::ScalarField>, CT::Randomness); THRESHOLD] =
+            [(); THRESHOLD].map(|_| {
+                (
+                    0,
+                    Vec::with_capacity(witness_count),
+                    CT::Randomness::default(),
+                )
+            });
 
         // Prepare `THRESHOLD` number of shares and encryption randomness and `NUM_PARTIES_MINUS_THRESHOLD` number of ciphertexts to share with the verifier
         let mut ctx_idx = 0;
@@ -172,17 +178,14 @@ impl<
         for i in 0..NUM_PARTIES {
             if indices_to_hide.contains(&(i as u16)) {
                 ciphertexts[ctx_idx].0 = i as u16;
-                for j in 0..witness_count {
-                    ciphertexts[ctx_idx].1.push(cts[i][j]);
-                }
+                ciphertexts[ctx_idx].1 = cts[i].clone();
                 ctx_idx += 1;
             } else {
                 shares_and_enc_rands[s_idx].0 = i as u16;
-                for j in 0..witness_count {
-                    shares_and_enc_rands[s_idx]
-                        .1
-                        .push((shares[j].0[i].share, enc_rands[j][i]));
-                }
+                core::mem::swap(&mut shares_and_enc_rands[s_idx].1, &mut shares[i]);
+                core::mem::swap(&mut shares_and_enc_rands[s_idx].2, &mut enc_rands[i]);
+                // shares_and_enc_rands[s_idx].1 = shares[i].clone();
+                // shares_and_enc_rands[s_idx].2 = enc_rands[i].clone();
                 s_idx += 1;
             }
         }
@@ -208,10 +211,14 @@ impl<
         let () = Self::CHECK_THRESHOLD;
         let witness_count = comm_key.len();
         for i in 0..NUM_PARTIES_MINUS_THRESHOLD {
-            assert_eq!(self.ciphertexts[i].1.len(), witness_count);
+            assert_eq!(self.ciphertexts[i].1.batch_size(), witness_count);
         }
         for i in 0..THRESHOLD {
             assert_eq!(self.shares_and_enc_rands[i].1.len(), witness_count);
+            assert!(CT::is_randomness_size_correct(
+                &self.shares_and_enc_rands[i].2,
+                witness_count
+            ));
         }
         let hidden_indices = get_unique_indices_to_hide::<D>(
             &self.challenge,
@@ -221,7 +228,7 @@ impl<
         for (i, _) in self.ciphertexts.iter() {
             assert!(hidden_indices.contains(i));
         }
-        for (i, _) in self.shares_and_enc_rands.iter() {
+        for (i, _, _) in self.shares_and_enc_rands.iter() {
             assert!(!hidden_indices.contains(i));
         }
 
@@ -238,8 +245,7 @@ impl<
         let enc_key_table = WindowTable::new(NUM_PARTIES * witness_count, enc_key.into_group());
         let enc_gen_table = WindowTable::new(NUM_PARTIES * witness_count, enc_gen.into_group());
 
-        let mut cts: [Vec<HashedElgamalCiphertext<G>>; NUM_PARTIES] =
-            [(); NUM_PARTIES].map(|_| vec![HashedElgamalCiphertext::<G>::default(); witness_count]);
+        let mut cts: [CT; NUM_PARTIES] = [(); NUM_PARTIES].map(|_| CT::default());
 
         cfg_iter_mut!(cts).enumerate().for_each(|(i, ct)| {
             if hidden_indices.contains(&(i as u16)) {
@@ -247,15 +253,15 @@ impl<
                 for (k, c) in &self.ciphertexts {
                     if i as u16 == *k {
                         *ct = c.clone();
-                        break
+                        break;
                     }
                 }
             } else {
-                for (k, sr) in &self.shares_and_enc_rands {
+                for (k, s, r) in &self.shares_and_enc_rands {
                     // Create ciphertexts for shares and randomness given in the proof
                     if i as u16 == *k {
-                        *ct = cfg_into_iter!(0..witness_count).map(|j| HashedElgamalCiphertext::new_given_randomness_and_window_tables::<D>(&sr[j].0, &sr[j].1, &enc_key_table, &enc_gen_table)).collect();
-                        break
+                        *ct = CT::new::<D>(s, r, &enc_key_table, &enc_gen_table);
+                        break;
                     }
                 }
             }
@@ -265,9 +271,7 @@ impl<
             hash_elem!(self.poly_commitments[i], hasher, to_hash);
         }
         for i in 0..NUM_PARTIES {
-            for j in 0..witness_count {
-                hash_elem!(cts[i][j], hasher, to_hash);
-            }
+            hash_elem!(cts[i], hasher, to_hash);
         }
 
         let challenge = Box::new(hasher).finalize().to_vec();
@@ -306,7 +310,7 @@ impl<
             .map(|i| {
                 cfg_iter!(self.shares_and_enc_rands)
                     .enumerate()
-                    .map(|(j, (_, sr))| sr[i].0 * randoms[j])
+                    .map(|(j, (_, s, _))| s[i] * randoms[j])
                     .sum::<G::ScalarField>()
             })
             .collect::<Vec<_>>();
@@ -315,7 +319,7 @@ impl<
         // [ [1, s_1, {s_1}^2, ..., {s_1}^t], [random, random*s_2, random*{s_2}^2, ..., random*{s_2}^t], [random^2, random^2*s_3, random^2*{s_3}^2, ..., random^2*{s_3}^t], ... [random^{t-1}, random^{t-1}*s_t, ..., random^{t-1}*{s_t}^{t-1}] ]
         let pows: Vec<_> = cfg_into_iter!(randoms)
             .zip(cfg_iter!(self.shares_and_enc_rands))
-            .map(|(r, (j, _))| {
+            .map(|(r, (j, _, _))| {
                 powers_starting_from::<G::ScalarField>(
                     r,
                     &G::ScalarField::from(j + 1), // +1 because party indices start from 1.
@@ -352,7 +356,7 @@ impl<
     /// Described in Appendix D.2 in the paper
     pub fn compress<const SUBSET_SIZE: usize, D: Digest + FullDigest>(
         &self,
-    ) -> CompressedCiphertext<SUBSET_SIZE, G> {
+    ) -> CompressedCiphertext<G, CT, SUBSET_SIZE> {
         let () = Self::CHECK_THRESHOLD;
         const { assert!(SUBSET_SIZE <= NUM_PARTIES_MINUS_THRESHOLD) };
         let hidden_indices = get_unique_indices_to_hide::<D>(
@@ -363,12 +367,11 @@ impl<
         for (i, _) in self.ciphertexts.iter() {
             assert!(hidden_indices.contains(i));
         }
-        for (i, _) in self.shares_and_enc_rands.iter() {
+        for (i, _, _) in self.shares_and_enc_rands.iter() {
             assert!(!hidden_indices.contains(i));
         }
-        let witness_count = self.ciphertexts[0].1.len();
-        let mut compressed_cts: [Vec<HashedElgamalCiphertext<G>>; SUBSET_SIZE] =
-            [(); SUBSET_SIZE].map(|_| vec![HashedElgamalCiphertext::<G>::default(); witness_count]);
+        let witness_count = self.ciphertexts[0].1.batch_size();
+        let mut compressed_cts: [CT; SUBSET_SIZE] = [(); SUBSET_SIZE].map(|_| CT::default());
 
         // Party indices for which shares are revealed
         let mut opened_indices = Vec::with_capacity(THRESHOLD);
@@ -427,22 +430,26 @@ impl<
                     })
                     .collect::<Vec<_>>();
 
-                cfg_iter_mut!(ct).enumerate().for_each(|(j, ct_j)| {
-                    ct_j.eph_pk = self.ciphertexts[cphtx_idx].1[j].eph_pk;
-                    ct_j.encrypted = self.ciphertexts[cphtx_idx].1[j].encrypted
-                        * lagrange_basis_for_hidden_indices[i];
-                    ct_j.encrypted += cfg_iter!(deltas)
-                        .zip(cfg_iter!(self.shares_and_enc_rands))
-                        .map(|(d, (_, sr))| *d * sr[j].0)
-                        .sum::<G::ScalarField>();
-                })
+                let offset = cfg_into_iter!(0..witness_count)
+                    .map(|j| {
+                        cfg_iter!(deltas)
+                            .zip(cfg_iter!(self.shares_and_enc_rands))
+                            .map(|(d, (_, s, _))| *d * s[j])
+                            .sum::<G::ScalarField>()
+                    })
+                    .collect::<Vec<_>>();
+                *ct = self.ciphertexts[cphtx_idx].1.clone();
+                ct.multiply_with_ciphertexts(&lagrange_basis_for_hidden_indices[i]);
+                ct.add_to_ciphertexts(&offset);
             });
 
         CompressedCiphertext(compressed_cts, lagrange_basis_for_hidden_indices)
     }
 }
 
-impl<const SUBSET_SIZE: usize, G: AffineRepr> CompressedCiphertext<SUBSET_SIZE, G> {
+impl<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>
+    CompressedCiphertext<G, CT, SUBSET_SIZE>
+{
     pub fn decrypt<D: FullDigest>(
         &self,
         dec_key: &G::ScalarField,
@@ -451,16 +458,8 @@ impl<const SUBSET_SIZE: usize, G: AffineRepr> CompressedCiphertext<SUBSET_SIZE, 
     ) -> Result<Vec<G::ScalarField>, VerifiableEncryptionError> {
         let witness_count = comm_key.len();
         for i in 0..SUBSET_SIZE {
-            assert_eq!(self.0[i].len(), witness_count);
-            let witnesses = cfg_into_iter!(0..witness_count)
-                .map(|j| {
-                    let otp = self.1[i]
-                        * HashedElgamalCiphertext::otp::<D>(
-                            (self.0[i][j].eph_pk * dec_key).into_affine(),
-                        );
-                    self.0[i][j].encrypted - otp
-                })
-                .collect::<Vec<_>>();
+            assert_eq!(self.0[i].batch_size(), witness_count);
+            let witnesses = self.0[i].decrypt_after_multiplying_otp::<D>(&self.1[i], dec_key);
             if *commitment == G::Group::msm_unchecked(comm_key, &witnesses).into_affine() {
                 return Ok(witnesses);
             }
@@ -472,6 +471,7 @@ impl<const SUBSET_SIZE: usize, G: AffineRepr> CompressedCiphertext<SUBSET_SIZE, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tz_21::encryption::SimpleBatchElgamalCiphertext;
     use ark_bls12_381::G1Affine;
     use ark_ec::{CurveGroup, VariableBaseMSM};
     use ark_std::{
@@ -479,7 +479,7 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use dock_crypto_utils::elgamal::keygen;
+    use dock_crypto_utils::elgamal::{keygen, BatchedHashedElgamalCiphertext};
     use std::time::Instant;
 
     #[test]
@@ -497,17 +497,18 @@ mod tests {
             let commitment = G::Group::msm_unchecked(&comm_key, &witnesses).into_affine();
 
             macro_rules! run_test {
-                ($parties: expr, $threshold: expr, $parties_minus_thresh: expr, $subset_size: expr) => {{
+                ($parties: expr, $threshold: expr, $parties_minus_thresh: expr, $subset_size: expr, $ct_type: ty, $ct_type_name: expr) => {{
                     println!(
-                        "\n# witnesses = {}, # parties = {}, # threshold = {}, subset size = {}",
-                        count, $parties, $threshold, $subset_size
+                        "\nFor {} hashed Elgamal encryption, # witnesses = {}, # parties = {}, # threshold = {}, subset size = {}",
+                        $ct_type_name, count, $parties, $threshold, $subset_size
                     );
                     let start = Instant::now();
                     let proof = RdkgithProof::<
+                        _,
+                        $ct_type,
                         $parties,
                         $threshold,
                         $parties_minus_thresh,
-                        _,
                     >::new::<_, Blake2b512>(
                         &mut rng,
                         witnesses.clone(),
@@ -517,6 +518,15 @@ mod tests {
                         &gen,
                     );
                     println!("Proof generated in: {:?}", start.elapsed());
+
+                    for i in 0..$threshold {
+                        assert_eq!(proof.shares_and_enc_rands[i].1.len(), count);
+                        assert!(<$ct_type>::is_randomness_size_correct(&proof.shares_and_enc_rands[i].2, count));
+                    }
+
+                    for i in 0..$parties_minus_thresh {
+                        assert_eq!(proof.ciphertexts[i].1.batch_size(), count);
+                    }
 
                     let start = Instant::now();
                     proof
@@ -530,6 +540,10 @@ mod tests {
                     println!("Ciphertext compressed in: {:?}", start.elapsed());
                     println!("Ciphertext size: {:?}", ct.compressed_size());
 
+                    for i in 0..$subset_size {
+                        assert_eq!(ct.0[i].batch_size(), count);
+                    }
+
                     let start = Instant::now();
                     let decrypted_witnesses = ct
                         .decrypt::<Blake2b512>(&sk.0, &commitment, &comm_key)
@@ -539,12 +553,22 @@ mod tests {
                 }};
             }
 
-            run_test!(132, 64, 68, 67);
-            run_test!(192, 36, 156, 145);
-            run_test!(512, 23, 489, 406);
-            run_test!(160, 80, 80, 55);
-            run_test!(256, 226, 30, 30);
-            run_test!(704, 684, 20, 20);
+            let name1 = "simple";
+            let name2 = "batched";
+
+            run_test!(132, 64, 68, 67, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(192, 36, 156, 145, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(512, 23, 489, 406, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(160, 80, 80, 55, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(256, 226, 30, 30, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(704, 684, 20, 20, SimpleBatchElgamalCiphertext<G>, name1);
+
+            run_test!(132, 64, 68, 67, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(192, 36, 156, 145, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(512, 23, 489, 406, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(160, 80, 80, 55, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(256, 226, 30, 30, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(704, 684, 20, 20, BatchedHashedElgamalCiphertext<G>, name2);
         }
 
         check::<G1Affine>(1);

@@ -1,5 +1,5 @@
+use ark_std::{collections::BTreeSet, vec::Vec};
 use digest::Digest;
-use std::collections::BTreeSet;
 
 #[macro_export]
 macro_rules! hash_elem {
