@@ -15,15 +15,23 @@ use rayon::prelude::*;
 
 /// A list of Elgamal ciphertexts, one for each message. For each message, encryptor creates fresh
 /// randomness and a thus a new shared secret using Diffie-Hellman key exchange
-#[derive(Clone, Debug, Default, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SimpleBatchElgamalCiphertext<G: AffineRepr>(Vec<HashedElgamalCiphertext<G>>);
 
 /// A trait implemented by schemes encrypting a batch of messages
 pub trait BatchCiphertext<G: AffineRepr>:
-    Sized + Clone + Default + Debug + Send + Sync + CanonicalSerialize + CanonicalDeserialize
+    Sized
+    + Clone
+    + Default
+    + PartialEq
+    + Debug
+    + Send
+    + Sync
+    + CanonicalSerialize
+    + CanonicalDeserialize
 {
     /// Randomness used in the encryption
-    type Randomness: Clone + Default + CanonicalSerialize + CanonicalDeserialize;
+    type Randomness: Clone + Default + PartialEq + CanonicalSerialize + CanonicalDeserialize;
 
     /// Create a new ciphertext for the batch of messages
     fn new<D: FullDigest>(

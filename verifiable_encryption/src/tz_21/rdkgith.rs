@@ -49,7 +49,7 @@ use secret_sharing_and_dkg::{
 use rayon::prelude::*;
 
 /// Ciphertext and the proof of encryption. `CT` is the variant of Elgamal encryption used. See test for usage
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RdkgithProof<
     G: AffineRepr,
     CT: BatchCiphertext<G>,
@@ -178,7 +178,7 @@ impl<
         for i in 0..NUM_PARTIES {
             if indices_to_hide.contains(&(i as u16)) {
                 ciphertexts[ctx_idx].0 = i as u16;
-                ciphertexts[ctx_idx].1 = cts[i].clone();
+                core::mem::swap(&mut ciphertexts[ctx_idx].1, &mut cts[i]);
                 ctx_idx += 1;
             } else {
                 shares_and_enc_rands[s_idx].0 = i as u16;
@@ -201,7 +201,7 @@ impl<
         }
     }
 
-    fn verify<D: FullDigest + Digest>(
+    pub fn verify<D: FullDigest + Digest>(
         &self,
         commitment: &G,
         comm_key: &[G],
@@ -273,6 +273,8 @@ impl<
         for i in 0..NUM_PARTIES {
             hash_elem!(cts[i], hasher, to_hash);
         }
+
+        core::mem::drop(cts);
 
         let challenge = Box::new(hasher).finalize().to_vec();
         if challenge != self.challenge {
@@ -445,6 +447,10 @@ impl<
 
         CompressedCiphertext(compressed_cts, lagrange_basis_for_hidden_indices)
     }
+
+    pub fn witness_count(&self) -> usize {
+        self.ciphertexts[0].1.batch_size()
+    }
 }
 
 impl<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>
@@ -465,6 +471,10 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>
             }
         }
         Err(VerifiableEncryptionError::DecryptionFailed)
+    }
+
+    pub fn encrypted_count(&self) -> usize {
+        self.0[0].batch_size()
     }
 }
 

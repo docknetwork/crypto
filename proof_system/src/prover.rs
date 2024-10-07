@@ -26,7 +26,8 @@ use crate::{
         COMPOSITE_PROOF_LABEL, CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_CDH_MEM_LABEL, KB_UNI_ACCUM_CDH_NON_MEM_LABEL, KB_UNI_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, PS_LABEL, VB_ACCUM_CDH_MEM_LABEL,
-        VB_ACCUM_CDH_NON_MEM_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL,
+        VB_ACCUM_CDH_NON_MEM_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL, VE_TZ_21_LABEL,
+        VE_TZ_21_ROBUST_LABEL,
     },
     meta_statement::{EqualWitnesses, WitnessRef},
     prelude::SnarkpackSRS,
@@ -63,9 +64,11 @@ use crate::{
         r1cs_legogorth16::R1CSLegogroth16Protocol,
         saver::SaverProtocol,
         schnorr::SchnorrProtocol,
+        verifiable_encryption_tz_21::VeTZ21Protocol,
     },
 };
 use dock_crypto_utils::{
+    aliases::FullDigest,
     expect_equality,
     hashing_utils::field_elem_from_try_and_incr,
     signature::MultiMessageSignatureParams,
@@ -136,7 +139,7 @@ impl<E: Pairing> Proof<E> {
     /// Also returns the randomness used by statements using SAVER and LegoGroth16 proofs which can
     /// then be used as helpers in subsequent proof creations where these proofs are reused than
     /// creating fresh proofs.
-    pub fn new<R: RngCore, D: Digest>(
+    pub fn new<R: RngCore, D: FullDigest + Digest>(
         rng: &mut R,
         proof_spec: ProofSpec<E>,
         witnesses: Witnesses<E>,
@@ -245,6 +248,36 @@ impl<E: Pairing> Proof<E> {
                 transcript.set_label($label);
                 sp.challenge_contribution(&mut transcript)?;
                 sub_protocols.push(SubProtocol::$protocol_variant(sp));
+            }};
+        }
+
+        macro_rules! ve_tz_21_init {
+            ($rng: ident, $s_idx: ident, $s: ident, $w: ident, $init_name: ident, $label: ident) => {{
+                let witness_count = $w.len();
+                let comm_key = $s.get_comm_key(&proof_spec.setup_params, $s_idx)?;
+                // +1 since commitment includes randomness as well to make it perfectly hiding
+                if comm_key.len() < (witness_count + 1) {
+                    return Err(ProofSystemError::IncompatiblePedCommSetupParamAtIndex(
+                        $s_idx,
+                    ));
+                }
+                // Get blindings for all the witnesses
+                let mut b = Vec::with_capacity(witness_count);
+                for i in 0..witness_count {
+                    if let Some(blinding) = blindings.remove(&($s_idx, i)) {
+                        b.push(blinding);
+                    } else {
+                        return Err(ProofSystemError::MissingBlindingForStatementAtIndex(
+                            $s_idx, i,
+                        ));
+                    }
+                }
+                let enc_params = $s.get_enc_params(&proof_spec.setup_params, $s_idx)?;
+                let mut sp = VeTZ21Protocol::new($s_idx, comm_key, enc_params);
+                sp.$init_name::<R, D>($rng, $w, b)?;
+                transcript.set_label($label);
+                sp.challenge_contribution(&mut transcript)?;
+                sub_protocols.push(SubProtocol::VeTZ21(sp));
             }};
         }
 
@@ -771,6 +804,18 @@ impl<E: Pairing> Proof<E> {
                     }
                     _ => err_incompat_witness!(s_idx, s, witness),
                 },
+                Statement::VeTZ21(s) => match witness {
+                    Witness::VeTZ21(w) => {
+                        ve_tz_21_init!(rng, s_idx, s, w, init, VE_TZ_21_LABEL);
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
+                Statement::VeTZ21Robust(s) => match witness {
+                    Witness::VeTZ21Robust(w) => {
+                        ve_tz_21_init!(rng, s_idx, s, w, init_robust, VE_TZ_21_ROBUST_LABEL);
+                    }
+                    _ => err_incompat_witness!(s_idx, s, witness),
+                },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -979,6 +1024,13 @@ impl<E: Pairing> Proof<E> {
                 SubProtocol::KBUniversalAccumulatorNonMembershipKV(mut sp) => {
                     sp.gen_proof_contribution(&challenge)?
                 }
+                SubProtocol::VeTZ21(mut sp) => {
+                    if sp.ve_proof.is_some() {
+                        sp.gen_proof_contribution(&challenge)?
+                    } else {
+                        sp.gen_proof_contribution_robust(&challenge)?
+                    }
+                }
             });
         }
 
@@ -1086,30 +1138,6 @@ impl<E: Pairing> Proof<E> {
         field_elem_from_try_and_incr::<E::ScalarField, D>(bytes)
     }
 
-    pub fn get_saver_ciphertext_and_proof(
-        &self,
-        index: usize,
-    ) -> Result<(&Ciphertext<E>, &ark_groth16::Proof<E>), ProofSystemError> {
-        let st = self.statement_proof(index)?;
-        if let StatementProof::Saver(s) = st {
-            Ok((&s.ciphertext, &s.snark_proof))
-        } else {
-            Err(ProofSystemError::NotASaverStatementProof)
-        }
-    }
-
-    pub fn get_legogroth16_proof(
-        &self,
-        index: usize,
-    ) -> Result<&legogroth16::Proof<E>, ProofSystemError> {
-        let st = self.statement_proof(index)?;
-        match st {
-            StatementProof::BoundCheckLegoGroth16(s) => Ok(&s.snark_proof),
-            StatementProof::R1CSLegoGroth16(s) => Ok(&s.snark_proof),
-            _ => Err(ProofSystemError::NotASaverStatementProof),
-        }
-    }
-
     pub fn for_aggregate(&self) -> Self {
         let mut statement_proofs = vec![];
         for sp in self.statement_proofs() {
@@ -1177,4 +1205,22 @@ impl<E: Pairing> Proof<E> {
             }
         }
     }
+
+    // fn get_ve_func_args<'a, 'b: 'a>(s_idx: usize, s: &'a VerifiableEncryptionTZ21<E::G1Affine>, proof_spec: &'b ProofSpec<E>, witness_count: usize, blindings: &'b mut BTreeMap<WitnessRef, E::ScalarField>) -> Result<(Vec<E::ScalarField>, &'a [E::G1Affine], &'a ElgamalEncryptionParams<E::G1Affine>), ProofSystemError> {
+    //     let comm_key = s.get_comm_key(&proof_spec.setup_params, s_idx)?;
+    //     // +1 since commitment includes randomness as well to make it perfectly hiding
+    //     if comm_key.len() < (witness_count + 1) {
+    //         return Err(ProofSystemError::IncompatiblePedCommSetupParamAtIndex(s_idx))
+    //     }
+    //     let mut b = Vec::with_capacity(witness_count);
+    //     for i in 0..witness_count {
+    //         if let Some(blinding) = blindings.remove(&(s_idx, i)) {
+    //             b.push(blinding);
+    //         } else {
+    //             return Err(ProofSystemError::MissingBlindingForStatementAtIndex(s_idx, i))
+    //         }
+    //     }
+    //     let enc_params = s.get_enc_params(&proof_spec.setup_params, s_idx)?;
+    //     Ok((b, comm_key.as_slice(), enc_params))
+    // }
 }

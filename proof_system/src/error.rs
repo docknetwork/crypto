@@ -9,6 +9,7 @@ use saver::error::SaverError;
 use schnorr_pok::error::SchnorrError;
 use smc_range_proof::prelude::SmcRangeProofError;
 use vb_accumulator::error::VBAccumulatorError;
+use verifiable_encryption::error::VerifiableEncryptionError;
 
 #[derive(Debug)]
 pub enum ProofSystemError {
@@ -111,6 +112,10 @@ pub enum ProofSystemError {
     UnequalResponseOfSaverCiphertextAndChunk(usize),
     ResponseForWitnessNotFoundForStatement(usize),
     NoResponseFoundForWitnessRef(usize, usize),
+    MissingBlindingForStatementAtIndex(usize, usize),
+    VerifiableEncryption(u32, VerifiableEncryptionError),
+    NotALegoGroth16StatementProof,
+    NotAVeTZ21StatementProof,
 }
 
 impl From<SchnorrError> for ProofSystemError {

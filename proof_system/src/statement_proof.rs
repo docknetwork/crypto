@@ -1,4 +1,7 @@
-use crate::error::ProofSystemError;
+use crate::{
+    error::ProofSystemError,
+    sub_protocols::verifiable_encryption_tz_21::{dkgith_decls, rdkgith_decls},
+};
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{
@@ -64,6 +67,8 @@ pub enum StatementProof<E: Pairing> {
     PoKBBSSignature23IETFG1(bbs_plus::proof_23_ietf::PoKOfSignature23G1Proof<E>),
     PedersenCommitmentPartial(PedersenCommitmentPartialProof<E::G1Affine>),
     PedersenCommitmentG2Partial(PedersenCommitmentPartialProof<E::G2Affine>),
+    VeTZ21(VeTZ21Proof<E::G1Affine>),
+    VeTZ21Robust(VeTZ21RobustProof<E::G1Affine>),
 }
 
 macro_rules! delegate {
@@ -103,7 +108,9 @@ macro_rules! delegate {
                 KBUniversalAccumulatorNonMembershipKV,
                 PoKBBSSignature23IETFG1,
                 PedersenCommitmentPartial,
-                PedersenCommitmentG2Partial
+                PedersenCommitmentG2Partial,
+                VeTZ21,
+                VeTZ21Robust
             : $($tt)+
         }
     }};
@@ -146,7 +153,9 @@ macro_rules! delegate_reverse {
                 KBUniversalAccumulatorNonMembershipKV,
                 PoKBBSSignature23IETFG1,
                 PedersenCommitmentPartial,
-                PedersenCommitmentG2Partial
+                PedersenCommitmentG2Partial,
+                VeTZ21,
+                VeTZ21Robust
             : $($tt)+
         }
 
@@ -418,6 +427,36 @@ pub struct DetachedAccumulatorNonMembershipProof<E: Pairing> {
     // TODO: Make constants as generic
     #[serde_as(as = "ArkObjectBytes")]
     pub encrypted: ecies::Encryption<E::G2Affine, 32, 24>,
+}
+
+/// Verifiable Encryption using DKGith protocol in the scheme TZ21
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct VeTZ21Proof<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub ve_proof: dkgith_decls::Proof<G>,
+    /// The commitment to the encrypted messages
+    #[serde_as(as = "ArkObjectBytes")]
+    pub commitment: G,
+    pub sp: PedersenCommitmentPartialProof<G>,
+}
+
+/// Verifiable Encryption using Robust DKGith protocol in the scheme TZ21
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct VeTZ21RobustProof<G: AffineRepr> {
+    #[serde_as(as = "ArkObjectBytes")]
+    pub ve_proof: rdkgith_decls::Proof<G>,
+    /// The commitment to the encrypted messages
+    #[serde_as(as = "ArkObjectBytes")]
+    pub commitment: G,
+    pub sp: PedersenCommitmentPartialProof<G>,
 }
 
 mod serialization {

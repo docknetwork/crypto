@@ -676,16 +676,16 @@ macro_rules! gen_tests {
 }
 
 gen_tests!(
-    pok_of_bbs_plus_sig_and_verifiable_encryption,
-    pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages,
+    pok_of_bbs_plus_sig_and_verifiable_encryption_using_saver,
+    pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages_using_saver,
     bbs_plus_sig_setup,
     PoKSignatureBBSG1ProverStmt,
     PoKSignatureBBSG1VerifierStmt,
     PoKSignatureBBSG1Wit
 );
 gen_tests!(
-    pok_of_bbs_sig_and_verifiable_encryption,
-    pok_of_bbs_sig_and_verifiable_encryption_of_many_messages,
+    pok_of_bbs_sig_and_verifiable_encryption_using_saver,
+    pok_of_bbs_sig_and_verifiable_encryption_of_many_messages_using_saver,
     bbs_sig_setup,
     PoKSignatureBBS23G1ProverStmt,
     PoKSignatureBBS23G1VerifierStmt,

@@ -21,6 +21,7 @@ pub mod ped_comm;
 pub mod ps_signature;
 pub mod r1cs_legogroth16;
 pub mod saver;
+pub mod verifiable_encryption_tz_21;
 
 /// Type of relation being proved and the public values for the relation
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -128,6 +129,12 @@ pub enum Statement<E: Pairing> {
     ),
     PoKBBSSignature23IETFG1Prover(bbs_23_ietf::PoKBBSSignature23IETFG1Prover<E>),
     PoKBBSSignature23IETFG1Verifier(bbs_23_ietf::PoKBBSSignature23IETFG1Verifier<E>),
+    /// Verifiable Encryption using DKGith protocol in the scheme TZ21
+    // TODO: This should have the const generics used by the corresponding protocol
+    VeTZ21(verifiable_encryption_tz_21::VerifiableEncryptionTZ21<E::G1Affine>),
+    /// Verifiable Encryption using Robust DKGith protocol in the scheme TZ21
+    // TODO: This should have the const generics used by the corresponding protocol
+    VeTZ21Robust(verifiable_encryption_tz_21::VerifiableEncryptionTZ21<E::G1Affine>),
 }
 
 /// A collection of statements
@@ -205,7 +212,9 @@ macro_rules! delegate {
                 KBUniversalAccumulatorNonMembershipKV,
                 KBUniversalAccumulatorNonMembershipKVFullVerifier,
                 PoKBBSSignature23IETFG1Prover,
-                PoKBBSSignature23IETFG1Verifier
+                PoKBBSSignature23IETFG1Verifier,
+                VeTZ21,
+                VeTZ21Robust
             : $($tt)+
         }
     }}
@@ -260,7 +269,9 @@ macro_rules! delegate_reverse {
                 KBUniversalAccumulatorNonMembershipKV,
                 KBUniversalAccumulatorNonMembershipKVFullVerifier,
                 PoKBBSSignature23IETFG1Prover,
-                PoKBBSSignature23IETFG1Verifier
+                PoKBBSSignature23IETFG1Verifier,
+                VeTZ21,
+                VeTZ21Robust
             : $($tt)+
         }
 

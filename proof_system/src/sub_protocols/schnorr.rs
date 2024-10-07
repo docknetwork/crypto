@@ -49,9 +49,6 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
         mut blindings: BTreeMap<usize, G::ScalarField>,
         witnesses: Vec<G::ScalarField>,
     ) -> Result<(), ProofSystemError> {
-        if self.commitment_to_randomness.is_some() {
-            return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
-        }
         let blindings = (0..witnesses.len())
             .map(|i| {
                 blindings
@@ -59,6 +56,17 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
                     .unwrap_or_else(|| G::ScalarField::rand(rng))
             })
             .collect::<Vec<_>>();
+        self.init_with_all_blindings_given(blindings, witnesses)
+    }
+
+    pub fn init_with_all_blindings_given(
+        &mut self,
+        blindings: Vec<G::ScalarField>,
+        witnesses: Vec<G::ScalarField>,
+    ) -> Result<(), ProofSystemError> {
+        if self.commitment_to_randomness.is_some() {
+            return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
+        }
         self.commitment_to_randomness =
             Some(SchnorrCommitment::new(self.commitment_key, blindings));
         self.witnesses = Some(witnesses);

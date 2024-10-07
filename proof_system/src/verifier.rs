@@ -4,7 +4,8 @@ use crate::{
         COMPOSITE_PROOF_LABEL, CONTEXT_LABEL, KB_POS_ACCUM_CDH_MEM_LABEL, KB_POS_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_CDH_MEM_LABEL, KB_UNI_ACCUM_CDH_NON_MEM_LABEL, KB_UNI_ACCUM_MEM_LABEL,
         KB_UNI_ACCUM_NON_MEM_LABEL, NONCE_LABEL, PS_LABEL, VB_ACCUM_CDH_MEM_LABEL,
-        VB_ACCUM_CDH_NON_MEM_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL,
+        VB_ACCUM_CDH_NON_MEM_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL, VE_TZ_21_LABEL,
+        VE_TZ_21_ROBUST_LABEL,
     },
     error::ProofSystemError,
     prelude::EqualWitnesses,
@@ -43,6 +44,7 @@ use crate::{
         r1cs_legogorth16::R1CSLegogroth16Protocol,
         saver::SaverProtocol,
         schnorr::SchnorrProtocol,
+        verifiable_encryption_tz_21::{dkgith_decls, rdkgith_decls, VeTZ21Protocol},
     },
 };
 use ark_ec::pairing::Pairing;
@@ -56,12 +58,14 @@ use ark_std::{
 };
 use digest::Digest;
 use dock_crypto_utils::{
+    aliases::FullDigest,
     expect_equality,
     randomized_pairing_check::RandomizedPairingChecker,
     signature::MultiMessageSignatureParams,
     transcript::{MerlinTranscript, Transcript},
 };
 use saver::encryption::Ciphertext;
+use sha3::Shake256;
 
 /// Passed to the verifier during proof verification
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Default)]
@@ -121,7 +125,7 @@ macro_rules! check_resp_for_equalities_with_err {
 
 impl<E: Pairing> Proof<E> {
     /// Verify the `Proof` given the `ProofSpec`, `nonce` and `config`
-    pub fn verify<R: RngCore, D: Digest>(
+    pub fn verify<R: RngCore, D: FullDigest + Digest>(
         self,
         rng: &mut R,
         proof_spec: ProofSpec<E>,
@@ -137,7 +141,7 @@ impl<E: Pairing> Proof<E> {
         }
     }
 
-    fn _verify<R: RngCore, D: Digest>(
+    fn _verify<R: RngCore, D: FullDigest + Digest>(
         self,
         rng: &mut R,
         proof_spec: ProofSpec<E>,
@@ -659,6 +663,30 @@ impl<E: Pairing> Proof<E> {
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
+                Statement::VeTZ21(s) => match proof {
+                    StatementProof::VeTZ21(p) => {
+                        let comm_key = s.get_comm_key(&proof_spec.setup_params, s_idx)?.as_slice();
+                        transcript.set_label(VE_TZ_21_LABEL);
+                        VeTZ21Protocol::compute_challenge_contribution(
+                            comm_key,
+                            p,
+                            &mut transcript,
+                        )?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::VeTZ21Robust(s) => match proof {
+                    StatementProof::VeTZ21Robust(p) => {
+                        let comm_key = s.get_comm_key(&proof_spec.setup_params, s_idx)?.as_slice();
+                        transcript.set_label(VE_TZ_21_ROBUST_LABEL);
+                        VeTZ21Protocol::compute_challenge_contribution_robust(
+                            comm_key,
+                            p,
+                            &mut transcript,
+                        )?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
                 _ => return Err(ProofSystemError::InvalidStatement),
             }
         }
@@ -766,6 +794,29 @@ impl<E: Pairing> Proof<E> {
             }};
         }
 
+        macro_rules! tz_21_verify {
+            ($s: ident, $s_idx: ident, $p: ident, $func_name: ident) => {
+                let comm_key = $s.get_comm_key(&proof_spec.setup_params, $s_idx)?;
+                let enc_params = $s.get_enc_params(&proof_spec.setup_params, $s_idx)?;
+                let sp = VeTZ21Protocol::new($s_idx, comm_key.as_slice(), enc_params);
+                // Won't have response for all indices except for last one since their responses will come from proofs of the signatures.
+                let mut missing_resps = BTreeMap::new();
+                // The last witness is the randomness of the commitment so skip that
+                for i in 0..$p.ve_proof.witness_count() - 1 {
+                    missing_resps.insert(
+                        i,
+                        Self::get_resp_for_message(
+                            $s_idx,
+                            i,
+                            &disjoint_equalities,
+                            &resp_for_equalities,
+                        )?,
+                    );
+                }
+                sp.$func_name::<D>(&challenge, $p, missing_resps)?
+            }
+        }
+
         // Verify the proof for each statement
         for (s_idx, (statement, proof)) in proof_spec
             .statements
@@ -840,6 +891,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -867,6 +919,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -894,6 +947,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -921,6 +975,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -946,6 +1001,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -972,6 +1028,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -997,6 +1054,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1023,6 +1081,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1050,6 +1109,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1077,6 +1137,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1181,6 +1242,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1203,6 +1265,7 @@ impl<E: Pairing> Proof<E> {
                                 &cc_keys.1,
                                 Self::get_resp_for_message(
                                     s_idx,
+                                    0,
                                     &disjoint_equalities,
                                     &resp_for_equalities,
                                 )?,
@@ -1236,6 +1299,7 @@ impl<E: Pairing> Proof<E> {
                                 &mut pairing_checker,
                                 Self::get_resp_for_message(
                                     s_idx,
+                                    0,
                                     &disjoint_equalities,
                                     &resp_for_equalities,
                                 )?,
@@ -1254,6 +1318,7 @@ impl<E: Pairing> Proof<E> {
                                 comm_key,
                                 Self::get_resp_for_message(
                                     s_idx,
+                                    0,
                                     &disjoint_equalities,
                                     &resp_for_equalities,
                                 )?,
@@ -1400,6 +1465,7 @@ impl<E: Pairing> Proof<E> {
                             &mut transcript,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1421,6 +1487,7 @@ impl<E: Pairing> Proof<E> {
                             &mut pairing_checker,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1445,6 +1512,7 @@ impl<E: Pairing> Proof<E> {
                             comm_key_slice.as_slice(),
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1463,6 +1531,7 @@ impl<E: Pairing> Proof<E> {
                             comm_key.as_slice(),
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1541,6 +1610,7 @@ impl<E: Pairing> Proof<E> {
                             p,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1558,6 +1628,7 @@ impl<E: Pairing> Proof<E> {
                             &s.secret_key,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1576,6 +1647,7 @@ impl<E: Pairing> Proof<E> {
                             p,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1595,6 +1667,7 @@ impl<E: Pairing> Proof<E> {
                             &s.secret_key,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1613,6 +1686,7 @@ impl<E: Pairing> Proof<E> {
                             p,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
@@ -1632,10 +1706,23 @@ impl<E: Pairing> Proof<E> {
                             &s.secret_key,
                             Self::get_resp_for_message(
                                 s_idx,
+                                0,
                                 &disjoint_equalities,
                                 &resp_for_equalities,
                             )?,
                         )?
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::VeTZ21(s) => match proof {
+                    StatementProof::VeTZ21(ref p) => {
+                        tz_21_verify!(s, s_idx, p, verify_proof_contribution);
+                    }
+                    _ => err_incompat_proof!(s_idx, s, proof),
+                },
+                Statement::VeTZ21Robust(s) => match proof {
+                    StatementProof::VeTZ21Robust(ref p) => {
+                        tz_21_verify!(s, s_idx, p, verify_proof_contribution_robust);
                     }
                     _ => err_incompat_proof!(s_idx, s, proof),
                 },
@@ -1744,6 +1831,61 @@ impl<E: Pairing> Proof<E> {
         Ok(())
     }
 
+    pub fn get_saver_ciphertext_and_proof(
+        &self,
+        index: usize,
+    ) -> Result<(&Ciphertext<E>, &ark_groth16::Proof<E>), ProofSystemError> {
+        let st = self.statement_proof(index)?;
+        if let StatementProof::Saver(s) = st {
+            Ok((&s.ciphertext, &s.snark_proof))
+        } else {
+            Err(ProofSystemError::NotASaverStatementProof)
+        }
+    }
+
+    pub fn get_legogroth16_proof(
+        &self,
+        index: usize,
+    ) -> Result<&legogroth16::Proof<E>, ProofSystemError> {
+        let st = self.statement_proof(index)?;
+        match st {
+            StatementProof::BoundCheckLegoGroth16(s) => Ok(&s.snark_proof),
+            StatementProof::R1CSLegoGroth16(s) => Ok(&s.snark_proof),
+            _ => Err(ProofSystemError::NotALegoGroth16StatementProof),
+        }
+    }
+
+    /// Get the compressed ciphertext and commitment to needed to decrypt message encrypted using DKGitH protocol
+    pub fn get_tz21_ciphertext_and_commitment<D: FullDigest + Digest>(
+        &self,
+        index: usize,
+    ) -> Result<(dkgith_decls::Ciphertext<E::G1Affine>, E::G1Affine), ProofSystemError> {
+        let st = self.statement_proof(index)?;
+        if let StatementProof::VeTZ21(s) = st {
+            let ve_proof = &s.ve_proof;
+            // TODO: Make Shake256 a generic and ensure it matches the one used on proof generation
+            let ct = ve_proof.compress::<{ dkgith_decls::SUBSET_SIZE }, D, Shake256>();
+            Ok((ct, s.commitment))
+        } else {
+            Err(ProofSystemError::NotAVeTZ21StatementProof)
+        }
+    }
+
+    /// Get the compressed ciphertext and commitment to needed to decrypt message encrypted using Robust DKGitH protocol
+    pub fn get_tz21_robust_ciphertext_and_commitment<D: FullDigest + Digest>(
+        &self,
+        index: usize,
+    ) -> Result<(rdkgith_decls::Ciphertext<E::G1Affine>, E::G1Affine), ProofSystemError> {
+        let st = self.statement_proof(index)?;
+        if let StatementProof::VeTZ21Robust(s) = st {
+            let ve_proof = &s.ve_proof;
+            let ct = ve_proof.compress::<{ rdkgith_decls::SUBSET_SIZE }, D>();
+            Ok((ct, s.commitment))
+        } else {
+            Err(ProofSystemError::NotAVeTZ21StatementProof)
+        }
+    }
+
     /// Used to check if response (from Schnorr protocol) for a witness is equal to other witnesses that
     /// it must be equal to. This is required when the `ProofSpec` demands certain witnesses to be equal.
     fn check_response_for_equality<'a>(
@@ -1762,27 +1904,33 @@ impl<E: Pairing> Proof<E> {
         Ok(())
     }
 
-    /// Get the response for a witness from the tracked responses of witness equalities. Expects the response
-    /// to exists else throws error. This is not to be called for signature proof protocols but others whose
-    /// responses are expected to come from them or pedersen commitment protocols.  
+    /// Get the response for a witness from the tracked responses of witness equalities.
+    /// Expects the response to exist else throws error. This is not to be called for signature proof protocols
+    /// but others whose responses are expected to come from them or pedersen commitment protocols.
     fn get_resp_for_message(
-        s_idx: usize,
+        statement_idx: usize,
+        witness_idx: usize,
         disjoint_equalities: &[EqualWitnesses],
         resp_for_equalities: &BTreeMap<usize, E::ScalarField>,
     ) -> Result<E::ScalarField, ProofSystemError> {
-        let wit_ref = (s_idx, 0);
+        let wit_ref = (statement_idx, witness_idx);
         let mut resp = None;
         for (i, eq) in disjoint_equalities.iter().enumerate() {
             if eq.has_wit_ref(&wit_ref) {
                 if let Some(r) = resp_for_equalities.get(&i) {
                     resp = Some(*r);
                 } else {
-                    return Err(ProofSystemError::NoResponseFoundForWitnessRef(s_idx, 0));
+                    return Err(ProofSystemError::NoResponseFoundForWitnessRef(
+                        statement_idx,
+                        witness_idx,
+                    ));
                 }
                 // Exit loop because equalities are disjoint
                 break;
             }
         }
-        resp.ok_or_else(|| ProofSystemError::NoResponseFoundForWitnessRef(s_idx, 0))
+        resp.ok_or_else(|| {
+            ProofSystemError::NoResponseFoundForWitnessRef(statement_idx, witness_idx)
+        })
     }
 }

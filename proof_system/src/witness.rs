@@ -39,6 +39,8 @@ pub enum Witness<E: Pairing> {
     KBUniAccumulatorNonMembership(KBUniNonMembership<E::G1Affine>),
     KBPosAccumulatorMembership(KBPosMembership<E>),
     PoKOfBBDT16MAC(PoKOfBBDT16MAC<E::G1Affine>),
+    VeTZ21(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
+    VeTZ21Robust(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
 }
 
 macro_rules! delegate {
@@ -61,7 +63,9 @@ macro_rules! delegate {
                 KBUniAccumulatorMembership,
                 KBUniAccumulatorNonMembership,
                 KBPosAccumulatorMembership,
-                PoKOfBBDT16MAC
+                PoKOfBBDT16MAC,
+                VeTZ21,
+                VeTZ21Robust
             : $($tt)+
         }
     }}
@@ -87,7 +91,9 @@ macro_rules! delegate_reverse {
                 KBUniAccumulatorMembership,
                 KBUniAccumulatorNonMembership,
                 KBPosAccumulatorMembership,
-                PoKOfBBDT16MAC
+                PoKOfBBDT16MAC,
+                VeTZ21,
+                VeTZ21Robust
             : $($tt)+
         }
 

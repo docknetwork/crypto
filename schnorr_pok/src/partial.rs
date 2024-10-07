@@ -170,8 +170,8 @@ impl<G: AffineRepr> PokTwoDiscreteLogsProtocol<G> {
 }
 
 impl<G: AffineRepr> PartialSchnorrResponse<G> {
-    /// Keys of `missing_responses` are the witness indices whose response was generated while creating this. Instead
-    /// these comes from some other Schnorr protocol.
+    /// Keys of `missing_responses` are the witness indices whose response was generated while creating this. Instead,
+    /// these come from some other Schnorr protocol.
     pub fn is_valid(
         &self,
         bases: &[G],

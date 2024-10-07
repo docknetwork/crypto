@@ -13,6 +13,7 @@ pub mod ps_signature;
 pub mod r1cs_legogorth16;
 pub mod saver;
 pub mod schnorr;
+pub mod verifiable_encryption_tz_21;
 
 use core::borrow::Borrow;
 
@@ -44,6 +45,7 @@ use crate::sub_protocols::{
     bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
     inequality::InequalityProtocol,
     r1cs_legogorth16::R1CSLegogroth16Protocol,
+    verifiable_encryption_tz_21::VeTZ21Protocol,
 };
 use accumulator::{
     detached::{
@@ -97,6 +99,7 @@ pub enum SubProtocol<'a, E: Pairing> {
     KBUniversalAccumulatorNonMembershipKV(
         KBUniversalAccumulatorNonMembershipKVSubProtocol<E::G1Affine>,
     ),
+    VeTZ21(VeTZ21Protocol<'a, E::G1Affine>),
 }
 
 macro_rules! delegate {
@@ -131,7 +134,8 @@ macro_rules! delegate {
                 PoKDiscreteLogsG2,
                 VBAccumulatorMembershipKV,
                 KBUniversalAccumulatorMembershipKV,
-                KBUniversalAccumulatorNonMembershipKV
+                KBUniversalAccumulatorNonMembershipKV,
+                VeTZ21
             : $($tt)+
         }
     }};

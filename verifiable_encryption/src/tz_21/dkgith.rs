@@ -42,7 +42,7 @@ use crate::tz_21::encryption::BatchCiphertext;
 use rayon::prelude::*;
 
 /// Ciphertext and the proof of encryption. `CT` is the variant of Elgamal encryption used. See test for usage
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct DkgithProof<
     G: AffineRepr,
     CT: BatchCiphertext<G>,
@@ -240,7 +240,10 @@ impl<
                 NUM_REPETITIONS];
 
         for i in 0..NUM_REPETITIONS {
-            ciphertexts[i] = cts[i][indices_to_hide[i] as usize].clone();
+            core::mem::swap(
+                &mut ciphertexts[i],
+                &mut cts[i][indices_to_hide[i] as usize],
+            );
         }
         cfg_iter_mut!(tree_openings).enumerate().for_each(|(i, t)| {
             *t = seed_trees[i].open_seeds(indices_to_hide[i]);
@@ -255,7 +258,7 @@ impl<
         }
     }
 
-    fn verify<D: FullDigest + Digest, X: Default + Update + ExtendableOutput>(
+    pub fn verify<D: FullDigest + Digest, X: Default + Update + ExtendableOutput>(
         &self,
         commitment: &G,
         comm_key: &[G],
@@ -436,6 +439,10 @@ impl<
         CompressedCiphertext(compressed_cts, PhantomData)
     }
 
+    pub fn witness_count(&self) -> usize {
+        self.ciphertexts[0].batch_size()
+    }
+
     // NOTE: Ideally the verifier will compress the ciphertext and since functions `verify` and `compress` share some code, it will be more efficient to
     // have a function called `verify_and_compress` than calling `verify` and then `compress`
 }
@@ -459,6 +466,10 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>
             }
         }
         Err(VerifiableEncryptionError::DecryptionFailed)
+    }
+
+    pub fn encrypted_count(&self) -> usize {
+        self.0[0].batch_size()
     }
 }
 

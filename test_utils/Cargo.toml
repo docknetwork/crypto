@@ -19,5 +19,5 @@ oblivious_transfer_protocols = { default-features = false, path = "../oblivious_
 
 [features]
 default = ["parallel"]
-std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "bbs_plus/std", "bbs_plus/std", "vb_accumulator/std", "kvac/std", "oblivious_transfer_protocols/std"]
-parallel = ["bbs_plus/parallel", "vb_accumulator/parallel", "kvac/parallel", "oblivious_transfer_protocols/parallel"]
+std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "bbs_plus/std", "vb_accumulator/std", "kvac/std", "oblivious_transfer_protocols/std"]
+parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "kvac/parallel", "oblivious_transfer_protocols/parallel"]

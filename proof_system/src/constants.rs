@@ -22,3 +22,5 @@ pub const KB_POS_ACCUM_MEM_LABEL: &'static [u8; 34] = b"KB-positive-accumulator-
 pub const KB_POS_ACCUM_CDH_MEM_LABEL: &'static [u8; 38] = b"KB-positive-accumulator-CDH-membership";
 
 pub const BBDT16_KVAC_LABEL: &'static [u8; 14] = b"BDDT-2016-KVAC";
+pub const VE_TZ_21_LABEL: &'static [u8; 8] = b"VE-TZ-21";
+pub const VE_TZ_21_ROBUST_LABEL: &'static [u8; 15] = b"VE-TZ-21-Robust";

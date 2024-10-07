@@ -39,6 +39,7 @@ impl<G: AffineRepr> PublicKey<G> {
     }
 }
 
+/// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
 pub fn keygen<R: RngCore, G: AffineRepr>(
     rng: &mut R,
     gen: &G,
@@ -72,6 +73,7 @@ pub struct Ciphertext<G: AffineRepr> {
 
 impl<G: AffineRepr> Ciphertext<G> {
     /// Returns the ciphertext and randomness created for encryption
+    /// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     pub fn new<R: RngCore>(
         rng: &mut R,
         msg: &G,
@@ -86,6 +88,7 @@ impl<G: AffineRepr> Ciphertext<G> {
     }
 
     /// Returns the ciphertext
+    /// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     pub fn new_given_randomness(
         msg: &G,
         randomness: &G::ScalarField,
@@ -102,6 +105,7 @@ impl<G: AffineRepr> Ciphertext<G> {
 
     /// Returns the ciphertext but takes the window tables for the public key and generator. Useful when a lot
     /// of encryptions have to be done using the same public key
+    /// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     pub fn new_given_randomness_and_window_tables(
         msg: &G,
         randomness: &G::ScalarField,
@@ -146,6 +150,7 @@ pub struct HashedElgamalCiphertext<G: AffineRepr> {
 
 impl<G: AffineRepr> HashedElgamalCiphertext<G> {
     /// Returns the ciphertext and randomness created for encryption
+    /// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     pub fn new<R: RngCore, D: FullDigest>(
         rng: &mut R,
         msg: &G::ScalarField,
@@ -160,6 +165,7 @@ impl<G: AffineRepr> HashedElgamalCiphertext<G> {
     }
 
     /// Returns the ciphertext
+    /// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     pub fn new_given_randomness<D: FullDigest>(
         msg: &G::ScalarField,
         randomness: &G::ScalarField,
@@ -176,6 +182,7 @@ impl<G: AffineRepr> HashedElgamalCiphertext<G> {
 
     /// Returns the ciphertext but takes the window tables for the public key and generator. Useful when a lot
     /// of encryptions have to be done using the same public key
+    /// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     pub fn new_given_randomness_and_window_tables<D: FullDigest>(
         msg: &G::ScalarField,
         randomness: &G::ScalarField,
@@ -231,6 +238,7 @@ pub struct BatchedHashedElgamalCiphertext<G: AffineRepr> {
 
 impl<G: AffineRepr> BatchedHashedElgamalCiphertext<G> {
     /// Returns the ciphertext and randomness created for encryption
+    /// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     pub fn new<R: RngCore, D: FullDigest>(
         rng: &mut R,
         msgs: &[G::ScalarField],
@@ -245,6 +253,7 @@ impl<G: AffineRepr> BatchedHashedElgamalCiphertext<G> {
     }
 
     /// Returns the ciphertext
+    /// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     pub fn new_given_randomness<D: FullDigest>(
         msgs: &[G::ScalarField],
         randomness: &G::ScalarField,
@@ -261,6 +270,7 @@ impl<G: AffineRepr> BatchedHashedElgamalCiphertext<G> {
 
     /// Returns the ciphertext but takes the window tables for the public key and generator. Useful when a lot
     /// of encryptions have to be done using the same public key
+    /// `gen` is the generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     pub fn new_given_randomness_and_window_tables<D: FullDigest>(
         msgs: &[G::ScalarField],
         randomness: &G::ScalarField,
