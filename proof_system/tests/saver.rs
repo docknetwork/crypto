@@ -6,6 +6,7 @@ use ark_std::{
     UniformRand,
 };
 use blake2::Blake2b512;
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use proof_system::{
     prelude::{
         generate_snark_srs_bound_check, EqualWitnesses, MetaStatements, ProofSpec, ProverConfig,
@@ -41,7 +42,6 @@ use saver::{
     setup::{setup_for_groth16, ChunkedCommitmentGens, EncryptionGens, PreparedEncryptionGens},
 };
 use std::time::Instant;
-
 use test_utils::{bbs::*, test_serialization};
 
 pub fn decrypt_and_verify(
@@ -54,12 +54,14 @@ pub fn decrypt_and_verify(
     enc_gens: impl Into<PreparedEncryptionGens<Bls12_381>>,
     chunk_bit_size: u8,
 ) {
+    let start = Instant::now();
     let dk = dk.into();
     let enc_gens = enc_gens.into();
     let ct = proof.get_saver_ciphertext_and_proof(stmt_idx).unwrap().0;
     let (decrypted_message, nu) = ct
         .decrypt_given_groth16_vk(sk, dk.clone(), snark_vk, chunk_bit_size)
         .unwrap();
+    println!("Time to decrypt {:?}", start.elapsed());
     assert_eq!(decrypted_message, decrypted);
     ct.verify_decryption_given_groth16_vk(
         &decrypted_message,
@@ -68,6 +70,38 @@ pub fn decrypt_and_verify(
         dk,
         snark_vk,
         enc_gens,
+    )
+    .unwrap();
+}
+
+pub fn decrypt_and_verify_with_randomized_pairing_checker(
+    pairing_checker: &mut RandomizedPairingChecker<Bls12_381>,
+    proof: &Proof<Bls12_381>,
+    stmt_idx: usize,
+    snark_vk: &VerifyingKey<Bls12_381>,
+    decrypted: Fr,
+    sk: &SecretKey<Fr>,
+    dk: impl Into<PreparedDecryptionKey<Bls12_381>>,
+    enc_gens: impl Into<PreparedEncryptionGens<Bls12_381>>,
+    chunk_bit_size: u8,
+) {
+    let start = Instant::now();
+    let dk = dk.into();
+    let enc_gens = enc_gens.into();
+    let ct = proof.get_saver_ciphertext_and_proof(stmt_idx).unwrap().0;
+    let (decrypted_message, nu) = ct
+        .decrypt_given_groth16_vk(sk, dk.clone(), snark_vk, chunk_bit_size)
+        .unwrap();
+    println!("Time to decrypt {:?}", start.elapsed());
+    assert_eq!(decrypted_message, decrypted);
+    ct.verify_decryption_given_groth16_vk_with_randomized_pairing_checker(
+        &decrypted_message,
+        &nu,
+        chunk_bit_size,
+        dk,
+        snark_vk,
+        enc_gens,
+        pairing_checker,
     )
     .unwrap();
 }
@@ -258,6 +292,26 @@ macro_rules! gen_tests {
             );
             println!(
                 "Time taken to decrypt and verify 1 encrypted message in signature over {} messages {:?}",
+                msg_count,
+                start.elapsed()
+            );
+
+            let start = Instant::now();
+            let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, true);
+            decrypt_and_verify_with_randomized_pairing_checker(
+                &mut checker,
+                &proof,
+                1,
+                &snark_pk.pk.vk,
+                msgs[enc_msg_idx],
+                &sk,
+                prepared_dk.clone(),
+                prepared_enc_gens.clone(),
+                chunk_bit_size,
+            );
+            assert!(checker.verify());
+            println!(
+                "Time taken to decrypt and verify 1 encrypted message in signature over {} messages using randomized pairing checker {:?}",
                 msg_count,
                 start.elapsed()
             );
@@ -611,6 +665,29 @@ macro_rules! gen_tests {
                 }
                 println!(
                     "Time taken to decrypt and verify {} encrypted messages in signature over {} messages {:?}",
+                    enc_msg_indices.len(),
+                    msg_count,
+                    start.elapsed()
+                );
+
+                let start = Instant::now();
+                let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, true);
+                for (i, j) in enc_msg_indices.iter().enumerate() {
+                    decrypt_and_verify_with_randomized_pairing_checker(
+                        &mut checker,
+                        &proof,
+                        i + 1,
+                        &snark_pk.pk.vk,
+                        msgs[*j],
+                        &sk,
+                        dk.clone(),
+                        enc_gens.clone(),
+                        chunk_bit_size,
+                    );
+                }
+                assert!(checker.verify());
+                println!(
+                    "Time taken to decrypt and verify {} encrypted messages in signature over {} messages using randomized pairing checker {:?}",
                     enc_msg_indices.len(),
                     msg_count,
                     start.elapsed()

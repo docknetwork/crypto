@@ -29,7 +29,10 @@ use serde_with::serde_as;
 use crate::utils::CHUNK_TYPE;
 use dock_crypto_utils::{ff::non_zero_random, serde_utils::*};
 
-use dock_crypto_utils::solve_discrete_log::solve_discrete_log_bsgs_alt;
+use dock_crypto_utils::{
+    randomized_pairing_check::RandomizedPairingChecker,
+    solve_discrete_log::solve_discrete_log_bsgs_alt,
+};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -125,6 +128,31 @@ macro_rules! impl_enc_funcs {
                 dk,
                 g_i,
                 gens,
+            )
+        }
+
+        /// Verify that the decrypted message corresponds to original plaintext in the ciphertext
+        /// but using randomized pairing checker
+        pub fn verify_decryption_with_randomized_pairing_checker(
+            &self,
+            message: &E::ScalarField,
+            nu: &E::G1Affine,
+            chunk_bit_size: u8,
+            dk: impl Into<PreparedDecryptionKey<E>>,
+            g_i: &[E::G1Affine],
+            gens: impl Into<PreparedEncryptionGens<E>>,
+            pairing_checker: &mut RandomizedPairingChecker<E>,
+        ) -> crate::Result<()> {
+            let decomposed = utils::decompose(message, chunk_bit_size)?;
+            Encryption::verify_decryption_with_randomized_pairing_checker(
+                &decomposed,
+                &self.X_r,
+                &self.enc_chunks,
+                nu,
+                dk,
+                g_i,
+                gens,
+                pairing_checker,
             )
         }
     };
@@ -439,6 +467,61 @@ impl<E: Pairing> Encryption<E> {
         Ok(())
     }
 
+    /// Same as `Self::verify_decryption` but used randomized pairing checker
+    pub fn verify_decryption_with_randomized_pairing_checker(
+        messages: &[CHUNK_TYPE],
+        c_0: &E::G1Affine,
+        c: &[E::G1Affine],
+        nu: &E::G1Affine,
+        dk: impl Into<PreparedDecryptionKey<E>>,
+        g_i: &[E::G1Affine],
+        gens: impl Into<PreparedEncryptionGens<E>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> crate::Result<()> {
+        let dk = dk.into();
+        let gens = gens.into();
+        if messages.len() != dk.supported_chunks_count()? as usize {
+            return Err(SaverError::IncompatibleDecryptionKey(
+                messages.len(),
+                dk.supported_chunks_count()? as usize,
+            ));
+        }
+        if messages.len() > g_i.len() {
+            return Err(SaverError::VectorShorterThanExpected(
+                messages.len(),
+                g_i.len(),
+            ));
+        }
+
+        // NOTE: A likely optimization is combining all terms involving `nu` and then use a random linear
+        // combination check but this will require multiplication in group G2, i.e. gens.H and dk.V_1
+        // which is not possible given prepared versions of these. So it needs to be compared with the
+        // other variation
+
+        let minus_nu = nu.into_group().neg().into();
+        pairing_checker.add_sources(nu, gens.H, c_0, dk.V_0.clone());
+
+        let g_i_m_i_c_i = E::G1::normalize_batch(
+            // g_i * m_i - c_i
+            &cfg_into_iter!(0..messages.len())
+                .map(|i| {
+                    let g_i_m_i = g_i[i].mul(E::ScalarField::from(messages[i] as u64));
+                    g_i_m_i.sub(&c[i])
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        for i in 0..messages.len() {
+            pairing_checker.add_sources(
+                &g_i_m_i_c_i[i],
+                dk.V_2[i].clone(),
+                &minus_nu,
+                dk.V_1[i].clone(),
+            );
+        }
+        Ok(())
+    }
+
     /// Same as `Self::verify_decryption` but takes Groth16's verification key instead of the generators used for Elgamal encryption
     pub fn verify_decryption_given_groth16_vk(
         messages: &[CHUNK_TYPE],
@@ -717,6 +800,28 @@ impl<E: Pairing> Ciphertext<E> {
     ) -> crate::Result<()> {
         let g_i = saver_groth16::get_gs_for_encryption(snark_vk);
         self.verify_decryption(message, nu, chunk_bit_size, dk, g_i, gens)
+    }
+
+    pub fn verify_decryption_given_groth16_vk_with_randomized_pairing_checker(
+        &self,
+        message: &E::ScalarField,
+        nu: &E::G1Affine,
+        chunk_bit_size: u8,
+        dk: impl Into<PreparedDecryptionKey<E>>,
+        snark_vk: &ark_groth16::VerifyingKey<E>,
+        gens: impl Into<PreparedEncryptionGens<E>>,
+        pairing_checker: &mut RandomizedPairingChecker<E>,
+    ) -> crate::Result<()> {
+        let g_i = saver_groth16::get_gs_for_encryption(snark_vk);
+        self.verify_decryption_with_randomized_pairing_checker(
+            message,
+            nu,
+            chunk_bit_size,
+            dk,
+            g_i,
+            gens,
+            pairing_checker,
+        )
     }
 }
 
