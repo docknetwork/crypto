@@ -66,6 +66,8 @@ pub struct ParticipantOutput<F: PrimeField> {
 impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     Participant<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>
 {
+    /// The returned map contains the messages that need to be sent to the parties with corresponding
+    /// key in the map
     pub fn init<R: RngCore>(
         rng: &mut R,
         id: ParticipantId,
@@ -211,6 +213,21 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             z_A: self.z_A,
             z_B: self.z_B,
         }
+    }
+}
+
+impl<F: PrimeField> ParticipantOutput<F> {
+    pub fn compute_u(&self, idx: usize) -> F {
+        let mut u = F::zero();
+        for (_, (a, b)) in &self.z_A {
+            u += a[idx];
+            u += b[idx];
+        }
+        for (_, (a, b)) in &self.z_B {
+            u += a[idx];
+            u += b[idx];
+        }
+        u
     }
 }
 

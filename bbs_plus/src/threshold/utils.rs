@@ -46,14 +46,7 @@ pub fn compute_R_and_u<G: AffineRepr>(
     phase2: &Phase2Output<G::ScalarField>,
 ) -> (G, G::ScalarField) {
     let R = base.mul(r).into_affine();
-    let mut u = *masked_r * (*e + masked_signing_key_share);
-    for (_, (a, b)) in &phase2.0.z_A {
-        u += a[index_in_output as usize];
-        u += b[index_in_output as usize];
-    }
-    for (_, (a, b)) in &phase2.0.z_B {
-        u += a[index_in_output as usize];
-        u += b[index_in_output as usize];
-    }
+    let u =
+        *masked_r * (*e + masked_signing_key_share) + phase2.0.compute_u(index_in_output as usize);
     (R, u)
 }

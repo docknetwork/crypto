@@ -17,7 +17,7 @@ use dock_crypto_utils::{expect_equality, serde_utils::ArkObjectBytes};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 
-/// Response during step 3 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
+/// Response during step 3 of the Schnorr protocol to prove knowledge of 1 or more discrete logs.
 /// This is called partial because it does not contain the responses for all the witnesses. This is
 /// used when more than one Schnorr protocol is used and some witnesses are to be proved equal among them.
 /// Also useful in case of a single Schnorr protocol if some witnesses are to be proved equal.

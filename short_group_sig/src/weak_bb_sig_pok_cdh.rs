@@ -1,4 +1,4 @@
-//! Proof of knowledge of weak-BB signature as described in the paper [Scalable Revocation Scheme for Anonymous Credentials Based on n-times Unlinkable Proofs](http://library.usc.edu.ph/ACM/SIGSAC%202017/wpes/p123.pdf)
+//! Proof of knowledge of weak-BB signature as described in section 2.4 in the paper [Scalable Revocation Scheme for Anonymous Credentials Based on n-times Unlinkable Proofs](http://library.usc.edu.ph/ACM/SIGSAC%202017/wpes/p123.pdf)
 //! The advantage of this variation is that the prover does not need to compute any pairings
 // TODO: Add proof of correctness (should i really call proof of correctness as this makes the proof/simulation happen), i.e. a tuple (G, G*x) and proof that x is the secret key
 

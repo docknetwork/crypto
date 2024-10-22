@@ -437,6 +437,7 @@ mod tests {
         // Signer creates user secret key
         let user_id = compute_random_oracle_challenge::<Fr, Blake2b512>(b"low entropy user-id");
         let usk = UserSecretKey::new(user_id, &isk, params.clone());
+        usk.verify(user_id, &ipk, params.clone()).unwrap();
 
         // Verifier gives message and context to user
         let context = b"test-context";

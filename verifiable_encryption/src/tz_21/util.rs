@@ -23,11 +23,7 @@ pub fn get_unique_indices_to_hide<D: Digest>(
     while (output.len() as u16) < num_indices {
         // Divide the bytearray into 2-byte chunks and each chunk is used to create a u16
         for c_i in c.chunks(2) {
-            if c_i.len() == 2 {
-                output.insert((((c_i[0] as u16) << 8) | (c_i[1] as u16)) % num_parties);
-            } else {
-                output.insert(c_i[0] as u16);
-            }
+            output.insert(get_bounded_u16_from_u8_slice(c_i, num_parties));
             if output.len() as u16 == num_indices {
                 break;
             }
@@ -53,11 +49,7 @@ pub fn get_indices_to_hide<D: Digest>(
     while (output.len() as u16) < num_indices {
         // Divide the bytearray into 2-byte chunks and each chunk is used to create a u16
         for c_i in c.chunks(2) {
-            if c_i.len() == 2 {
-                output.push((((c_i[0] as u16) << 8) | (c_i[1] as u16)) % num_parties);
-            } else {
-                output.push(c_i[0] as u16);
-            }
+            output.push(get_bounded_u16_from_u8_slice(c_i, num_parties));
             if output.len() as u16 == num_indices {
                 break;
             }
@@ -68,4 +60,13 @@ pub fn get_indices_to_hide<D: Digest>(
     }
 
     output
+}
+
+#[inline(always)]
+fn get_bounded_u16_from_u8_slice(c: &[u8], upper_bound: u16) -> u16 {
+    if c.len() == 2 {
+        (((c[0] as u16) << 8) | (c[1] as u16)) % upper_bound
+    } else {
+        c[0] as u16 % upper_bound
+    }
 }

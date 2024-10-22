@@ -33,6 +33,8 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
     /// of 0s whose shares are generated, eg, if `batch_size` is 3, then `a_1, a_2, ..., a_n`,
     /// `b_1, b_2, ..., b_n` and `c_1, c_2, ..., c_n` are generated such that `\sum_{i}(a_{i}) = 0`,
     /// `\sum_{i}(b_{i}) = 0` and `\sum_{i}(c_{i}) = 0`.
+    /// The returned map contains the commitments to be sent to the party with id as the corresponding
+    /// key of the map.
     pub fn init<R: RngCore>(
         rng: &mut R,
         id: ParticipantId,

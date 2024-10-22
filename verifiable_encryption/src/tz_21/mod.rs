@@ -4,6 +4,12 @@
 //! 1. DKG in the head, described in Protocol 4
 //! 2. Robust DKG in the head, described in Protocol 5
 //!
+//! The schemes also have verifiable decryption, i.e. given the decrypted values, the verifier can check if the ciphertext did
+//! in fact encrypt those values. This is trivial since the encrypted values are also committed in a Pedersen commitment,
+//! the decryptor has to just share the commitment opening with the verifier. Moreover, if the ciphertext had multiple encrypted
+//! values and the decryptor wanted to share only some of them with the verifier, it can do a (Schnorr) proof of knowledge of
+//! the opening of the commitment except the values it wants to share.
+//!
 //! Started of from [this](https://github.com/akiratk0355/verenc-mpcith/tree/main/dkgith/src) reference implementation in the paper
 //!
 //! Both are generalized such that the encryption is of not just a single discrete log but multiple witnesses,

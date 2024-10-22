@@ -9,6 +9,8 @@
 //! then computes `\sum_i{V_i} * 1 / \sum_i{u_i}` to get `V * 1/(y + alpha)`. But here the user also needs to prove to each
 //! manager that share `y_i` is a valid share of `y` and this `y` is a member of the accumulator `V`.
 
+// TODO: Use code threshold weak-BB crate and remove this duplication
+
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -195,7 +197,7 @@ impl<G: AffineRepr> ShareOfKnownMember<G> {
             sum_u += share.u;
             sum_R += share.R;
         }
-        return (sum_R * sum_u.inverse().unwrap()).into_affine();
+        (sum_R * sum_u.inverse().unwrap()).into_affine()
     }
 
     fn compute_R_and_u(
@@ -207,15 +209,7 @@ impl<G: AffineRepr> ShareOfKnownMember<G> {
         phase2: &MultOut<G::ScalarField>,
     ) -> (G, G::ScalarField) {
         let R = base.mul(r).into_affine();
-        let mut u = *masked_r * (*y + masked_signing_key_share);
-        for (_, (a, b)) in &phase2.z_A {
-            u += a[0];
-            u += b[0];
-        }
-        for (_, (a, b)) in &phase2.z_B {
-            u += a[0];
-            u += b[0];
-        }
+        let u = *masked_r * (*y + masked_signing_key_share) + phase2.compute_u(0);
         (R, u)
     }
 }
@@ -247,7 +241,7 @@ impl<G: AffineRepr> ShareOfSharedMember<G> {
             sum_u += share.u;
             sum_R += share.R;
         }
-        return (sum_R * sum_u.inverse().unwrap()).into_affine();
+        (sum_R * sum_u.inverse().unwrap()).into_affine()
     }
 
     fn compute_R_and_u(
@@ -258,15 +252,7 @@ impl<G: AffineRepr> ShareOfSharedMember<G> {
         phase2: &MultOut<G::ScalarField>,
     ) -> (G, G::ScalarField) {
         let R = base.mul(r).into_affine();
-        let mut u = *masked_r * masked_signing_key_share;
-        for (_, (a, b)) in &phase2.z_A {
-            u += a[0];
-            u += b[0];
-        }
-        for (_, (a, b)) in &phase2.z_B {
-            u += a[0];
-            u += b[0];
-        }
+        let u = *masked_r * masked_signing_key_share + phase2.compute_u(0);
         (R, u)
     }
 }

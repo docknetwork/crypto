@@ -25,6 +25,7 @@ pub struct Commitments(pub Vec<Vec<u8>>);
 pub struct Party<F: PrimeField, const SALT_SIZE: usize> {
     pub id: ParticipantId,
     pub protocol_id: Vec<u8>,
+    /// Stores shares and salts created by itself to be sent to other parties
     pub own_shares_and_salts: Vec<(F, [u8; SALT_SIZE])>,
     // Following isn't allowed in stable Rust
     // pub own_shares_and_salts: Vec<(F, [u8; 2*SECURITY_PARAM])>,

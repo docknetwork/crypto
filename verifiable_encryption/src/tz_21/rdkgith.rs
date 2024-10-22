@@ -141,6 +141,8 @@ impl<
                     .collect::<Vec<_>>();
                 *cm_i = G::Group::msm_unchecked(comm_key, &coeffs).into_affine();
             });
+        core::mem::drop(polys);
+
         // Encrypt each share
         cfg_iter_mut!(cts).enumerate().for_each(|(i, ct)| {
             *ct = CT::new::<D>(&shares[i], &enc_rands[i], &enc_key_table, &enc_gen_table);
@@ -386,9 +388,19 @@ impl<
         let hidden_indices = hidden_indices.into_iter().collect::<Vec<_>>();
 
         // Choose a random subset of size `SUBSET_SIZE` from the indices of `hidden_indices`
-        // TODO: Check if this is secure. The objective is to avoid the use of random number generation on the verifier side
+        let mut challenge_for_subset_gen = self.challenge.clone();
+        for (i, s, r) in &self.shares_and_enc_rands {
+            challenge_for_subset_gen.push((i & 255) as u8);
+            challenge_for_subset_gen.push(((i >> 8) & 255) as u8);
+            for s_i in s {
+                s_i.serialize_compressed(&mut challenge_for_subset_gen)
+                    .unwrap();
+            }
+            r.serialize_compressed(&mut challenge_for_subset_gen)
+                .unwrap();
+        }
         let subset = get_unique_indices_to_hide::<D>(
-            &D::digest(&self.challenge),
+            &D::digest(&challenge_for_subset_gen),
             SUBSET_SIZE as u16,
             NUM_PARTIES_MINUS_THRESHOLD as u16,
         )

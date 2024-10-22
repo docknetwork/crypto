@@ -166,8 +166,6 @@ impl<
             enc_gen.into_group(),
         );
 
-        // TODO: creating `share_commitments` can be optimized because comm_key remains the same.
-
         cfg_iter_mut!(cts)
             .zip(cfg_iter_mut!(share_commitments))
             .zip(cfg_iter_mut!(deltas))
@@ -389,10 +387,14 @@ impl<
         let hidden_indices =
             get_indices_to_hide::<D>(&self.challenge, NUM_REPETITIONS as u16, NUM_PARTIES as u16);
         // Choose a random subset of size `SUBSET_SIZE` from the indices of `hidden_indices`
-        // let subset = (0..NUM_REPETITIONS).collect().iter().choose_multiple(rng, SUBSET_SIZE);
-        // TODO: Check if this is secure. The objective is to avoid the use of random number generation on the verifier side
+        let mut challenge_for_subset_gen = self.challenge.clone();
+        for o in &self.tree_openings {
+            for n in o {
+                challenge_for_subset_gen.extend_from_slice(n);
+            }
+        }
         let subset = get_indices_to_hide::<D>(
-            &D::digest(&self.challenge),
+            &D::digest(&challenge_for_subset_gen),
             SUBSET_SIZE as u16,
             NUM_REPETITIONS as u16,
         );

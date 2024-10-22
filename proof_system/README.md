@@ -26,12 +26,13 @@ and used by the prover and verifier during proof creation and verification respe
 
 A common requirement is to prove equality of certain [`Witness`]s of certain [`Statement`]s. This
 is done by using the [`EqualWitnesses`] meta-statement. For each set of [`Witness`]s (from the same or different [`Statement`]s)
-that need to proven equal, a [`EqualWitnesses`] is created which is a set of witness references [`WitnessRef`].
+that need to proved equal, a [`EqualWitnesses`] is created which is a set of witness references [`WitnessRef`].
 Each [`WitnessRef`] contains the [`Statement`] index and the [`Witness`] index in that [`Statement`] and
 thus uniquely identifies any [`Witness`] across [`Statement`]s. The [`EqualWitnesses`] meta-statement is also
 used to prove predicates over signed messages in zero knowledge, when doing a range-proof over a
 signed message (using BBS+), the [`EqualWitnesses`] will refer [`Witness`]s from `Statement::PoKBBSSignatureG1`
-statement and `Statement::BoundCheckLegoGroth16` statement. Following are some illustrations of [`EqualWitnesses`]
+statement and `Statement::BoundCheckLegoGroth16` statement. Following are some illustrations of [`EqualWitnesses`].
+Technically, this is achieved through Chaum-Pedersen discrete log equality protocol.
 
 ```text
  ┌────────────────────────────┐    ┌──────────────────────────────┐     ┌────────────────────────────┐
@@ -53,7 +54,7 @@ statement and `Statement::BoundCheckLegoGroth16` statement. Following are some i
                         └─────────────────────────────┘                          └────────────────────────────┘
 ```
 
-```
+```rust
    For proving certain messages from 3 BBS+ signatures are equal. Here there 2 sets of equalities,
    1. message A3 from 1st signature, B2 from 2nd signature and C1 from 3rd signature
    2. message B4 from 2nd signature and C5 from 3rd signature
@@ -80,8 +81,7 @@ statement and `Statement::BoundCheckLegoGroth16` statement. Following are some i
                         │ A3 and  B1 are equal        │                          │  A5 and C1 are equal       │
                         └─────────────────────────────┘                          └────────────────────────────┘
 ```
-
-```
+```rust
    For proving certain messages from a BBS+ signature satisfy 2 predicates,
     1) message A3 satisfies bounds specified in statement 2
     2) message A5 has been verifiably encrypted as per statement 3.
@@ -102,12 +102,14 @@ protocols. Each of these protocols are variants of the enum [`SubProtocol`]. [`S
 call other [`SubProtocol`]s, eg [`SaverProtocol`] invokes several [`SchnorrProtocol`]s
 
 Currently supports
-- proof of knowledge of a BBS or BBS+ signature and signed messages
-- proof of knowledge of multiple BBS or BBS+ signature and equality of certain messages
+- proof of knowledge of a BBS or BBS+ or PS signature and signed messages
+- proof of knowledge of multiple BBS or BBS+ or PS signature and equality of certain messages
+- proof of knowledge of multiple BBS or BBS+ or PS signature and inequality of certain messages with public values
 - proof of knowledge of accumulator membership and non-membership
 - proof of knowledge of Pedersen commitment opening.
-- proof of knowledge of BBS or BBS+ signature(s) and that certain message(s) satisfy given bounds (range proof)
-- verifiable encryption of messages in a BBS or BBS+ signature
+- proof of knowledge of BBS or BBS+ or PS signature(s) and that certain message(s) satisfy given bounds (range proof)
+- verifiable encryption of messages in a BBS or BBS+ or PS signature using zk-SNARK based protocol SAVER or
+  MPCitH based TZ-21
 - proof of knowledge of BBS or BBS+ signature(s) and that certain message(s) satisfy given R1CS. The R1CS is generated
   from [Circom](https://github.com/iden3/circom) and the proof system used is [LegoGroth16](https://github.com/lovesh/legogro16).
   LegoGroth16 is similar to Groth16 but in addition to the zero knowledge proof, it provides a Pedersen
@@ -118,6 +120,8 @@ See following tests for examples:
 
 - test `pok_of_3_bbs_plus_sig_and_message_equality` proves knowledge of 3 BBS+ signatures and also that certain
   messages are equal among them without revealing them.
+- test `pok_of_bbs_plus_sig_and_inequality_with_public_value` proves knowledge of a BBS+ signature and also that
+  certain message is not equal to a public value without revealing the message
 - test `pok_of_bbs_plus_sig_and_accumulator` proves knowledge of a BBS+ signature and also that certain messages
   are present and absent in the 2 accumulators respectively.
 - test `pok_of_knowledge_in_pedersen_commitment_and_bbs_plus_sig` proves knowledge of a BBS+ signature and opening
@@ -126,25 +130,28 @@ See following tests for examples:
   a Pedersen commitment.
 - test `verifier_local_linkability` shows how a verifier can link separate proofs from a prover (with prover's
   permission) and assign a unique identifier to the prover without learning any message from the BBS+ signature.
-  Also this identifier cannot be linked across different verifiers (intentional by the prover).
+  Also, this identifier cannot be linked across different verifiers (intentional by the prover).
 - test `pok_of_bbs_plus_sig_and_bounded_message` shows proving knowledge of a BBS+ signature and that a specific
   message satisfies some upper and lower bounds i.e. min <= signed message <= max. This is a range proof.
-- test `pok_of_bbs_plus_sig_and_verifiable_encryption` shows how to verifiably encrypt a message signed with BBS+ such
-  that the verifier cannot decrypt it but still ensure that it is encrypted correctly for the specified decryptor.
+- test `pok_of_bbs_plus_sig_and_verifiable_encryption_using_saver` shows how to verifiably encrypt a message signed with BBS+ and
+  using SAVER protocol such that the verifier cannot decrypt it but still ensure that it is encrypted correctly for the specified decryptor.
+- test `pok_of_bbs_plus_sig_and_verifiable_encryption_using_tz21` shows how to verifiably encrypt a message signed with BBS+ and
+  using TZ21 protocol such that the verifier cannot decrypt it but still ensure that it is encrypted correctly for the specified decryptor.
 - test `pok_of_bbs_plus_sig_with_reusing_setup_params` shows proving knowledge of several BBS+ signatures
   using [`SetupParams`]s. Here the same signers are used in multiple signatures thus their public params
   can be put as a variant of enum [`SetupParams`]. Similarly test
   `pok_of_knowledge_in_pedersen_commitment_and_equality_with_commitment_key_reuse` shows use of [`SetupParams`]
-  when the same commitment key is reused in several commitments and test `pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages`
+  when the same commitment key is reused in several commitments and test `pok_of_bbs_plus_sig_and_verifiable_encryption_of_many_messages_using_saver`
   shows use of [`SetupParams`] when several messages are used in verifiable encryption for the same decryptor.
 - For R1CS/Circom, see various tests like using less than, not-equals comparison operators on messages signed with BBS+, proving
   that the preimage of an MiMC hash is the message signed with BBS+, sum of certain signed messages (from same or different signatures)
   is bounded by a given value, etc [here](tests/r1cs). The Circom compiler output and circuits are [here](tests/r1cs/circom).
   The circuits were compiled and tested for BLS12-381 curve.
 
-*Note*: This design is largely inspired from my work at Hyperledger Ursa.
+*Note*: This design is inspired from my work at Hyperledger Ursa.
 
 *Note*: The design is tentative and will likely change as more protocols are integrated.
+
 
 [`Statement`]: https://docs.rs/proof_system/latest/proof_system/statement/enum.Statement.html
 [`MetaStatement`]: https://docs.rs/proof_system/latest/proof_system/meta_statement/enum.MetaStatement.html

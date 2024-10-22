@@ -19,10 +19,10 @@ pub type TreeOpening<const DEPTH: usize, const SEED_SIZE: usize = DEFAULT_SEED_S
 
 /// A binary tree of `DEPTH` depth and `NUM_LEAVES` number of leaves and `NUM_TOTAL_NODES` denotes the number of
 /// leaf and non-leaf nodes. Compile time checks ensure the relation between these constants.
-/// This is creating by selecting a random root node seed, then hashing it to create 2 children, each of which is
+/// This is created by selecting a random root node seed, then hashing it to create 2 children, each of which is
 /// hashed again to create 2 children and so on until the tree has `NUM_LEAVES` leaves.
 /// The tree is represented as an array of nodes where the 0th index of array is the root node,
-/// next `NUM_LEAVES` indices are for internal nodes and last `NUM_LEAVES` indices are for leaf nodes.
+/// next `NUM_LEAVES` - 2 indices are for internal nodes and last `NUM_LEAVES` indices are for leaf nodes.
 #[derive(Clone, Copy, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize)]
 pub struct SeedTree<
     const NUM_LEAVES: usize,
@@ -89,13 +89,14 @@ impl<
         SeedTree(nodes)
     }
 
+    #[inline(always)]
     pub fn get_leaf(&self, leaf_index: u16) -> Seed<SEED_SIZE> {
         assert!(
             (leaf_index as usize) < NUM_LEAVES,
             "get_leaf: leaf index too large"
         );
         // First NUM_LEAVES - 1 of nodes are the root and internal nodes
-        self.0[NUM_LEAVES as usize - 1 + leaf_index as usize]
+        self.0[NUM_LEAVES - 1 + leaf_index as usize]
     }
 
     /// Return the leaf of the tree but as a finite field element.
@@ -199,18 +200,22 @@ impl<
         n.log2().ceil() as u16
     }
 
+    #[inline(always)]
     fn left_child_index(node_index: u16) -> u16 {
         2 * node_index + 1
     }
 
+    #[inline(always)]
     fn right_child_index(node_index: u16) -> u16 {
         2 * node_index + 2
     }
 
+    #[inline(always)]
     fn parent_index(node_index: u16) -> u16 {
         (node_index - 1) / 2
     }
 
+    #[inline(always)]
     fn sibling_index(node_index: u16) -> u16 {
         if node_index % 2 == 1 {
             node_index + 1
@@ -219,6 +224,7 @@ impl<
         }
     }
 
+    #[inline(always)]
     pub const fn zero_seed() -> Seed<SEED_SIZE> {
         [0; SEED_SIZE]
     }
