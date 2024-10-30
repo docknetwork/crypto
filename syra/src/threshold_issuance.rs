@@ -1,18 +1,20 @@
 //! Threshold issuance in SyRA. The secret key is shared among signers using Shamir secret sharing and they jointly generate
 //! SyRA VRF.
 //!
-//! SyRA VRF described in Fig. 4 of the paper is of the form `(g*1/(sk+s), g_hat*1/(sk+s))` where `sk` is the signer's secret key
+//! Note: Multiplicative notation is used
+//!
+//! SyRA VRF described in Fig. 4 of the paper is of the form `(g^1/(sk+s), g_hat^1/(sk+s))` where `sk` is the signer's secret key
 //! and `s` is the user-id and `g, g_hat` are public parameters. This is similar to a weak-BB signature which has the form
-//! `g*1/(sk+s)`. So SyRA VRF is essentially 2 weak-BB signatures. So I use the protocol for threshold weak-BB signature from
+//! `g^1/(sk+s)`. So SyRA VRF is essentially 2 weak-BB signatures. So I use the protocol for threshold weak-BB signature from
 //! the corresponding package.
 //!
 //! The high level idea is:
 //! - The signers jointly compute a random value `r` such that each signer `i` has a share of it as `r_i` such that `r = \sum{r_i}`
 //! - The signers jointly compute a product of `u = r*(sk+s)` such that each signer `i` has a share of it as `u_i` such that `u = \sum{u_i}`
-//! - Each signer sends to the user `R_i, R_hat_i, S_i, u_i` to the user where `R_i = g*r_i, R_hat_i = g_hat*r_i, S_i = e(g, g_hat)*r_i`.
-//! - User combines these to form `R = \sum{R_i} = g*\sum{r_i} = g*r`, `R_hat = \sum{R_hat_i} = g_hat*\sum{r_i} = g_hat*r`,
-//!   `S = \sum{S_i} = e(g, g_hat)*\sum{r_i} = e(g, g_hat)*r` and `u = \sum{u_i} = r*(sk+s)`. Now `R * 1/u = g*1/(sk+s)`,
-//!   `R_hat * 1/u = g_hat*1/(sk+s)` and `S * 1/u = e(g, g_hat)*1/(sk+s)`
+//! - Each signer sends to the user `R_i, R_hat_i, S_i, u_i` to the user where `R_i = g^r_i, R_hat_i = g_hat^r_i, S_i = e(g, g_hat)^r_i`.
+//! - User combines these to form `R = \prod{R_i} = g^\prod{r_i} = g^r`, `R_hat = \prod{R_hat_i} = g_hat^\prod{r_i} = g_hat^r`,
+//!   `S = \prod{S_i} = e(g, g_hat)^\sum{r_i} = e(g, g_hat)^r` and `u = \sum{u_i} = r*(sk+s)`. Now `R^1/u = g^1/(sk+s)`,
+//!   `R_hat^1/u = g_hat^1/(sk+s)` and `S^1/u = e(g, g_hat)^1/(sk+s)`
 //! - User uses `R, R_hat, S` to verify its secret key as per Fig.4
 //!
 //! The protocol proceeds in 2 phases:
@@ -20,9 +22,9 @@
 //! 1. **Phase 1**: This is a 2 round protocol, independent of the message `m` and generates randomness, like `r_i` (and other
 //!    blindings to be used in MPC multiplication protocol).
 //! 2. **Phase 2**: Here the parties run a 2 round MPC multiplication protocol where each party's input is `(r_i, (sk_i + m))` and output
-//!    is `(g*r_i, g_hat*r_i, e(g, g_hat)*r_i, u_i)` where `u_i` is a share of `r*(sk+m)` such that `\sum{u_i} = r*(sk+m)`.
-//!    `(g*r_i, g_hat*r_i, e(g, g_hat)*r_i, u_i)` is called the `UserSecretKeyShare` and user can combine
-//!    these shares from all signers to get `g*1/(sk+m), g_hat*1/(sk+s), e(g, g_hat)*1/(sk+s)` as described above.
+//!    is `(g^r_i, g_hat^r_i, e(g, g_hat)^r_i, u_i)` where `u_i` is a share of `r*(sk+m)` such that `\sum{u_i} = r*(sk+m)`.
+//!    `(g^r_i, g_hat^r_i, e(g, g_hat)^r_i, u_i)` is called the `UserSecretKeyShare` and user can combine
+//!    these shares from all signers to get `g^1/(sk+m), g_hat^1/(sk+s), e(g, g_hat)^1/(sk+s)` as described above.
 
 use crate::{
     error::SyraError,
@@ -72,13 +74,13 @@ pub struct Phase2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PA
 )]
 pub struct UserSecretKeyShare<E: Pairing> {
     pub signer_id: ParticipantId,
-    /// `g*r_i`
+    /// `g^r_i`
     #[serde_as(as = "ArkObjectBytes")]
     pub R: E::G1Affine,
-    /// `g_hat*r_i`
+    /// `g_hat^r_i`
     #[serde_as(as = "ArkObjectBytes")]
     pub R_hat: E::G2Affine,
-    /// `e(g, g_hat)*r_i`
+    /// `e(g, g_hat)^r_i`
     #[serde_as(as = "ArkObjectBytes")]
     pub S: PairingOutput<E>,
     /// Share of `r*(sk+s)` where `s` is user-id
@@ -174,9 +176,9 @@ impl<E: Pairing> UserSecretKeyShare<E> {
         let mut sum_S = PairingOutput::<E>::zero();
         let mut sum_u = E::ScalarField::zero();
         // u = \sum_i{share_i.u} = r*(sk + s)
-        // R = \sum_i{share_i.R} / u = g * 1/(sk + s)
-        // R_hat = \sum_i{share_i.R_hat} / u = g_hat * 1/(sk + s)
-        // S = \sum_i{share_i.S} / u = e(g, h_hat) * 1/(sk + s)
+        // R = \prod_i{share_i.R} / u = g^1/(sk + s)
+        // R_hat = \prod_i{share_i.R_hat} / u = g_hat^1/(sk + s)
+        // S = \prod_i{share_i.S} / u = e(g, h_hat)^1/(sk + s)
         for share in shares {
             sum_R += share.R;
             sum_R_hat += share.R_hat;
@@ -199,10 +201,7 @@ mod tests {
 
     use crate::setup::{IssuerPublicKey, IssuerSecretKey, SetupParams};
     use ark_bls12_381::{Bls12_381, Fr};
-    use ark_std::{
-        rand::{rngs::StdRng, SeedableRng},
-        UniformRand,
-    };
+    use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
     use schnorr_pok::compute_random_oracle_challenge;
     use secret_sharing_and_dkg::shamir_ss::deal_random_secret;
@@ -374,10 +373,6 @@ mod tests {
             .collect::<Vec<_>>();
         // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
         let threshold_ipk = IssuerPublicKey::new(&mut rng, &IssuerSecretKey(sk), &params);
-        let ipks = isk_shares
-            .iter()
-            .map(|s| IssuerPublicKey::new(&mut rng, s, &params))
-            .collect::<Vec<_>>();
 
         // The signers run OT protocol instances. This is also a one time setup.
         let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(

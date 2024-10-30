@@ -37,6 +37,12 @@ pub struct PreparedSetupParams<E: Pairing> {
     pub pairing: PairingOutput<E>,
 }
 
+impl<E: Pairing> AsRef<E::G1Affine> for SetupParams<E> {
+    fn as_ref(&self) -> &E::G1Affine {
+        &self.g
+    }
+}
+
 #[serde_as]
 #[derive(
     Clone,

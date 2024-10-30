@@ -16,11 +16,12 @@
 //! 1. [Distributed Key Generation from FROST](./src/frost_dkg.rs)
 //! 1. [Distributed discrete log (DLOG) check](./src/distributed_dlog_check)
 //! 1. [Publicly Verifiable Secret Sharing](./src/baghery_pvss)
-//!
+//! 1. [Verifiable Secret Sharing using hash-commitments](./src/baghery_vss.rs)
 
 pub mod abcp_dkg;
-pub mod baghery_feldman_vss;
+pub mod abcp_ni_tzk_extended;
 pub mod baghery_pvss;
+pub mod baghery_vss;
 pub mod common;
 pub mod distributed_dlog_check;
 pub mod error;

@@ -23,7 +23,7 @@ pub fn solve_discrete_log_brute_force<E: Pairing>(
     None
 }
 
-/// Solve discrete log using Baby Step Giant Step as described in section 2 of https://eprint.iacr.org/2015/605
+/// Solve discrete log using Baby Step Giant Step as described in section 2 of <https://eprint.iacr.org/2015/605>
 /// `max` is the maximum value of the discrete log and this returns `x` such that `1 <= x <= max` and `base * x = target`
 /// if such `x` exists, else return None.
 pub fn solve_discrete_log_bsgs<E: Pairing>(
@@ -35,7 +35,7 @@ pub fn solve_discrete_log_bsgs<E: Pairing>(
     solve_discrete_log_bsgs_inner(m, m, base, target)
 }
 
-/// Solve discrete log using Baby Step Giant Step with worse worst-case performance but better average case performance as described in section 2 of https://eprint.iacr.org/2015/605.
+/// Solve discrete log using Baby Step Giant Step with worse worst-case performance but better average case performance as described in section 2 of <https://eprint.iacr.org/2015/605>.
 /// `max` is the maximum value of the discrete log and this returns `x` such that `1 <= x <= max` and `base * x = target`
 /// if such `x` exists, else return None.
 pub fn solve_discrete_log_bsgs_alt<E: Pairing>(

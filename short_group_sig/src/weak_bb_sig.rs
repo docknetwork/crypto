@@ -4,7 +4,10 @@ use crate::{
     common::{SignatureParams, SignatureParamsWithPairing},
     error::ShortGroupSigError,
 };
-use ark_ec::{pairing::Pairing, AffineRepr};
+use ark_ec::{
+    pairing::{Pairing, PairingOutput},
+    AffineRepr,
+};
 use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec};
@@ -79,6 +82,12 @@ impl<E: Pairing> PublicKeyG2<E> {
     }
 }
 
+impl<E: Pairing> AsRef<E::G2Affine> for PublicKeyG2<E> {
+    fn as_ref(&self) -> &E::G2Affine {
+        &self.0
+    }
+}
+
 impl<G: AffineRepr> PublicKeyG1<G> {
     pub fn generate_using_secret_key<E: Pairing<G1Affine = G>>(
         secret_key: &SecretKey<G::ScalarField>,
@@ -107,27 +116,37 @@ impl<E: Pairing> SignatureG1<E> {
     /// Create a new signature
     pub fn new(
         message: &E::ScalarField,
-        sk: &SecretKey<E::ScalarField>,
-        params: &SignatureParams<E>,
+        sk: impl AsRef<E::ScalarField>,
+        gen: impl AsRef<E::G1Affine>,
     ) -> Self {
-        Self((params.g1 * ((sk.0 + message).inverse().unwrap())).into())
+        Self((*gen.as_ref() * ((*sk.as_ref() + message).inverse().unwrap())).into())
     }
 
     pub fn verify(
         &self,
         message: &E::ScalarField,
-        pk: &PublicKeyG2<E>,
+        pk: impl AsRef<E::G2Affine>,
         params: &SignatureParams<E>,
+    ) -> Result<(), ShortGroupSigError> {
+        self.verify_given_destructured_params(message, pk, &params.g1, params.g2)
+    }
+
+    pub fn verify_given_destructured_params(
+        &self,
+        message: &E::ScalarField,
+        pk: impl AsRef<E::G2Affine>,
+        g1: &E::G1Affine,
+        g2: E::G2Affine,
     ) -> Result<(), ShortGroupSigError> {
         if !self.is_non_zero() {
             return Err(ShortGroupSigError::ZeroSignature);
         }
         // Check e(sig, pk + g2*m) == e(g1, g2) => e(g1, g2) - e(sig, pk + g2*m) == 0 => e(g1, g2) + e(sig, -(pk + g2*m)) == 0
         // gm = -g2*m - g2*x
-        let gm = params.g2 * message.neg() - pk.0;
+        let gm = g2 * message.neg() - pk.as_ref();
         if !E::multi_pairing(
-            [E::G1Prepared::from(self.0), E::G1Prepared::from(params.g1)],
-            [E::G2Prepared::from(gm), E::G2Prepared::from(params.g2)],
+            [E::G1Prepared::from(self.0), E::G1Prepared::from(g1)],
+            [E::G2Prepared::from(gm), E::G2Prepared::from(g2)],
         )
         .is_zero()
         {
@@ -139,16 +158,26 @@ impl<E: Pairing> SignatureG1<E> {
     pub fn verify_given_sig_params_with_pairing(
         &self,
         message: &E::ScalarField,
-        pk: &PublicKeyG2<E>,
+        pk: impl AsRef<E::G2Affine>,
         params: &SignatureParamsWithPairing<E>,
+    ) -> Result<(), ShortGroupSigError> {
+        self.verify_given_destructured_params_with_pairing(message, pk, params.g2, params.g1g2)
+    }
+
+    pub fn verify_given_destructured_params_with_pairing(
+        &self,
+        message: &E::ScalarField,
+        pk: impl AsRef<E::G2Affine>,
+        g2: E::G2Affine,
+        g1g2: PairingOutput<E>,
     ) -> Result<(), ShortGroupSigError> {
         if !self.is_non_zero() {
             return Err(ShortGroupSigError::ZeroSignature);
         }
         // Check e(sig, pk + g2*m) == e(g1, g2)
         // gm = g2*m + g2*x
-        let gm = params.g2 * message + pk.0;
-        if E::pairing(E::G1Prepared::from(self.0), E::G2Prepared::from(gm)) != params.g1g2 {
+        let gm = g2 * message + pk.as_ref();
+        if E::pairing(E::G1Prepared::from(self.0), E::G2Prepared::from(gm)) != g1g2 {
             return Err(ShortGroupSigError::InvalidSignature);
         }
         Ok(())

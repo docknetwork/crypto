@@ -36,7 +36,7 @@ use rayon::prelude::*;
 macro_rules! impl_protocol {
     (
             $(#[$protocol_doc:meta])*
-            $secret_share: ident, $secret_share_comm: ident, $computation_share: ident, $computation_share_proof: ident, $deal_secret: ident, $discrete_log_protocol: ident, $discrete_log_proof: ident, $secret_group: ty, $other_group: ty, $pairing: tt) => {
+            $secret_share: ident, $secret_share_comm: ident, $computation_share: ident, $computation_share_proof: ident, $deal_secret: ident, $discrete_log_protocol: ident, $discrete_log_proof: ident, $secret_group: path, $other_group: path, $pairing: tt) => {
 
         $(#[$protocol_doc])*
         #[serde_as]
@@ -362,9 +362,6 @@ macro_rules! impl_protocol {
     };
 }
 
-type G1Af<E: Pairing> = E::G1Affine;
-type G2Af<E: Pairing> = E::G2Affine;
-
 impl_protocol!(
     /// Share of the secret when the elements to check the discrete log relation are in group G1
     SecretShareG1,
@@ -374,8 +371,8 @@ impl_protocol!(
     deal_secret_in_g1,
     PoKG1DiscreteLogInPairingProtocol,
     PoKG1DiscreteLogInPairing,
-    G1Af<E>,
-    G2Af<E>,
+    E::G1Affine,
+    E::G2Affine,
     pair_g2_g1
 );
 
@@ -388,8 +385,8 @@ impl_protocol!(
     deal_secret_in_g2,
     PoKG2DiscreteLogInPairingProtocol,
     PoKG2DiscreteLogInPairing,
-    G2Af<E>,
-    G1Af<E>,
+    E::G2Affine,
+    E::G1Affine,
     pair_g1_g2
 );
 

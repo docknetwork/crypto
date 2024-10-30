@@ -63,12 +63,12 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         g1: &E::G1Affine,
     ) -> Self {
         let sig_randomizer = E::ScalarField::rand(rng);
-        let sc_blinding = E::ScalarField::rand(rng);
+        let sig_randomizer_blinding = E::ScalarField::rand(rng);
         let msg_blinding = blinding.unwrap_or_else(|| E::ScalarField::rand(rng));
         Self::init_with_given_randomness(
             sig_randomizer,
             msg_blinding,
-            sc_blinding,
+            sig_randomizer_blinding,
             signature,
             message,
             g1,
@@ -79,7 +79,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
     pub fn init_with_given_randomness(
         sig_randomizer: E::ScalarField,
         msg_blinding: E::ScalarField,
-        sc_blinding: E::ScalarField,
+        sig_randomizer_blinding: E::ScalarField,
         signature: impl AsRef<E::G1Affine>,
         message: E::ScalarField,
         g1: &E::G1Affine,
@@ -92,7 +92,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let A_bar = g1.mul_bigint(sig_r) + A_prime_neg * message;
         let sc = PokTwoDiscreteLogsProtocol::init(
             sig_randomizer,
-            sc_blinding,
+            sig_randomizer_blinding,
             g1,
             message,
             msg_blinding,

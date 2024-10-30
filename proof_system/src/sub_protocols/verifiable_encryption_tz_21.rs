@@ -28,7 +28,6 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub mod dkgith_decls {
     use super::BatchedHashedElgamalCiphertext;
-    use ark_ec::AffineRepr;
     use verifiable_encryption::tz_21::dkgith::{CompressedCiphertext, DkgithProof};
 
     // Very large values for repetitions cause stack overflow
@@ -47,7 +46,7 @@ pub mod dkgith_decls {
     pub const SEED_SIZE: usize = 16;
     pub const SALT_SIZE: usize = 32;
 
-    pub type Proof<G: AffineRepr> = DkgithProof<
+    pub type Proof<G> = DkgithProof<
         G,
         BatchedHashedElgamalCiphertext<G>,
         NUM_PARTIES,
@@ -57,12 +56,11 @@ pub mod dkgith_decls {
         SEED_SIZE,
         SALT_SIZE,
     >;
-    pub type Ciphertext<G: AffineRepr> =
+    pub type Ciphertext<G> =
         CompressedCiphertext<G, BatchedHashedElgamalCiphertext<G>, SUBSET_SIZE>;
 }
 
 pub mod rdkgith_decls {
-    use ark_ec::AffineRepr;
     use dock_crypto_utils::elgamal::BatchedHashedElgamalCiphertext;
     use verifiable_encryption::tz_21::rdkgith::{CompressedCiphertext, RdkgithProof};
 
@@ -77,14 +75,14 @@ pub mod rdkgith_decls {
     pub const NUM_PARTIES_MINUS_THRESHOLD: usize = 15;
     pub const SUBSET_SIZE: usize = 10;
 
-    pub type Proof<G: AffineRepr> = RdkgithProof<
+    pub type Proof<G> = RdkgithProof<
         G,
         BatchedHashedElgamalCiphertext<G>,
         NUM_PARTIES,
         THRESHOLD,
         NUM_PARTIES_MINUS_THRESHOLD,
     >;
-    pub type Ciphertext<G: AffineRepr> =
+    pub type Ciphertext<G> =
         CompressedCiphertext<G, BatchedHashedElgamalCiphertext<G>, SUBSET_SIZE>;
 }
 
