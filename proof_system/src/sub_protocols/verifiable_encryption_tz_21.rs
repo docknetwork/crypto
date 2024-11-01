@@ -30,13 +30,6 @@ pub mod dkgith_decls {
     use super::BatchedHashedElgamalCiphertext;
     use verifiable_encryption::tz_21::dkgith::{CompressedCiphertext, DkgithProof};
 
-    // Very large values for repetitions cause stack overflow
-    // pub const NUM_PARTIES: usize = 4;
-    // pub const NUM_REPS: usize = 64;
-    // pub const SUBSET_SIZE: usize = 48;
-    // pub const DEPTH: usize = 2;
-    // pub const NUM_NODES: usize = 7;
-
     pub const NUM_PARTIES: usize = 16;
     pub const NUM_REPS: usize = 32;
     pub const SUBSET_SIZE: usize = 30;
@@ -64,16 +57,16 @@ pub mod rdkgith_decls {
     use dock_crypto_utils::elgamal::BatchedHashedElgamalCiphertext;
     use verifiable_encryption::tz_21::rdkgith::{CompressedCiphertext, RdkgithProof};
 
-    // Very large values cause stack overflow
-    // pub const NUM_PARTIES: usize = 192;
-    // pub const THRESHOLD: usize = 36;
-    // pub const NUM_PARTIES_MINUS_THRESHOLD: usize = 156;
-    // pub const SUBSET_SIZE: usize = 145;
+    pub const NUM_PARTIES: usize = 192;
+    pub const THRESHOLD: usize = 36;
+    pub const NUM_PARTIES_MINUS_THRESHOLD: usize = 156;
+    pub const SUBSET_SIZE: usize = 145;
 
-    pub const NUM_PARTIES: usize = 50;
-    pub const THRESHOLD: usize = 35;
-    pub const NUM_PARTIES_MINUS_THRESHOLD: usize = 15;
-    pub const SUBSET_SIZE: usize = 10;
+    // Very large values cause stack overflow so use them when testing on smaller stack
+    // pub const NUM_PARTIES: usize = 50;
+    // pub const THRESHOLD: usize = 35;
+    // pub const NUM_PARTIES_MINUS_THRESHOLD: usize = 15;
+    // pub const SUBSET_SIZE: usize = 10;
 
     pub type Proof<G> = RdkgithProof<
         G,

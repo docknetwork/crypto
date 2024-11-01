@@ -5,10 +5,11 @@
 use crate::{
     common::{CommitmentToCoefficients, ParticipantId, Share, ShareId, Shares},
     error::SSError,
-    feldman_dvss_dkg, feldman_vss,
+    feldman_vss,
 };
 use ark_ec::AffineRepr;
 
+use crate::common::SharesAccumulator;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
@@ -241,7 +242,7 @@ impl<G: AffineRepr> Round2State<G> {
         self,
         pk_gen: impl Into<&'a G>,
     ) -> Result<(Share<G::ScalarField>, G, G), SSError> {
-        feldman_dvss_dkg::SharesAccumulator::gen_final_share_and_public_key(
+        SharesAccumulator::<G, Share<G::ScalarField>>::gen_final_share_and_public_key(
             self.id,
             self.threshold,
             self.shares,
@@ -254,6 +255,7 @@ impl<G: AffineRepr> Round2State<G> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::feldman_dvss_dkg;
     use ark_ec::CurveGroup;
     use ark_ff::PrimeField;
     use ark_std::{

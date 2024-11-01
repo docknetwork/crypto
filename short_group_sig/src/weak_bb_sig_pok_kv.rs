@@ -263,7 +263,7 @@ mod tests {
 
         let sk = SecretKey::new(&mut rng);
         let message = Fr::rand(&mut rng);
-        let sig = SignatureG1::new(&message, &sk, &params);
+        let sig = SignatureG1::<Bls12_381>::new(&message, &sk, &params);
 
         let protocol =
             PoKOfSignatureG1KVProtocol::<G1Affine>::init(&mut rng, sig, message, None, &params.g1);

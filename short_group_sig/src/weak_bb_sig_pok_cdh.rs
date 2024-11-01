@@ -318,7 +318,7 @@ mod tests {
         let pk = PublicKeyG2::generate_using_secret_key(&sk, &params);
         let prepared_pk = PreparedPublicKeyG2::from(pk.clone());
         let message = Fr::rand(&mut rng);
-        let sig = SignatureG1::new(&message, &sk, &params);
+        let sig = SignatureG1::<Bls12_381>::new(&message, &sk, &params);
 
         let protocol =
             PoKOfSignatureG1Protocol::<Bls12_381>::init(&mut rng, sig, message, None, &params.g1);

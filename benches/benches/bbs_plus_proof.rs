@@ -6,12 +6,13 @@ use ark_std::{
     UniformRand,
 };
 use bbs_plus::{
-    proof::{MessageOrBlinding, PoKOfSignatureG1Protocol},
+    proof::PoKOfSignatureG1Protocol,
     setup::{KeypairG2, SignatureParamsG1},
     signature::SignatureG1,
 };
 use benches::setup_bbs_plus;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use dock_crypto_utils::signature::MessageOrBlinding;
 
 type Fr = <Bls12_381 as Pairing>::ScalarField;
 

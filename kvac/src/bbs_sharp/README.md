@@ -10,6 +10,8 @@ In the former, the verifier is either the signer (has the secret key) or can ask
 In the latter, the user needs to communicate with the signer before creating a proof and get "some helper data"
 to create a proof which the verifier can check without needing the secret key or interacting with the issuer.
 For efficiency and avoiding correlation (when signer and verifier collude), the user gets a batch of
-"helper data" to let him create several proofs.
+"helper data" to let him create several proofs.  
+Also, the proof of knowledge of MAC protocol specified in footnote 31 in the paper is modified to allow integration with other 
+protocols, see the code comments in the relevant module.
 
 Implements designated verifier proof for both issuer's signature (proof of validity of MAC) and user's proof of knowledge of MAC

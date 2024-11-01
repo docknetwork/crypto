@@ -9,166 +9,17 @@
 //! - After each of the `n` participants has successfully runs a VSS, they generate their corresponding share of `s` by adding
 //! their shares of each `{s_i}_0` for `i` in 1 to `n`.
 
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::Zero;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{collections::BTreeMap, vec, vec::Vec};
-use dock_crypto_utils::commitment::PedersenCommitmentKey;
-use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
-
-use crate::{
-    common::{CommitmentToCoefficients, ParticipantId, ShareId, VerifiableShare},
-    error::SSError,
-};
-
-/// Used by a participant to store received shares and commitment coefficients.
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
-pub struct SharesAccumulator<G: AffineRepr> {
-    pub participant_id: ParticipantId,
-    pub threshold: ShareId,
-    pub shares: BTreeMap<ParticipantId, VerifiableShare<G::ScalarField>>,
-    pub coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
-}
-
-impl<G: AffineRepr> Zeroize for SharesAccumulator<G> {
-    fn zeroize(&mut self) {
-        self.shares.values_mut().for_each(|v| v.zeroize())
-    }
-}
-
-impl<G: AffineRepr> Drop for SharesAccumulator<G> {
-    fn drop(&mut self) {
-        self.zeroize()
-    }
-}
-
-impl<G: AffineRepr> SharesAccumulator<G> {
-    pub fn new(id: ParticipantId, threshold: ShareId) -> Self {
-        Self {
-            participant_id: id,
-            threshold,
-            shares: Default::default(),
-            coeff_comms: Default::default(),
-        }
-    }
-
-    /// Called by a participant when it creates a share for itself
-    pub fn add_self_share(
-        &mut self,
-        share: VerifiableShare<G::ScalarField>,
-        commitment_coeffs: CommitmentToCoefficients<G>,
-    ) {
-        self.update_unchecked(self.participant_id, share, commitment_coeffs)
-    }
-
-    /// Called by a participant when it receives a share from another participant
-    pub fn add_received_share(
-        &mut self,
-        sender_id: ParticipantId,
-        share: VerifiableShare<G::ScalarField>,
-        commitment_coeffs: CommitmentToCoefficients<G>,
-        comm_key: &PedersenCommitmentKey<G>,
-    ) -> Result<(), SSError> {
-        if sender_id == self.participant_id {
-            return Err(SSError::SenderIdSameAsReceiver(
-                sender_id,
-                self.participant_id,
-            ));
-        }
-        if self.shares.contains_key(&sender_id) {
-            return Err(SSError::AlreadyProcessedFromSender(sender_id));
-        }
-        self.update(sender_id, share, commitment_coeffs, comm_key)
-    }
-
-    /// Called by a participant when it has received shares from all participants. Computes the final
-    /// share of the distributed secret
-    pub fn finalize(
-        mut self,
-        comm_key: &PedersenCommitmentKey<G>,
-    ) -> Result<VerifiableShare<G::ScalarField>, SSError> {
-        // Check early that sufficient shares present
-        let len = self.shares.len() as ShareId;
-        if self.threshold > len {
-            return Err(SSError::BelowThreshold(self.threshold, len));
-        }
-
-        let mut final_s_share = G::ScalarField::zero();
-        let mut final_t_share = G::ScalarField::zero();
-        let mut final_comm_coeffs = vec![G::Group::zero(); self.threshold as usize];
-
-        let shares = core::mem::take(&mut self.shares);
-        let comms = core::mem::take(&mut self.coeff_comms);
-
-        for (_, share) in shares {
-            final_s_share += share.secret_share;
-            final_t_share += share.blinding_share;
-        }
-
-        for (_, comm) in comms {
-            for i in 0..self.threshold as usize {
-                final_comm_coeffs[i] += comm.0[i];
-            }
-        }
-        let comm_coeffs = G::Group::normalize_batch(&final_comm_coeffs).into();
-        let final_share = VerifiableShare {
-            id: self.participant_id,
-            threshold: self.threshold,
-            secret_share: final_s_share,
-            blinding_share: final_t_share,
-        };
-        final_share.verify(&comm_coeffs, comm_key)?;
-        Ok(final_share)
-    }
-
-    /// Update accumulator on share sent by another party. If the share verifies, stores it.
-    fn update(
-        &mut self,
-        id: ParticipantId,
-        share: VerifiableShare<G::ScalarField>,
-        commitment_coeffs: CommitmentToCoefficients<G>,
-        comm_key: &PedersenCommitmentKey<G>,
-    ) -> Result<(), SSError> {
-        if self.participant_id != share.id {
-            return Err(SSError::UnequalParticipantAndShareId(
-                self.participant_id,
-                share.id,
-            ));
-        }
-        if self.threshold != share.threshold {
-            return Err(SSError::UnequalThresholdInReceivedShare(
-                self.threshold,
-                share.threshold,
-            ));
-        }
-        share.verify(&commitment_coeffs, comm_key)?;
-        self.update_unchecked(id, share, commitment_coeffs);
-        Ok(())
-    }
-
-    /// Update accumulator on share created by self. Assumes the share is valid
-    fn update_unchecked(
-        &mut self,
-        id: ParticipantId,
-        share: VerifiableShare<G::ScalarField>,
-        commitment_coeffs: CommitmentToCoefficients<G>,
-    ) {
-        self.shares.insert(id, share);
-        self.coeff_comms.insert(id, commitment_coeffs);
-    }
-}
-
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use crate::{common::VerifiableShares, pedersen_vss::deal_random_secret};
-    use ark_ec::Group;
+    use crate::{
+        common::{ParticipantId, ShareId, SharesAccumulator, VerifiableShare, VerifiableShares},
+        pedersen_vss::deal_random_secret,
+    };
+    use ark_ec::{AffineRepr, CurveGroup, Group};
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
+    use dock_crypto_utils::commitment::PedersenCommitmentKey;
     use test_utils::{test_serialization, G1, G2};
 
     #[test]
@@ -200,7 +51,12 @@ pub mod tests {
             ] {
                 // There are `total` number of participants
                 let mut accumulators = (1..=total)
-                    .map(|i| SharesAccumulator::new(i as ParticipantId, threshold as ShareId))
+                    .map(|i| {
+                        SharesAccumulator::<G, VerifiableShare<G::ScalarField>>::new(
+                            i as ParticipantId,
+                            threshold as ShareId,
+                        )
+                    })
                     .collect::<Vec<_>>();
                 let mut secrets = vec![];
                 let mut blindings = vec![];
@@ -316,7 +172,7 @@ pub mod tests {
                 }
 
                 if !checked_serialization {
-                    test_serialization!(SharesAccumulator<G>, accumulators[0].clone());
+                    test_serialization!(SharesAccumulator<G, VerifiableShare<G::ScalarField>>, accumulators[0].clone());
                     checked_serialization = true;
                 }
 

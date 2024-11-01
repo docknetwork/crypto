@@ -4,6 +4,7 @@ version = "0.2.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 bbs_plus = { default-features = false, path = "../bbs_plus" }

@@ -5,6 +5,14 @@
 //! `G*x` where `x` is the secret key and `G` is the group generator.
 //!
 
+use crate::{
+    common::{
+        CommitmentToCoefficients, ParticipantId, Share, ShareId, SharesAccumulator,
+        VerifiableShare, VerifiableShares,
+    },
+    error::SSError,
+    feldman_vss, pedersen_vss,
+};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
 use ark_poly::{univariate::DensePolynomial, Polynomial};
@@ -12,20 +20,12 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::commitment::PedersenCommitmentKey;
 
-use crate::{
-    common::{
-        CommitmentToCoefficients, ParticipantId, Share, ShareId, VerifiableShare, VerifiableShares,
-    },
-    error::SSError,
-    feldman_vss, pedersen_dvss, pedersen_vss,
-};
-
 /// In Phase 1, each participant runs Pedersen VSS
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Phase1<G: AffineRepr> {
     /// `z_i` from the paper
     pub secret: G::ScalarField,
-    pub accumulator: pedersen_dvss::SharesAccumulator<G>,
+    pub accumulator: SharesAccumulator<G, VerifiableShare<G::ScalarField>>,
     pub poly: DensePolynomial<G::ScalarField>,
     /// This is kept to reply to a malicious complaining party, i.e. for step 1.c from the protocol
     pub blinding_poly: DensePolynomial<G::ScalarField>,
@@ -86,7 +86,7 @@ impl<CMG: AffineRepr> Phase1<CMG> {
     > {
         let (_, shares, commitments, poly, blinding_poly) =
             pedersen_vss::deal_secret::<_, CMG>(rng, secret, threshold, total, comm_key)?;
-        let mut accumulator = pedersen_dvss::SharesAccumulator::new(participant_id, threshold);
+        let mut accumulator = SharesAccumulator::new(participant_id, threshold);
         accumulator.add_self_share(
             shares.0[(participant_id as usize) - 1].clone(),
             commitments.clone(),

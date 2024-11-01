@@ -1,14 +1,18 @@
-use ark_ec::AffineRepr;
-use ark_ff::PrimeField;
+use crate::error::SSError;
+use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, cfg_iter, vec::Vec};
+use ark_std::{cfg_into_iter, cfg_iter, collections::BTreeMap, vec, vec::Vec};
+use core::fmt::Debug;
 use digest::Digest;
-use dock_crypto_utils::{affine_group_element_from_byte_slices, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::{
+    affine_group_element_from_byte_slices, commitment::PedersenCommitmentKey,
+    serde_utils::ArkObjectBytes,
+};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
+use serde_with::{serde_as, Same};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::error::SSError;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -139,6 +143,273 @@ impl<G: AffineRepr> CommitmentToCoefficients<G> {
 
     pub fn supports_threshold(&self, threshold: ShareId) -> bool {
         threshold as usize - 1 == self.poly_degree()
+    }
+}
+
+pub trait SecretShare<G: AffineRepr>:
+    Clone + Sized + Debug + CanonicalSerialize + CanonicalDeserialize + Zeroize + ZeroizeOnDrop
+{
+    type Value;
+
+    type CommKey;
+
+    fn new(id: ParticipantId, threshold: ShareId, value: Self::Value) -> Self;
+
+    fn compute_final(shares: Vec<Self>) -> Self::Value;
+
+    fn check<'a>(
+        &self,
+        commitment_coeffs: &CommitmentToCoefficients<G>,
+        ck: &'a Self::CommKey,
+    ) -> Result<(), SSError>;
+
+    fn id(&self) -> ParticipantId;
+
+    fn threshold(&self) -> ShareId;
+}
+
+impl<G: AffineRepr> SecretShare<G> for Share<G::ScalarField> {
+    type Value = G::ScalarField;
+    type CommKey = G;
+
+    fn new(id: ParticipantId, threshold: ShareId, value: Self::Value) -> Self {
+        Share {
+            id,
+            threshold,
+            share: value,
+        }
+    }
+
+    fn compute_final(shares: Vec<Self>) -> Self::Value {
+        cfg_into_iter!(shares)
+            .map(|s| s.share)
+            .sum::<G::ScalarField>()
+    }
+
+    fn check<'a>(
+        &self,
+        commitment_coeffs: &CommitmentToCoefficients<G>,
+        ck: &'a Self::CommKey,
+    ) -> Result<(), SSError> {
+        self.verify(commitment_coeffs, ck)
+    }
+
+    fn id(&self) -> ParticipantId {
+        self.id
+    }
+
+    fn threshold(&self) -> ShareId {
+        self.threshold
+    }
+}
+
+impl<G: AffineRepr> SecretShare<G> for VerifiableShare<G::ScalarField> {
+    type Value = (G::ScalarField, G::ScalarField);
+    type CommKey = PedersenCommitmentKey<G>;
+
+    fn new(id: ParticipantId, threshold: ShareId, value: Self::Value) -> Self {
+        let (secret_share, blinding_share) = value;
+        VerifiableShare {
+            id,
+            threshold,
+            secret_share,
+            blinding_share,
+        }
+    }
+
+    fn compute_final(shares: Vec<Self>) -> Self::Value {
+        let mut final_s_share = G::ScalarField::zero();
+        let mut final_t_share = G::ScalarField::zero();
+        for share in shares {
+            final_s_share += share.secret_share;
+            final_t_share += share.blinding_share;
+        }
+        (final_s_share, final_t_share)
+    }
+
+    fn check<'a>(
+        &self,
+        commitment_coeffs: &CommitmentToCoefficients<G>,
+        ck: &'a Self::CommKey,
+    ) -> Result<(), SSError> {
+        self.verify(commitment_coeffs, ck)
+    }
+
+    fn id(&self) -> ParticipantId {
+        self.id
+    }
+
+    fn threshold(&self) -> ShareId {
+        self.threshold
+    }
+}
+
+/// Used by a participant to store received shares and commitment coefficients.
+#[serde_as]
+#[derive(
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+)]
+#[serde(bound = "")]
+pub struct SharesAccumulator<G: AffineRepr, S: SecretShare<G>> {
+    pub participant_id: ParticipantId,
+    pub threshold: ShareId,
+    /// Stores its own and received shares
+    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    pub shares: BTreeMap<ParticipantId, S>,
+    pub coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
+}
+
+impl<G: AffineRepr, S: SecretShare<G>> Zeroize for SharesAccumulator<G, S> {
+    fn zeroize(&mut self) {
+        self.shares.values_mut().for_each(|v| v.zeroize())
+    }
+}
+
+impl<G: AffineRepr, S: SecretShare<G>> Drop for SharesAccumulator<G, S> {
+    fn drop(&mut self) {
+        self.zeroize()
+    }
+}
+
+impl<G: AffineRepr, S: SecretShare<G>> SharesAccumulator<G, S> {
+    pub fn new(id: ParticipantId, threshold: ShareId) -> Self {
+        Self {
+            participant_id: id,
+            threshold,
+            shares: Default::default(),
+            coeff_comms: Default::default(),
+        }
+    }
+
+    /// Called by a participant when it creates a share for itself
+    pub fn add_self_share(&mut self, share: S, commitment_coeffs: CommitmentToCoefficients<G>) {
+        self.update_unchecked(self.participant_id, share, commitment_coeffs)
+    }
+
+    /// Called by a participant when it receives a share from another participant
+    pub fn add_received_share<'a>(
+        &mut self,
+        sender_id: ParticipantId,
+        share: S,
+        commitment_coeffs: CommitmentToCoefficients<G>,
+        ck: &S::CommKey,
+    ) -> Result<(), SSError> {
+        if sender_id == self.participant_id {
+            return Err(SSError::SenderIdSameAsReceiver(
+                sender_id,
+                self.participant_id,
+            ));
+        }
+        if self.shares.contains_key(&sender_id) {
+            return Err(SSError::AlreadyProcessedFromSender(sender_id));
+        }
+        self.update(sender_id, share, commitment_coeffs, ck.into())
+    }
+
+    /// Compute the final share after receiving shares from all other participants.
+    pub fn gen_final_share<'a>(
+        participant_id: ParticipantId,
+        threshold: ShareId,
+        shares: BTreeMap<ParticipantId, S>,
+        coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
+        ck: &S::CommKey,
+    ) -> Result<S, SSError> {
+        // Check early that sufficient shares present
+        let len = shares.len() as ShareId;
+        if threshold > len {
+            return Err(SSError::BelowThreshold(threshold, len));
+        }
+
+        let final_share = S::compute_final(shares.values().cloned().into_iter().collect());
+        let mut final_comm_coeffs = vec![G::Group::zero(); threshold as usize];
+
+        for comm in coeff_comms.values() {
+            for i in 0..threshold as usize {
+                final_comm_coeffs[i] += comm.0[i];
+            }
+        }
+        let comm_coeffs = G::Group::normalize_batch(&final_comm_coeffs).into();
+        let final_share = S::new(participant_id, threshold, final_share);
+        SecretShare::check(&final_share, &comm_coeffs, ck)?;
+        Ok(final_share)
+    }
+
+    /// Update accumulator on share sent by another party. If the share verifies, stores it.
+    fn update(
+        &mut self,
+        id: ParticipantId,
+        share: S,
+        commitment_coeffs: CommitmentToCoefficients<G>,
+        ck: &S::CommKey,
+    ) -> Result<(), SSError> {
+        if self.participant_id != share.id() {
+            return Err(SSError::UnequalParticipantAndShareId(
+                self.participant_id,
+                share.id(),
+            ));
+        }
+        if self.threshold != share.threshold() {
+            return Err(SSError::UnequalThresholdInReceivedShare(
+                self.threshold,
+                share.threshold(),
+            ));
+        }
+        SecretShare::check(&share, &commitment_coeffs, ck)?;
+        self.update_unchecked(id, share, commitment_coeffs);
+        Ok(())
+    }
+
+    /// Update accumulator on share created by self. Assumes the share is valid
+    fn update_unchecked(
+        &mut self,
+        id: ParticipantId,
+        share: S,
+        commitment_coeffs: CommitmentToCoefficients<G>,
+    ) {
+        self.shares.insert(id, share);
+        self.coeff_comms.insert(id, commitment_coeffs);
+    }
+}
+
+impl<G: AffineRepr> SharesAccumulator<G, VerifiableShare<G::ScalarField>> {
+    /// Called by a participant when it has received shares from all participants. Computes the final
+    /// share of the distributed secret
+    pub fn finalize<'a>(
+        mut self,
+        ck: &PedersenCommitmentKey<G>,
+    ) -> Result<VerifiableShare<G::ScalarField>, SSError> {
+        let shares = core::mem::take(&mut self.shares);
+        let comms = core::mem::take(&mut self.coeff_comms);
+        Self::gen_final_share(self.participant_id, self.threshold, shares, comms, ck)
+    }
+}
+
+impl<G: AffineRepr> SharesAccumulator<G, Share<G::ScalarField>> {
+    /// Called by a participant when it has received shares from all participants. Computes the final
+    /// share of the distributed secret, own public key and the threshold public key
+    pub fn finalize<'a>(mut self, ck: &G) -> Result<(Share<G::ScalarField>, G, G), SSError> {
+        let shares = core::mem::take(&mut self.shares);
+        let comms = core::mem::take(&mut self.coeff_comms);
+        Self::gen_final_share_and_public_key(self.participant_id, self.threshold, shares, comms, ck)
+    }
+
+    /// Compute the final share after receiving shares from all other participants. Also returns
+    /// own public key and the threshold public key
+    pub fn gen_final_share_and_public_key<'a>(
+        participant_id: ParticipantId,
+        threshold: ShareId,
+        shares: BTreeMap<ParticipantId, Share<G::ScalarField>>,
+        coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
+        ck: &G,
+    ) -> Result<(Share<G::ScalarField>, G, G), SSError> {
+        let mut threshold_pk = G::Group::zero();
+        for comm in coeff_comms.values() {
+            threshold_pk += comm.commitment_to_secret();
+        }
+        let final_share =
+            Self::gen_final_share(participant_id, threshold, shares, coeff_comms, ck)?;
+        let pk = ck.mul_bigint(final_share.share.into_bigint()).into_affine();
+        Ok((final_share, pk, threshold_pk.into_affine()))
     }
 }
 

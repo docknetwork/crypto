@@ -20,6 +20,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     ops::AddAssign,
     path::PathBuf,
+    time::Instant,
 };
 
 /// Given path relative to this crate, return absolute disk path
@@ -54,6 +55,7 @@ pub fn prove_and_verify_circuit<E: Pairing>(
     params: &ProvingKey<E>,
     commit_witness_count: u32,
 ) -> Vec<E::ScalarField> {
+    let start = Instant::now();
     let cs = ConstraintSystem::<E::ScalarField>::new_ref();
     circuit.clone().generate_constraints(cs.clone()).unwrap();
     assert!(cs.is_satisfied().unwrap());
@@ -71,9 +73,10 @@ pub fn prove_and_verify_circuit<E: Pairing>(
     let mut rng = StdRng::seed_from_u64(300u64);
     let v = E::ScalarField::rand(&mut rng);
     let proof = create_random_proof(circuit, v, params, &mut rng).unwrap();
-    println!("Proof generated");
+    println!("Proof generated in {:?}", start.elapsed());
 
     let pvk = prepare_verifying_key::<E>(&params.vk);
+    let start = Instant::now();
     // Prover verifies the openings of the commitments in proof.d
     verify_witness_commitment(
         &params.vk,
@@ -84,8 +87,8 @@ pub fn prove_and_verify_circuit<E: Pairing>(
     )
     .unwrap();
     verify_proof(&pvk, &proof, &public_inputs).unwrap();
-    println!("Proof verified");
-    return public_inputs;
+    println!("Proof verified in {:?}", start.elapsed());
+    public_inputs
 }
 
 pub fn generate_params_prove_and_verify<
