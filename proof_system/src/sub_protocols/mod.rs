@@ -15,12 +15,11 @@ pub mod saver;
 pub mod schnorr;
 pub mod verifiable_encryption_tz_21;
 
-use core::borrow::Borrow;
-
 use crate::error::ProofSystemError;
 use ark_ec::pairing::Pairing;
 use ark_ff::PrimeField;
 use ark_std::{format, io::Write};
+use core::borrow::Borrow;
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::sub_protocols::{
@@ -77,7 +76,7 @@ pub enum SubProtocol<'a, E: Pairing> {
     /// For range proof using set-membership check
     BoundCheckSmc(BoundCheckSmcProtocol<'a, E>),
     /// For range proof using set-membership check with keyed verification
-    BoundCheckSmcWithKV(BoundCheckSmcWithKVProtocol<'a, E>),
+    BoundCheckSmcWithKV(BoundCheckSmcWithKVProtocol<'a, E::G1Affine>),
     /// To prove inequality of a signed message with a public value
     Inequality(InequalityProtocol<'a, E::G1Affine>),
     DetachedAccumulatorMembership(DetachedAccumulatorMembershipSubProtocol<'a, E>),
@@ -205,11 +204,4 @@ pub fn enforce_and_get_u64<F: PrimeField>(val: &F) -> Result<u64, ProofSystemErr
         }
     }
     Ok(limbs[0])
-}
-
-pub fn should_use_cls(min: u64, max: u64) -> bool {
-    assert!(max > min);
-    let diff = max - min;
-    let bits = diff.ilog2();
-    bits < 20
 }

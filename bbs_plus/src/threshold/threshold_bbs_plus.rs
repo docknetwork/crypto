@@ -36,7 +36,8 @@ pub struct Phase1Output<F: PrimeField> {
 }
 
 /// A share of the BBS+ signature created by one signer. A client will aggregate many such shares to
-/// create the final signature.
+/// create the final signature. Note that this is done by the signer where it uses outputs of
+/// phase 1 and 2 and these outputs should not be sent to the user. Only this share needs to be sent.
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct BBSPlusSignatureShare<E: Pairing> {
     pub id: ParticipantId,

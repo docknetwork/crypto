@@ -1,3 +1,10 @@
+use crate::{
+    error::ProofSystemError,
+    prelude::bound_check_smc::SmcParamsWithPairingAndCommitmentKey,
+    statement::bound_check_smc::SmcParamsAndCommitmentKey,
+    statement_proof::{BoundCheckSmcInnerProof, BoundCheckSmcProof, StatementProof},
+    sub_protocols::{enforce_and_get_u64, schnorr::SchnorrProtocol},
+};
 use ark_ec::pairing::Pairing;
 use ark_serialize::CanonicalSerialize;
 use ark_std::{
@@ -5,14 +12,6 @@ use ark_std::{
     io::Write,
     rand::RngCore,
     vec, UniformRand,
-};
-
-use crate::{
-    error::ProofSystemError,
-    prelude::bound_check_smc::SmcParamsWithPairingAndCommitmentKey,
-    statement::bound_check_smc::SmcParamsAndCommitmentKey,
-    statement_proof::{BoundCheckSmcInnerProof, BoundCheckSmcProof, StatementProof},
-    sub_protocols::{enforce_and_get_u64, schnorr::SchnorrProtocol, should_use_cls},
 };
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 use smc_range_proof::prelude::{CCSArbitraryRangeProofProtocol, CLSRangeProofProtocol};
@@ -63,30 +62,16 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
         let randomness = E::ScalarField::rand(rng);
         let comm_key = &self.params_and_comm_key.comm_key;
         self.comm = Some(comm_key.commit(&message, &randomness));
-        let smc_protocol = if should_use_cls(self.min, self.max) {
-            let p = CLSRangeProofProtocol::init(
-                rng,
-                msg_as_u64,
-                randomness.clone(),
-                self.min,
-                self.max,
-                comm_key,
-                &self.params_and_comm_key.params,
-            )?;
-            SmcProtocol::CLS(p)
-        } else {
-            let p = CCSArbitraryRangeProofProtocol::init(
-                rng,
-                msg_as_u64,
-                randomness.clone(),
-                self.min,
-                self.max,
-                comm_key,
-                &self.params_and_comm_key.params,
-            )?;
-            SmcProtocol::CCS(p)
-        };
-        self.smc_protocol = Some(smc_protocol);
+        let p = CLSRangeProofProtocol::init(
+            rng,
+            msg_as_u64,
+            randomness.clone(),
+            self.min,
+            self.max,
+            comm_key,
+            &self.params_and_comm_key.params,
+        )?;
+        self.smc_protocol = Some(SmcProtocol::CLS(p));
         self.init_schnorr_protocol(rng, comm_key_as_slice, message, blinding, randomness)
     }
 
@@ -165,7 +150,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
                 BoundCheckSmcInnerProof::CLS(p)
             }
         };
-        // Don't generated response for index 0 since its response will come from proofs of one of the signatures.
+        // Don't generate response for index 0 since its response will come from proofs of one of the signatures.
         let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::BoundCheckSmc(BoundCheckSmcProof {
             proof,

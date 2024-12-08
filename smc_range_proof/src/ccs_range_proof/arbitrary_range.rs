@@ -1,28 +1,30 @@
 //! Range proof protocol as described in section 4.4 of the paper [Efficient Protocols for Set Membership and Range Proofs](https://link.springer.com/chapter/10.1007/978-3-540-89255-7_15).
 //! Considers an arbitrary range `[min, max)`. This essentially executes 2 instances of the protocol for perfect range `[0, u^l)`
+//!
 //! A difference with the paper is that a single `D` is created in the paper which can lead to the verifier learning that some digits
-//! are same in values in those 2 protocols
+//! are same in values in those 2 protocols.
+//!
+//! Secondly, less number of digits are needed as `l` is chosen such that `max - min < u^l` rather than `max < u^l`.
 
 use crate::{
-    ccs_set_membership::setup::SetMembershipCheckParamsWithPairing, common::MemberCommitmentKey,
+    ccs_range_proof::util::{check_commitment_for_arbitrary_range, find_l_for_arbitrary_range},
+    ccs_set_membership::setup::SetMembershipCheckParamsWithPairing,
+    common::{padded_base_n_digits_as_field_elements, MemberCommitmentKey},
     error::SmcRangeProofError,
 };
 use ark_ec::{
     pairing::{Pairing, PairingOutput},
     AffineRepr, CurveGroup,
 };
-
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, format, io::Write, ops::Mul, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::{expect_equality, misc::n_rand, msm::WindowTable};
-
-use crate::ccs_range_proof::util::{check_commitment_for_arbitrary_range, find_l_greater_than};
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    expect_equality, misc::n_rand, msm::WindowTable,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-use crate::common::padded_base_n_digits_as_field_elements;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CCSArbitraryRangeProofProtocol<E: Pairing> {
@@ -64,6 +66,7 @@ pub struct CCSArbitraryRangeProof<E: Pairing> {
 }
 
 impl<E: Pairing> CCSArbitraryRangeProofProtocol<E> {
+    /// Initialize the protocol for proving `min <= value < max`
     pub fn init<R: RngCore>(
         rng: &mut R,
         value: u64,
@@ -86,6 +89,7 @@ impl<E: Pairing> CCSArbitraryRangeProofProtocol<E> {
         )
     }
 
+    /// Initialize the protocol for proving `min <= value < max`
     pub fn init_given_base<R: RngCore>(
         rng: &mut R,
         value: u64,
@@ -113,7 +117,7 @@ impl<E: Pairing> CCSArbitraryRangeProofProtocol<E> {
 
         params.validate_base(base)?;
 
-        let l = find_l_greater_than(max, base) as usize;
+        let l = find_l_for_arbitrary_range(max, min, base) as usize;
 
         // Different randomizer vectors `s_min` and `s_max` are chosen to avoid leaking
         // the information that some digits are potentially same at the same indices, i.e
@@ -207,7 +211,35 @@ impl<E: Pairing> CCSArbitraryRangeProofProtocol<E> {
     }
 
     pub fn gen_proof(self, challenge: &E::ScalarField) -> CCSArbitraryRangeProof<E> {
-        gen_proof_arbitrary_range!(self, challenge, CCSArbitraryRangeProof)
+        let z_v_min = cfg_into_iter!(0..self.V_min.len())
+            .map(|i| self.t_min[i] + (self.v_min[i] * challenge))
+            .collect::<Vec<_>>();
+        let z_v_max = cfg_into_iter!(0..self.V_max.len())
+            .map(|i| self.t_max[i] + (self.v_max[i] * challenge))
+            .collect::<Vec<_>>();
+        let z_sigma_min = cfg_into_iter!(0..self.V_min.len())
+            .map(|i| self.s_min[i] + (self.digits_min[i] * challenge))
+            .collect::<Vec<_>>();
+        let z_sigma_max = cfg_into_iter!(0..self.V_max.len())
+            .map(|i| self.s_max[i] + (self.digits_max[i] * challenge))
+            .collect::<Vec<_>>();
+        let z_r_min = self.m_min + (self.r * challenge);
+        let z_r_max = self.m_max + (self.r * challenge);
+        CCSArbitraryRangeProof {
+            base: self.base,
+            V_min: self.V_min,
+            V_max: self.V_max,
+            a_min: self.a_min,
+            a_max: self.a_max,
+            D_min: self.D_min,
+            D_max: self.D_max,
+            z_v_min,
+            z_v_max,
+            z_sigma_min,
+            z_sigma_max,
+            z_r_min,
+            z_r_max,
+        }
     }
 
     pub fn compute_challenge_contribution<W: Write>(
@@ -245,6 +277,7 @@ impl<E: Pairing> CCSArbitraryRangeProofProtocol<E> {
 }
 
 impl<E: Pairing> CCSArbitraryRangeProof<E> {
+    /// Verify the proof for `min <= value < max` where `commitment` is a Pedersen commitment to `value`
     pub fn verify(
         &self,
         commitment: &E::G1Affine,
@@ -286,6 +319,7 @@ impl<E: Pairing> CCSArbitraryRangeProof<E> {
         Ok(())
     }
 
+    /// Verify the proof for `min <= value < max` where `commitment` is a Pedersen commitment to `value`
     pub fn verify_given_randomized_pairing_checker(
         &self,
         commitment: &E::G1Affine,
@@ -353,7 +387,7 @@ impl<E: Pairing> CCSArbitraryRangeProof<E> {
             )));
         }
         params.validate_base(self.base)?;
-        let l = find_l_greater_than(max, self.base) as usize;
+        let l = find_l_for_arbitrary_range(max, min, self.base) as usize;
         expect_equality!(
             self.V_min.len(),
             l,
@@ -384,7 +418,7 @@ impl<E: Pairing> CCSArbitraryRangeProof<E> {
             l,
             SmcRangeProofError::ProofShorterThanExpected
         );
-        check_commitment_for_arbitrary_range::<E>(
+        check_commitment_for_arbitrary_range::<E::G1Affine>(
             self.base,
             &self.z_sigma_min,
             &self.z_sigma_max,
@@ -456,7 +490,7 @@ mod tests {
     fn range_proof_for_arbitrary_range() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        for base in [2, 4, 8, 16] {
+        for base in [2, 4, 8, 10, 13, 16] {
             let mut proving_time = Duration::default();
             let mut verifying_time = Duration::default();
             let mut verifying_with_rpc_time = Duration::default();
@@ -607,6 +641,7 @@ mod tests {
                             &mut pairing_checker,
                         )
                         .unwrap();
+                    assert!(pairing_checker.verify());
                     verifying_with_rpc_time += start.elapsed();
 
                     let mut bytes = vec![];

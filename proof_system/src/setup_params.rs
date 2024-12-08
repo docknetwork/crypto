@@ -7,7 +7,9 @@
 
 use crate::{
     prelude::bound_check_smc::SmcParamsAndCommitmentKey,
-    statement::bound_check_smc_with_kv::SmcParamsAndCommitmentKeyAndSecretKey,
+    statement::bound_check_smc_with_kv::{
+        SmcParamsKVAndCommitmentKey, SmcParamsKVAndCommitmentKeyAndSecretKey,
+    },
 };
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -66,7 +68,7 @@ pub enum SetupParams<E: Pairing> {
     BppSetupParams(#[serde_as(as = "ArkObjectBytes")] BppSetupParams<E::G1Affine>),
     SmcParamsAndCommKey(#[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKey<E>),
     SmcParamsAndCommKeyAndSk(
-        #[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKeyAndSecretKey<E>,
+        #[serde_as(as = "ArkObjectBytes")] SmcParamsKVAndCommitmentKeyAndSecretKey<E::G1Affine>,
     ),
     CommitmentKey(#[serde_as(as = "ArkObjectBytes")] PedersenCommitmentKey<E::G1Affine>),
     BBSigProvingKey(ProvingKey<E::G1Affine>),
@@ -75,6 +77,9 @@ pub enum SetupParams<E: Pairing> {
     BBDT16MACParams(MACParams<E::G1Affine>),
     PedersenCommitmentKeyG2(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::G2Affine>),
     CommitmentKeyG2(#[serde_as(as = "ArkObjectBytes")] PedersenCommitmentKey<E::G2Affine>),
+    SmcParamsKVAndCommKey(
+        #[serde_as(as = "ArkObjectBytes")] SmcParamsKVAndCommitmentKey<E::G1Affine>,
+    ),
     ElgamalEncryption(ElgamalEncryptionParams<E::G1Affine>),
 }
 
@@ -112,6 +117,7 @@ macro_rules! delegate {
                 BBDT16MACParams,
                 PedersenCommitmentKeyG2,
                 CommitmentKeyG2,
+                SmcParamsKVAndCommKey,
                 ElgamalEncryption
             : $($tt)+
         }
@@ -152,6 +158,7 @@ macro_rules! delegate_reverse {
                 BBDT16MACParams,
                 PedersenCommitmentKeyG2,
                 CommitmentKeyG2,
+                SmcParamsKVAndCommKey,
                 ElgamalEncryption
             : $($tt)+
         }

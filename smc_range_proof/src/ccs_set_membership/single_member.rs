@@ -61,7 +61,7 @@ impl<E: Pairing> SetMembershipCheckProtocol<E> {
         let s = E::ScalarField::rand(rng);
         let V = params.get_sig_for_member(&member)?.0 * v;
         let D = comm_key.commit(&s, &m);
-        // Following is different from the paper, the paper has `-s` and `t` but here its opposite
+        // Following is different from the paper, the paper has `-s` and `t` but here it's opposite
         // a = e(V, g2) * s + e(g1, g2) * -t = e(V * s, g2) + e(g1, g2) * -t
         let a = E::pairing(
             E::G1Prepared::from(V * s),

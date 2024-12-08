@@ -1,3 +1,5 @@
+# BBS# (called BBS sharp)
+
 BBS# as described [here](https://github.com/user-attachments/files/15905230/BBS_Sharp_Short_TR.pdf)
 
 This assumes that the messages/attributes have already been prepared before signing, i.e. attributes are hashed

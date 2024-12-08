@@ -1886,7 +1886,7 @@ impl<E: Pairing> Proof<E> {
         }
     }
 
-    /// Used to check if response (from Schnorr protocol) for a witness is equal to other witnesses that
+    /*/// Used to check if response (from Schnorr protocol) for a witness is equal to other witnesses that
     /// it must be equal to. This is required when the `ProofSpec` demands certain witnesses to be equal.
     fn check_response_for_equality<'a>(
         stmt_id: usize,
@@ -1902,7 +1902,7 @@ impl<E: Pairing> Proof<E> {
             return Err(ProofSystemError::WitnessResponseNotEqual(stmt_id, wit_id));
         }
         Ok(())
-    }
+    }*/
 
     /// Get the response for a witness from the tracked responses of witness equalities.
     /// Expects the response to exist else throws error. This is not to be called for signature proof protocols

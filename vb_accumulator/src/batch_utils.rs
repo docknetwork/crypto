@@ -30,7 +30,7 @@ use dock_crypto_utils::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use dock_crypto_utils::ff::{inner_product, powers};
+use dock_crypto_utils::ff::inner_product;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -477,7 +477,8 @@ where
 }
 
 /// Published by the accumulator manager to allow witness updates without secret info. This "represents" a polynomial which
-/// will be evaluated at the element whose witness needs to be updated. Defined in section 4.1 of the paper
+/// will be evaluated at the element whose witness needs to be updated. Its a binding but non-hiding commitment to the polynomial.
+/// Defined in section 4.1 of the paper
 #[serde_as]
 #[derive(
     Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -658,22 +659,15 @@ where
     /// Inner product of powers of `y`, i.e. the element for which witness needs to be updated and `omega`.
     /// Equivalent to evaluating the polynomial at `y` and multiplying the result by `scalar`
     /// Used by the (non)member to update its witness without the knowledge of secret key.
-    pub fn inner_product_with_scaled_powers_of_y(
-        &self,
-        y: &G::ScalarField,
-        scalar: &G::ScalarField,
-    ) -> G::Group {
+    pub fn evaluate(&self, y: &G::ScalarField, scalar: &G::ScalarField) -> G::Group {
         let powers_of_y = Self::scaled_powers_of_y(y, scalar, self.len());
         // <powers_of_y, omega>
         G::Group::msm_unchecked(&self.0, &powers_of_y)
     }
 
-    pub fn inner_product_with_scaled_powers_of_y_temp(
-        &self,
-        y: &G::ScalarField,
-        scalar: &G::ScalarField,
-    ) -> G::Group {
-        let pow = powers(y, self.len() as u32);
+    #[cfg(test)]
+    pub fn evaluate_temp(&self, y: &G::ScalarField, scalar: &G::ScalarField) -> G::Group {
+        let pow = dock_crypto_utils::ff::powers(y, self.len() as u32);
         let r = G::Group::msm_unchecked(&self.0, &pow);
         r * scalar
     }
@@ -734,7 +728,7 @@ where
 
         let omega = Self::new(additions, removals, old_accumulator, sk);
         // <powers_of_y, omega> * 1/d_D(x)
-        let y_omega_ip = omega.inner_product_with_scaled_powers_of_y(element, &d_D_inv);
+        let y_omega_ip = omega.evaluate(element, &d_D_inv);
 
         assert_eq!(V_prime, y_omega_ip);
     }
@@ -763,7 +757,7 @@ where
 
         let omega = Self::new_for_kb_positive_accumulator::<D>(removals, old_accumulator, sk);
         // <powers_of_y, omega> * 1/d_D(x)
-        let y_omega_ip = omega.inner_product_with_scaled_powers_of_y(&member, &d_D_inv);
+        let y_omega_ip = omega.evaluate(&member, &d_D_inv);
 
         assert_eq!(V_prime, y_omega_ip.neg());
     }
@@ -972,11 +966,11 @@ mod tests {
             );
 
             let start = Instant::now();
-            let e1 = omega.inner_product_with_scaled_powers_of_y(&y, &scalar);
+            let e1 = omega.evaluate(&y, &scalar);
             println!("Time taken is {:?}", start.elapsed());
 
             let start = Instant::now();
-            let e2 = omega.inner_product_with_scaled_powers_of_y_temp(&y, &scalar);
+            let e2 = omega.evaluate_temp(&y, &scalar);
             println!("Time taken with temp is {:?}", start.elapsed());
             assert_eq!(e1, e2);
         }

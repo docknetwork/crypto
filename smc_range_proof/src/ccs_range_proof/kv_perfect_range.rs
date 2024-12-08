@@ -2,49 +2,49 @@
 //! secret key of the BB-sig
 
 use crate::{
-    ccs_set_membership::setup::SetMembershipCheckParams, common::MemberCommitmentKey,
+    ccs_range_proof::util::{check_commitment_for_prefect_range, find_l_for_perfect_range},
+    ccs_set_membership::setup::SetMembershipCheckParamsKV,
+    common::{padded_base_n_digits_as_field_elements, MemberCommitmentKey},
     error::SmcRangeProofError,
 };
-use ark_ec::pairing::Pairing;
-
+use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::misc::n_rand;
-use short_group_sig::weak_bb_sig::SecretKey;
+use dock_crypto_utils::{expect_equality, misc::n_rand};
+use short_group_sig::{
+    weak_bb_sig::SecretKey,
+    weak_bb_sig_pok_kv::{PoKOfSignatureG1KV, PoKOfSignatureG1KVProtocol},
+};
 
-use crate::common::padded_base_n_digits_as_field_elements;
-
-use crate::ccs_range_proof::util::check_commitment_for_prefect_range;
-use dock_crypto_utils::expect_equality;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use short_group_sig::weak_bb_sig_pok_kv::{PoKOfSignatureG1KV, PoKOfSignatureG1KVProtocol};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct CCSPerfectRangeProofWithKVProtocol<E: Pairing> {
+pub struct CCSPerfectRangeProofWithKVProtocol<G: AffineRepr> {
     pub base: u16,
-    pub r: E::ScalarField,
-    pub pok_sigs: Vec<PoKOfSignatureG1KVProtocol<E::G1Affine>>,
-    pub D: E::G1Affine,
-    pub m: E::ScalarField,
+    pub r: G::ScalarField,
+    pub pok_sigs: Vec<PoKOfSignatureG1KVProtocol<G>>,
+    pub D: G,
+    pub m: G::ScalarField,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CCSPerfectRangeWithKVProof<E: Pairing> {
+pub struct CCSPerfectRangeWithKVProof<G: AffineRepr> {
     pub base: u16,
-    pub pok_sigs: Vec<PoKOfSignatureG1KV<E::G1Affine>>,
-    pub D: E::G1Affine,
-    pub resp_r: E::ScalarField,
+    pub pok_sigs: Vec<PoKOfSignatureG1KV<G>>,
+    pub D: G,
+    pub resp_r: G::ScalarField,
 }
 
-impl<E: Pairing> CCSPerfectRangeProofWithKVProtocol<E> {
+impl<G: AffineRepr> CCSPerfectRangeProofWithKVProtocol<G> {
+    /// Initialize the protocol for proving `0 <= value < max`
     pub fn init<R: RngCore>(
         rng: &mut R,
         value: u64,
-        randomness: E::ScalarField,
+        randomness: G::ScalarField,
         max: u64,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
+        comm_key: &MemberCommitmentKey<G>,
+        params: &SetMembershipCheckParamsKV<G>,
     ) -> Result<Self, SmcRangeProofError> {
         Self::init_given_base(
             rng,
@@ -57,24 +57,25 @@ impl<E: Pairing> CCSPerfectRangeProofWithKVProtocol<E> {
         )
     }
 
+    /// Initialize the protocol for proving `0 <= value < max`
     pub fn init_given_base<R: RngCore>(
         rng: &mut R,
         value: u64,
-        randomness: E::ScalarField,
+        randomness: G::ScalarField,
         max: u64,
         base: u16,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
+        comm_key: &MemberCommitmentKey<G>,
+        params: &SetMembershipCheckParamsKV<G>,
     ) -> Result<Self, SmcRangeProofError> {
         params.validate_base(base)?;
 
-        let l = find_l(max, base) as usize;
+        let l = find_l_for_perfect_range(max, base)? as usize;
 
         // Note: This is different from the paper as only a single `m` needs to be created.
-        let m = E::ScalarField::rand(rng);
-        let msg_blindings = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
-        let sc_blindings = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
-        let sig_randomizers = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
+        let m = G::ScalarField::rand(rng);
+        let msg_blindings = n_rand(rng, l).collect::<Vec<G::ScalarField>>();
+        let sc_blindings = n_rand(rng, l).collect::<Vec<G::ScalarField>>();
+        let sig_randomizers = n_rand(rng, l).collect::<Vec<G::ScalarField>>();
         let D = comm_key.commit_decomposed(base, &msg_blindings, &m);
 
         let digits = padded_base_n_digits_as_field_elements(value, base, l);
@@ -95,7 +96,7 @@ impl<E: Pairing> CCSPerfectRangeProofWithKVProtocol<E> {
                         sc_blinding_i,
                         sig_i,
                         msg_i,
-                        &params.bb_sig_params.g1,
+                        &params.bb_sig_params,
                     )
                 },
             )
@@ -112,13 +113,13 @@ impl<E: Pairing> CCSPerfectRangeProofWithKVProtocol<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        commitment: &E::G1Affine,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
+        commitment: &G,
+        comm_key: &MemberCommitmentKey<G>,
+        params: &SetMembershipCheckParamsKV<G>,
         mut writer: W,
     ) -> Result<(), SmcRangeProofError> {
         for p in &self.pok_sigs {
-            p.challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
+            p.challenge_contribution(&params.bb_sig_params, &mut writer)?;
         }
         comm_key.serialize_compressed(&mut writer)?;
         commitment.serialize_compressed(&mut writer)?;
@@ -126,7 +127,7 @@ impl<E: Pairing> CCSPerfectRangeProofWithKVProtocol<E> {
         Ok(())
     }
 
-    pub fn gen_proof(self, challenge: &E::ScalarField) -> CCSPerfectRangeWithKVProof<E> {
+    pub fn gen_proof(self, challenge: &G::ScalarField) -> CCSPerfectRangeWithKVProof<G> {
         let pok_sigs = cfg_into_iter!(self.pok_sigs)
             .map(|p| p.gen_proof(challenge))
             .collect::<Vec<_>>();
@@ -140,18 +141,19 @@ impl<E: Pairing> CCSPerfectRangeProofWithKVProtocol<E> {
     }
 }
 
-impl<E: Pairing> CCSPerfectRangeWithKVProof<E> {
+impl<G: AffineRepr> CCSPerfectRangeWithKVProof<G> {
+    /// Verify the proof for `0 <= value < max` where `commitment` is a Pedersen commitment to `value`
     pub fn verify(
         &self,
-        commitment: &E::G1Affine,
-        challenge: &E::ScalarField,
+        commitment: &G,
+        challenge: &G::ScalarField,
         max: u64,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
-        secret_key: &SecretKey<E::ScalarField>,
+        comm_key: &MemberCommitmentKey<G>,
+        params: &SetMembershipCheckParamsKV<G>,
+        secret_key: &SecretKey<G::ScalarField>,
     ) -> Result<(), SmcRangeProofError> {
         params.validate_base(self.base)?;
-        let l = find_l(max, self.base) as usize;
+        let l = find_l_for_perfect_range(max, self.base)? as usize;
         expect_equality!(
             self.pok_sigs.len(),
             l,
@@ -160,7 +162,7 @@ impl<E: Pairing> CCSPerfectRangeWithKVProof<E> {
         let z_sigma = cfg_iter!(self.pok_sigs)
             .map(|p| *p.get_resp_for_message().unwrap())
             .collect::<Vec<_>>();
-        check_commitment_for_prefect_range::<E>(
+        check_commitment_for_prefect_range::<G>(
             self.base,
             &z_sigma,
             &self.resp_r,
@@ -172,7 +174,7 @@ impl<E: Pairing> CCSPerfectRangeWithKVProof<E> {
 
         let results = cfg_iter!(self.pok_sigs)
             .map(|p| {
-                p.verify(challenge, secret_key, &params.bb_sig_params.g1)
+                p.verify(challenge, secret_key, &params.bb_sig_params)
                     .map_err(|e| SmcRangeProofError::ShortGroupSig(e))
             })
             .collect::<Vec<_>>();
@@ -185,13 +187,13 @@ impl<E: Pairing> CCSPerfectRangeWithKVProof<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        commitment: &E::G1Affine,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
+        commitment: &G,
+        comm_key: &MemberCommitmentKey<G>,
+        params: &SetMembershipCheckParamsKV<G>,
         mut writer: W,
     ) -> Result<(), SmcRangeProofError> {
         for p in &self.pok_sigs {
-            p.challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
+            p.challenge_contribution(&params.bb_sig_params, &mut writer)?;
         }
         comm_key.serialize_compressed(&mut writer)?;
         commitment.serialize_compressed(&mut writer)?;
@@ -200,18 +202,10 @@ impl<E: Pairing> CCSPerfectRangeWithKVProof<E> {
     }
 }
 
-fn find_l(max: u64, base: u16) -> u16 {
-    let l = max.ilog(base as u64);
-    let power = (base as u64).pow(l);
-    assert_eq!(power, max);
-    l as u16
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ccs_set_membership::setup::SetMembershipCheckParams;
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use ark_bls12_381::{Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -223,17 +217,16 @@ mod tests {
     fn range_proof_for_perfect_range() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        for base in [2, 4, 8, 16] {
-            let (params, sk) = SetMembershipCheckParams::<Bls12_381>::new_for_range_proof::<
+        for base in [2, 3, 4, 5, 8, 10, 15, 20] {
+            let (params, sk) = SetMembershipCheckParamsKV::<G1Affine>::new_for_range_proof::<
                 _,
                 Blake2b512,
             >(&mut rng, b"test", base);
-            params.verify().unwrap();
 
             let comm_key = MemberCommitmentKey::<G1Affine>::generate_using_rng(&mut rng);
 
             for _ in 0..5 {
-                for l in [10, 15] {
+                for l in [10, 12] {
                     // TODO: Combine base and l in outer for loop
                     let max = (base as u64).pow(l);
                     let value = u64::rand(&mut rng) % max;

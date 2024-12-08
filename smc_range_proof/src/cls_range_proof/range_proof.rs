@@ -1,30 +1,25 @@
 //! Range proof based on Protocol 2 from the paper [Additive Combinatorics and Discrete Logarithm Based Range Protocols](https://eprint.iacr.org/2009/469)
+//! The protocol in the paper is for range [0, H] but the one implemented here is for range [min, max)
 
+use crate::{
+    ccs_set_membership::setup::SetMembershipCheckParamsWithPairing,
+    cls_range_proof::util::{check_commitment, get_sumset_parameters},
+    common::MemberCommitmentKey,
+    error::SmcRangeProofError,
+};
 use ark_ec::{
     pairing::{Pairing, PairingOutput},
     AffineRepr, CurveGroup,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, format, io::Write, ops::Mul, rand::RngCore, vec::Vec, UniformRand};
-
-use crate::{
-    ccs_set_membership::setup::SetMembershipCheckParamsWithPairing, common::MemberCommitmentKey,
-    error::SmcRangeProofError,
-};
-use dock_crypto_utils::misc::n_rand;
-
 use dock_crypto_utils::{
-    ff::inner_product, msm::multiply_field_elems_with_same_group_elem,
+    ff::inner_product, misc::n_rand, msm::multiply_field_elems_with_same_group_elem,
     randomized_pairing_check::RandomizedPairingChecker,
 };
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-use crate::cls_range_proof::{
-    util,
-    util::{check_commitment, get_range_and_randomness_multiple},
-};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CLSRangeProofProtocol<E: Pairing> {
@@ -77,7 +72,7 @@ impl<E: Pairing> CLSRangeProofProtocol<E> {
 
     pub fn init_given_base<R: RngCore>(
         rng: &mut R,
-        mut value: u64,
+        value: u64,
         randomness: E::ScalarField,
         min: u64,
         max: u64,
@@ -101,14 +96,7 @@ impl<E: Pairing> CLSRangeProofProtocol<E> {
         let params = params.into();
         params.validate_base(base)?;
 
-        let (range, randomness_multiple) = get_range_and_randomness_multiple(base, min, max);
-        value = value - min;
-        if randomness_multiple != 1 {
-            value = value * (base - 1) as u64;
-        }
-
-        let l = util::find_number_of_digits(range, base);
-        let G = util::find_sumset_boundaries(range, base, l);
+        let (l, G, randomness_multiple, digits) = get_sumset_parameters(value, min, max, base);
 
         // Note: This is different from the paper as only a single `m` needs to be created.
         let m = E::ScalarField::rand(rng);
@@ -123,45 +111,33 @@ impl<E: Pairing> CLSRangeProofProtocol<E> {
             &(m * E::ScalarField::from(randomness_multiple)),
         );
 
-        if let Some(digits) = util::solve_linear_equations(value, &G, base) {
-            // Following is only for debugging
-            // let mut expected = 0_u64;
-            // for j in 0..digits.len() {
-            //     assert!(digits[j] < base);
-            //     expected += digits[j] as u64 * G[j];
-            // }
-            // assert_eq!(expected, value);
+        let digits = cfg_into_iter!(digits)
+            .map(|d| E::ScalarField::from(d))
+            .collect::<Vec<_>>();
+        let t = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
+        let v = n_rand(rng, l).collect::<Vec<_>>();
+        let V = randomize_sigs!(&digits, &v, &params);
 
-            let digits = cfg_into_iter!(digits)
-                .map(|d| E::ScalarField::from(d))
-                .collect::<Vec<_>>();
-            let t = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
-            let v = n_rand(rng, l).collect::<Vec<_>>();
-            let V = randomize_sigs!(&digits, &v, &params);
-
-            let a = cfg_into_iter!(0..l as usize)
-                .map(|i| {
-                    E::pairing(
-                        E::G1Prepared::from(V[i] * s[i]),
-                        params.bb_sig_params.g2_prepared.clone(),
-                    ) + params.bb_sig_params.g1g2.mul(-t[i])
-                })
-                .collect::<Vec<_>>();
-            Ok(Self {
-                base,
-                digits,
-                r: randomness,
-                v,
-                V: E::G1::normalize_batch(&V),
-                a,
-                D,
-                m,
-                s,
-                t,
+        let a = cfg_into_iter!(0..l as usize)
+            .map(|i| {
+                E::pairing(
+                    E::G1Prepared::from(V[i] * s[i]),
+                    params.bb_sig_params.g2_prepared.clone(),
+                ) + params.bb_sig_params.g1g2.mul(-t[i])
             })
-        } else {
-            Err(SmcRangeProofError::InvalidRange(range, base))
-        }
+            .collect::<Vec<_>>();
+        Ok(Self {
+            base,
+            digits,
+            r: randomness,
+            v,
+            V: E::G1::normalize_batch(&V),
+            a,
+            D,
+            m,
+            s,
+            t,
+        })
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -177,7 +153,22 @@ impl<E: Pairing> CLSRangeProofProtocol<E> {
     }
 
     pub fn gen_proof(self, challenge: &E::ScalarField) -> CLSRangeProof<E> {
-        gen_proof!(self, challenge, CLSRangeProof)
+        let z_v = cfg_into_iter!(0..self.V.len())
+            .map(|i| self.t[i] + (self.v[i] * challenge))
+            .collect::<Vec<_>>();
+        let z_sigma = cfg_into_iter!(0..self.V.len())
+            .map(|i| self.s[i] + (self.digits[i] * challenge))
+            .collect::<Vec<_>>();
+        let z_r = self.m + (self.r * challenge);
+        CLSRangeProof {
+            base: self.base,
+            V: self.V,
+            a: self.a,
+            D: self.D,
+            z_v,
+            z_sigma,
+            z_r,
+        }
     }
 
     pub fn compute_challenge_contribution<W: Write>(
@@ -281,7 +272,7 @@ impl<E: Pairing> CLSRangeProof<E> {
                 min, max
             )));
         }
-        check_commitment::<E>(
+        check_commitment::<E::G1Affine>(
             self.base,
             &self.z_sigma,
             &self.z_r,
@@ -319,12 +310,7 @@ impl<E: Pairing> CLSRangeProof<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        ccs_set_membership::setup::SetMembershipCheckParams,
-        cls_range_proof::util::{
-            find_number_of_digits, find_sumset_boundaries, solve_linear_equations,
-        },
-    };
+    use crate::ccs_set_membership::setup::SetMembershipCheckParams;
     use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
@@ -333,50 +319,6 @@ mod tests {
     use blake2::Blake2b512;
     use schnorr_pok::compute_random_oracle_challenge;
     use std::time::{Duration, Instant};
-
-    #[test]
-    fn sumsets_check() {
-        let mut rng = StdRng::seed_from_u64(0u64);
-
-        fn check(max: u64, g: &[u64], base: u16) {
-            for i in max..=max {
-                let sigma = solve_linear_equations(max, g, base).unwrap();
-                assert_eq!(sigma.len(), g.len());
-                let mut expected = 0_u64;
-                for j in 0..sigma.len() {
-                    assert!(sigma[j] < base);
-                    expected += sigma[j] as u64 * g[j];
-                }
-                assert_eq!(expected, i);
-            }
-        }
-
-        let mut runs = 0;
-        let start = Instant::now();
-        for base in [3, 4, 5, 8, 10, 11, 14, 16] {
-            for _ in 0..10 {
-                // let max = ((u16::rand(&mut rng) as u64)) * (base as u64 - 1);
-                // let max = ((u16::rand(&mut rng) as u64) << 4) * (base as u64 - 1);
-                let max = ((u16::rand(&mut rng) as u64) >> 4) * (base as u64 - 1);
-                // while (max % (base as u64 - 1)) != 0 {
-                //     max = u64::rand(&mut rng);
-                // }
-                let l = find_number_of_digits(max, base);
-                let G = find_sumset_boundaries(max, base, l);
-                println!("Starting for base={} and max={}", base, max);
-                let start_check = Instant::now();
-                check(max, &G, base);
-                println!(
-                    "Check done for base={} and max={} in {:?}",
-                    base,
-                    max,
-                    start_check.elapsed()
-                );
-                runs += 1;
-            }
-        }
-        println!("Time for {} runs: {:?}", runs, start.elapsed());
-    }
 
     #[test]
     fn cls_range_proof() {
@@ -402,9 +344,9 @@ mod tests {
 
             for _ in 0..5 {
                 let mut a = [
-                    u16::rand(&mut rng) as u64,
-                    u16::rand(&mut rng) as u64,
-                    u16::rand(&mut rng) as u64,
+                    u64::rand(&mut rng),
+                    u64::rand(&mut rng),
+                    u64::rand(&mut rng),
                 ];
                 a.sort();
                 let min = a[0];
@@ -527,6 +469,7 @@ mod tests {
                             &mut pairing_checker,
                         )
                         .unwrap();
+                    assert!(pairing_checker.verify());
                     verifying_with_rpc_time += start.elapsed();
 
                     let mut bytes = vec![];

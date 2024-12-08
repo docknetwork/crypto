@@ -1,20 +1,14 @@
-use ark_bls12_381::{Bls12_381, Fr};
+use ark_bls12_381::{Bls12_381, Fr, G1Affine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::{prelude::StdRng, SeedableRng};
 use bbs_plus::prelude::{KeypairG2, SignatureG1, SignatureParamsG1};
 use blake2::Blake2b512;
-use std::collections::{BTreeMap, BTreeSet};
-
-use proof_system::prelude::{
-    BoundCheckSmcWithKVInnerProof, EqualWitnesses, MetaStatements, ProofSpec, StatementProof,
-    Statements, Witness, WitnessRef, Witnesses,
-};
-use test_utils::test_serialization;
-
 use proof_system::{
     prelude::{
-        bound_check_smc::SmcParamsAndCommitmentKey,
-        bound_check_smc_with_kv::SmcParamsAndCommitmentKeyAndSecretKey,
+        bound_check_smc_with_kv::{
+            SmcParamsKVAndCommitmentKey, SmcParamsKVAndCommitmentKeyAndSecretKey,
+        },
+        EqualWitnesses, MetaStatements, ProofSpec, Statements, Witness, WitnessRef, Witnesses,
     },
     proof::Proof,
     statement::{
@@ -27,9 +21,10 @@ use proof_system::{
             BoundCheckSmcWithKVVerifier as BoundCheckVerifierStmt,
         },
     },
-    sub_protocols::should_use_cls,
     witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
+use std::collections::{BTreeMap, BTreeSet};
+use test_utils::test_serialization;
 
 #[test]
 fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proof_with_keyed_verification(
@@ -43,9 +38,8 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
     let sig_keypair = KeypairG2::<Bls12_381>::generate_using_rng(&mut rng, &sig_params);
 
     let (smc_setup_params, sk) =
-        SmcParamsAndCommitmentKey::new::<_, Blake2b512>(&mut rng, b"test", 2);
-    smc_setup_params.verify().unwrap();
-    let smc_setup_params_with_sk = SmcParamsAndCommitmentKeyAndSecretKey {
+        SmcParamsKVAndCommitmentKey::new::<_, Blake2b512>(&mut rng, b"test", 2);
+    let smc_setup_params_with_sk = SmcParamsKVAndCommitmentKeyAndSecretKey {
         params_and_comm_key: smc_setup_params.clone(),
         sk,
     };
@@ -60,10 +54,9 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         sig_params: SignatureParamsG1<Bls12_381>,
         sig_keypair: KeypairG2<Bls12_381>,
         sig: SignatureG1<Bls12_381>,
-        smc_setup_params: SmcParamsAndCommitmentKey<Bls12_381>,
-        smc_setup_params_with_sk: SmcParamsAndCommitmentKeyAndSecretKey<Bls12_381>,
+        smc_setup_params: SmcParamsKVAndCommitmentKey<G1Affine>,
+        smc_setup_params_with_sk: SmcParamsKVAndCommitmentKeyAndSecretKey<G1Affine>,
         valid_proof: bool,
-        is_cls: bool,
     ) {
         let mut prover_statements = Statements::new();
         prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
@@ -124,34 +117,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
             test_serialization!(Proof<Bls12_381>, proof);
         }
 
-        if is_cls {
-            match &proof.statement_proofs[1] {
-                StatementProof::BoundCheckSmcWithKV(p) => match &p.proof {
-                    BoundCheckSmcWithKVInnerProof::CCS(_) => {
-                        assert!(false, "expected CLS proof but found CCS")
-                    }
-                    BoundCheckSmcWithKVInnerProof::CLS(_) => assert!(true),
-                },
-                _ => assert!(
-                    false,
-                    "this shouldn't happen as this test is checking set membership based proof"
-                ),
-            }
-        } else {
-            match &proof.statement_proofs[1] {
-                StatementProof::BoundCheckSmcWithKV(p) => match &p.proof {
-                    BoundCheckSmcWithKVInnerProof::CLS(_) => {
-                        assert!(false, "expected CCS proof but found CLS")
-                    }
-                    BoundCheckSmcWithKVInnerProof::CCS(_) => assert!(true),
-                },
-                _ => assert!(
-                    false,
-                    "this shouldn't happen as this test is checking set membership based proof"
-                ),
-            }
-        }
-
         let mut verifier_statements = Statements::new();
         verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
             sig_params.clone(),
@@ -195,9 +160,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
     sig.verify(&msgs, sig_keypair.public_key.clone(), sig_params.clone())
         .unwrap();
 
-    let is_cls = should_use_cls(min, max);
-    assert!(is_cls);
-
     // Check for message that is signed and satisfies the bounds
     check(
         &mut rng,
@@ -212,7 +174,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         smc_setup_params.clone(),
         smc_setup_params_with_sk.clone(),
         true,
-        is_cls,
     );
 
     // Check for message that satisfies the bounds but is not signed
@@ -229,7 +190,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         smc_setup_params.clone(),
         smc_setup_params_with_sk.clone(),
         false,
-        is_cls,
     );
 
     let min = 100;
@@ -242,9 +202,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         .unwrap();
     sig.verify(&msgs, sig_keypair.public_key.clone(), sig_params.clone())
         .unwrap();
-
-    let is_cls = should_use_cls(min, max);
-    assert!(!is_cls);
 
     // Check for message that is signed and satisfies the bounds
     check(
@@ -260,7 +217,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         smc_setup_params.clone(),
         smc_setup_params_with_sk.clone(),
         true,
-        is_cls,
     );
 
     // Check for message that satisfies the bounds but is not signed
@@ -277,6 +233,5 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         smc_setup_params,
         smc_setup_params_with_sk.clone(),
         false,
-        is_cls,
     );
 }

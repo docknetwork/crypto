@@ -35,7 +35,7 @@ use saver::prelude::{
 use serde::{Deserialize, Serialize};
 use smc_range_proof::prelude::MemberCommitmentKey;
 
-use crate::prelude::bound_check_smc::{
+use crate::statement::bound_check_smc::{
     SmcParamsAndCommitmentKey, SmcParamsWithPairingAndCommitmentKey,
 };
 use vb_accumulator::{

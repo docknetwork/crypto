@@ -3,24 +3,21 @@
 //! The calculations are changed a bit to be consistent with other instances of Schnorr protocol in this project.
 
 use crate::{
-    ccs_set_membership::setup::SetMembershipCheckParamsWithPairing, common::MemberCommitmentKey,
+    ccs_range_proof::util::{check_commitment_for_prefect_range, find_l_for_perfect_range},
+    ccs_set_membership::setup::SetMembershipCheckParamsWithPairing,
+    common::{padded_base_n_digits_as_field_elements, MemberCommitmentKey},
     error::SmcRangeProofError,
 };
 use ark_ec::{
     pairing::{Pairing, PairingOutput},
     AffineRepr, CurveGroup,
 };
-
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, io::Write, ops::Mul, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::{
     expect_equality, misc::n_rand, msm::multiply_field_elems_with_same_group_elem,
+    randomized_pairing_check::RandomizedPairingChecker,
 };
-
-use crate::common::padded_base_n_digits_as_field_elements;
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
-
-use crate::ccs_range_proof::util::{check_commitment_for_prefect_range, find_l};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -51,6 +48,7 @@ pub struct CCSPerfectRangeProof<E: Pairing> {
 }
 
 impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
+    /// Initialize the protocol for proving `0 <= value < max`
     pub fn init<R: RngCore>(
         rng: &mut R,
         value: u64,
@@ -71,6 +69,7 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
         )
     }
 
+    /// Initialize the protocol for proving `0 <= value < max`
     pub fn init_given_base<R: RngCore>(
         rng: &mut R,
         value: u64,
@@ -84,7 +83,7 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
 
         params.validate_base(base)?;
 
-        let l = find_l(max, base) as usize;
+        let l = find_l_for_perfect_range(max, base)? as usize;
 
         // Note: This is different from the paper as only a single `m` needs to be created.
         let m = E::ScalarField::rand(rng);
@@ -131,7 +130,23 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
     }
 
     pub fn gen_proof(self, challenge: &E::ScalarField) -> CCSPerfectRangeProof<E> {
-        gen_proof_perfect_range!(self, challenge, CCSPerfectRangeProof)
+        // Following is different from the paper, the paper has `-` but here its `+`
+        let z_v = cfg_into_iter!(0..self.V.len())
+            .map(|i| self.t[i] + (self.v[i] * challenge))
+            .collect::<Vec<_>>();
+        let z_sigma = cfg_into_iter!(0..self.V.len())
+            .map(|i| self.s[i] + (self.digits[i] * challenge))
+            .collect::<Vec<_>>();
+        let z_r = self.m + (self.r * challenge);
+        CCSPerfectRangeProof {
+            base: self.base,
+            V: self.V,
+            a: self.a,
+            D: self.D,
+            z_v,
+            z_sigma,
+            z_r,
+        }
     }
 
     pub fn compute_challenge_contribution<W: Write>(
@@ -159,6 +174,7 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
 }
 
 impl<E: Pairing> CCSPerfectRangeProof<E> {
+    /// Verify the proof for `0 <= value < max` where `commitment` is a Pedersen commitment to `value`
     pub fn verify(
         &self,
         commitment: &E::G1Affine,
@@ -186,6 +202,7 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         Ok(())
     }
 
+    /// Verify the proof for `0 <= value < max` where `commitment` is a Pedersen commitment to `value`
     pub fn verify_given_randomized_pairing_checker(
         &self,
         commitment: &E::G1Affine,
@@ -215,7 +232,8 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         params: &SetMembershipCheckParamsWithPairing<E>,
     ) -> Result<(), SmcRangeProofError> {
         params.validate_base(self.base)?;
-        let l = find_l(max, self.base) as usize;
+        let l = find_l_for_perfect_range(max, self.base)? as usize;
+
         expect_equality!(
             self.V.len(),
             l,
@@ -236,7 +254,7 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
             l,
             SmcRangeProofError::ProofShorterThanExpected
         );
-        check_commitment_for_prefect_range::<E>(
+        check_commitment_for_prefect_range::<E::G1Affine>(
             self.base,
             &self.z_sigma,
             &self.z_r,
@@ -300,7 +318,7 @@ mod tests {
     fn range_proof_for_perfect_range() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        for base in [2, 4, 8, 16] {
+        for base in [2, 3, 4, 5, 8, 10, 15, 20] {
             let (params, _) = SetMembershipCheckParams::<Bls12_381>::new_for_range_proof::<
                 _,
                 Blake2b512,
@@ -312,7 +330,7 @@ mod tests {
 
             let comm_key = MemberCommitmentKey::<G1Affine>::generate_using_rng(&mut rng);
 
-            for l in [10, 15] {
+            for l in [10, 12] {
                 let mut proving_time = Duration::default();
                 let mut verifying_time = Duration::default();
                 let mut verifying_with_rpc_time = Duration::default();

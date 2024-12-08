@@ -54,7 +54,7 @@ pub struct PoKOfSignatureG1KV<G: AffineRepr> {
 impl<G: AffineRepr> PoKOfSignatureG1KVProtocol<G> {
     pub fn init<R: RngCore>(
         rng: &mut R,
-        signature: impl AsRef<G>,
+        signature: &G,
         message: G::ScalarField,
         blinding: Option<G::ScalarField>,
         g1: &G,
@@ -77,13 +77,13 @@ impl<G: AffineRepr> PoKOfSignatureG1KVProtocol<G> {
         sig_randomizer: G::ScalarField,
         msg_blinding: G::ScalarField,
         sc_blinding: G::ScalarField,
-        signature: impl AsRef<G>,
+        signature: &G,
         message: G::ScalarField,
         g1: &G,
     ) -> Self {
         let sig_r = sig_randomizer.into_bigint();
         // A * r
-        let A_prime = signature.as_ref().mul_bigint(sig_r);
+        let A_prime = signature.mul_bigint(sig_r);
         let A_prime_neg = A_prime.neg();
         // A_bar = g1 * r - A' * m
         let A_bar = g1.mul_bigint(sig_r) + A_prime_neg * message;
@@ -244,11 +244,8 @@ impl<G: AffineRepr> PoKOfSignatureG1KV<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        common::SignatureParams,
-        weak_bb_sig::{SecretKey, SignatureG1},
-    };
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use crate::weak_bb_sig::{gen_sig, SecretKey};
+    use ark_bls12_381::{Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -259,18 +256,18 @@ mod tests {
     #[test]
     fn proof_of_knowledge_of_signature() {
         let mut rng = StdRng::seed_from_u64(0u64);
-        let params = SignatureParams::<Bls12_381>::new::<Blake2b512>(b"test-params");
+        let g1 = G1Affine::rand(&mut rng);
 
         let sk = SecretKey::new(&mut rng);
         let message = Fr::rand(&mut rng);
-        let sig = SignatureG1::<Bls12_381>::new(&message, &sk, &params);
+        let sig = gen_sig::<G1Affine>(&message, &sk, &g1);
 
         let protocol =
-            PoKOfSignatureG1KVProtocol::<G1Affine>::init(&mut rng, sig, message, None, &params.g1);
+            PoKOfSignatureG1KVProtocol::<G1Affine>::init(&mut rng, &sig, message, None, &g1);
 
         let mut chal_bytes_prover = vec![];
         protocol
-            .challenge_contribution(&params.g1, &mut chal_bytes_prover)
+            .challenge_contribution(&g1, &mut chal_bytes_prover)
             .unwrap();
         let challenge_prover =
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
@@ -279,11 +276,11 @@ mod tests {
 
         let mut chal_bytes_verifier = vec![];
         proof
-            .challenge_contribution(&params.g1, &mut chal_bytes_verifier)
+            .challenge_contribution(&g1, &mut chal_bytes_verifier)
             .unwrap();
         let challenge_verifier =
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
         assert_eq!(challenge_prover, challenge_verifier);
-        proof.verify(&challenge_verifier, &sk, &params.g1).unwrap();
+        proof.verify(&challenge_verifier, &sk, &g1).unwrap();
     }
 }

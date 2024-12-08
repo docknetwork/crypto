@@ -437,6 +437,8 @@ pub mod tests {
         phase1_outputs
     }
 
+    /// Pass `full_message` if all signers know the full message. Pass `message_shares` if each signer knows
+    /// only a share of the original message.
     fn do_phase2(
         rng: &mut StdRng,
         threshold_signers: ParticipantId,

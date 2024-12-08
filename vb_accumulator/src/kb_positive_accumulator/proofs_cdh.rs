@@ -357,6 +357,10 @@ mod tests {
             proof_verif_with_rpc_duration += start.elapsed();
         }
 
+        let start = Instant::now();
+        assert!(pairing_checker.verify());
+        proof_verif_with_rpc_duration += start.elapsed();
+
         println!(
             "Time to create {} membership proofs is {:?}",
             count, proof_create_duration

@@ -19,7 +19,7 @@ serde_with.workspace = true
 zeroize.workspace = true
 cipher = { version = "0.4.4", default-features = false, features = ["alloc"] }
 rayon = {workspace = true, optional = true}
-sha3 = { version = "0.10.6", default-features = false }
+sha3.workspace = true
 aes = { version = "0.8.2", default-features = false }
 itertools.workspace = true
 byteorder = { version = "1.4", default-features = false }
@@ -38,5 +38,5 @@ cc = "1.0.77"
 
 [features]
 default = [ "parallel"]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std"]
-parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std", "dock_crypto_utils/std", "schnorr_pok/std"]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "schnorr_pok/parallel"]

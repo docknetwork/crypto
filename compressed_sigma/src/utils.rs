@@ -1,9 +1,10 @@
+#![allow(unused)]
+
+use crate::transforms::{Homomorphism, LinearForm};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_std::{vec, vec::Vec};
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
-
-use crate::transforms::{Homomorphism, LinearForm};
 
 /// Pad given homomorphisms such that all have the same size after padding
 pub fn pad_homomorphisms_to_have_same_size<

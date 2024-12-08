@@ -56,9 +56,9 @@ pub enum Statement<E: Pairing> {
     /// For bound check using set-membership check based protocols
     BoundCheckSmc(bound_check_smc::BoundCheckSmc<E>),
     /// Used by the prover for bound check using set-membership check with keyed verification based protocols
-    BoundCheckSmcWithKVProver(bound_check_smc_with_kv::BoundCheckSmcWithKVProver<E>),
+    BoundCheckSmcWithKVProver(bound_check_smc_with_kv::BoundCheckSmcWithKVProver<E::G1Affine>),
     /// Used by the verifier for bound check using set-membership check with keyed verification based protocols
-    BoundCheckSmcWithKVVerifier(bound_check_smc_with_kv::BoundCheckSmcWithKVVerifier<E>),
+    BoundCheckSmcWithKVVerifier(bound_check_smc_with_kv::BoundCheckSmcWithKVVerifier<E::G1Affine>),
     /// To prove inequality of a signed message with a public value
     PublicInequality(inequality::PublicInequality<E::G1Affine>),
     DetachedAccumulatorMembershipProver(accumulator::DetachedAccumulatorMembershipProver<E>),

@@ -12,7 +12,7 @@ use smc_range_proof::prelude::{
 use crate::setup_params::SetupParams;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 
-/// For ease of use, keeping setup params together but they could be generated independently
+/// For ease of use, keeping setup params together, but they could be generated independently
 #[serde_as]
 #[derive(
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,

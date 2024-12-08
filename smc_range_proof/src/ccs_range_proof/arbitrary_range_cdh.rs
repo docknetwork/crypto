@@ -3,7 +3,7 @@
 //! The difference with the paper is the protocol used to prove knowledge of weak-BB sig which is taken from the CDH paper.
 
 use crate::{
-    ccs_range_proof::util::find_l_greater_than,
+    ccs_range_proof::util::{check_commitment_for_arbitrary_range, find_l_for_arbitrary_range},
     ccs_set_membership::setup::{SetMembershipCheckParams, SetMembershipCheckParamsWithPairing},
     common::{padded_base_n_digits_as_field_elements, MemberCommitmentKey},
     error::SmcRangeProofError,
@@ -11,11 +11,11 @@ use crate::{
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, format, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::misc::n_rand;
+use dock_crypto_utils::{
+    expect_equality, misc::n_rand, randomized_pairing_check::RandomizedPairingChecker,
+};
 use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol};
 
-use crate::ccs_range_proof::util::check_commitment_for_arbitrary_range;
-use dock_crypto_utils::{expect_equality, randomized_pairing_check::RandomizedPairingChecker};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -43,6 +43,7 @@ pub struct CCSArbitraryRangeProof<E: Pairing> {
 }
 
 impl<E: Pairing> CCSArbitraryRangeProofProtocol<E> {
+    /// Initialize the protocol for proving `min <= value < max`
     pub fn init<R: RngCore>(
         rng: &mut R,
         value: u64,
@@ -64,6 +65,7 @@ impl<E: Pairing> CCSArbitraryRangeProofProtocol<E> {
         )
     }
 
+    /// Initialize the protocol for proving `min <= value < max`
     pub fn init_given_base<R: RngCore>(
         rng: &mut R,
         value: u64,
@@ -89,7 +91,7 @@ impl<E: Pairing> CCSArbitraryRangeProofProtocol<E> {
 
         params.validate_base(base)?;
 
-        let l = find_l_greater_than(max, base) as usize;
+        let l = find_l_for_arbitrary_range(max, min, base) as usize;
 
         let m_min = E::ScalarField::rand(rng);
         let msg_blindings_min = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
@@ -204,6 +206,7 @@ impl<E: Pairing> CCSArbitraryRangeProofProtocol<E> {
 }
 
 impl<E: Pairing> CCSArbitraryRangeProof<E> {
+    /// Verify the proof for `min <= value < max` where `commitment` is a Pedersen commitment to `value`
     pub fn verify(
         &self,
         commitment: &E::G1Affine,
@@ -246,6 +249,7 @@ impl<E: Pairing> CCSArbitraryRangeProof<E> {
         Ok(())
     }
 
+    /// Verify the proof for `min <= value < max` where `commitment` is a Pedersen commitment to `value`
     pub fn verify_given_randomized_pairing_checker(
         &self,
         commitment: &E::G1Affine,
@@ -320,7 +324,7 @@ impl<E: Pairing> CCSArbitraryRangeProof<E> {
             )));
         }
         params.validate_base(self.base)?;
-        let l = find_l_greater_than(max, self.base) as usize;
+        let l = find_l_for_arbitrary_range(max, min, self.base) as usize;
         expect_equality!(
             self.pok_sigs_min.len(),
             l,
@@ -338,7 +342,7 @@ impl<E: Pairing> CCSArbitraryRangeProof<E> {
         let resp_d_max = cfg_iter!(self.pok_sigs_max)
             .map(|p| *p.get_resp_for_message().unwrap())
             .collect::<Vec<_>>();
-        check_commitment_for_arbitrary_range::<E>(
+        check_commitment_for_arbitrary_range::<E::G1Affine>(
             self.base,
             &resp_d_min,
             &resp_d_max,
@@ -372,7 +376,7 @@ mod tests {
     fn range_proof_for_arbitrary_range() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        for base in [2, 4, 8, 16] {
+        for base in [2, 4, 8, 10, 13, 16] {
             let mut proving_time = Duration::default();
             let mut verifying_time = Duration::default();
             let mut verifying_with_rpc_time = Duration::default();
@@ -508,6 +512,7 @@ mod tests {
                             &mut pairing_checker,
                         )
                         .unwrap();
+                    assert!(pairing_checker.verify());
                     verifying_with_rpc_time += start.elapsed();
 
                     let mut bytes = vec![];

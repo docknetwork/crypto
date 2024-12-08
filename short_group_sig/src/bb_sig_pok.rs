@@ -640,6 +640,7 @@ mod tests {
                 &mut pairing_checker,
             )
             .unwrap();
+        assert!(pairing_checker.verify());
 
         let msg_blinding = Fr::rand(&mut rng);
         let rand_blinding = Fr::rand(&mut rng);

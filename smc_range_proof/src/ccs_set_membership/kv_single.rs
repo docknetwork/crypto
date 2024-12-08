@@ -2,10 +2,10 @@
 //! the secret key for BB sig
 
 use crate::{
-    ccs_set_membership::setup::SetMembershipCheckParams, common::MemberCommitmentKey,
+    ccs_set_membership::setup::SetMembershipCheckParamsKV, common::MemberCommitmentKey,
     error::SmcRangeProofError,
 };
-use ark_ec::pairing::Pairing;
+use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
 use schnorr_pok::{discrete_log::PokTwoDiscreteLogsProtocol, partial::Partial2PokTwoDiscreteLogs};
@@ -15,34 +15,34 @@ use short_group_sig::{
 };
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct SetMembershipCheckWithKVProtocol<E: Pairing> {
-    pub pok_sig: PoKOfSignatureG1KVProtocol<E::G1Affine>,
-    pub sc: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+pub struct SetMembershipCheckWithKVProtocol<G: AffineRepr> {
+    pub pok_sig: PoKOfSignatureG1KVProtocol<G>,
+    pub sc: PokTwoDiscreteLogsProtocol<G>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SetMembershipCheckWithKVProof<E: Pairing> {
-    pub pok_sig: PoKOfSignatureG1KV<E::G1Affine>,
-    pub sc: Partial2PokTwoDiscreteLogs<E::G1Affine>,
+pub struct SetMembershipCheckWithKVProof<G: AffineRepr> {
+    pub pok_sig: PoKOfSignatureG1KV<G>,
+    pub sc: Partial2PokTwoDiscreteLogs<G>,
 }
 
-impl<E: Pairing> SetMembershipCheckWithKVProtocol<E> {
+impl<G: AffineRepr> SetMembershipCheckWithKVProtocol<G> {
     pub fn init<R: RngCore>(
         rng: &mut R,
-        member: E::ScalarField,
-        r: E::ScalarField,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
+        member: G::ScalarField,
+        r: G::ScalarField,
+        comm_key: &MemberCommitmentKey<G>,
+        params: &SetMembershipCheckParamsKV<G>,
     ) -> Result<Self, SmcRangeProofError> {
         let sig = params.get_sig_for_member(&member)?;
-        let blinding = E::ScalarField::rand(rng);
-        let m = E::ScalarField::rand(rng);
+        let blinding = G::ScalarField::rand(rng);
+        let m = G::ScalarField::rand(rng);
         let pok_sig = PoKOfSignatureG1KVProtocol::init(
             rng,
             sig,
             member,
             Some(blinding),
-            &params.bb_sig_params.g1,
+            &params.bb_sig_params,
         );
         let sc = PokTwoDiscreteLogsProtocol::init(member, blinding, &comm_key.g, r, m, &comm_key.h);
         Ok(Self { pok_sig, sc })
@@ -50,19 +50,19 @@ impl<E: Pairing> SetMembershipCheckWithKVProtocol<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        commitment: &E::G1Affine,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
+        commitment: &G,
+        comm_key: &MemberCommitmentKey<G>,
+        params: &SetMembershipCheckParamsKV<G>,
         mut writer: W,
     ) -> Result<(), SmcRangeProofError> {
         self.pok_sig
-            .challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
+            .challenge_contribution(&params.bb_sig_params, &mut writer)?;
         self.sc
             .challenge_contribution(&comm_key.g, &comm_key.h, commitment, writer)?;
         Ok(())
     }
 
-    pub fn gen_proof(self, challenge: &E::ScalarField) -> SetMembershipCheckWithKVProof<E> {
+    pub fn gen_proof(self, challenge: &G::ScalarField) -> SetMembershipCheckWithKVProof<G> {
         SetMembershipCheckWithKVProof {
             pok_sig: self.pok_sig.gen_proof(challenge),
             sc: self.sc.gen_partial2_proof(challenge),
@@ -70,18 +70,18 @@ impl<E: Pairing> SetMembershipCheckWithKVProtocol<E> {
     }
 }
 
-impl<E: Pairing> SetMembershipCheckWithKVProof<E> {
+impl<G: AffineRepr> SetMembershipCheckWithKVProof<G> {
     pub fn verify(
         &self,
-        commitment: &E::G1Affine,
-        challenge: &E::ScalarField,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
-        secret_key: &SecretKey<E::ScalarField>,
+        commitment: &G,
+        challenge: &G::ScalarField,
+        comm_key: &MemberCommitmentKey<G>,
+        params: &SetMembershipCheckParamsKV<G>,
+        secret_key: &SecretKey<G::ScalarField>,
     ) -> Result<(), SmcRangeProofError> {
         // Check commitment * challenge + g * z_sigma + h * z_r == D
         self.pok_sig
-            .verify(challenge, secret_key, &params.bb_sig_params.g1)?;
+            .verify(challenge, secret_key, &params.bb_sig_params)?;
         if !self.sc.verify(
             commitment,
             &comm_key.g,
@@ -96,13 +96,13 @@ impl<E: Pairing> SetMembershipCheckWithKVProof<E> {
 
     pub fn challenge_contribution<W: Write>(
         &self,
-        commitment: &E::G1Affine,
-        comm_key: &MemberCommitmentKey<E::G1Affine>,
-        params: &SetMembershipCheckParams<E>,
+        commitment: &G,
+        comm_key: &MemberCommitmentKey<G>,
+        params: &SetMembershipCheckParamsKV<G>,
         mut writer: W,
     ) -> Result<(), SmcRangeProofError> {
         self.pok_sig
-            .challenge_contribution(&params.bb_sig_params.g1, &mut writer)?;
+            .challenge_contribution(&params.bb_sig_params, &mut writer)?;
         self.sc
             .challenge_contribution(&comm_key.g, &comm_key.h, commitment, writer)?;
         Ok(())
@@ -112,8 +112,7 @@ impl<E: Pairing> SetMembershipCheckWithKVProof<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ccs_set_membership::setup::SetMembershipCheckParams;
-    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_bls12_381::{Fr, G1Affine};
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
@@ -121,19 +120,19 @@ mod tests {
     use blake2::Blake2b512;
     use dock_crypto_utils::misc::n_rand;
     use schnorr_pok::compute_random_oracle_challenge;
-    use short_group_sig::common::SignatureParams;
 
     #[test]
     fn membership_check() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let set_size = 10;
-        let sig_params = SignatureParams::<Bls12_381>::generate_using_rng(&mut rng);
 
-        let set = n_rand(&mut rng, set_size).collect::<Vec<_>>();
-        let (params, sk) =
-            SetMembershipCheckParams::new_given_sig_params(&mut rng, set.clone(), sig_params);
-        params.verify().unwrap();
+        let set = n_rand(&mut rng, set_size).collect::<Vec<Fr>>();
+        let (params, sk) = SetMembershipCheckParamsKV::<G1Affine>::new::<_, Blake2b512>(
+            &mut rng,
+            b"test",
+            set.clone(),
+        );
 
         let comm_key = MemberCommitmentKey::generate_using_rng(&mut rng);
         let member = set[3].clone();

@@ -91,11 +91,11 @@ pub struct UserSecretKeyShare<E: Pairing> {
 impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     Phase2<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>
 {
+    /// Initialize when each signer knows the complete user-id.
     /// This internally uses `init_for_known_message` of threshold weak-BB signature as the signers must
     /// know the full message which here is the user id. This is important to prevent the user from
-    /// getting multiple signatures over the arbitrary user ids. A way to achieve signing with user-id
-    /// shares could be for the user to prove that the shares belong to "certain user-id" (likely in a commitment)
-    pub fn init<R: RngCore>(
+    /// getting multiple signatures over the arbitrary user ids.
+    pub fn init_for_user_id<R: RngCore>(
         rng: &mut R,
         id: ParticipantId,
         issuer_sk: &IssuerSecretKey<F>,
@@ -115,6 +115,39 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             id,
             issuer_sk.0,
             user_id,
+            phase_1_output,
+            base_ot_output,
+            ote_params,
+            gadget_vector,
+            label,
+        )?;
+        Ok((Self(inner), m))
+    }
+
+    /// Initialize when each signer knows only a share of the complete user-id. This does not ensure that
+    /// the share is not of some bogus value. A way to achieve signing with user-id
+    /// shares could be for the user to prove that the shares belong to "certain user-id" (likely in a commitment)
+    /// before the signers call this function.
+    pub fn init_for_shared_user_id<R: RngCore>(
+        rng: &mut R,
+        id: ParticipantId,
+        issuer_sk: &IssuerSecretKey<F>,
+        user_id_share: F,
+        phase_1_output: Phase1Output<F>,
+        base_ot_output: BaseOTOutput,
+        ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
+        gadget_vector: &GadgetVector<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
+        label: &'static [u8],
+    ) -> Result<(Self, BTreeMap<ParticipantId, Message1<F>>), SyraError> {
+        let (inner, m) = short_group_sig::threshold_weak_bb_sig::Phase2::<
+            F,
+            KAPPA,
+            STATISTICAL_SECURITY_PARAMETER,
+        >::init_for_shared_message(
+            rng,
+            id,
+            issuer_sk.0,
+            user_id_share,
             phase_1_output,
             base_ot_output,
             ote_params,
@@ -204,7 +237,7 @@ mod tests {
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
     use schnorr_pok::compute_random_oracle_challenge;
-    use secret_sharing_and_dkg::shamir_ss::deal_random_secret;
+    use secret_sharing_and_dkg::shamir_ss::{deal_random_secret, deal_secret};
     use short_group_sig::threshold_weak_bb_sig::Phase1;
     use test_utils::ot::do_pairwise_base_ot;
 
@@ -295,27 +328,48 @@ mod tests {
         phase1_outs: &[Phase1Output<Fr>],
         expected_sk_term: Fr,
         secret_key_shares: &[IssuerSecretKey<Fr>],
-        user_id: Fr,
+        user_id: Option<Fr>,
+        user_id_shares: Option<Vec<Fr>>,
     ) -> Vec<UserSecretKeyShare<Bls12_381>> {
         let mut phase2s = vec![];
         let mut all_msg_1s = vec![];
 
         let label = b"test";
+
+        let known_id = user_id.is_some();
+        let user_id = user_id.unwrap_or_default();
+        let user_id_shares = user_id_shares.unwrap_or_default();
+
         // Signers initiate round-2 and each signer sends messages to others
         let start = Instant::now();
         for i in 1..=threshold_signers {
-            let (phase, msgs) = Phase2::init(
-                rng,
-                i,
-                &secret_key_shares[i as usize - 1],
-                user_id,
-                phase1_outs[i as usize - 1].clone(),
-                base_ot_outputs[i as usize - 1].clone(),
-                OTE_PARAMS,
-                &gadget_vector,
-                label,
-            )
-            .unwrap();
+            let (phase, msgs) = if known_id {
+                Phase2::init_for_user_id(
+                    rng,
+                    i,
+                    &secret_key_shares[i as usize - 1],
+                    user_id,
+                    phase1_outs[i as usize - 1].clone(),
+                    base_ot_outputs[i as usize - 1].clone(),
+                    OTE_PARAMS,
+                    &gadget_vector,
+                    label,
+                )
+                .unwrap()
+            } else {
+                Phase2::init_for_shared_user_id(
+                    rng,
+                    i,
+                    &secret_key_shares[i as usize - 1],
+                    user_id_shares[i as usize - 1],
+                    phase1_outs[i as usize - 1].clone(),
+                    base_ot_outputs[i as usize - 1].clone(),
+                    OTE_PARAMS,
+                    &gadget_vector,
+                    label,
+                )
+                .unwrap()
+            };
             phase2s.push(phase);
             all_msg_1s.push((i, msgs));
         }
@@ -351,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn issue() {
+    fn issue_with_known_user_id() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let gadget_vector = GadgetVector::<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>::new::<
@@ -399,7 +453,80 @@ mod tests {
             &phase1_outs,
             sk,
             &isk_shares,
-            user_id,
+            Some(user_id),
+            None,
+        );
+
+        let start = Instant::now();
+        let usk = UserSecretKeyShare::aggregate(usk_shares);
+        println!(
+            "Aggregating {} shares took {:?}",
+            threshold_signers,
+            start.elapsed()
+        );
+
+        usk.verify(user_id, &threshold_ipk, params.clone()).unwrap();
+    }
+
+    #[test]
+    fn issue_with_shared_user_id() {
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        let gadget_vector = GadgetVector::<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>::new::<
+            Blake2b512,
+        >(OTE_PARAMS, b"test-gadget-vector");
+
+        let threshold_signers = 5;
+        let total_signers = 8;
+        let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
+
+        let params = SetupParams::<Bls12_381>::new::<Blake2b512>(b"test");
+
+        // The signers do a keygen. This is a one time setup.
+        let (sk, sk_shares) =
+            trusted_party_keygen::<_, Fr>(&mut rng, threshold_signers, total_signers);
+        let isk_shares = sk_shares
+            .into_iter()
+            .map(|s| IssuerSecretKey(s))
+            .collect::<Vec<_>>();
+        // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
+        let threshold_ipk = IssuerPublicKey::new(&mut rng, &IssuerSecretKey(sk), &params);
+
+        // The signers run OT protocol instances. This is also a one time setup.
+        let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
+            &mut rng,
+            OTE_PARAMS.num_base_ot(),
+            total_signers,
+            all_party_set.clone(),
+        );
+
+        // Signing starts
+        let protocol_id = b"test".to_vec();
+
+        let phase1_outs = do_phase1(&mut rng, threshold_signers, protocol_id.clone());
+
+        // Signer creates user secret key
+        let user_id = compute_random_oracle_challenge::<Fr, Blake2b512>(b"low entropy user-id");
+        let (user_id_shares, _) =
+            deal_secret::<StdRng, Fr>(&mut rng, user_id, threshold_signers, total_signers).unwrap();
+
+        let usk_shares = do_phase2(
+            &mut rng,
+            threshold_signers,
+            &gadget_vector,
+            params.clone(),
+            &base_ot_outputs,
+            &phase1_outs,
+            sk + user_id,
+            &isk_shares,
+            None,
+            Some(
+                user_id_shares
+                    .0
+                    .into_iter()
+                    .map(|share| share.share)
+                    .collect(),
+            ),
         );
 
         let start = Instant::now();

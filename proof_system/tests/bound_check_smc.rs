@@ -3,16 +3,11 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::{prelude::StdRng, SeedableRng};
 use bbs_plus::prelude::{KeypairG2, SignatureG1, SignatureParamsG1};
 use blake2::Blake2b512;
-use std::collections::{BTreeMap, BTreeSet};
-
-use proof_system::prelude::{
-    BoundCheckSmcInnerProof, EqualWitnesses, MetaStatements, ProofSpec, StatementProof, Statements,
-    Witness, WitnessRef, Witnesses,
-};
-use test_utils::test_serialization;
-
 use proof_system::{
-    prelude::bound_check_smc::SmcParamsAndCommitmentKey,
+    prelude::{
+        bound_check_smc::SmcParamsAndCommitmentKey, EqualWitnesses, MetaStatements, ProofSpec,
+        Statements, Witness, WitnessRef, Witnesses,
+    },
     proof::Proof,
     statement::{
         bbs_plus::{
@@ -21,9 +16,10 @@ use proof_system::{
         },
         bound_check_smc::BoundCheckSmc as BoundCheckStmt,
     },
-    sub_protocols::should_use_cls,
     witness::PoKBBSSignatureG1 as PoKSignatureBBSG1Wit,
 };
+use std::collections::{BTreeMap, BTreeSet};
+use test_utils::test_serialization;
 
 #[test]
 fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proof() {
@@ -51,7 +47,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         sig: SignatureG1<Bls12_381>,
         smc_setup_params: SmcParamsAndCommitmentKey<Bls12_381>,
         valid_proof: bool,
-        is_cls: bool,
     ) {
         let mut prover_statements = Statements::new();
         prover_statements.add(PoKSignatureBBSG1ProverStmt::new_statement_from_params(
@@ -111,34 +106,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
             test_serialization!(Proof<Bls12_381>, proof);
         }
 
-        if is_cls {
-            match &proof.statement_proofs[1] {
-                StatementProof::BoundCheckSmc(p) => match &p.proof {
-                    BoundCheckSmcInnerProof::CCS(_) => {
-                        assert!(false, "expected CLS proof but found CCS")
-                    }
-                    BoundCheckSmcInnerProof::CLS(_) => assert!(true),
-                },
-                _ => assert!(
-                    false,
-                    "this shouldn't happen as this test is checking set membership based proof"
-                ),
-            }
-        } else {
-            match &proof.statement_proofs[1] {
-                StatementProof::BoundCheckSmc(p) => match &p.proof {
-                    BoundCheckSmcInnerProof::CLS(_) => {
-                        assert!(false, "expected CCS proof but found CLS")
-                    }
-                    BoundCheckSmcInnerProof::CCS(_) => assert!(true),
-                },
-                _ => assert!(
-                    false,
-                    "this shouldn't happen as this test is checking set membership based proof"
-                ),
-            }
-        }
-
         let mut verifier_statements = Statements::new();
         verifier_statements.add(PoKSignatureBBSG1VerifierStmt::new_statement_from_params(
             sig_params.clone(),
@@ -177,9 +144,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
     sig.verify(&msgs, sig_keypair.public_key.clone(), sig_params.clone())
         .unwrap();
 
-    let is_cls = should_use_cls(min, max);
-    assert!(is_cls);
-
     // Check for message that is signed and satisfies the bounds
     check(
         &mut rng,
@@ -193,7 +157,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         sig.clone(),
         smc_setup_params.clone(),
         true,
-        is_cls,
     );
 
     // Check for message that satisfies the bounds but is not signed
@@ -209,7 +172,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         sig,
         smc_setup_params.clone(),
         false,
-        is_cls,
     );
 
     let min = 100;
@@ -222,9 +184,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         .unwrap();
     sig.verify(&msgs, sig_keypair.public_key.clone(), sig_params.clone())
         .unwrap();
-
-    let is_cls = should_use_cls(min, max);
-    assert!(!is_cls);
 
     // Check for message that is signed and satisfies the bounds
     check(
@@ -239,7 +198,6 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         sig.clone(),
         smc_setup_params.clone(),
         true,
-        is_cls,
     );
 
     // Check for message that satisfies the bounds but is not signed
@@ -255,6 +213,5 @@ fn pok_of_bbs_plus_sig_and_bounded_message_using_set_membership_check_range_proo
         sig,
         smc_setup_params,
         false,
-        is_cls,
     );
 }

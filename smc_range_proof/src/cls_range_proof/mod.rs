@@ -1,4 +1,5 @@
-#[macro_use]
+//! Range proof described in the paper [Additive Combinatorics and Discrete Logarithm Based Range Protocols](https://eprint.iacr.org/2009/469).
+
 pub mod util;
 
 pub mod kv_range_proof;

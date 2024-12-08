@@ -47,7 +47,7 @@ pub enum StatementProof<E: Pairing> {
     PoKBBSSignature23G1(PoKOfSignature23G1Proof<E>),
     BoundCheckBpp(BoundCheckBppProof<E::G1Affine>),
     BoundCheckSmc(BoundCheckSmcProof<E>),
-    BoundCheckSmcWithKV(BoundCheckSmcWithKVProof<E>),
+    BoundCheckSmcWithKV(BoundCheckSmcWithKVProof<E::G1Affine>),
     Inequality(InequalityProof<E::G1Affine>),
     DetachedAccumulatorMembership(DetachedAccumulatorMembershipProof<E>),
     DetachedAccumulatorNonMembership(DetachedAccumulatorNonMembershipProof<E>),
@@ -351,9 +351,9 @@ pub enum BoundCheckSmcInnerProof<E: Pairing> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum BoundCheckSmcWithKVInnerProof<E: Pairing> {
-    CCS(smc_range_proof::prelude::CCSArbitraryRangeWithKVProof<E>),
-    CLS(smc_range_proof::prelude::CLSRangeProofWithKV<E>),
+pub enum BoundCheckSmcWithKVInnerProof<G: AffineRepr> {
+    CCS(smc_range_proof::prelude::CCSArbitraryRangeWithKVProof<G>),
+    CLS(smc_range_proof::prelude::CLSRangeProofWithKV<G>),
 }
 
 #[serde_as]
@@ -374,12 +374,12 @@ pub struct BoundCheckSmcProof<E: Pairing> {
     Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 #[serde(bound = "")]
-pub struct BoundCheckSmcWithKVProof<E: Pairing> {
+pub struct BoundCheckSmcWithKVProof<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
-    pub proof: BoundCheckSmcWithKVInnerProof<E>,
+    pub proof: BoundCheckSmcWithKVInnerProof<G>,
     #[serde_as(as = "ArkObjectBytes")]
-    pub comm: E::G1Affine,
-    pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
+    pub comm: G,
+    pub sp: PedersenCommitmentPartialProof<G>,
 }
 
 #[serde_as]
@@ -465,6 +465,7 @@ mod serialization {
         StatementProof, Write,
     };
     use crate::statement_proof::{BoundCheckSmcInnerProof, BoundCheckSmcWithKVInnerProof};
+    use ark_ec::AffineRepr;
     use ark_serialize::{Compress, Valid, Validate};
 
     impl<E: Pairing> Valid for StatementProof<E> {
@@ -509,8 +510,8 @@ mod serialization {
     }
 
     macro_rules! impl_serz_for_bound_check_inner {
-        ( $name:ident) => {
-            impl<E: Pairing> Valid for $name<E> {
+        ( $name:ident, $typ: ident, $typ_name: ident) => {
+            impl<$typ: $typ_name> Valid for $name<$typ> {
                 fn check(&self) -> Result<(), SerializationError> {
                     match self {
                         Self::CCS(c) => c.check(),
@@ -519,7 +520,7 @@ mod serialization {
                 }
             }
 
-            impl<E: Pairing> CanonicalSerialize for $name<E> {
+            impl<$typ: $typ_name> CanonicalSerialize for $name<$typ> {
                 fn serialize_with_mode<W: Write>(
                     &self,
                     mut writer: W,
@@ -545,7 +546,7 @@ mod serialization {
                 }
             }
 
-            impl<E: Pairing> CanonicalDeserialize for $name<E> {
+            impl<$typ: $typ_name> CanonicalDeserialize for $name<$typ> {
                 fn deserialize_with_mode<R: Read>(
                     mut reader: R,
                     compress: Compress,
@@ -574,6 +575,6 @@ mod serialization {
         };
     }
 
-    impl_serz_for_bound_check_inner!(BoundCheckSmcInnerProof);
-    impl_serz_for_bound_check_inner!(BoundCheckSmcWithKVInnerProof);
+    impl_serz_for_bound_check_inner!(BoundCheckSmcInnerProof, E, Pairing);
+    impl_serz_for_bound_check_inner!(BoundCheckSmcWithKVInnerProof, G, AffineRepr);
 }

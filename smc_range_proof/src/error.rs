@@ -18,6 +18,7 @@ pub enum SmcRangeProofError {
     ShortGroupSig(ShortGroupSigError),
     Schnorr(SchnorrError),
     ProofShorterThanExpected(usize, usize),
+    NotAPerfectRange(u64, u16),
 }
 
 impl From<SerializationError> for SmcRangeProofError {

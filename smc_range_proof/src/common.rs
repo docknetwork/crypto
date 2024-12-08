@@ -1,5 +1,4 @@
 use ark_ec::AffineRepr;
-
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, collections::BTreeSet, rand::RngCore, vec::Vec};
@@ -10,14 +9,13 @@ use dock_crypto_utils::{
     hashing_utils::affine_group_elem_from_try_and_incr,
     misc::rand,
 };
-
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
 pub use short_group_sig::{
     common::{SignatureParams, SignatureParamsWithPairing},
     weak_bb_sig::{PublicKeyG2, SecretKey, SignatureG1},
 };
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Commitment key to commit the set member
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -67,7 +65,7 @@ impl<G: AffineRepr> MemberCommitmentKey<G> {
     }
 }
 
-/// Representation of `value` in base `base`-representation. Returns the base `base` digits in little-endian form
+/// Representation of `value` in `base`-representation. Returns the base `base` digits in little-endian form
 pub fn base_n_digits(mut value: u64, base: u16) -> Vec<u16> {
     let mut digits = Vec::<u16>::new();
     while value != 0 {
@@ -78,7 +76,17 @@ pub fn base_n_digits(mut value: u64, base: u16) -> Vec<u16> {
     digits
 }
 
-/// Same as `base_n_digits` but pads representation with 0s to the until to make the output vector length as `size`
+pub fn base_n_digits_for_u128(mut value: u128, base: u16) -> Vec<u16> {
+    let mut digits = Vec::<u16>::new();
+    while value != 0 {
+        // Note: Can use bitwise ops if base is power of 2
+        digits.push((value % base as u128) as u16);
+        value = value / base as u128;
+    }
+    digits
+}
+
+/// Same as `base_n_digits` but pads representation with 0s to the end to make the output vector length as `size`
 pub fn padded_base_n_digits_as_field_elements<F: PrimeField>(
     value: u64,
     base: u16,
@@ -126,6 +134,15 @@ pub fn is_secret_key_valid_for_base<F: PrimeField>(sk: &SecretKey<F>, base: u16)
     let neg_bases = (0..base).map(|b| F::from(b).neg());
     let position = neg_bases.into_iter().position(|b| b == sk.0);
     position.is_none()
+}
+
+/// Optimal base as suggested by the CCS and CLS paper as `log_2(range)/log_2(log_2(range))` where `range = max - min`
+/// A more optimal base can be calculated using numerical methods.
+pub fn optimal_base(max: u64, min: u64) -> u16 {
+    let range = max - min;
+    let lg_range = range.ilog2();
+    let lg_lg_range = lg_range.ilog2();
+    (lg_range / lg_lg_range) as u16
 }
 
 #[cfg(test)]

@@ -303,7 +303,7 @@ impl<G: AffineRepr> MembershipProofProtocol<G> {
     ) -> Self {
         Self(PoKOfSignatureG1KVProtocol::init(
             rng,
-            &witness,
+            &witness.0,
             element,
             element_blinding,
             accumulator,

@@ -303,7 +303,7 @@ pub trait Witness<G: AffineRepr> {
         let d_A_times_d_D_inv = d_A * d_D_inv;
 
         // <powers_of_y, omega> * 1/d_D(x)
-        let y_omega_ip = omega.inner_product_with_scaled_powers_of_y(element, &d_D_inv);
+        let y_omega_ip = omega.evaluate(element, &d_D_inv);
 
         // d_A(x)/d_D(x) * C + 1/d_D(x) * <powers_of_y, omega>
         let new_C = old_witness.mul_bigint(d_A_times_d_D_inv.into_bigint()) + y_omega_ip;

@@ -1,11 +1,11 @@
 use crate::{
     error::ProofSystemError,
-    prelude::bound_check_smc_with_kv::SmcParamsAndCommitmentKeyAndSecretKey,
-    statement::bound_check_smc::SmcParamsAndCommitmentKey,
+    prelude::bound_check_smc_with_kv::SmcParamsKVAndCommitmentKeyAndSecretKey,
+    statement::bound_check_smc_with_kv::SmcParamsKVAndCommitmentKey,
     statement_proof::{BoundCheckSmcWithKVInnerProof, BoundCheckSmcWithKVProof, StatementProof},
-    sub_protocols::{enforce_and_get_u64, schnorr::SchnorrProtocol, should_use_cls},
+    sub_protocols::{enforce_and_get_u64, schnorr::SchnorrProtocol},
 };
-use ark_ec::pairing::Pairing;
+use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::CanonicalSerialize;
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
@@ -19,31 +19,31 @@ use smc_range_proof::{
 };
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum SmcProtocolWithKV<E: Pairing> {
-    CCS(CCSArbitraryRangeProofWithKVProtocol<E>),
-    CLS(CLSRangeProofWithKVProtocol<E>),
+pub enum SmcProtocolWithKV<G: AffineRepr> {
+    CCS(CCSArbitraryRangeProofWithKVProtocol<G>),
+    CLS(CLSRangeProofWithKVProtocol<G>),
 }
 
 /// Runs the set-membership check based protocol with keyed-verification for proving bounds of a witness and a Schnorr protocol for proving
 /// knowledge of the witness committed in the commitments accompanying the proof.
 #[derive(Clone, Debug, PartialEq)]
-pub struct BoundCheckSmcWithKVProtocol<'a, E: Pairing> {
+pub struct BoundCheckSmcWithKVProtocol<'a, G: AffineRepr> {
     pub id: usize,
     pub min: u64,
     pub max: u64,
-    pub params_and_comm_key: Option<&'a SmcParamsAndCommitmentKey<E>>,
-    pub params_and_comm_key_and_sk: Option<&'a SmcParamsAndCommitmentKeyAndSecretKey<E>>,
-    pub comm: Option<E::G1Affine>,
-    pub smc_protocol: Option<SmcProtocolWithKV<E>>,
-    pub sp: Option<SchnorrProtocol<'a, E::G1Affine>>,
+    pub params_and_comm_key: Option<&'a SmcParamsKVAndCommitmentKey<G>>,
+    pub params_and_comm_key_and_sk: Option<&'a SmcParamsKVAndCommitmentKeyAndSecretKey<G>>,
+    pub comm: Option<G>,
+    pub smc_protocol: Option<SmcProtocolWithKV<G>>,
+    pub sp: Option<SchnorrProtocol<'a, G>>,
 }
 
-impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
+impl<'a, G: AffineRepr> BoundCheckSmcWithKVProtocol<'a, G> {
     pub fn new_for_prover(
         id: usize,
         min: u64,
         max: u64,
-        params: &'a SmcParamsAndCommitmentKey<E>,
+        params: &'a SmcParamsKVAndCommitmentKey<G>,
     ) -> Self {
         Self {
             id,
@@ -61,7 +61,7 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
         id: usize,
         min: u64,
         max: u64,
-        params: &'a SmcParamsAndCommitmentKeyAndSecretKey<E>,
+        params: &'a SmcParamsKVAndCommitmentKeyAndSecretKey<G>,
     ) -> Self {
         Self {
             id,
@@ -78,9 +78,9 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
     pub fn init<R: RngCore>(
         &mut self,
         rng: &mut R,
-        comm_key_as_slice: &'a [E::G1Affine],
-        message: E::ScalarField,
-        blinding: Option<E::ScalarField>,
+        comm_key_as_slice: &'a [G],
+        message: G::ScalarField,
+        blinding: Option<G::ScalarField>,
     ) -> Result<(), ProofSystemError> {
         if self.sp.is_some() {
             return Err(ProofSystemError::SubProtocolAlreadyInitialized(self.id));
@@ -88,47 +88,34 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
         let params = self
             .params_and_comm_key
             .ok_or(ProofSystemError::SmcParamsNotProvided)?;
-        let msg_as_u64 = enforce_and_get_u64::<E::ScalarField>(&message)?;
-        let randomness = E::ScalarField::rand(rng);
+        let msg_as_u64 = enforce_and_get_u64::<G::ScalarField>(&message)?;
+        let randomness = G::ScalarField::rand(rng);
         let comm_key = &params.comm_key;
         self.comm = Some(comm_key.commit(&message, &randomness));
-        let smc_protocol = if should_use_cls(self.min, self.max) {
-            let p = CLSRangeProofWithKVProtocol::init(
-                rng,
-                msg_as_u64,
-                randomness.clone(),
-                self.min,
-                self.max,
-                comm_key,
-                &params.params,
-            )?;
-            SmcProtocolWithKV::CLS(p)
-        } else {
-            let p = CCSArbitraryRangeProofWithKVProtocol::init(
-                rng,
-                msg_as_u64,
-                randomness.clone(),
-                self.min,
-                self.max,
-                comm_key,
-                &params.params,
-            )?;
-            SmcProtocolWithKV::CCS(p)
-        };
-        self.smc_protocol = Some(smc_protocol);
+        let p = CLSRangeProofWithKVProtocol::init(
+            rng,
+            msg_as_u64,
+            randomness.clone(),
+            self.min,
+            self.max,
+            comm_key,
+            &params.params,
+        )?;
+
+        self.smc_protocol = Some(SmcProtocolWithKV::CLS(p));
         self.init_schnorr_protocol(rng, comm_key_as_slice, message, blinding, randomness)
     }
 
     fn init_schnorr_protocol<R: RngCore>(
         &mut self,
         rng: &mut R,
-        comm_key: &'a [E::G1Affine],
-        message: E::ScalarField,
-        blinding: Option<E::ScalarField>,
-        blinding_for_smc: E::ScalarField,
+        comm_key: &'a [G],
+        message: G::ScalarField,
+        blinding: Option<G::ScalarField>,
+        blinding_for_smc: G::ScalarField,
     ) -> Result<(), ProofSystemError> {
         let blinding = if blinding.is_none() {
-            E::ScalarField::rand(rng)
+            G::ScalarField::rand(rng)
         } else {
             blinding.unwrap()
         };
@@ -178,9 +165,9 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
         Ok(())
     }
 
-    pub fn gen_proof_contribution(
+    pub fn gen_proof_contribution<E: Pairing<G1Affine = G>>(
         &mut self,
-        challenge: &E::ScalarField,
+        challenge: &G::ScalarField,
     ) -> Result<StatementProof<E>, ProofSystemError> {
         if self.sp.is_none() {
             return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
@@ -197,7 +184,7 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
                 BoundCheckSmcWithKVInnerProof::CLS(p)
             }
         };
-        // Don't generated response for index 0 since its response will come from proofs of one of the signatures.
+        // Don't generate response for index 0 since its response will come from proofs of one of the signatures.
         let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::BoundCheckSmcWithKV(
             BoundCheckSmcWithKVProof {
@@ -214,10 +201,10 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
 
     pub fn verify_proof_contribution(
         &self,
-        challenge: &E::ScalarField,
-        proof: &BoundCheckSmcWithKVProof<E>,
-        comm_key_as_slice: &[E::G1Affine],
-        resp_for_message: E::ScalarField,
+        challenge: &G::ScalarField,
+        proof: &BoundCheckSmcWithKVProof<G>,
+        comm_key_as_slice: &[G],
+        resp_for_message: G::ScalarField,
     ) -> Result<(), ProofSystemError> {
         let params = self
             .params_and_comm_key_and_sk
@@ -258,9 +245,9 @@ impl<'a, E: Pairing> BoundCheckSmcWithKVProtocol<'a, E> {
     }
 
     pub fn compute_challenge_contribution<W: Write>(
-        comm_key_as_slice: &[E::G1Affine],
-        proof: &BoundCheckSmcWithKVProof<E>,
-        params: &SmcParamsAndCommitmentKeyAndSecretKey<E>,
+        comm_key_as_slice: &[G],
+        proof: &BoundCheckSmcWithKVProof<G>,
+        params: &SmcParamsKVAndCommitmentKeyAndSecretKey<G>,
         mut writer: W,
     ) -> Result<(), ProofSystemError> {
         let comm_key = params.get_comm_key();

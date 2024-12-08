@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use ark_bls12_381::{Bls12_381, Fr, G1Affine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{

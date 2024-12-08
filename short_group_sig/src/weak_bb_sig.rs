@@ -119,7 +119,7 @@ impl<E: Pairing> SignatureG1<E> {
         sk: impl AsRef<E::ScalarField>,
         gen: impl AsRef<E::G1Affine>,
     ) -> Self {
-        Self((*gen.as_ref() * ((*sk.as_ref() + message).inverse().unwrap())).into())
+        Self(gen_sig::<E::G1Affine>(message, sk, gen.as_ref()))
     }
 
     pub fn verify(
@@ -192,6 +192,15 @@ impl<E: Pairing> AsRef<E::G1Affine> for SignatureG1<E> {
     fn as_ref(&self) -> &E::G1Affine {
         &self.0
     }
+}
+
+/// Generate weak-BB signature. Useful when working in a non-pairing setting
+pub fn gen_sig<G: AffineRepr>(
+    message: &G::ScalarField,
+    sk: impl AsRef<G::ScalarField>,
+    gen: &G,
+) -> G {
+    (*gen * ((*sk.as_ref() + message).inverse().unwrap())).into()
 }
 
 #[cfg(test)]

@@ -3,23 +3,18 @@
 //! The difference with the paper is the protocol used to prove knowledge of weak-BB sig which is taken from the CDH paper.
 
 use crate::{
-    ccs_set_membership::setup::SetMembershipCheckParamsWithPairing, common::MemberCommitmentKey,
+    ccs_range_proof::util::{check_commitment_for_prefect_range, find_l_for_perfect_range},
+    ccs_set_membership::setup::{SetMembershipCheckParams, SetMembershipCheckParamsWithPairing},
+    common::{padded_base_n_digits_as_field_elements, MemberCommitmentKey},
     error::SmcRangeProofError,
 };
 use ark_ec::pairing::Pairing;
-use ark_std::io::Write;
-
-use crate::{
-    ccs_range_proof::util::find_l, ccs_set_membership::setup::SetMembershipCheckParams,
-    common::padded_base_n_digits_as_field_elements,
-};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::misc::n_rand;
+use ark_std::{cfg_into_iter, cfg_iter, io::Write, rand::RngCore, vec::Vec, UniformRand};
+use dock_crypto_utils::{
+    expect_equality, misc::n_rand, randomized_pairing_check::RandomizedPairingChecker,
+};
 use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol};
-
-use crate::ccs_range_proof::util::check_commitment_for_prefect_range;
-use dock_crypto_utils::{expect_equality, randomized_pairing_check::RandomizedPairingChecker};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -45,6 +40,7 @@ pub struct CCSPerfectRangeProof<E: Pairing> {
 }
 
 impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
+    /// Initialize the protocol for proving `0 <= value < max`
     pub fn init<R: RngCore>(
         rng: &mut R,
         value: u64,
@@ -64,6 +60,7 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
         )
     }
 
+    /// Initialize the protocol for proving `0 <= value < max`
     pub fn init_given_base<R: RngCore>(
         rng: &mut R,
         value: u64,
@@ -75,7 +72,8 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
     ) -> Result<Self, SmcRangeProofError> {
         params.validate_base(base)?;
 
-        let l = find_l(max, base) as usize;
+        let l = find_l_for_perfect_range(max, base)? as usize;
+
         let msg_blindings = n_rand(rng, l).collect::<Vec<E::ScalarField>>();
         let m = E::ScalarField::rand(rng);
         let digits = padded_base_n_digits_as_field_elements(value, base, l);
@@ -146,6 +144,7 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
 }
 
 impl<E: Pairing> CCSPerfectRangeProof<E> {
+    /// Verify the proof for `0 <= value < max` where `commitment` is a Pedersen commitment to `value`
     pub fn verify(
         &self,
         commitment: &E::G1Affine,
@@ -174,6 +173,7 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         Ok(())
     }
 
+    /// Verify the proof for `0 <= value < max` where `commitment` is a Pedersen commitment to `value`
     pub fn verify_given_randomized_pairing_checker(
         &self,
         commitment: &E::G1Affine,
@@ -219,7 +219,8 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         params: &SetMembershipCheckParamsWithPairing<E>,
     ) -> Result<(), SmcRangeProofError> {
         params.validate_base(self.base)?;
-        let l = find_l(max, self.base) as usize;
+        let l = find_l_for_perfect_range(max, self.base)? as usize;
+
         expect_equality!(
             self.pok_sigs.len(),
             l,
@@ -229,7 +230,7 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         let resp_d = cfg_iter!(self.pok_sigs)
             .map(|p| *p.get_resp_for_message().unwrap())
             .collect::<Vec<_>>();
-        check_commitment_for_prefect_range::<E>(
+        check_commitment_for_prefect_range::<E::G1Affine>(
             self.base,
             &resp_d,
             &self.resp_r,
@@ -274,7 +275,7 @@ mod tests {
     fn range_proof_for_perfect_range() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
-        for base in [2, 4, 8, 16] {
+        for base in [2, 3, 4, 5, 8, 10, 15, 20] {
             let (params, _) = SetMembershipCheckParams::<Bls12_381>::new_for_range_proof::<
                 _,
                 Blake2b512,
@@ -286,7 +287,7 @@ mod tests {
 
             let comm_key = MemberCommitmentKey::<G1Affine>::generate_using_rng(&mut rng);
 
-            for l in [10, 15] {
+            for l in [10, 12] {
                 let mut proving_time = Duration::default();
                 let mut verifying_time = Duration::default();
                 let mut verifying_with_rpc_time = Duration::default();

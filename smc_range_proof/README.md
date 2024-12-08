@@ -8,7 +8,7 @@ Implements the following range proof and set-membership protocols.
 where `u` is the base and the upper bound is a power of the base. [Code](src/ccs_range_proof/perfect_range.rs)
 3. Range proof protocol as described in section 4.4 of the paper [1]. Considers an arbitrary range `[min, max)`. Some
 differences with the paper, check the module for more details. [Code](src/ccs_range_proof/arbitrary_range.rs)
-4. Range proof using sumsets, based on Protocol 2 from the paper [2]. [Code](src/smc_range_proof.rs)
+4. Range proof using sumsets, based on Protocol 2 from the paper [2] but considers range [min, max) and not [0, max]. [Code](src/smc_range_proof.rs)
 5. Implements the Keyed-Verification of the above protocols where the verifier knows the secret key of the BB sig. This makes
 the proof generation and verification more efficient by removing the need for pairings. This idea is taken from this PhD. thesis.
 
