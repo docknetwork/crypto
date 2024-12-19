@@ -1,7 +1,7 @@
-//! Two party multiplication where each party where each party has multiple inputs. based on protocol 1 of
+//! Two party multiplication where each party has multiple inputs. Based on protocol 1 of
 //! the paper [Threshold ECDSA from ECDSA Assumptions: The Multiparty Case](https://eprint.iacr.org/2019/523)
-//! Multiplication participants are called Party1 and Party2 where Party1 acts as the OT sender and Party2 as the
-//! receiver
+//! Multiplication participants are called Party1 and Party2 where Party1 acts as the OT extension sender and
+//! Party2 as the receiver
 
 use crate::{
     ot_based_multiplication::dkls18_mul_2p::{

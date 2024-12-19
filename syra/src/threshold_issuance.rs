@@ -1,4 +1,4 @@
-//! Threshold issuance in SyRA. The secret key is shared among signers using Shamir secret sharing and they jointly generate
+//! Threshold issuance in SyRA. The secret key is shared among signers using Shamir secret sharing, and they jointly generate
 //! SyRA VRF.
 //!
 //! Note: Multiplicative notation is used
@@ -9,32 +9,28 @@
 //! the corresponding package.
 //!
 //! The high level idea is:
-//! - The signers jointly compute a random value `r` such that each signer `i` has a share of it as `r_i` such that `r = \sum{r_i}`
+//! - Each signer samples a random value `r_i`. The sum of these random values is called `r` as `r = \sum{r_i}`.
 //! - The signers jointly compute a product of `u = r*(sk+s)` such that each signer `i` has a share of it as `u_i` such that `u = \sum{u_i}`
-//! - Each signer sends to the user `R_i, R_hat_i, S_i, u_i` to the user where `R_i = g^r_i, R_hat_i = g_hat^r_i, S_i = e(g, g_hat)^r_i`.
-//! - User combines these to form `R = \prod{R_i} = g^\prod{r_i} = g^r`, `R_hat = \prod{R_hat_i} = g_hat^\prod{r_i} = g_hat^r`,
-//!   `S = \prod{S_i} = e(g, g_hat)^\sum{r_i} = e(g, g_hat)^r` and `u = \sum{u_i} = r*(sk+s)`. Now `R^1/u = g^1/(sk+s)`,
-//!   `R_hat^1/u = g_hat^1/(sk+s)` and `S^1/u = e(g, g_hat)^1/(sk+s)`
-//! - User uses `R, R_hat, S` to verify its secret key as per Fig.4
+//! - Each signer sends to the user `R_i, R_hat_i, u_i` to the user where `R_i = g^r_i, R_hat_i = g_hat^r_i`.
+//! - User combines these to form `R = \prod{R_i} = g^\prod{r_i} = g^r`, `R_hat = \prod{R_hat_i} = g_hat^\prod{r_i} = g_hat^r`
+//!   and `u = \sum{u_i} = r*(sk+s)`. Now `R^1/u = g^1/(sk+s)`, `R_hat^1/u = g_hat^1/(sk+s)`
+//! - User uses `R, R_hat` to verify its secret key as per Fig.4
 //!
 //! The protocol proceeds in 2 phases:
 //!
 //! 1. **Phase 1**: This is a 2 round protocol, independent of the message `m` and generates randomness, like `r_i` (and other
 //!    blindings to be used in MPC multiplication protocol).
-//! 2. **Phase 2**: Here the parties run a 2 round MPC multiplication protocol where each party's input is `(r_i, (sk_i + m))` and output
-//!    is `(g^r_i, g_hat^r_i, e(g, g_hat)^r_i, u_i)` where `u_i` is a share of `r*(sk+m)` such that `\sum{u_i} = r*(sk+m)`.
+//! 2. **Phase 2**: Here the parties run a 2 round MPC multiplication protocol where each party's input is `(r_i, (sk_i + s))` and output
+//!    is `(g^r_i, g_hat^r_i, e(g, g_hat)^r_i, u_i)` where `u_i` is a share of `r*(sk+s)` such that `\sum{u_i} = r*(sk+s)`.
 //!    `(g^r_i, g_hat^r_i, e(g, g_hat)^r_i, u_i)` is called the `UserSecretKeyShare` and user can combine
-//!    these shares from all signers to get `g^1/(sk+m), g_hat^1/(sk+s), e(g, g_hat)^1/(sk+s)` as described above.
+//!    these shares from all signers to get `g^1/(sk+m), g_hat^1/(sk+s)` as described above.
 
 use crate::{
     error::SyraError,
     setup::{IssuerSecretKey, PreparedSetupParams, UserSecretKey},
     vrf::{Output, Proof},
 };
-use ark_ec::{
-    pairing::{Pairing, PairingOutput},
-    CurveGroup,
-};
+use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, ops::Mul, rand::RngCore, vec::Vec};
@@ -44,8 +40,9 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use short_group_sig::threshold_weak_bb_sig::{
     BaseOTOutput, GadgetVector, Message1, Message2, MultiplicationOTEParams, ParticipantId,
-    Phase1Output, SigShare,
+    SigShare,
 };
+pub use short_group_sig::threshold_weak_bb_sig::{Phase1, Phase1Output};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // NOTE: Phase 1 is exactly identical to the Phase1 of weak-BB signature so that can be used as it is.
@@ -80,9 +77,6 @@ pub struct UserSecretKeyShare<E: Pairing> {
     /// `g_hat^r_i`
     #[serde_as(as = "ArkObjectBytes")]
     pub R_hat: E::G2Affine,
-    /// `e(g, g_hat)^r_i`
-    #[serde_as(as = "ArkObjectBytes")]
-    pub S: PairingOutput<E>,
     /// Share of `r*(sk+s)` where `s` is user-id
     #[serde_as(as = "ArkObjectBytes")]
     pub u: E::ScalarField,
@@ -190,12 +184,10 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         let r = self.0.r;
         let R_hat = params.g_hat.mul(r).into_affine();
         let SigShare { signer_id, R, u } = self.0.finish::<E::G1Affine>(&params.g);
-        let S = params.pairing * r;
         UserSecretKeyShare {
             signer_id,
             R,
             R_hat,
-            S,
             u,
         }
     }
@@ -203,35 +195,34 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 
 impl<E: Pairing> UserSecretKeyShare<E> {
     /// Aggregate the shares to form the final user secret key
-    pub fn aggregate(shares: Vec<Self>) -> UserSecretKey<E> {
+    pub fn aggregate(
+        shares: Vec<Self>,
+        params: impl Into<PreparedSetupParams<E>>,
+    ) -> UserSecretKey<E> {
+        let params = params.into();
         let mut sum_R = E::G1::zero();
         let mut sum_R_hat = E::G2::zero();
-        let mut sum_S = PairingOutput::<E>::zero();
         let mut sum_u = E::ScalarField::zero();
         // u = \sum_i{share_i.u} = r*(sk + s)
         // R = \prod_i{share_i.R} / u = g^1/(sk + s)
         // R_hat = \prod_i{share_i.R_hat} / u = g_hat^1/(sk + s)
-        // S = \prod_i{share_i.S} / u = e(g, h_hat)^1/(sk + s)
         for share in shares {
             sum_R += share.R;
             sum_R_hat += share.R_hat;
-            sum_S += share.S;
             sum_u += share.u;
         }
         let u_inv = sum_u.inverse().unwrap();
         let R = (sum_R * u_inv).into_affine();
         let R_hat = (sum_R_hat * u_inv).into_affine();
-        let S = sum_S * u_inv;
-        UserSecretKey(Output(S), Proof(R, R_hat))
+        // T = e(R, g_hat) = e(g^1/(sk + s), g_hat) = e(g, g_hat)^1/(sk + s)
+        let T = E::pairing(R, params.g_hat_prepared);
+        UserSecretKey(Output(T), Proof(R, R_hat))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, time::Instant};
-
     use super::*;
-
     use crate::setup::{IssuerPublicKey, IssuerSecretKey, SetupParams};
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
@@ -239,6 +230,7 @@ mod tests {
     use schnorr_pok::compute_random_oracle_challenge;
     use secret_sharing_and_dkg::shamir_ss::{deal_random_secret, deal_secret};
     use short_group_sig::threshold_weak_bb_sig::Phase1;
+    use std::{collections::BTreeSet, time::Instant};
     use test_utils::ot::do_pairwise_base_ot;
 
     const BASE_OT_KEY_SIZE: u16 = 128;
@@ -248,11 +240,11 @@ mod tests {
         MultiplicationOTEParams::<KAPPA, STATISTICAL_SECURITY_PARAMETER> {};
 
     /// Just for testing, let a trusted party do the keygen and give each signer its keyshare
-    pub fn trusted_party_keygen<R: RngCore, F: PrimeField>(
-        rng: &mut R,
+    pub fn trusted_party_keygen(
+        rng: &mut StdRng,
         threshold: ParticipantId,
         total: ParticipantId,
-    ) -> (F, Vec<F>) {
+    ) -> (Fr, Vec<Fr>) {
         let (secret, shares, _) = deal_random_secret(rng, threshold, total).unwrap();
         (secret, shares.0.into_iter().map(|s| s.share).collect())
     }
@@ -269,7 +261,6 @@ mod tests {
         let mut commitments_zero_share = vec![];
 
         // Signers initiate round-1 and each signer sends commitments to others
-        let start = Instant::now();
         for i in 1..=threshold_signers {
             let mut others = threshold_party_set.clone();
             others.remove(&i);
@@ -314,7 +305,6 @@ mod tests {
             .into_iter()
             .map(|p| p.finish::<Blake2b512>().unwrap())
             .collect::<Vec<_>>();
-        println!("Phase 1 took {:?}", start.elapsed());
         phase1_outputs
     }
 
@@ -341,7 +331,6 @@ mod tests {
         let user_id_shares = user_id_shares.unwrap_or_default();
 
         // Signers initiate round-2 and each signer sends messages to others
-        let start = Instant::now();
         for i in 1..=threshold_signers {
             let (phase, msgs) = if known_id {
                 Phase2::init_for_user_id(
@@ -400,7 +389,6 @@ mod tests {
             .into_iter()
             .map(|p| p.finish::<Bls12_381>(params.clone()))
             .collect::<Vec<_>>();
-        println!("Phase 2 took {:?}", start.elapsed());
         usk_shares
     }
 
@@ -408,135 +396,140 @@ mod tests {
     fn issue_with_known_user_id() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
+        let params = SetupParams::<Bls12_381>::new::<Blake2b512>(b"test");
+        let prepared_params = PreparedSetupParams::<Bls12_381>::from(params.clone());
+
         let gadget_vector = GadgetVector::<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>::new::<
             Blake2b512,
         >(OTE_PARAMS, b"test-gadget-vector");
 
-        let threshold_signers = 5;
-        let total_signers = 8;
-        let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
+        for (threshold_signers, total_signers) in [(5, 8), (6, 15), (15, 20), (20, 30), (25, 40)] {
+            println!("\n\nFor {}-of-{}", threshold_signers, total_signers);
+            let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
 
-        let params = SetupParams::<Bls12_381>::new::<Blake2b512>(b"test");
+            // The signers do a keygen. This is a one time setup.
+            let (sk, sk_shares) = trusted_party_keygen(&mut rng, threshold_signers, total_signers);
+            let isk_shares = sk_shares
+                .into_iter()
+                .map(|s| IssuerSecretKey(s))
+                .collect::<Vec<_>>();
+            // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
+            let threshold_ipk = IssuerPublicKey::new(&mut rng, &IssuerSecretKey(sk), &params);
 
-        // The signers do a keygen. This is a one time setup.
-        let (sk, sk_shares) =
-            trusted_party_keygen::<_, Fr>(&mut rng, threshold_signers, total_signers);
-        let isk_shares = sk_shares
-            .into_iter()
-            .map(|s| IssuerSecretKey(s))
-            .collect::<Vec<_>>();
-        // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
-        let threshold_ipk = IssuerPublicKey::new(&mut rng, &IssuerSecretKey(sk), &params);
+            // The signers run OT protocol instances. This is also a one time setup.
+            let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
+                &mut rng,
+                OTE_PARAMS.num_base_ot(),
+                total_signers,
+                all_party_set.clone(),
+            );
 
-        // The signers run OT protocol instances. This is also a one time setup.
-        let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
-            &mut rng,
-            OTE_PARAMS.num_base_ot(),
-            total_signers,
-            all_party_set.clone(),
-        );
+            // Signing starts
+            let protocol_id = b"test".to_vec();
 
-        // Signing starts
-        let protocol_id = b"test".to_vec();
+            let phase1_outs = do_phase1(&mut rng, threshold_signers, protocol_id.clone());
 
-        let phase1_outs = do_phase1(&mut rng, threshold_signers, protocol_id.clone());
+            // Signer creates user secret key
+            let user_id = compute_random_oracle_challenge::<Fr, Blake2b512>(b"low entropy user-id");
 
-        // Signer creates user secret key
-        let user_id = compute_random_oracle_challenge::<Fr, Blake2b512>(b"low entropy user-id");
+            let usk_shares = do_phase2(
+                &mut rng,
+                threshold_signers,
+                &gadget_vector,
+                prepared_params.clone(),
+                &base_ot_outputs,
+                &phase1_outs,
+                sk,
+                &isk_shares,
+                Some(user_id),
+                None,
+            );
 
-        let usk_shares = do_phase2(
-            &mut rng,
-            threshold_signers,
-            &gadget_vector,
-            params.clone(),
-            &base_ot_outputs,
-            &phase1_outs,
-            sk,
-            &isk_shares,
-            Some(user_id),
-            None,
-        );
+            let start = Instant::now();
+            let usk = UserSecretKeyShare::aggregate(usk_shares, prepared_params.clone());
+            println!(
+                "Aggregating {} shares took {:.2?}",
+                threshold_signers,
+                start.elapsed()
+            );
 
-        let start = Instant::now();
-        let usk = UserSecretKeyShare::aggregate(usk_shares);
-        println!(
-            "Aggregating {} shares took {:?}",
-            threshold_signers,
-            start.elapsed()
-        );
-
-        usk.verify(user_id, &threshold_ipk, params.clone()).unwrap();
+            usk.verify(user_id, &threshold_ipk, prepared_params.clone())
+                .unwrap();
+        }
     }
 
     #[test]
     fn issue_with_shared_user_id() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
+        let params = SetupParams::<Bls12_381>::new::<Blake2b512>(b"test");
+        let prepared_params = PreparedSetupParams::<Bls12_381>::from(params.clone());
+
         let gadget_vector = GadgetVector::<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>::new::<
             Blake2b512,
         >(OTE_PARAMS, b"test-gadget-vector");
 
-        let threshold_signers = 5;
-        let total_signers = 8;
-        let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
+        for (threshold_signers, total_signers) in [(5, 8), (6, 15), (15, 20), (20, 30), (25, 40)] {
+            println!("\n\nFor {}-of-{}", threshold_signers, total_signers);
+            let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
 
-        let params = SetupParams::<Bls12_381>::new::<Blake2b512>(b"test");
+            // The signers do a keygen. This is a one time setup.
+            let (sk, sk_shares) = trusted_party_keygen(&mut rng, threshold_signers, total_signers);
+            let isk_shares = sk_shares
+                .into_iter()
+                .map(|s| IssuerSecretKey(s))
+                .collect::<Vec<_>>();
+            // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
+            let threshold_ipk = IssuerPublicKey::new(&mut rng, &IssuerSecretKey(sk), &params);
 
-        // The signers do a keygen. This is a one time setup.
-        let (sk, sk_shares) =
-            trusted_party_keygen::<_, Fr>(&mut rng, threshold_signers, total_signers);
-        let isk_shares = sk_shares
-            .into_iter()
-            .map(|s| IssuerSecretKey(s))
-            .collect::<Vec<_>>();
-        // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
-        let threshold_ipk = IssuerPublicKey::new(&mut rng, &IssuerSecretKey(sk), &params);
+            // The signers run OT protocol instances. This is also a one time setup.
+            let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
+                &mut rng,
+                OTE_PARAMS.num_base_ot(),
+                total_signers,
+                all_party_set.clone(),
+            );
 
-        // The signers run OT protocol instances. This is also a one time setup.
-        let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
-            &mut rng,
-            OTE_PARAMS.num_base_ot(),
-            total_signers,
-            all_party_set.clone(),
-        );
+            // Signing starts
+            let protocol_id = b"test".to_vec();
 
-        // Signing starts
-        let protocol_id = b"test".to_vec();
+            let phase1_outs = do_phase1(&mut rng, threshold_signers, protocol_id.clone());
 
-        let phase1_outs = do_phase1(&mut rng, threshold_signers, protocol_id.clone());
+            // Signer creates user secret key
+            let user_id = compute_random_oracle_challenge::<Fr, Blake2b512>(b"low entropy user-id");
+            let (user_id_shares, _) =
+                deal_secret::<StdRng, Fr>(&mut rng, user_id, threshold_signers, total_signers)
+                    .unwrap();
 
-        // Signer creates user secret key
-        let user_id = compute_random_oracle_challenge::<Fr, Blake2b512>(b"low entropy user-id");
-        let (user_id_shares, _) =
-            deal_secret::<StdRng, Fr>(&mut rng, user_id, threshold_signers, total_signers).unwrap();
+            let usk_shares = do_phase2(
+                &mut rng,
+                threshold_signers,
+                &gadget_vector,
+                prepared_params.clone(),
+                &base_ot_outputs,
+                &phase1_outs,
+                sk + user_id,
+                &isk_shares,
+                None,
+                Some(
+                    user_id_shares
+                        .0
+                        .into_iter()
+                        .map(|share| share.share)
+                        .collect(),
+                ),
+            );
 
-        let usk_shares = do_phase2(
-            &mut rng,
-            threshold_signers,
-            &gadget_vector,
-            params.clone(),
-            &base_ot_outputs,
-            &phase1_outs,
-            sk + user_id,
-            &isk_shares,
-            None,
-            Some(
-                user_id_shares
-                    .0
-                    .into_iter()
-                    .map(|share| share.share)
-                    .collect(),
-            ),
-        );
+            let start = Instant::now();
+            let usk = UserSecretKeyShare::aggregate(usk_shares, prepared_params.clone());
+            println!(
+                "Aggregating {} shares took {:.2?}",
+                threshold_signers,
+                start.elapsed()
+            );
 
-        let start = Instant::now();
-        let usk = UserSecretKeyShare::aggregate(usk_shares);
-        println!(
-            "Aggregating {} shares took {:?}",
-            threshold_signers,
-            start.elapsed()
-        );
-
-        usk.verify(user_id, &threshold_ipk, params.clone()).unwrap();
+            usk.verify(user_id, &threshold_ipk, prepared_params.clone())
+                .unwrap();
+        }
     }
 }

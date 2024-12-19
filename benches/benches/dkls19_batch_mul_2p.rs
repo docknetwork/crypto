@@ -48,28 +48,30 @@ fn batch_multiplication(c: &mut Criterion) {
 
         c.bench_function(format!("Party1 init {}", otc).as_str(), |b| {
             b.iter(|| {
-                Party1::new::<StdRng>(
+                let p = Party1::new::<StdRng>(
                     &mut rng,
                     black_box(alpha.clone()),
                     black_box(base_ot_choices.clone()),
                     black_box(base_ot_receiver_keys.clone()),
                     black_box(ote_params),
                 )
-                .unwrap()
+                .unwrap();
+                black_box(p)
             })
         });
 
         c.bench_function(format!("Party2 init {}", otc).as_str(), |b| {
             b.iter(|| {
-                Party2::new(
+                let p = Party2::new(
                     &mut rng,
                     black_box(beta.clone()),
                     black_box(base_ot_sender_keys.clone()),
-                    &mut party2_transcript,
+                    &mut party2_transcript.clone(),
                     black_box(ote_params),
                     &gadget_vector,
                 )
-                .unwrap()
+                .unwrap();
+                black_box(p)
             })
         });
 
@@ -94,16 +96,17 @@ fn batch_multiplication(c: &mut Criterion) {
 
         c.bench_function(format!("Party1 creates shares for {}", otc).as_str(), |b| {
             b.iter(|| {
-                party1
+                let m = party1
                     .clone()
                     .receive::<Blake2b512>(
                         black_box(U.clone()),
                         black_box(kos_rlc.clone()),
                         black_box(gamma_b.clone()),
-                        &mut party1_transcript,
+                        &mut party1_transcript.clone(),
                         &gadget_vector,
                     )
-                    .unwrap()
+                    .unwrap();
+                black_box(m)
             })
         });
 
@@ -113,18 +116,30 @@ fn batch_multiplication(c: &mut Criterion) {
 
         c.bench_function(format!("Party2 creates shares for {}", otc).as_str(), |b| {
             b.iter(|| {
-                party2
+                let m = party2
                     .clone()
                     .receive::<Blake2b512>(
                         black_box(tau.clone()),
                         black_box(rlc.clone()),
                         black_box(gamma_a.clone()),
-                        &mut party2_transcript,
+                        &mut party2_transcript.clone(),
                         &gadget_vector,
                     )
-                    .unwrap()
+                    .unwrap();
+                black_box(m)
             })
         });
+
+        party2
+            .clone()
+            .receive::<Blake2b512>(
+                tau.clone(),
+                rlc.clone(),
+                gamma_a.clone(),
+                &mut party2_transcript,
+                &gadget_vector,
+            )
+            .unwrap();
     }
 }
 

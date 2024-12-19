@@ -36,3 +36,30 @@ For universal accumulator
 For witness update (both using and without secret key)
 
 `cargo bench --bench=accum_witness_updates`
+
+## PS signatures
+To run benchmarks for signing and verifying (both groups G1 and G2), run
+
+`cargo bench --bench=ps_signature`
+
+For proof of knowledge (signature in G1 only)
+
+`cargo bench --bench=ps_proof`
+
+## Oblivious transfer and multiplication based on it
+
+For KOS OT extension
+
+`cargo bench --bench=kos_ote`
+
+For 2-party batch multiplication
+
+`cargo bench --bench=dkls19_batch_mul_2p`
+
+## SyRA
+
+`cargo bench --bench=syra`
+
+Since threshold issuance benchmarks can take long, a reduced sample size can be tried like of 10.
+
+`cargo bench --bench=syra -- --sample-size=10`

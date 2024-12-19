@@ -1,12 +1,12 @@
 [package]
 name = "schnorr_pok"
-version = "0.20.0"
+version = "0.21.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Schnorr protocol for proof of knowledge of one or more discrete logs. Working in elliptic curve and pairing groups"
-keywords = ["Schnorr", "proof-of-knowledge", "ZKPoK"]
+description = "Schnorr protocol for proof of knowledge, equality and inequality of one or more discrete logs. Working in elliptic curve and pairing groups"
+keywords = ["Schnorr", "proof-of-knowledge", "ZKPoK", "proof-of-equality", "proof-of-inequality"]
 
 [lib]
 doctest = false
@@ -19,7 +19,7 @@ ark-ec.workspace = true
 ark-std.workspace = true
 rayon = {workspace = true, optional = true}
 digest.workspace = true
-dock_crypto_utils = { version = "0.20.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.21.0", default-features = false, path = "../utils" }
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true

@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "SyRA: Sybil-Resilient Anonymous Signatures with Applications to Decentralized Identity"
+keywords = ["Dodis-Yampolskiy-VRF", "sybil-resistance", "pseudonym", "threshold-sig"]
 
 [dependencies]
 ark-serialize.workspace = true
@@ -17,14 +18,14 @@ rayon = {workspace = true, optional = true}
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
-dock_crypto_utils = { version = "0.20.0", default-features = false, path = "../utils" }
-schnorr_pok = { version = "0.20.0", default-features = false, path = "../schnorr_pok" }
-short_group_sig = { version = "0.4.0", default-features = false, path = "../short_group_sig" }
+dock_crypto_utils = { version = "0.21.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.21.0", default-features = false, path = "../schnorr_pok" }
+short_group_sig = { version = "0.5.0", default-features = false, path = "../short_group_sig" }
 
 [dev-dependencies]
 blake2.workspace = true
 ark-bls12-381.workspace = true
-secret_sharing_and_dkg = { version = "0.13.0", path = "../secret_sharing_and_dkg" }
+secret_sharing_and_dkg = { path = "../secret_sharing_and_dkg" }
 test_utils = { path = "../test_utils" }
 
 [features]

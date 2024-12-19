@@ -51,13 +51,13 @@ pub enum Statement<E: Pairing> {
     PoKPSSignature(ps_signature::PoKPSSignatureStatement<E>),
     /// Statement used by prover for proof of knowledge of BBS signature
     PoKBBSSignature23G1Prover(bbs_23::PoKBBSSignature23G1Prover<E>),
-    /// For bound check using Bulletproofs++ protocol
+    /// For bound check using Bulletproofs++ protocol. The bounds are [min, max)
     BoundCheckBpp(bound_check_bpp::BoundCheckBpp<E::G1Affine>),
-    /// For bound check using set-membership check based protocols
+    /// For bound check using set-membership check based protocols. The bounds are [min, max)
     BoundCheckSmc(bound_check_smc::BoundCheckSmc<E>),
-    /// Used by the prover for bound check using set-membership check with keyed verification based protocols
+    /// Used by the prover for bound check using set-membership check with keyed verification based protocols. The bounds are [min, max)
     BoundCheckSmcWithKVProver(bound_check_smc_with_kv::BoundCheckSmcWithKVProver<E::G1Affine>),
-    /// Used by the verifier for bound check using set-membership check with keyed verification based protocols
+    /// Used by the verifier for bound check using set-membership check with keyed verification based protocols. The bounds are [min, max)
     BoundCheckSmcWithKVVerifier(bound_check_smc_with_kv::BoundCheckSmcWithKVVerifier<E::G1Affine>),
     /// To prove inequality of a signed message with a public value
     PublicInequality(inequality::PublicInequality<E::G1Affine>),

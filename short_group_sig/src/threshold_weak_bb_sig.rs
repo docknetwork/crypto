@@ -8,10 +8,10 @@
 //! 1. Each signer has a secret key share `sk_i` and the full message `m`
 //! 2. Each signer has a secret key share `sk_i` and a share of the message as `m_i`
 //!
-//! Both `sk` and `m` are assumed to be shared using Shamir secret sharing (or a DKG based on that)
+//! Both `sk` and `m` (in case of second variation) are assumed to be shared using Shamir secret sharing (or a DKG based on that)
 //!
 //! The high level idea is:
-//! - The signers jointly compute a random value `r` such that each signer `i` has a share of it as `r_i` such that `r = \sum{r_i}`
+//! - Each signer samples a random value `r_i`. The sum of these random values is called `r` as `r = \sum{r_i}`
 //! - The signers jointly compute a product of `u = r*(sk+m)` such that each signer `i` has a share of it as `u_i` such that `u = \sum{u_i}`
 //! - Each signer sends to the user `R_i, u_i` to the user where `R_i = g*r_i`.
 //! - User combines these to form `R = \sum{R_i} = g*\sum{r_i} = g*r` and `u = \sum{u_i} = r*(sk+m)`. Now `R * 1/u = g*1/(sk+m)`
@@ -20,7 +20,11 @@
 //!
 //! 1. **Phase 1**: This is a 2 round protocol, independent of the message `m` and generates randomness, like `r_i` (and other
 //!    blindings to be used in MPC multiplication protocol).
-//! 2. **Phase 2**: Here the parties run a 2 round MPC multiplication protocol where each party's input is `(r_i, (sk_i + m))` and output is `(g*r_i, u_i)`
+//! 2. **Phase 2**
+//!    - for variation 1: Here the parties run a 2 round MPC multiplication protocol where each party's input is `(r_i, (sk_i + m))` and output is `(g*r_i, u_i)`
+//!    where `u_i` is a share of `r*(sk+m)` such that `\sum{u_i} = r*(sk+m)`. `(g*r_i, u_i)` is called the `SigShare` and user can combine
+//!    these shares from all signers to get `g*1/(sk+m)` as described above.
+//!    - for variation 2: Here the parties run a 2 round MPC multiplication protocol where each party's input is `(r_i, (sk_i + m_i))` and output is `(g*r_i, u_i)`
 //!    where `u_i` is a share of `r*(sk+m)` such that `\sum{u_i} = r*(sk+m)`. `(g*r_i, u_i)` is called the `SigShare` and user can combine
 //!    these shares from all signers to get `g*1/(sk+m)` as described above.
 
@@ -80,7 +84,12 @@ pub struct Phase2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PA
     /// Set to None when the full message is not known to the signers but only a share is
     pub message: Option<F>,
     pub r: F,
+    /// Each signer's share of `r` but masked with a random pad `alpha`, i.e. `masked_r_share = r_share + alpha`
     pub masked_r_share: F,
+    /// In case the message is fully known to the signers, it's the share of signer's secret key masked with a
+    /// random pad `beta`, i.e. `masked_sk_term_share = sk_share + beta`
+    /// In case only a share of the message is known to the signers, it's the share of signer's secret key and message
+    /// share masked with a random pad `beta`, i.e. `masked_sk_term_share = sk_share + message_share + beta`
     pub masked_sk_term_share: F,
 }
 
@@ -271,7 +280,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             // Message was fully known to the signer
             self.masked_r_share * (message + self.masked_sk_term_share) + inner.compute_u(0)
         } else {
-            // Only a share of the message was known to the signer
+            // Only a share of the message was known to the signer. Not adding the message since its share is already part of `masked_sk_term_share`
             self.masked_r_share * self.masked_sk_term_share + inner.compute_u(0)
         };
         SigShare {
@@ -368,11 +377,11 @@ pub mod tests {
         MultiplicationOTEParams::<KAPPA, STATISTICAL_SECURITY_PARAMETER> {};
 
     /// Just for testing, let a trusted party do the keygen and give each signer its keushare
-    pub fn trusted_party_keygen<R: RngCore, F: PrimeField>(
-        rng: &mut R,
+    pub fn trusted_party_keygen(
+        rng: &mut StdRng,
         threshold: ParticipantId,
         total: ParticipantId,
-    ) -> (F, Vec<F>) {
+    ) -> (Fr, Vec<Fr>) {
         let (secret, shares, _) = deal_random_secret(rng, threshold, total).unwrap();
         (secret, shares.0.into_iter().map(|s| s.share).collect())
     }
@@ -530,123 +539,122 @@ pub mod tests {
     #[test]
     fn known_message() {
         let mut rng = StdRng::seed_from_u64(0u64);
+        let sig_params = SignatureParams::<Bls12_381>::generate_using_rng(&mut rng);
         let gadget_vector = GadgetVector::<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>::new::<
             Blake2b512,
         >(OTE_PARAMS, b"test-gadget-vector");
 
-        let threshold_signers = 5;
-        let total_signers = 8;
-        let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
+        for (threshold_signers, total_signers) in [(5, 8), (15, 25), (20, 30)] {
+            println!("\n\nFor {}-of-{}", threshold_signers, total_signers);
+            let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
 
-        let sig_params = SignatureParams::<Bls12_381>::generate_using_rng(&mut rng);
+            // The signers do a keygen. This is a one time setup.
+            let (sk, sk_shares) = trusted_party_keygen(&mut rng, threshold_signers, total_signers);
+            // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
+            let pk = PublicKeyG2::generate_using_secret_key(&SecretKey(sk), &sig_params);
 
-        // The signers do a keygen. This is a one time setup.
-        let (sk, sk_shares) =
-            trusted_party_keygen::<_, Fr>(&mut rng, threshold_signers, total_signers);
-        // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
-        let pk = PublicKeyG2::generate_using_secret_key(&SecretKey(sk), &sig_params);
+            // The signers run OT protocol instances. This is also a one time setup.
+            let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
+                &mut rng,
+                OTE_PARAMS.num_base_ot(),
+                total_signers,
+                all_party_set.clone(),
+            );
 
-        // The signers run OT protocol instances. This is also a one time setup.
-        let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
-            &mut rng,
-            OTE_PARAMS.num_base_ot(),
-            total_signers,
-            all_party_set.clone(),
-        );
+            let protocol_id = b"test".to_vec();
 
-        let protocol_id = b"test".to_vec();
+            let phase1_outs = do_phase1(&mut rng, threshold_signers, protocol_id.clone());
 
-        let phase1_outs = do_phase1(&mut rng, threshold_signers, protocol_id.clone());
+            let message = Fr::rand(&mut rng);
+            let sig_shares = do_phase2(
+                &mut rng,
+                threshold_signers,
+                &gadget_vector,
+                &sig_params.g1,
+                &base_ot_outputs,
+                &phase1_outs,
+                sk,
+                &sk_shares,
+                Some(message),
+                None,
+            );
 
-        let message = Fr::rand(&mut rng);
-        let sig_shares = do_phase2(
-            &mut rng,
-            threshold_signers,
-            &gadget_vector,
-            &sig_params.g1,
-            &base_ot_outputs,
-            &phase1_outs,
-            sk,
-            &sk_shares,
-            Some(message),
-            None,
-        );
-
-        let start = Instant::now();
-        let aggregated_sig = SigShare::aggregate(sig_shares);
-        println!(
-            "Aggregating {} shares took {:?}",
-            threshold_signers,
-            start.elapsed()
-        );
-        SignatureG1(aggregated_sig)
-            .verify(&message, &pk, &sig_params)
-            .unwrap();
+            let start = Instant::now();
+            let aggregated_sig = SigShare::aggregate(sig_shares);
+            println!(
+                "Aggregating {} shares took {:?}",
+                threshold_signers,
+                start.elapsed()
+            );
+            SignatureG1(aggregated_sig)
+                .verify(&message, &pk, &sig_params)
+                .unwrap();
+        }
     }
 
     #[test]
     fn shared_message() {
         let mut rng = StdRng::seed_from_u64(0u64);
+        let sig_params = SignatureParams::<Bls12_381>::generate_using_rng(&mut rng);
         let gadget_vector = GadgetVector::<Fr, KAPPA, STATISTICAL_SECURITY_PARAMETER>::new::<
             Blake2b512,
         >(OTE_PARAMS, b"test-gadget-vector");
 
-        let threshold_signers = 5;
-        let total_signers = 8;
-        let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
+        for (threshold_signers, total_signers) in [(5, 8), (15, 25), (20, 30)] {
+            println!("\n\nFor {}-of-{}", threshold_signers, total_signers);
+            let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
 
-        let sig_params = SignatureParams::<Bls12_381>::generate_using_rng(&mut rng);
+            // The signers do a keygen. This is a one time setup.
+            let (sk, sk_shares) = trusted_party_keygen(&mut rng, threshold_signers, total_signers);
+            // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
+            let pk = PublicKeyG2::generate_using_secret_key(&SecretKey(sk), &sig_params);
 
-        // The signers do a keygen. This is a one time setup.
-        let (sk, sk_shares) =
-            trusted_party_keygen::<_, Fr>(&mut rng, threshold_signers, total_signers);
-        // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
-        let pk = PublicKeyG2::generate_using_secret_key(&SecretKey(sk), &sig_params);
+            // The signers run OT protocol instances. This is also a one time setup.
+            let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
+                &mut rng,
+                OTE_PARAMS.num_base_ot(),
+                total_signers,
+                all_party_set.clone(),
+            );
 
-        // The signers run OT protocol instances. This is also a one time setup.
-        let base_ot_outputs = do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
-            &mut rng,
-            OTE_PARAMS.num_base_ot(),
-            total_signers,
-            all_party_set.clone(),
-        );
+            let protocol_id = b"test".to_vec();
 
-        let protocol_id = b"test".to_vec();
+            let phase1_outs = do_phase1(&mut rng, threshold_signers, protocol_id.clone());
 
-        let phase1_outs = do_phase1(&mut rng, threshold_signers, protocol_id.clone());
+            let message = Fr::rand(&mut rng);
+            let (message_shares, _) =
+                deal_secret::<StdRng, Fr>(&mut rng, message, threshold_signers, total_signers)
+                    .unwrap();
 
-        let message = Fr::rand(&mut rng);
-        let (message_shares, _) =
-            deal_secret::<StdRng, Fr>(&mut rng, message, threshold_signers, total_signers).unwrap();
+            let sig_shares = do_phase2(
+                &mut rng,
+                threshold_signers,
+                &gadget_vector,
+                &sig_params.g1,
+                &base_ot_outputs,
+                &phase1_outs,
+                sk + message,
+                &sk_shares,
+                None,
+                Some(
+                    message_shares
+                        .0
+                        .into_iter()
+                        .map(|share| share.share)
+                        .collect(),
+                ),
+            );
 
-        let sig_shares = do_phase2(
-            &mut rng,
-            threshold_signers,
-            &gadget_vector,
-            &sig_params.g1,
-            &base_ot_outputs,
-            &phase1_outs,
-            sk + message,
-            &sk_shares,
-            None,
-            Some(
-                message_shares
-                    .0
-                    .into_iter()
-                    .map(|share| share.share)
-                    .collect(),
-            ),
-        );
-
-        let start = Instant::now();
-        let aggregated_sig = SigShare::aggregate(sig_shares);
-        println!(
-            "Aggregating {} shares took {:?}",
-            threshold_signers,
-            start.elapsed()
-        );
-        SignatureG1(aggregated_sig)
-            .verify(&message, &pk, &sig_params)
-            .unwrap();
+            let start = Instant::now();
+            let aggregated_sig = SigShare::aggregate(sig_shares);
+            println!(
+                "Aggregating {} shares took {:?}",
+                threshold_signers,
+                start.elapsed()
+            );
+            SignatureG1(aggregated_sig)
+                .verify(&message, &pk, &sig_params)
+                .unwrap();
+        }
     }
 }

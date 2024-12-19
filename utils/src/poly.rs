@@ -1,6 +1,6 @@
 use ark_ff::{PrimeField, Zero};
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
-use ark_std::{cfg_into_iter, vec, vec::Vec};
+use ark_std::{cfg_into_iter, vec::Vec};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -31,11 +31,13 @@ pub fn multiply_many_polys<F: PrimeField>(polys: Vec<DensePolynomial<F>>) -> Den
         .unwrap();
 
     #[cfg(feature = "parallel")]
-    let one = || DensePolynomial::from_coefficients_vec(vec![F::one()]);
-    #[cfg(feature = "parallel")]
-    let r = polys
-        .into_par_iter()
-        .reduce(one, |a, b| multiply_poly(&a, &b));
+    let r = {
+        use ark_std::vec;
+        let one = || DensePolynomial::from_coefficients_vec(vec![F::one()]);
+        polys
+            .into_par_iter()
+            .reduce(one, |a, b| multiply_poly(&a, &b))
+    };
 
     r
 }

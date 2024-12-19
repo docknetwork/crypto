@@ -162,9 +162,8 @@ impl<E: Pairing> PseudonymGenProtocol<E> {
         s: E::ScalarField,
         blinding: Option<E::ScalarField>,
         user_sk: UserSecretKey<E>,
-        params: impl Into<PreparedSetupParams<E>>,
+        params: &SetupParams<E>,
     ) -> Self {
-        let params = params.into();
         let T = E::pairing(E::G1Prepared::from(user_sk.0 .0), E::G2Prepared::from(Z));
         let r = E::ScalarField::rand(rng);
         let r_blinding = E::ScalarField::rand(rng);
@@ -239,7 +238,12 @@ impl<E: Pairing> PseudonymProof<E> {
         }
         let params = params.into();
         self.pok_usk_bb_sig
-            .verify(challenge, issuer_pk.0 .0.clone(), &params.g, params.g_hat)
+            .verify(
+                challenge,
+                issuer_pk.0 .0.clone(),
+                &params.g,
+                params.g_hat_prepared,
+            )
             .map_err(|e| e.into())
     }
 
@@ -274,6 +278,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let params = SetupParams::<Bls12_381>::new::<Blake2b512>(b"test");
+        let prepared_params = PreparedSetupParams::<Bls12_381>::from(params.clone());
 
         // Signer's setup
         let isk = IssuerSecretKey::new(&mut rng);
@@ -287,7 +292,7 @@ mod tests {
         println!("Time to create user secret key {:?}", start.elapsed());
 
         let start = Instant::now();
-        usk.verify(user_id, &ipk, params.clone()).unwrap();
+        usk.verify(user_id, &ipk, prepared_params.clone()).unwrap();
         println!("Time to verify user secret key {:?}", start.elapsed());
 
         // Verifier gives message and context to user
@@ -299,14 +304,8 @@ mod tests {
 
         // User generates a pseudonym
         let start = Instant::now();
-        let protocol = PseudonymGenProtocol::init(
-            &mut rng,
-            Z.clone(),
-            user_id.clone(),
-            None,
-            usk,
-            params.clone(),
-        );
+        let protocol =
+            PseudonymGenProtocol::init(&mut rng, Z.clone(), user_id.clone(), None, usk, &params);
         let mut chal_bytes = vec![];
         protocol
             .challenge_contribution(&Z, &ipk, &params.g, &mut chal_bytes)
@@ -328,7 +327,7 @@ mod tests {
         chal_bytes.extend_from_slice(msg);
         let challenge_verifier = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
         proof
-            .verify(&challenge_verifier, Z, &ipk, params.clone())
+            .verify(&challenge_verifier, Z, &ipk, prepared_params.clone())
             .unwrap();
         println!("Time to verify proof {:?}", start.elapsed());
     }

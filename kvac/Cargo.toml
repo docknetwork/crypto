@@ -1,11 +1,12 @@
 [package]
 name = "kvac"
-version = "0.5.0"
+version = "0.6.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Keyed-Verification Anonymous Credentials (KVAC) and Algebraic MACs"
+keywords = ["Alegbraic-MAC", "BBDT16-kvac", "BBS-sharp"]
 
 [dependencies]
 ark-ff.workspace = true
@@ -18,8 +19,8 @@ rayon = {workspace = true, optional = true}
 serde.workspace = true
 serde_with.workspace = true
 itertools.workspace = true
-dock_crypto_utils = { version = "0.20.0", default-features = false, path = "../utils" }
-schnorr_pok = { version = "0.20.0", default-features = false, path = "../schnorr_pok" }
+dock_crypto_utils = { version = "0.21.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.21.0", default-features = false, path = "../schnorr_pok" }
 ark-secp256r1.workspace = true
 
 [dev-dependencies]

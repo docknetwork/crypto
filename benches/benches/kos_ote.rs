@@ -54,13 +54,14 @@ fn kos_ote(c: &mut Criterion) {
             format!("OT extension receiver setup {}", otc).as_str(),
             |b| {
                 b.iter(|| {
-                    OTExtensionReceiverSetup::new::<_, SSP>(
+                    let r = OTExtensionReceiverSetup::new::<_, SSP>(
                         &mut rng,
                         black_box(ote_config),
                         black_box(ot_ext_choices.clone()),
                         black_box(base_ot_sender_keys.clone()),
                     )
                     .unwrap();
+                    black_box(r)
                 })
             },
         );
@@ -81,14 +82,15 @@ fn kos_ote(c: &mut Criterion) {
             format!("OT extension receiver setup {}", otc).as_str(),
             |b| {
                 b.iter(|| {
-                    OTExtensionSenderSetup::new::<SSP>(
+                    let r = OTExtensionSenderSetup::new::<SSP>(
                         black_box(ote_config),
                         black_box(u.clone()),
                         black_box(rlc.clone()),
                         black_box(base_ot_choices.clone()),
                         black_box(base_ot_receiver_keys.clone()),
                     )
-                    .unwrap()
+                    .unwrap();
+                    black_box(r)
                 })
             },
         );
@@ -104,10 +106,11 @@ fn kos_ote(c: &mut Criterion) {
 
         c.bench_function(format!("Encrypt chosen messages {}", otc).as_str(), |b| {
             b.iter(|| {
-                ext_sender_setup
+                let r = ext_sender_setup
                     .clone()
                     .encrypt(black_box(messages.clone()), black_box(message_size as u32))
-                    .unwrap()
+                    .unwrap();
+                black_box(r)
             })
         });
 
@@ -117,13 +120,14 @@ fn kos_ote(c: &mut Criterion) {
 
         c.bench_function(format!("Decrypt chosen messages {}", otc).as_str(), |b| {
             b.iter(|| {
-                ext_receiver_setup
+                let r = ext_receiver_setup
                     .clone()
                     .decrypt(
                         black_box(encryptions.clone()),
                         black_box(message_size as u32),
                     )
-                    .unwrap()
+                    .unwrap();
+                black_box(r)
             })
         });
 
@@ -133,9 +137,10 @@ fn kos_ote(c: &mut Criterion) {
 
         c.bench_function(format!("Encrypt correlations {}", otc).as_str(), |b| {
             b.iter(|| {
-                ext_sender_setup
+                let r = ext_sender_setup
                     .transfer::<Fr, Blake2b512>(alpha.clone())
-                    .unwrap()
+                    .unwrap();
+                black_box(r)
             })
         });
 
@@ -145,9 +150,10 @@ fn kos_ote(c: &mut Criterion) {
 
         c.bench_function(format!("Decrypt correlations {}", otc).as_str(), |b| {
             b.iter(|| {
-                ext_receiver_setup
+                let r = ext_receiver_setup
                     .receive::<Fr, Blake2b512>(black_box(tau.clone()))
-                    .unwrap()
+                    .unwrap();
+                black_box(r)
             })
         });
     }

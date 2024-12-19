@@ -5,6 +5,8 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Verifiable encryption schemes - Encryption of discrete log from DKG-in-the-head"
+keywords = ["verifiable-encrypt", "DKG-in-the-head"]
 
 [dependencies]
 ark-serialize.workspace = true
@@ -17,8 +19,8 @@ serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
 itertools.workspace = true
-dock_crypto_utils = { version = "0.20.0", default-features = false, path = "../utils" }
-secret_sharing_and_dkg = { version = "0.13.0", default-features = false, path = "../secret_sharing_and_dkg" }
+dock_crypto_utils = { version = "0.21.0", default-features = false, path = "../utils" }
+secret_sharing_and_dkg = { version = "0.14.0", default-features = false, path = "../secret_sharing_and_dkg" }
 
 [dev-dependencies]
 blake2.workspace = true

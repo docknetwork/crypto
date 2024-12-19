@@ -7,10 +7,6 @@ license.workspace = true
 publish = false
 
 [dependencies]
-bbs_plus = { default-features = false, path = "../bbs_plus" }
-schnorr_pok = { default-features = false, path = "../schnorr_pok" }
-vb_accumulator = { default-features = false, path = "../vb_accumulator" }
-test_utils = { default-features = false, path = "../test_utils" }
 ark-ff.workspace = true
 ark-ec.workspace = true
 ark-std.workspace = true
@@ -19,10 +15,16 @@ serde.workspace = true
 serde_with.workspace = true
 blake2 = { version = "0.10", default-features = false }
 itertools.workspace = true
+zeroize.workspace = true
+bbs_plus = { default-features = false, path = "../bbs_plus" }
+schnorr_pok = { default-features = false, path = "../schnorr_pok" }
+vb_accumulator = { default-features = false, path = "../vb_accumulator" }
 coconut-crypto = { default-features = false, path = "../coconut" }
 oblivious_transfer_protocols = { default-features = false, path = "../oblivious_transfer" }
 dock_crypto_utils = { default-features = false, path = "../utils" }
-zeroize.workspace = true
+secret_sharing_and_dkg = { default-features = false, path = "../secret_sharing_and_dkg" }
+syra = { default-features = false, path = "../syra" }
+test_utils = { default-features = false, path = "../test_utils" }
 
 [dev-dependencies]
 criterion = "0.4.0"
@@ -86,4 +88,9 @@ harness = false
 [[bench]]
 name = "dkls19_batch_mul_2p"
 path = "benches/dkls19_batch_mul_2p.rs"
+harness = false
+
+[[bench]]
+name = "syra"
+path = "benches/syra.rs"
 harness = false
