@@ -8,7 +8,8 @@ extension in section 5 of the paper [Proofs of discrete logarithm equality acros
 - Use the above protocols to prove knowledge of a committed ECDSA public key on Tom-256 curve. Check the [module](./src/pok_ecdsa_pubkey.rs) for more docs
 - Use the above protocols to prove knowledge of a committed ECDSA public key on BLS12-381 curve. Check the tests in [module](./src/pok_ecdsa_pubkey.rs).
 
-*CREDIT*
+**CREDIT**
+
 This idea of using these 2 protocols to prove knowledge of ECDSA public key committed on the BLS12-381 curve came from Patrick Amrein from [Unique AG](https://www.unique.ch)
 and their work [here](https://github.com/UbiqueInnovation/zkattest-rs) is prior art.
 

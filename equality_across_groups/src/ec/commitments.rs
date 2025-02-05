@@ -2,10 +2,9 @@ use crate::error::Error;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{vec, vec::Vec, UniformRand};
+use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
 use core::ops::{Add, Sub};
 use dock_crypto_utils::commitment::PedersenCommitmentKey;
-use rand_core::RngCore;
 
 /// A Pedersen commitment to a value. Encapsulates the `value` and `randomness` as well.
 #[derive(Clone, PartialEq, Eq, Debug)]

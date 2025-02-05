@@ -27,11 +27,10 @@ use crate::{
 };
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, io::Write, vec::Vec, UniformRand};
+use ark_std::{cfg_into_iter, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::{
     commitment::PedersenCommitmentKey, msm::WindowTable, transcript::Transcript,
 };
-use rand_core::RngCore;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

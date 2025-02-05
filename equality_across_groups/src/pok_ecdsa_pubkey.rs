@@ -26,10 +26,9 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_secp256r1::{Affine, Fr, G_GENERATOR_X, G_GENERATOR_Y};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{io::Write, ops::Neg, vec::Vec};
+use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec};
 use dock_crypto_utils::{commitment::PedersenCommitmentKey, transcript::Transcript};
 use kvac::bbs_sharp::ecdsa;
-use rand_core::RngCore;
 
 const SECP_GEN: Affine = Affine::new_unchecked(G_GENERATOR_X, G_GENERATOR_Y);
 

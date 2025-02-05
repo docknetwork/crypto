@@ -12,7 +12,6 @@ ark-ff.workspace = true
 ark-ec.workspace = true
 ark-std.workspace = true
 rayon = {workspace = true, optional = true}
-rand_core = { version = "0.6", default-features = false }
 crypto-bigint = { version = "0.6.0-rc.6", default-features = false, features = ["zeroize", "alloc", "rand_core"] }
 ark-secp256r1.workspace = true
 bulletproofs_plus_plus = { version = "0.7.0", default-features = false, path = "../bulletproofs_plus_plus" }
@@ -24,6 +23,7 @@ kvac = { version = "0.6.0", default-features = false, path = "../kvac" }
 rand = "0.8"
 blake2.workspace = true
 ark-bls12-381.workspace = true
+rand_core = { version = "0.6", default-features = false }
 
 [features]
 default = ["parallel"]

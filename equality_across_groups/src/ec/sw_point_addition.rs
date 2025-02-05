@@ -51,9 +51,8 @@ use crate::{
 use ark_ec::AffineRepr;
 use ark_ff::Field;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{io::Write, marker::PhantomData, vec::Vec};
+use ark_std::{io::Write, marker::PhantomData, rand::RngCore, vec::Vec};
 use dock_crypto_utils::{commitment::PedersenCommitmentKey, transcript::Transcript};
-use rand_core::RngCore;
 use schnorr_pok::product_relations::{
     InverseProof, InverseProtocol, ProductProof, ProductProtocol, SquareProof, SquareProtocol,
 };
