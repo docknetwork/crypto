@@ -6,6 +6,10 @@
 //!
 //! Notation follows the bulletproofs++ paper.
 
+use crate::{
+    error::BulletproofsPlusPlusError, setup::SetupParams, util,
+    weighted_norm_linear_argument::WeightedNormLinearArgument,
+};
 use ark_ec::AffineRepr;
 use ark_ff::{batch_inversion, Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -13,19 +17,14 @@ use ark_std::{
     cfg_into_iter, cfg_iter, cfg_iter_mut, format, ops::Neg, rand::RngCore, vec, vec::Vec,
     UniformRand,
 };
-
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
-use crate::{
-    error::BulletproofsPlusPlusError, setup::SetupParams, util,
-    weighted_norm_linear_argument::WeightedNormLinearArgument,
-};
 use dock_crypto_utils::{
     ff::{add_vecs, hadamard_product, inner_product, powers, powers_starting_from, scale},
     join,
     transcript::Transcript,
 };
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 struct Round1Commitments<G: AffineRepr> {
@@ -253,6 +252,32 @@ impl<G: AffineRepr> Prover<G> {
         })
     }
 
+    pub fn prove<R: RngCore>(
+        mut self,
+        rng: &mut R,
+        setup_params: SetupParams<G>,
+        transcript: &mut impl Transcript,
+    ) -> Result<Proof<G>, BulletproofsPlusPlusError> {
+        // Round 1
+        self.round_1(rng, &setup_params);
+        let e =
+            self.r1_comm
+                .as_ref()
+                .unwrap()
+                .challenge(self.base, self.num_bits, &self.V, transcript);
+
+        // Round 2
+        self.round_2(rng, e, &setup_params);
+        let (x, y, r, q, lambda, delta) = self.r2_comm.as_ref().unwrap().challenges(transcript);
+
+        // Round 3
+        self.round_3(rng, x, y, q, e, lambda, delta, &setup_params);
+        let t = self.r3_comm.as_ref().unwrap().challenge(transcript);
+
+        // Round 4
+        self.round_4(y, t, r, setup_params, transcript)
+    }
+
     /// Number of proofs to aggregate
     pub fn num_proofs(&self) -> usize {
         self.V.len()
@@ -316,11 +341,17 @@ impl<G: AffineRepr> Prover<G> {
         // Shared multiplicity mode for now.
         let mut m = vec![0; self.base as usize];
 
+        let b_p_2 = self.base.is_power_of_two();
+        let mask = (1 << num_base_bits) as u64 - 1;
         // For each `v`, create its `base`-representation and append to `d`
         for v in self.v.iter() {
             let mut v1 = *v;
             for _ in 0..num_digits_per_proof {
-                let dig = v1 % self.base as u64;
+                let dig = if b_p_2 {
+                    v1 & mask
+                } else {
+                    v1 % self.base as u64
+                };
                 d.push(dig);
                 // Increase multiplicity by 1
                 m[dig as usize] += 1u64;
@@ -498,7 +529,7 @@ impl<G: AffineRepr> Prover<G> {
     ///
     /// So, the challenge constraints in Q^0, X^1, Y^0 ensures these constraints are satisfied. Note that the challenge
     /// Y is not really used in these constraints. Y is used to separate out the terms coming in from the linear side(l_vec)
-    /// into the the verification equation.
+    /// into the verification equation.
     ///
     ///
     /// # Balancing out everything else:
@@ -513,7 +544,7 @@ impl<G: AffineRepr> Prover<G> {
     ///
     /// In our construction, all of the witness values that we want to enforce constraints are in n_vec. We have to
     /// make sure none of the terms from l_vec interfere with the co-efficients of T^5. This is done by choosing
-    /// challenge y and making c_vec = y*[T^1, T^2, T^3, T^4, T^6, T^7]. This ensure that resultant co-effs that
+    /// challenge y and making c_vec = y*[T^1, T^2, T^3, T^4, T^6, T^7]. This ensures that resultant co-effs that
     /// can interfere with T^5 coming from linear side(l_vec side) are always multiplied by y. Overall, our verification
     /// equation looks something like:
     ///
@@ -568,10 +599,6 @@ impl<G: AffineRepr> Prover<G> {
             ),
             alpha_m_q_inv_pows(e, x, self.base as usize, &q_inv_pows)
         );
-
-        // let alpha_r = alpha_r_q_inv_pow(self.total_num_digits(), x, e, &q_inv_pows, delta);
-        // let alpha_d = alpha_d_q_inv_pow(self.base, self.num_digits_per_proof(), self.num_proofs(), &q_inv_pows, lambda);
-        // let alpha_m = alpha_m_q_inv_pows(e, x, self.base as usize, &q_inv_pows);
 
         let t_2 = add_vecs(&d, &alpha_r);
         let t_3 = add_vecs(&r, &alpha_d);
@@ -688,32 +715,6 @@ impl<G: AffineRepr> Prover<G> {
             r3_comm: self.r3_comm.unwrap(),
             norm_proof: norm_prf,
         })
-    }
-
-    pub fn prove<R: RngCore>(
-        mut self,
-        rng: &mut R,
-        setup_params: SetupParams<G>,
-        transcript: &mut impl Transcript,
-    ) -> Result<Proof<G>, BulletproofsPlusPlusError> {
-        // Round 1
-        self.round_1(rng, &setup_params);
-        let e =
-            self.r1_comm
-                .as_ref()
-                .unwrap()
-                .challenge(self.base, self.num_bits, &self.V, transcript);
-
-        // Round 2
-        self.round_2(rng, e, &setup_params);
-        let (x, y, r, q, lambda, delta) = self.r2_comm.as_ref().unwrap().challenges(transcript);
-
-        // Round 3
-        self.round_3(rng, x, y, q, e, lambda, delta, &setup_params);
-        let t = self.r3_comm.as_ref().unwrap().challenge(transcript);
-
-        // Round 4
-        self.round_4(y, t, r, setup_params, transcript)
     }
 }
 
@@ -1112,7 +1113,11 @@ mod tests {
     use dock_crypto_utils::transcript::new_merlin_transcript;
 
     // Test prove and verify
-    fn test_rangeproof_for_perfect_range<G: AffineRepr>(base: u16, num_bits: u16, v: Vec<u64>) {
+    fn test_rangeproof_for_perfect_range<G: AffineRepr>(
+        base: u16,
+        num_bits: u16,
+        v: Vec<u64>,
+    ) -> Result<(), BulletproofsPlusPlusError> {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let mut gamma = vec![];
@@ -1133,40 +1138,49 @@ mod tests {
         }
         let prover = Prover::new_with_given_base(base, num_bits, V.clone(), v, gamma).unwrap();
         let mut transcript = new_merlin_transcript(b"BPP/tests");
-        let prf = prover
-            .prove(&mut rng, setup_params.clone(), &mut transcript)
-            .unwrap();
+        let prf = prover.prove(&mut rng, setup_params.clone(), &mut transcript)?;
 
         let mut transcript = new_merlin_transcript(b"BPP/tests");
-        prf.verify(num_bits, &V, &setup_params, &mut transcript)
-            .unwrap();
+        prf.verify(num_bits, &V, &setup_params, &mut transcript)?;
+        Ok(())
     }
 
     fn check_for_perfect_range<G: AffineRepr>() {
-        test_rangeproof_for_perfect_range::<G>(2, 2, vec![0]);
+        test_rangeproof_for_perfect_range::<G>(2, 2, vec![0]).unwrap();
         for i in 0..16 {
-            test_rangeproof_for_perfect_range::<G>(2, 4, vec![i]);
-            test_rangeproof_for_perfect_range::<G>(2, 4, vec![i, 15 - i]);
+            test_rangeproof_for_perfect_range::<G>(2, 4, vec![i]).unwrap();
+            test_rangeproof_for_perfect_range::<G>(2, 4, vec![i, 15 - i]).unwrap();
         }
-        test_rangeproof_for_perfect_range::<G>(16, 4, vec![7]);
-        test_rangeproof_for_perfect_range::<G>(16, 8, vec![243]);
-        test_rangeproof_for_perfect_range::<G>(16, 16, vec![12431]);
-        test_rangeproof_for_perfect_range::<G>(2, 16, vec![12431]);
-        test_rangeproof_for_perfect_range::<G>(4, 16, vec![12431]);
-        test_rangeproof_for_perfect_range::<G>(8, 16, vec![12431]);
-        test_rangeproof_for_perfect_range::<G>(16, 32, vec![134132, 14354, 981643, 875431]);
+        test_rangeproof_for_perfect_range::<G>(16, 4, vec![7]).unwrap();
+        test_rangeproof_for_perfect_range::<G>(16, 8, vec![243]).unwrap();
+        test_rangeproof_for_perfect_range::<G>(16, 16, vec![12431]).unwrap();
+        test_rangeproof_for_perfect_range::<G>(2, 16, vec![12431]).unwrap();
+        test_rangeproof_for_perfect_range::<G>(4, 16, vec![12431]).unwrap();
+        test_rangeproof_for_perfect_range::<G>(8, 16, vec![12431]).unwrap();
+        test_rangeproof_for_perfect_range::<G>(16, 32, vec![134132, 14354, 981643, 875431])
+            .unwrap();
         let mut rng = StdRng::seed_from_u64(1u64);
         for _ in 0..10 {
             let mut v = vec![];
             for _ in 0..8 {
                 v.push(u64::rand(&mut rng));
             }
-            test_rangeproof_for_perfect_range::<G>(16, 64, v);
+            test_rangeproof_for_perfect_range::<G>(16, 64, v).unwrap();
         }
         for _ in 0..10 {
             let v = u64::rand(&mut rng);
-            test_rangeproof_for_perfect_range::<G>(16, 64, vec![v]);
+            test_rangeproof_for_perfect_range::<G>(16, 64, vec![v]).unwrap();
         }
+
+        // Some failure cases
+        assert!(test_rangeproof_for_perfect_range::<G>(16, 4, vec![243]).is_err());
+        assert!(test_rangeproof_for_perfect_range::<G>(2, 4, vec![243]).is_err());
+        assert!(test_rangeproof_for_perfect_range::<G>(16, 8, vec![12431]).is_err());
+        assert!(test_rangeproof_for_perfect_range::<G>(2, 8, vec![12431]).is_err());
+        assert!(
+            test_rangeproof_for_perfect_range::<G>(16, 16, vec![14000, 20000, 65000, 134132])
+                .is_err()
+        );
     }
 
     #[test]

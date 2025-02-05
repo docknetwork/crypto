@@ -1,6 +1,7 @@
 use ark_bls12_381::Bls12_381;
 use ark_ec::pairing::Pairing;
 use ark_std::{
+    cfg_into_iter,
     collections::{BTreeMap, BTreeSet},
     rand::prelude::StdRng,
     UniformRand,
@@ -14,6 +15,9 @@ use oblivious_transfer_protocols::{
     },
     Bit, ParticipantId,
 };
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 pub fn check_base_ot_keys(
     choices: &[Bit],
@@ -91,6 +95,12 @@ pub fn do_pairwise_base_ot<const KEY_SIZE: u16>(
             .unwrap();
         challenges.insert((receiver, sender), chal);
     }
+    // let challenges = cfg_into_iter!(receiver_pks).map(|((sender, receiver), pk)| {
+    //     let chal = base_ots[receiver as usize - 1]
+    //         .receive_receiver_pubkey::<KEY_SIZE>(sender, pk)
+    //         .unwrap();
+    //     ((receiver, sender), chal)
+    // }).collect::<BTreeMap<_, _>>();
 
     for ((sender, receiver), chal) in challenges {
         let resp = base_ots[receiver as usize - 1]
@@ -98,6 +108,12 @@ pub fn do_pairwise_base_ot<const KEY_SIZE: u16>(
             .unwrap();
         responses.insert((receiver, sender), resp);
     }
+    // let responses = cfg_into_iter!(challenges).map(|((sender, receiver), chal)| {
+    //     let resp = base_ots[receiver as usize - 1]
+    //         .receive_challenges(sender, chal)
+    //         .unwrap();
+    //     ((receiver, sender), resp)
+    // }).collect::<BTreeMap<_, _>>();
 
     for ((sender, receiver), resp) in responses {
         let hk = base_ots[receiver as usize - 1]
@@ -105,12 +121,23 @@ pub fn do_pairwise_base_ot<const KEY_SIZE: u16>(
             .unwrap();
         hashed_keys.insert((receiver, sender), hk);
     }
+    // let hashed_keys = cfg_into_iter!(responses).map(|((sender, receiver), resp)| {
+    //     let hk = base_ots[receiver as usize - 1]
+    //         .receive_responses(sender, resp)
+    //         .unwrap();
+    //     ((receiver, sender), hk)
+    // }).collect::<BTreeMap<_, _>>();
 
     for ((sender, receiver), hk) in hashed_keys {
         base_ots[receiver as usize - 1]
             .receive_hashed_keys(sender, hk)
             .unwrap()
     }
+    // cfg_into_iter!(hashed_keys).for_each(|((sender, receiver), hk)| {
+    //     base_ots[receiver as usize - 1]
+    //         .receive_hashed_keys(sender, hk)
+    //         .unwrap()
+    // });
 
     let mut base_ot_outputs = vec![];
     for b in base_ots {

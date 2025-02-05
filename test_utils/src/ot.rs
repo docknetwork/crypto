@@ -1,6 +1,10 @@
 use ark_bls12_381::Bls12_381;
 use ark_ec::pairing::Pairing;
-use ark_std::{rand::prelude::StdRng, UniformRand};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    rand::prelude::StdRng,
+    UniformRand,
+};
 use blake2::Blake2b512;
 use oblivious_transfer_protocols::{
     base_ot::simplest_ot::{OneOfTwoROTSenderKeys, ROTReceiverKeys},
@@ -9,7 +13,6 @@ use oblivious_transfer_protocols::{
     },
     Bit, ParticipantId,
 };
-use std::collections::{BTreeMap, BTreeSet};
 
 pub fn check_base_ot_keys(
     choices: &[Bit],

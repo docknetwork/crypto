@@ -19,7 +19,7 @@
 //! Implements designated verifier proof for both issuer's signature (proof of validity of MAC) and user's proof of
 //! knowledge of MAC
 
-mod ecdsa;
+pub mod ecdsa;
 pub mod hol;
 pub mod mac;
 pub mod proof;

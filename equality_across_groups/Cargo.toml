@@ -1,0 +1,31 @@
+[package]
+name = "equality_across_groups"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ark-serialize.workspace = true
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-std.workspace = true
+rayon = {workspace = true, optional = true}
+rand_core = { version = "0.6", default-features = false }
+crypto-bigint = { version = "0.6.0-rc.6", default-features = false, features = ["zeroize", "alloc", "rand_core"] }
+ark-secp256r1.workspace = true
+bulletproofs_plus_plus = { version = "0.7.0", default-features = false, path = "../bulletproofs_plus_plus" }
+dock_crypto_utils = { version = "0.21.0", default-features = false, path = "../utils" }
+schnorr_pok = { default-features = false, path = "../schnorr_pok" }
+kvac = { version = "0.6.0", default-features = false, path = "../kvac" }
+
+[dev-dependencies]
+rand = "0.8"
+blake2.workspace = true
+ark-bls12-381.workspace = true
+
+[features]
+default = ["parallel"]
+std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "rand_core/std", "crypto-bigint/rand", "dock_crypto_utils/std", "bulletproofs_plus_plus/std", "kvac/std", "schnorr_pok/std"]
+parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "bulletproofs_plus_plus/parallel", "kvac/parallel", "schnorr_pok/parallel"]

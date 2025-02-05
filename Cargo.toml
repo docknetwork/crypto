@@ -21,7 +21,9 @@ members = [
     "smc_range_proof",
     "short_group_sig",
     "syra",
-    "verifiable_encryption"]
+    "verifiable_encryption",
+    "equality_across_groups"
+]
 resolver = "2"
 
 [workspace.package]

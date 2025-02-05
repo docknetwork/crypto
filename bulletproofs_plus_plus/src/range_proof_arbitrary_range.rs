@@ -1,15 +1,12 @@
+use crate::{
+    error::BulletproofsPlusPlusError,
+    range_proof::{Proof, Prover},
+    setup::SetupParams,
+};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-
 use ark_std::{format, rand::RngCore, vec::Vec};
-
-use crate::rangeproof::{Proof, Prover};
-
-use crate::error::BulletproofsPlusPlusError;
-use dock_crypto_utils::transcript::Transcript;
-
-use crate::setup::SetupParams;
-use dock_crypto_utils::msm::WindowTable;
+use dock_crypto_utils::{msm::WindowTable, transcript::Transcript};
 
 /// Range proof for values in arbitrary ranges where each value `v_i` belongs to interval `[min_i, max_i)`
 /// Uses the range proof for perfect ranges of form `[0, base^l)` where upper bound is a power of the base.
@@ -24,6 +21,7 @@ pub struct ProofArbitraryRange<G: AffineRepr> {
     pub proof: Proof<G>,
 }
 
+/// Each `values_and_bounds` is a tuple of the form `(value, min, max)` where `value` is in interval `[min, max)`
 impl<G: AffineRepr> ProofArbitraryRange<G> {
     pub fn new<R: RngCore>(
         rng: &mut R,
@@ -185,6 +183,34 @@ mod tests {
     use dock_crypto_utils::transcript::new_merlin_transcript;
     use std::time::{Duration, Instant};
 
+    fn check<G: AffineRepr>(
+        rng: &mut StdRng,
+        base: u16,
+        num_bits: u16,
+        values_and_bounds: Vec<(u64, u64, u64)>,
+        gamma: Vec<G::ScalarField>,
+        setup_params: SetupParams<G>,
+    ) -> Result<(ProofArbitraryRange<G>, Duration, Duration), BulletproofsPlusPlusError> {
+        let start = Instant::now();
+        let mut transcript = new_merlin_transcript(b"BPP/tests");
+        let proof = ProofArbitraryRange::new_with_given_base(
+            rng,
+            base,
+            num_bits,
+            values_and_bounds,
+            gamma,
+            setup_params.clone(),
+            &mut transcript,
+        )?;
+        let proving_time = start.elapsed();
+
+        let start = Instant::now();
+        let mut transcript = new_merlin_transcript(b"BPP/tests");
+        proof.verify(num_bits, &setup_params, &mut transcript)?;
+        let verifying_time = start.elapsed();
+        Ok((proof, proving_time, verifying_time))
+    }
+
     fn test_rangeproof_for_arbitrary_range<G: AffineRepr>(
         base: u16,
         num_bits: u16,
@@ -204,19 +230,15 @@ mod tests {
             values_and_bounds.len() as u32,
         );
 
-        let start = Instant::now();
-        let mut transcript = new_merlin_transcript(b"BPP/tests");
-        let proof = ProofArbitraryRange::new_with_given_base(
+        let (proof, proving_time, verifying_time) = check(
             &mut rng,
             base,
             num_bits,
             values_and_bounds.clone(),
             gamma.clone(),
             setup_params.clone(),
-            &mut transcript,
         )
         .unwrap();
-        let proving_time = start.elapsed();
 
         let bounds = values_and_bounds
             .clone()
@@ -227,13 +249,6 @@ mod tests {
         let comms = proof
             .get_commitments_to_values(bounds, &setup_params)
             .unwrap();
-
-        let start = Instant::now();
-        let mut transcript = new_merlin_transcript(b"BPP/tests");
-        proof
-            .verify(num_bits, &setup_params, &mut transcript)
-            .unwrap();
-        let verifying_time = start.elapsed();
 
         for (i, (v, min, max)) in values_and_bounds.into_iter().enumerate() {
             let (comm_min, comm_max) = split_comms[i];
@@ -261,6 +276,36 @@ mod tests {
         (proving_time, verifying_time)
     }
 
+    fn test_rangeproof_failure_for_arbitrary_range<G: AffineRepr>(
+        base: u16,
+        num_bits: u16,
+        values_and_bounds: Vec<(u64, u64, u64)>,
+    ) {
+        let mut rng = StdRng::seed_from_u64(0u64);
+
+        let mut gamma = vec![];
+        for _ in 0..values_and_bounds.len() * 2 {
+            gamma.push(G::ScalarField::rand(&mut rng));
+        }
+
+        let setup_params = SetupParams::<G>::new_for_arbitrary_range_proof::<Blake2b512>(
+            b"test",
+            base,
+            num_bits,
+            values_and_bounds.len() as u32,
+        );
+
+        assert!(check(
+            &mut rng,
+            base,
+            num_bits,
+            values_and_bounds.clone(),
+            gamma.clone(),
+            setup_params.clone()
+        )
+        .is_err());
+    }
+
     fn check_for_arbitrary_range<G: AffineRepr>() {
         for (base, num_bits, val_bounds) in [
             (2, 4, vec![(7, 3, 10)]),
@@ -272,6 +317,16 @@ mod tests {
             let (p, v) = test_rangeproof_for_arbitrary_range::<G>(base, num_bits, val_bounds);
             println!("For base={}, max value bits={} for {} checks, proving time = {:?} and verifying time = {:?}", base, num_bits, size, p, v);
         }
+
+        test_rangeproof_failure_for_arbitrary_range::<G>(4, 8, vec![(500, 600, 1500)]);
+        test_rangeproof_failure_for_arbitrary_range::<G>(4, 8, vec![(60, 70, 80)]);
+        test_rangeproof_failure_for_arbitrary_range::<G>(4, 8, vec![(60, 50, 55)]);
+        test_rangeproof_failure_for_arbitrary_range::<G>(4, 8, vec![(15, 10, 20), (60, 50, 55)]);
+        test_rangeproof_failure_for_arbitrary_range::<G>(
+            4,
+            8,
+            vec![(15, 10, 20), (500, 600, 1500)],
+        );
     }
 
     #[test]

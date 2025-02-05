@@ -1,5 +1,6 @@
 use ark_bls12_381::{Bls12_381, Fr, G1Affine};
 use ark_ff::Zero;
+use ark_serialize::{CanonicalSerialize, Compress};
 use ark_std::{
     collections::BTreeSet,
     rand::{prelude::StdRng, SeedableRng},
@@ -399,21 +400,27 @@ fn pseudonym(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, threshold_issuance_with_known_user_id, pseudonym);
-criterion_main!(benches);
+// criterion_group!(benches, threshold_issuance_with_known_user_id, pseudonym);
+// criterion_main!(benches);
 
-/*fn timing_info(mut times: Vec<std::time::Duration>) -> String {
+fn timing_info(mut times: Vec<std::time::Duration>) -> String {
     times.sort();
     let median = {
         let mid = times.len() / 2;
         if times.len() % 2 == 0 {
-            (times[mid - 1] +  times[mid]) / 2
+            (times[mid - 1] + times[mid]) / 2
         } else {
             times[mid]
         }
     };
     let total = times.iter().sum::<std::time::Duration>();
-    format!("{:.2?} | [{:.2?}, {:.2?}, {:.2?}]", total, times[0], median, times[times.len() - 1])
+    format!(
+        "{:.2?} | [{:.2?}, {:.2?}, {:.2?}]",
+        total,
+        times[0],
+        median,
+        times[times.len() - 1]
+    )
 }
 
 fn main() {
@@ -428,14 +435,37 @@ fn main() {
     );
 
     const NUM_ITERATIONS: usize = 10;
+    // let ps = [(5, 10), (10, 20)];
+    // let ps = [(5, 10), (10, 20), (15, 30), (20, 40), (25, 50), (30, 60), (35, 70), (40, 80), (45, 90), (50, 100), (55, 110), (60, 120), (65, 130), (70, 140)];
+    let ps = [(350, 700)];
+    let max = ps.iter().map(|(t, _)| *t).max().unwrap();
+    let start = Instant::now();
+    // The signers run OT protocol instances. This is also a one time setup.
+    let base_ot_outputs = test_utils::ot::do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
+        &mut rng,
+        OTE_PARAMS.num_base_ot(),
+        max,
+        (1..=max).into_iter().collect::<BTreeSet<_>>(),
+    );
+    println!("Time taken for {} base OT {:.2?}", max, start.elapsed());
+    println!(
+        "Uncompressed size of base OT {}",
+        base_ot_outputs.serialized_size(Compress::No)
+    );
+    println!(
+        "Compressed size of base OT {}",
+        base_ot_outputs.serialized_size(Compress::Yes)
+    );
 
-    for (threshold_signers, total_signers) in [(5, 10), (10, 20), (15, 30), (20, 40), (25, 50), (30, 60), (35, 70), (40, 80), (45, 90), (50, 100), (55, 110), (60, 120), (65, 130), (70, 140)] {
-        println!("\nRunning {} iterations for {}-of-{}", NUM_ITERATIONS, threshold_signers, total_signers);
+    for (threshold_signers, total_signers) in ps {
+        println!(
+            "\nRunning {} iterations for {}-of-{}",
+            NUM_ITERATIONS, threshold_signers, total_signers
+        );
         let all_party_set = (1..=total_signers).into_iter().collect::<BTreeSet<_>>();
 
         // The signers do a keygen. This is a one time setup.
-        let (sk, sk_shares) =
-            trusted_party_keygen(&mut rng, threshold_signers, total_signers);
+        let (sk, sk_shares) = trusted_party_keygen(&mut rng, threshold_signers, total_signers);
         let isk_shares = sk_shares
             .into_iter()
             .map(|s| IssuerSecretKey(s))
@@ -443,13 +473,13 @@ fn main() {
         // Public key created by the trusted party using the secret key directly. In practice, this will be a result of a DKG
         let threshold_ipk = IssuerPublicKey::new(&mut rng, &IssuerSecretKey(sk), &params);
 
-        // The signers run OT protocol instances. This is also a one time setup.
-        let base_ot_outputs = test_utils::ot::do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
-            &mut rng,
-            OTE_PARAMS.num_base_ot(),
-            total_signers,
-            all_party_set.clone(),
-        );
+        // // The signers run OT protocol instances. This is also a one time setup.
+        // let base_ot_outputs = test_utils::ot::do_pairwise_base_ot::<BASE_OT_KEY_SIZE>(
+        //     &mut rng,
+        //     OTE_PARAMS.num_base_ot(),
+        //     total_signers,
+        //     all_party_set.clone(),
+        // );
 
         let mut phase1_time = vec![];
         let mut phase2_time = vec![];
@@ -492,4 +522,4 @@ fn main() {
         println!("Phase2 time: {:?}", timing_info(phase2_time));
         println!("Aggregation time: {:?}", timing_info(aggr_time));
     }
-}*/
+}

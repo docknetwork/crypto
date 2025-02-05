@@ -1,41 +1,41 @@
+use crate::util::base_bits;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
 use dock_crypto_utils::{concat_slices, hashing_utils::affine_group_elem_from_try_and_incr};
 
-use crate::util::base_bits;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SetupParams<Gr: AffineRepr> {
-    pub G: Gr,
-    pub G_vec: Vec<Gr>,
-    pub H_vec: Vec<Gr>,
+pub struct SetupParams<G: AffineRepr> {
+    pub G: G,
+    pub G_vec: Vec<G>,
+    pub H_vec: Vec<G>,
 }
 
-impl<Gr: AffineRepr> SetupParams<Gr> {
+impl<G: AffineRepr> SetupParams<G> {
     pub fn new<D: Digest>(label: &[u8], g_count: u32, h_count: u32) -> Self {
-        let g = affine_group_elem_from_try_and_incr::<Gr, D>(&concat_slices![label, b" : G"]);
+        let g = affine_group_elem_from_try_and_incr::<G, D>(&concat_slices![label, b" : G"]);
         let g_vec = cfg_into_iter!((0..g_count))
             .map(|i| {
-                affine_group_elem_from_try_and_incr::<Gr, D>(&concat_slices![
+                affine_group_elem_from_try_and_incr::<G, D>(&concat_slices![
                     label,
                     b" : g_",
                     i.to_le_bytes()
                 ])
             })
-            .collect::<Vec<Gr>>();
+            .collect::<Vec<G>>();
         let h_vec = cfg_into_iter!((0..h_count))
             .map(|i| {
-                affine_group_elem_from_try_and_incr::<Gr, D>(&concat_slices![
+                affine_group_elem_from_try_and_incr::<G, D>(&concat_slices![
                     label,
                     b" : h_",
                     i.to_le_bytes()
                 ])
             })
-            .collect::<Vec<Gr>>();
+            .collect::<Vec<G>>();
         Self {
             G: g,
             G_vec: g_vec,
@@ -68,30 +68,30 @@ impl<Gr: AffineRepr> SetupParams<Gr> {
     }
 
     /// Create Pedersen commitment as `C = v*G + gamma*H_vec[0]`
-    pub fn compute_pedersen_commitment(&self, v: u64, gamma: &Gr::ScalarField) -> Gr {
-        ((self.G * Gr::ScalarField::from(v)) + self.H_vec[0] * gamma).into_affine()
+    pub fn compute_pedersen_commitment(&self, v: u64, gamma: &G::ScalarField) -> G {
+        ((self.G * G::ScalarField::from(v)) + self.H_vec[0] * gamma).into_affine()
     }
 
     /// Returns `v*g + <g_vec, n> + <h_vec, l>`
     pub fn compute_commitment(
         &self,
-        v: &Gr::ScalarField,
-        l: &[Gr::ScalarField],
-        n: &[Gr::ScalarField],
-    ) -> Gr {
+        v: &G::ScalarField,
+        l: &[G::ScalarField],
+        n: &[G::ScalarField],
+    ) -> G {
         Self::compute_commitment_given_bases(v, l, n, &self.G, &self.G_vec, &self.H_vec)
     }
 
     /// Returns `v*g + <g_vec, n> + <h_vec, l>`
     pub fn compute_commitment_given_bases(
-        v: &Gr::ScalarField,
-        l: &[Gr::ScalarField],
-        n: &[Gr::ScalarField],
-        g: &Gr,
-        g_vec: &[Gr],
-        h_vec: &[Gr],
-    ) -> Gr {
-        (g.mul(v) + Gr::Group::msm_unchecked(g_vec, n) + Gr::Group::msm_unchecked(h_vec, l))
+        v: &G::ScalarField,
+        l: &[G::ScalarField],
+        n: &[G::ScalarField],
+        g: &G,
+        g_vec: &[G],
+        h_vec: &[G],
+    ) -> G {
+        (g.mul(v) + G::Group::msm_unchecked(g_vec, n) + G::Group::msm_unchecked(h_vec, l))
             .into_affine()
     }
 
@@ -99,14 +99,14 @@ impl<Gr: AffineRepr> SetupParams<Gr> {
     pub fn gen_randomness_and_compute_commitment<R: RngCore>(
         &self,
         rng: &mut R,
-        l: &[Gr::ScalarField],
-        n: &[Gr::ScalarField],
-    ) -> (Gr::ScalarField, Gr) {
-        let v = Gr::ScalarField::rand(rng);
+        l: &[G::ScalarField],
+        n: &[G::ScalarField],
+    ) -> (G::ScalarField, G) {
+        let v = G::ScalarField::rand(rng);
         (v, self.compute_commitment(&v, l, n))
     }
 
-    pub fn get_pedersen_commitment_key(&self) -> (Gr, Gr) {
+    pub fn get_pedersen_commitment_key(&self) -> (G, G) {
         (self.G, self.H_vec[0])
     }
 

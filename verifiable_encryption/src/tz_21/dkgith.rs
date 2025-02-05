@@ -25,6 +25,7 @@
 use crate::{
     error::VerifiableEncryptionError,
     tz_21::{
+        encryption::BatchCiphertext,
         seed_tree::{SeedTree, TreeOpening, DEFAULT_SALT_SIZE, DEFAULT_SEED_SIZE},
         util::get_indices_to_hide,
     },
@@ -37,7 +38,6 @@ use core::marker::PhantomData;
 use digest::{Digest, DynDigest, ExtendableOutput, Update};
 use dock_crypto_utils::{aliases::FullDigest, msm::WindowTable};
 
-use crate::tz_21::encryption::BatchCiphertext;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 

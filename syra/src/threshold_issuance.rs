@@ -5,7 +5,7 @@
 //!
 //! SyRA VRF described in Fig. 4 of the paper is of the form `(g^1/(sk+s), g_hat^1/(sk+s))` where `sk` is the signer's secret key
 //! and `s` is the user-id and `g, g_hat` are public parameters. This is similar to a weak-BB signature which has the form
-//! `g^1/(sk+s)`. So SyRA VRF is essentially 2 weak-BB signatures. So I use the protocol for threshold weak-BB signature from
+//! `g^1/(sk+s)`. So SyRA's issuance protocol's VRF is essentially 2 weak-BB signatures. So I use the protocol for threshold weak-BB signature from
 //! the corresponding package.
 //!
 //! The high level idea is:

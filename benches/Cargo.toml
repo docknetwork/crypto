@@ -16,6 +16,7 @@ serde_with.workspace = true
 blake2 = { version = "0.10", default-features = false }
 itertools.workspace = true
 zeroize.workspace = true
+rayon = {workspace = true, optional = true}
 bbs_plus = { default-features = false, path = "../bbs_plus" }
 schnorr_pok = { default-features = false, path = "../schnorr_pok" }
 vb_accumulator = { default-features = false, path = "../vb_accumulator" }
@@ -94,3 +95,8 @@ harness = false
 name = "syra"
 path = "benches/syra.rs"
 harness = false
+
+[features]
+default = [ "parallel" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "oblivious_transfer_protocols/std", "secret_sharing_and_dkg/std", "bbs_plus/std", "vb_accumulator/std", "coconut-crypto/std", "syra/std"]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "rayon", "schnorr_pok/parallel", "dock_crypto_utils/parallel", "oblivious_transfer_protocols/parallel", "secret_sharing_and_dkg/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "coconut-crypto/parallel", "syra/parallel"]

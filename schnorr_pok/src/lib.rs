@@ -1,7 +1,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-//! Schnorr protocol to prove knowledge of 1 or more discrete logs in zero knowledge.
+//! Protocol to prove knowledge of 1 or more discrete logs in zero knowledge.
+//!
+//! In literature, these protocols are called
+//! - Schnorr protocol, for proving knowledge of 1 discrete log,
+//! - Okamoto protocol, for proving knowledge of more than 1 discrete log and is an extension of Schnorr protocol
+//! - Chaum-Pedersen protocol, for proving equality of discrete logs
+//!
 //! Refer [this](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) for more details of Schnorr protocol.
+//!
 //!
 //! Also implements the proof of knowledge of discrete log in pairing groups, i.e. given prover and verifier
 //! both know (`A1`, `Y1`), and prover additionally knows `B1`, prove that `e(A1, B1) = Y1`. Similarly,
@@ -16,10 +23,16 @@
 //! the prover. i.e. given `y = g * x` and `z = h * k`, prover and verifier know `g`, `h`, `y` and `z` and
 //! prover additionally knows `x` but not `k`.
 //!
-//! Also impelements partial Schnorr proof where response for some witnesses is not generated. This is useful
-//! when several Schnorr protocols are executed together and they share some witnesses. The response for those
+//! Also implements the following sigma protocols:
+//! - Proving product relation among values committed in a Pedersen commitment
+//! - Proving square relation among values committed in a Pedersen commitment
+//! - Proving inverse relation among values committed in a Pedersen commitment
+//!
+//! Also implements partial Schnorr proof where response for some witnesses is not generated. This is useful
+//! when several Schnorr protocols are executed together and they share some witnesses. The response for the common
 //! witnesses will be generated in one Schnorr proof while the other protocols will generate partial Schnorr
-//! proofs where responses for those witnesses will be missing.  
+//! proofs where responses for common witnesses will be missing. This means that duplicate Schnorr responses
+//! for the common witnesses are not generated.
 //!
 //! We outline the steps of Schnorr protocol.
 //! Prover wants to prove knowledge of `x` in `y = g * x` (`y` and `g` are public knowledge)
@@ -51,6 +64,8 @@
 //! with the implemented variant as verifier checks 2 equations `s1 = r1 + x1*c` and `s2 = r2 + x2*c`
 //!
 //!
+//! So even though the crate's name is `schnorr_pok`, it implements other protocols too.
+//!
 //! [`Inequality`]: crate::inequality
 //! [`discrete_log_pairing`]: crate::discrete_log_pairing
 
@@ -81,6 +96,7 @@ pub mod discrete_log_pairing;
 pub mod error;
 pub mod inequality;
 pub mod partial;
+pub mod product_relations;
 
 /// Trait implemented by Schnorr-based protocols for returning their contribution to the overall challenge.
 /// i.e. overall challenge is of form Hash({m_i}), and this function returns the bytecode for m_j for some j.

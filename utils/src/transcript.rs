@@ -47,6 +47,9 @@ pub trait Transcript {
     fn append_without_static_label<S: CanonicalSerialize>(&mut self, label: &[u8], element: &S);
     fn append_message(&mut self, label: &'static [u8], bytes: &[u8]);
     fn append_message_without_static_label(&mut self, label: &[u8], bytes: &[u8]);
+
+    fn challenge_bytes(&mut self, label: &'static [u8], dest: &mut [u8]);
+    fn challenge_bytes_without_static_label(&mut self, label: &[u8], dest: &mut [u8]);
     fn challenge_scalar<F: Field>(&mut self, label: &'static [u8]) -> F;
     fn challenge_scalar_without_static_label<F: Field>(&mut self, label: &[u8]) -> F;
     fn challenge_scalars<F: Field>(&mut self, label: &'static [u8], count: usize) -> Vec<F>;
@@ -60,6 +63,14 @@ pub trait Transcript {
 }
 
 impl Transcript for MerlinTranscript {
+    fn append<S: CanonicalSerialize>(&mut self, label: &'static [u8], element: &S) {
+        let mut buff: Vec<u8> = vec![0; element.compressed_size()];
+        element
+            .serialize_compressed(&mut buff)
+            .expect("serialization failed");
+        self.merlin.append_message(label, &buff);
+    }
+
     fn append_without_static_label<S: CanonicalSerialize>(&mut self, label: &[u8], element: &S) {
         let mut buff: Vec<u8> = vec![0; element.compressed_size()];
         element
@@ -69,9 +80,42 @@ impl Transcript for MerlinTranscript {
             .append_message_with_non_static_label(label, &buff);
     }
 
+    fn append_message(&mut self, label: &'static [u8], bytes: &[u8]) {
+        self.merlin.append_message(label, bytes)
+    }
+
     fn append_message_without_static_label(&mut self, label: &[u8], bytes: &[u8]) {
         self.merlin
             .append_message_with_non_static_label(label, bytes)
+    }
+
+    fn challenge_bytes(&mut self, label: &'static [u8], dest: &mut [u8]) {
+        self.merlin.challenge_bytes(label, dest)
+    }
+
+    fn challenge_bytes_without_static_label(&mut self, label: &[u8], dest: &mut [u8]) {
+        self.merlin
+            .challenge_bytes_with_non_static_label(label, dest)
+    }
+
+    fn challenge_scalar<F: Field>(&mut self, label: &'static [u8]) -> F {
+        // Reduce a double-width scalar to ensure a uniform distribution
+        // TODO: It assumes 32 byte field element. Make it generic
+        let mut buf = [0; 64];
+        self.merlin.challenge_bytes(label, &mut buf);
+        let mut counter = 0;
+        loop {
+            let c = F::from_random_bytes(&buf);
+            if let Some(chal) = c {
+                if let Some(c_inv) = chal.inverse() {
+                    return c_inv;
+                }
+            }
+
+            buf[0] = counter;
+            counter += 1;
+            self.merlin.challenge_bytes(label, &mut buf);
+        }
     }
 
     fn challenge_scalar_without_static_label<F: Field>(&mut self, label: &[u8]) -> F {
@@ -94,6 +138,32 @@ impl Transcript for MerlinTranscript {
             self.merlin
                 .challenge_bytes_with_non_static_label(label, &mut buf);
         }
+    }
+
+    fn challenge_scalars<F: Field>(&mut self, label: &'static [u8], count: usize) -> Vec<F> {
+        // Reduce a double-width scalar to ensure a uniform distribution
+        // TODO: It assumes 32 byte field element. Make it generic
+        let mut buf = vec![0; count * 64];
+        self.merlin.challenge_bytes(label, &mut buf);
+        let mut out = Vec::with_capacity(count);
+        for i in 0..count {
+            let mut counter = 0;
+            let start = i * 64;
+            let end = (i + 1) * 64;
+            loop {
+                let c = F::from_random_bytes(&buf[start..end]);
+                if let Some(chal) = c {
+                    if let Some(c_inv) = chal.inverse() {
+                        out.push(c_inv);
+                        break;
+                    }
+                }
+                buf[start] = counter;
+                counter += 1;
+                self.merlin.challenge_bytes(label, &mut buf[start..end]);
+            }
+        }
+        out
     }
 
     fn challenge_scalars_without_static_label<F: Field>(
@@ -128,6 +198,22 @@ impl Transcript for MerlinTranscript {
         out
     }
 
+    fn challenge_group_elem<G: AffineRepr>(&mut self, label: &'static [u8]) -> G {
+        let mut buf = [0; 64];
+        self.merlin.challenge_bytes(label, &mut buf);
+        let mut counter = 0;
+        loop {
+            let c = G::from_random_bytes(&buf);
+            if let Some(chal) = c {
+                return chal;
+            }
+
+            buf[0] = counter;
+            counter += 1;
+            self.merlin.challenge_bytes(label, &mut buf);
+        }
+    }
+
     fn challenge_group_elem_without_static_label<G: AffineRepr>(&mut self, label: &[u8]) -> G {
         let mut buf = [0; 64];
         self.merlin
@@ -143,80 +229,6 @@ impl Transcript for MerlinTranscript {
             counter += 1;
             self.merlin
                 .challenge_bytes_with_non_static_label(label, &mut buf);
-        }
-    }
-
-    fn append<S: CanonicalSerialize>(&mut self, label: &'static [u8], element: &S) {
-        let mut buff: Vec<u8> = vec![0; element.compressed_size()];
-        element
-            .serialize_compressed(&mut buff)
-            .expect("serialization failed");
-        self.merlin.append_message(label, &buff);
-    }
-
-    fn append_message(&mut self, label: &'static [u8], bytes: &[u8]) {
-        self.merlin.append_message(label, bytes)
-    }
-
-    fn challenge_scalar<F: Field>(&mut self, label: &'static [u8]) -> F {
-        // Reduce a double-width scalar to ensure a uniform distribution
-        // TODO: It assumes 32 byte field element. Make it generic
-        let mut buf = [0; 64];
-        self.merlin.challenge_bytes(label, &mut buf);
-        let mut counter = 0;
-        loop {
-            let c = F::from_random_bytes(&buf);
-            if let Some(chal) = c {
-                if let Some(c_inv) = chal.inverse() {
-                    return c_inv;
-                }
-            }
-
-            buf[0] = counter;
-            counter += 1;
-            self.merlin.challenge_bytes(label, &mut buf);
-        }
-    }
-
-    fn challenge_scalars<F: Field>(&mut self, label: &'static [u8], count: usize) -> Vec<F> {
-        // Reduce a double-width scalar to ensure a uniform distribution
-        // TODO: It assumes 32 byte field element. Make it generic
-        let mut buf = vec![0; count * 64];
-        self.merlin.challenge_bytes(label, &mut buf);
-        let mut out = Vec::with_capacity(count);
-        for i in 0..count {
-            let mut counter = 0;
-            let start = i * 64;
-            let end = (i + 1) * 64;
-            loop {
-                let c = F::from_random_bytes(&buf[start..end]);
-                if let Some(chal) = c {
-                    if let Some(c_inv) = chal.inverse() {
-                        out.push(c_inv);
-                        break;
-                    }
-                }
-                buf[start] = counter;
-                counter += 1;
-                self.merlin.challenge_bytes(label, &mut buf[start..end]);
-            }
-        }
-        out
-    }
-
-    fn challenge_group_elem<G: AffineRepr>(&mut self, label: &'static [u8]) -> G {
-        let mut buf = [0; 64];
-        self.merlin.challenge_bytes(label, &mut buf);
-        let mut counter = 0;
-        loop {
-            let c = G::from_random_bytes(&buf);
-            if let Some(chal) = c {
-                return chal;
-            }
-
-            buf[0] = counter;
-            counter += 1;
-            self.merlin.challenge_bytes(label, &mut buf);
         }
     }
 }

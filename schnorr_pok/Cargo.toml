@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Schnorr protocol for proof of knowledge, equality and inequality of one or more discrete logs. Working in elliptic curve and pairing groups"
+description = "Schnorr, Okamoto, Chaum-Pedersen protocols for proof of knowledge, equality and inequality of one or more discrete logs. Working in elliptic curve and pairing groups"
 keywords = ["Schnorr", "proof-of-knowledge", "ZKPoK", "proof-of-equality", "proof-of-inequality"]
 
 [lib]
@@ -29,6 +29,7 @@ blake2.workspace = true
 ark-bls12-381.workspace = true
 serde_json = "1.0"
 rmp-serde = "1.0"
+rand_core = "0.6.4"
 
 [features]
 default = [ "parallel" ]
