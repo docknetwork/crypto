@@ -12,11 +12,11 @@
 //!  - `v_a, v_b, v_c, r_a, r_b, r_c`
 //!
 //! The prover proves knowledge of `v_a, v_b, v_c, r_a, r_b, r_c` using the usual sigma protocol (Schnorr) while
-//! proving that `c = a * v_b + h * r` where `r = r_c - (r_a * r_b)`
+//! proving that `c = a * v_b + h * r` where `r = r_c - (r_a * v_b)`
 //!
 //! For proving the inverse relation `v_a * v_a_inv = 1`, the above protocol can be used but a more efficient way is to prove
-//! given commitments `a = g * v_a + h * r_a`, `a_inv = g * v_a_inv + h * r_a_inv` that `g = a * v_a_inv + h * r`. This saves
-//! some commitments and responses.
+//! given commitments `a = g * v_a + h * r_a`, `a_inv = g * v_a_inv + h * r_a_inv` that `g = a * v_a_inv + h * r` where
+//! `r = -(r_a * v_a_inv)`. This saves some commitments and responses.
 //!
 //! Similarly, for proving the square relation `v_a * v_a = v_a_sqr`, the above product protocol can be used but that will
 //! have duplicate commitments and responses for `v_a` so a dedicated protocol is used.

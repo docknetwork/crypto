@@ -302,6 +302,7 @@ mod tests {
         let comm_key_tom = PedersenCommitmentKey::<Tom256Affine>::new::<Blake2b512>(b"test2");
         let comm_key_bls = PedersenCommitmentKey::<BlsG1Affine>::new::<Blake2b512>(b"test3");
 
+        // Bulletproofs++ setup
         let base = 2;
         let mut bpp_setup_params = BppSetupParams::<Tom256Affine>::new_for_perfect_range_proof::<
             Blake2b512,
@@ -311,14 +312,16 @@ mod tests {
         bpp_setup_params.G = comm_key_tom.g;
         bpp_setup_params.H_vec[0] = comm_key_tom.h;
 
+        // ECDSA public key setup
         let sk = Fr::rand(&mut rng);
         let pk = (SECP_GEN * sk).into_affine();
 
+        // Commit to ECDSA public key on Tom-256 curve
         let comm_pk = PointCommitmentWithOpening::new(&mut rng, &pk, &comm_key_tom).unwrap();
 
+        // Commit to ECDSA public key on BLS12-381 curve
         let pk_x = from_base_field_to_scalar_field::<Fq, BlsFr>(pk.x().unwrap());
         let pk_y = from_base_field_to_scalar_field::<Fq, BlsFr>(pk.y().unwrap());
-
         let bls_comm_pk_rx = BlsFr::rand(&mut rng);
         let bls_comm_pk_ry = BlsFr::rand(&mut rng);
         let bls_comm_pk_x = comm_key_bls.commit(&pk_x, &bls_comm_pk_rx);
@@ -375,7 +378,7 @@ mod tests {
             )
             .unwrap();
 
-            // Proof that x coordinate is same in both Tom-256 and BLS12-381 commitments
+            // Proof that y coordinate is same in both Tom-256 and BLS12-381 commitments
             let proof_eq_pk_y = ProofLargeWitness::<
                 Tom256Affine,
                 BlsG1Affine,

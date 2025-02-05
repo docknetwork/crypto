@@ -23,7 +23,7 @@
 //! the prover. i.e. given `y = g * x` and `z = h * k`, prover and verifier know `g`, `h`, `y` and `z` and
 //! prover additionally knows `x` but not `k`.
 //!
-//! Also implements the following sigma protocols:
+//! Also implements the following sigma protocols in [`Product`]:
 //! - Proving product relation among values committed in a Pedersen commitment
 //! - Proving square relation among values committed in a Pedersen commitment
 //! - Proving inverse relation among values committed in a Pedersen commitment
@@ -68,6 +68,7 @@
 //!
 //! [`Inequality`]: crate::inequality
 //! [`discrete_log_pairing`]: crate::discrete_log_pairing
+//! [`Product`]: crate::product_relations
 
 use crate::error::SchnorrError;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
