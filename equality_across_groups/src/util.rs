@@ -19,26 +19,3 @@ pub fn from_bytes_le<const LIMBS: usize>(bytes: &[u8]) -> BigInt<LIMBS> {
     }
     res
 }
-
-#[cfg(test)]
-pub fn timing_info(mut times: Vec<std::time::Duration>) -> String {
-    // Given timings of an operation repeated several times, prints the total time takes, least time,
-    // median time and the highest time
-    times.sort();
-    let median = {
-        let mid = times.len() / 2;
-        if times.len() % 2 == 0 {
-            (times[mid - 1] + times[mid]) / 2
-        } else {
-            times[mid]
-        }
-    };
-    let total = times.iter().sum::<std::time::Duration>();
-    format!(
-        "{:.2?} | [{:.2?}, {:.2?}, {:.2?}]",
-        total,
-        times[0],
-        median,
-        times[times.len() - 1]
-    )
-}

@@ -202,6 +202,7 @@ mod tests {
     use dock_crypto_utils::transcript::new_merlin_transcript;
     use rand_core::OsRng;
     use std::time::{Duration, Instant};
+    use test_utils::statistics::statistics;
 
     #[test]
     fn transformed_sig_verify() {
@@ -229,8 +230,10 @@ mod tests {
 
         let mut prov_time = vec![];
         let mut ver_time = vec![];
+        // Since the proof size depends on the values of the random challenge bits of the scalar multiplication protocol
+        let mut proof_sizes = vec![];
         let num_iters = 10;
-        for i in 0..num_iters {
+        for _ in 0..num_iters {
             let message = Fr::rand(&mut rng);
             let sig = ecdsa::Signature::new_prehashed(&mut rng, message, sk);
             let transformed_sig = TransformedEcdsaSig::new(&sig, message, pk).unwrap();
@@ -255,6 +258,8 @@ mod tests {
             .unwrap();
             prov_time.push(start.elapsed());
 
+            proof_sizes.push(proof.compressed_size());
+
             let start = Instant::now();
             let mut verifier_transcript = new_merlin_transcript(b"test");
             verifier_transcript.append(b"comm_key_secp", &comm_key_secp);
@@ -269,15 +274,14 @@ mod tests {
                 )
                 .unwrap();
             ver_time.push(start.elapsed());
-
-            if i == 0 {
-                println!("Proof size = {} bytes", proof.compressed_size());
-            }
         }
 
-        println!("For {} iterations", num_iters);
-        println!("Proving time: {:?}", timing_info(prov_time));
-        println!("Verifying time: {:?}", timing_info(ver_time));
+        println!("Proving time: {:?}", statistics(prov_time));
+        println!("Verifying time: {:?}", statistics(ver_time));
+        println!(
+            "Proof size (bytes): {:?}",
+            statistics::<usize, usize>(proof_sizes)
+        );
     }
 
     #[test]
@@ -329,8 +333,11 @@ mod tests {
 
         let mut prov_time = vec![];
         let mut ver_time = vec![];
+        // Since the proof size depends on the values of the random challenge bits of the scalar multiplication protocol
+        let mut total_proof_sizes = vec![];
+        let mut dl_eq_proof_sizes = vec![];
         let num_iters = 10;
-        for i in 0..num_iters {
+        for _ in 0..num_iters {
             let message = Fr::rand(&mut rng);
             let sig = ecdsa::Signature::new_prehashed(&mut rng, message, sk);
 
@@ -441,19 +448,23 @@ mod tests {
                 .unwrap();
             ver_time.push(start.elapsed());
 
-            if i == 0 {
-                let s_pk = pok_pubkey.compressed_size();
-                let s_pk_x = proof_eq_pk_x.compressed_size();
-                let s_pk_y = proof_eq_pk_y.compressed_size();
-                println!(
-                    "Total proof size = {} bytes. Proof size for equality of committed x and y coordinates = {} bytes",
-                    s_pk + s_pk_x + s_pk_y, s_pk_x + s_pk_y
-                );
-            }
+            let s_pk = pok_pubkey.compressed_size();
+            let s_pk_x = proof_eq_pk_x.compressed_size();
+            let s_pk_y = proof_eq_pk_y.compressed_size();
+            total_proof_sizes.push(s_pk + s_pk_x + s_pk_y);
+            dl_eq_proof_sizes.push(s_pk_x + s_pk_y);
         }
 
         println!("For {} iterations", num_iters);
-        println!("Proving time: {:?}", timing_info(prov_time));
-        println!("Verifying time: {:?}", timing_info(ver_time));
+        println!("Proving time: {:?}", statistics(prov_time));
+        println!("Verifying time: {:?}", statistics(ver_time));
+        println!(
+            "Total proof size (bytes): {:?}",
+            statistics::<usize, usize>(total_proof_sizes)
+        );
+        println!(
+            "Proof size for equality of committed x and y coordinates (bytes): {:?}",
+            statistics::<usize, usize>(dl_eq_proof_sizes)
+        );
     }
 }

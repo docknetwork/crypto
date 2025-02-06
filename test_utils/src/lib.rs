@@ -11,3 +11,4 @@ pub mod bbs;
 pub mod serialization;
 pub mod kvac;
 pub mod ot;
+pub mod statistics;

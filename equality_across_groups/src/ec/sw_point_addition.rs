@@ -309,7 +309,8 @@ mod tests {
     use blake2::Blake2b512;
     use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
     use rand_core::OsRng;
-    use std::ops::Neg;
+    use std::{ops::Neg, time::Instant};
+    use test_utils::statistics::statistics;
 
     #[test]
     fn point_addition() {
@@ -317,7 +318,10 @@ mod tests {
 
         let comm_key = PedersenCommitmentKey::<tomAff>::new::<Blake2b512>(b"test");
 
-        for _ in 0..100 {
+        let mut prov_time = vec![];
+        let mut ver_time = vec![];
+        let num_iters = 100;
+        for i in 0..num_iters {
             let a = secpAff::rand(&mut rng);
             let b = secpAff::rand(&mut rng);
             let t = (a + b).into_affine();
@@ -329,6 +333,7 @@ mod tests {
                 PointCommitmentWithOpening::<tomAff>::new::<_, secpAff>(&mut rng, &b, &comm_key)
                     .unwrap();
 
+            let start = Instant::now();
             let mut prover_transcript = new_merlin_transcript(b"test");
             prover_transcript.append(b"comm_key", &comm_key);
             prover_transcript.append(b"comm_a", &comm_a.comm);
@@ -345,7 +350,9 @@ mod tests {
                 &mut prover_transcript,
             )
             .unwrap();
+            prov_time.push(start.elapsed());
 
+            let start = Instant::now();
             let mut verifier_transcript = new_merlin_transcript(b"test");
             verifier_transcript.append(b"comm_key", &comm_key);
             verifier_transcript.append(b"comm_a", &comm_a.comm);
@@ -360,6 +367,11 @@ mod tests {
                     &mut verifier_transcript,
                 )
                 .unwrap();
+            ver_time.push(start.elapsed());
+
+            if i == 0 {
+                println!("Proof size = {} bytes", proof.compressed_size());
+            }
 
             // Verifying with incorrect sum fails
             let mut verifier_transcript = new_merlin_transcript(b"test");
@@ -412,5 +424,9 @@ mod tests {
             )
             .is_err());
         }
+
+        println!("For {} iterations", num_iters);
+        println!("Proving time: {:?}", statistics(prov_time));
+        println!("Verifying time: {:?}", statistics(ver_time));
     }
 }

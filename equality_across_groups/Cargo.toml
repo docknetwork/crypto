@@ -25,8 +25,9 @@ rand = "0.8"
 blake2.workspace = true
 ark-bls12-381.workspace = true
 rand_core = { version = "0.6", default-features = false }
+test_utils = { default-features = false, path = "../test_utils" }
 
 [features]
 default = ["parallel"]
-std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "rand_core/std", "crypto-bigint/rand", "dock_crypto_utils/std", "bulletproofs_plus_plus/std", "kvac/std", "schnorr_pok/std"]
-parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "bulletproofs_plus_plus/parallel", "kvac/parallel", "schnorr_pok/parallel"]
+std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "rand_core/std", "crypto-bigint/rand", "dock_crypto_utils/std", "bulletproofs_plus_plus/std", "kvac/std", "schnorr_pok/std", "test_utils/std"]
+parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "bulletproofs_plus_plus/parallel", "kvac/parallel", "schnorr_pok/parallel", "test_utils/parallel"]

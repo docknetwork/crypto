@@ -49,6 +49,7 @@ impl<C: AffineRepr> PointCommitmentWithOpening<C> {
         Self::new_given_randomness(point, r_x, r_y, comm_key)
     }
 
+    /// `r_x` and `r_y` are randomness in the Pedersen commitments to x and y coordinates respectively
     pub fn new_given_randomness<P: AffineRepr>(
         point: &P,
         r_x: C::ScalarField,

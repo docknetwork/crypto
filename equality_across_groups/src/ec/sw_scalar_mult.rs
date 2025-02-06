@@ -327,6 +327,8 @@ mod tests {
     use blake2::Blake2b512;
     use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
     use rand_core::OsRng;
+    use std::time::Instant;
+    use test_utils::statistics::statistics;
 
     #[test]
     fn scalar_mult() {
@@ -335,44 +337,66 @@ mod tests {
         let comm_key_1 = PedersenCommitmentKey::<secpAff>::new::<Blake2b512>(b"test1");
         let comm_key_2 = PedersenCommitmentKey::<tomAff>::new::<Blake2b512>(b"test2");
 
-        let base = secpAff::rand(&mut rng);
-        let scalar = secpFr::rand(&mut rng);
-        let result = (base * scalar).into_affine();
+        let mut prov_time = vec![];
+        let mut ver_time = vec![];
+        // Since the proof size depends on the values of the random challenge bits
+        let mut proof_sizes = vec![];
+        let num_iters = 10;
+        for _ in 0..num_iters {
+            let base = secpAff::rand(&mut rng);
+            let scalar = secpFr::rand(&mut rng);
+            let result = (base * scalar).into_affine();
 
-        let comm_scalar = CommitmentWithOpening::new(&mut rng, scalar, &comm_key_1);
-        let comm_result = PointCommitmentWithOpening::new(&mut rng, &result, &comm_key_2).unwrap();
+            let comm_scalar = CommitmentWithOpening::new(&mut rng, scalar, &comm_key_1);
+            let comm_result =
+                PointCommitmentWithOpening::new(&mut rng, &result, &comm_key_2).unwrap();
 
-        let mut prover_transcript = new_merlin_transcript(b"test");
-        prover_transcript.append(b"comm_key_1", &comm_key_1);
-        prover_transcript.append(b"comm_key_2", &comm_key_2);
-        prover_transcript.append(b"comm_scalar", &comm_scalar.comm);
-        prover_transcript.append(b"comm_result", &comm_result.comm);
-        let proof = ScalarMultiplicationProof::<secpAff, tomAff>::new(
-            &mut rng,
-            comm_scalar.clone(),
-            comm_result.clone(),
-            result,
-            base,
-            &comm_key_1,
-            &comm_key_2,
-            &mut prover_transcript,
-        )
-        .unwrap();
-
-        let mut verifier_transcript = new_merlin_transcript(b"test");
-        verifier_transcript.append(b"comm_key_1", &comm_key_1);
-        verifier_transcript.append(b"comm_key_2", &comm_key_2);
-        verifier_transcript.append(b"comm_scalar", &comm_scalar.comm);
-        verifier_transcript.append(b"comm_result", &comm_result.comm);
-        proof
-            .verify(
-                &comm_scalar.comm,
-                &comm_result.comm,
-                &base,
+            let start = Instant::now();
+            let mut prover_transcript = new_merlin_transcript(b"test");
+            prover_transcript.append(b"comm_key_1", &comm_key_1);
+            prover_transcript.append(b"comm_key_2", &comm_key_2);
+            prover_transcript.append(b"comm_scalar", &comm_scalar.comm);
+            prover_transcript.append(b"comm_result", &comm_result.comm);
+            let proof = ScalarMultiplicationProof::<secpAff, tomAff>::new(
+                &mut rng,
+                comm_scalar.clone(),
+                comm_result.clone(),
+                result,
+                base,
                 &comm_key_1,
                 &comm_key_2,
-                &mut verifier_transcript,
+                &mut prover_transcript,
             )
             .unwrap();
+            prov_time.push(start.elapsed());
+
+            proof_sizes.push(proof.compressed_size());
+
+            let start = Instant::now();
+            let mut verifier_transcript = new_merlin_transcript(b"test");
+            verifier_transcript.append(b"comm_key_1", &comm_key_1);
+            verifier_transcript.append(b"comm_key_2", &comm_key_2);
+            verifier_transcript.append(b"comm_scalar", &comm_scalar.comm);
+            verifier_transcript.append(b"comm_result", &comm_result.comm);
+            proof
+                .verify(
+                    &comm_scalar.comm,
+                    &comm_result.comm,
+                    &base,
+                    &comm_key_1,
+                    &comm_key_2,
+                    &mut verifier_transcript,
+                )
+                .unwrap();
+            ver_time.push(start.elapsed());
+        }
+
+        println!("For {} iterations", num_iters);
+        println!("Proving time: {:?}", statistics(prov_time));
+        println!("Verifying time: {:?}", statistics(ver_time));
+        println!(
+            "Proof size (bytes): {:?}",
+            statistics::<usize, usize>(proof_sizes)
+        );
     }
 }
