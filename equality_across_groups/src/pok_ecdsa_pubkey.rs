@@ -1,10 +1,15 @@
-//! Proof of knowledge of ECDSA public key on short Weierstrass curve. Is a slight variation of the protocol described in section 6 of the paper [ZKAttest Ring and Group Signatures for Existing ECDSA Keys](https://eprint.iacr.org/2021/1183)
+//! Proof of knowledge of ECDSA public key committed on a short Weierstrass curve. Is a slight variation of the protocol described in section 6 of the paper [ZKAttest Ring and Group Signatures for Existing ECDSA Keys](https://eprint.iacr.org/2021/1183)
+//!
+//! To prove the knowledge of the public key, an ECDSA signature on the verifier's chosen message is generated
+//! which should be verifiable using the public key but the signature can't be transmitted entirely as the public key
+//! can be learnt from the signature.
 //!
 //! An ECDSA signature `(r, s)` is transformed to `(R, z=s/r)` as per the paper. The new ECDSA verification equation
 //! becomes `z*R - g*t*r^-1 = q` where `q` is the public key, `g` is the generator and `t` is the hashed message.
 //! This is equivalent to `-g*t*r^-1 = q + z*(-R)`
 //!
 //! The verifier gets a commitment to the public key `q` and `-z*R` but knows `R, t, g and r` (`r` is the truncated x coordinate of `R`).
+//! Note that the verifier should not learn `z` or `s` otherwise it will learn the public key.
 //!
 //! Thus using the protocols for scalar multiplication and point addition, the prover proves:
 //! - Given commitments to `z` and `-z*R`, the scalar multiplication of `z` and `-R` is indeed `-z*R`
@@ -189,7 +194,6 @@ mod tests {
     use super::*;
     use crate::{
         ec::commitments::from_base_field_to_scalar_field, eq_across_groups::ProofLargeWitness,
-        util::timing_info,
     };
     use ark_bls12_381::{Fr as BlsFr, G1Affine as BlsG1Affine};
     use ark_secp256r1::Fq;
@@ -201,7 +205,7 @@ mod tests {
     use bulletproofs_plus_plus::prelude::SetupParams as BppSetupParams;
     use dock_crypto_utils::transcript::new_merlin_transcript;
     use rand_core::OsRng;
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
     use test_utils::statistics::statistics;
 
     #[test]
@@ -245,6 +249,8 @@ mod tests {
             let mut prover_transcript = new_merlin_transcript(b"test");
             prover_transcript.append(b"comm_key_secp", &comm_key_secp);
             prover_transcript.append(b"comm_key_tom", &comm_key_tom);
+            prover_transcript.append(b"comm_pk", &comm_pk.comm);
+            prover_transcript.append(b"message", &message);
             let proof = ProofOfKnowledgeEcdsaPublicKey::<128>::new(
                 &mut rng,
                 transformed_sig,
@@ -264,6 +270,8 @@ mod tests {
             let mut verifier_transcript = new_merlin_transcript(b"test");
             verifier_transcript.append(b"comm_key_secp", &comm_key_secp);
             verifier_transcript.append(b"comm_key_tom", &comm_key_tom);
+            verifier_transcript.append(b"comm_pk", &comm_pk.comm);
+            verifier_transcript.append(b"message", &message);
             proof
                 .verify(
                     message,
@@ -350,6 +358,10 @@ mod tests {
             prover_transcript.append(b"comm_key_tom", &comm_key_tom);
             prover_transcript.append(b"comm_key_bls", &comm_key_bls);
             prover_transcript.append(b"bpp_setup_params", &bpp_setup_params);
+            prover_transcript.append(b"comm_pk", &comm_pk.comm);
+            prover_transcript.append(b"bls_comm_pk_x", &bls_comm_pk_x);
+            prover_transcript.append(b"bls_comm_pk_y", &bls_comm_pk_y);
+            prover_transcript.append(b"message", &message);
             let pok_pubkey = ProofOfKnowledgeEcdsaPublicKey::<128>::new(
                 &mut rng,
                 transformed_sig,
@@ -415,6 +427,10 @@ mod tests {
             verifier_transcript.append(b"comm_key_tom", &comm_key_tom);
             verifier_transcript.append(b"comm_key_bls", &comm_key_bls);
             verifier_transcript.append(b"bpp_setup_params", &bpp_setup_params);
+            verifier_transcript.append(b"comm_pk", &comm_pk.comm);
+            verifier_transcript.append(b"bls_comm_pk_x", &bls_comm_pk_x);
+            verifier_transcript.append(b"bls_comm_pk_y", &bls_comm_pk_y);
+            verifier_transcript.append(b"message", &message);
             pok_pubkey
                 .verify(
                     message,

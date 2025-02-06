@@ -10,7 +10,7 @@
 //! `ABORT_PARAM` -> `b_f`
 //! `NUM_REPS` -> `tau`
 //!
-//! `RESPONSE_BYTE_SIZE` is the number of bytes need to represent `2^{WITNESS_BIT_SIZE + CHALLENGE_BIT_SIZE + ABORT_PARAM} - 1`
+//! `RESPONSE_BYTE_SIZE` is the number of bytes need to represent `z` which lies in `[2^{WITNESS_BIT_SIZE + CHALLENGE_BIT_SIZE}, 2^{WITNESS_BIT_SIZE + CHALLENGE_BIT_SIZE + ABORT_PARAM} - 1]`
 //!
 //! The groups are assumed to be elliptic curve groups.
 

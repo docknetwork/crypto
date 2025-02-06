@@ -23,6 +23,7 @@ use syra::{
     },
     threshold_issuance::{Phase1, Phase1Output, Phase2, UserSecretKeyShare},
 };
+use test_utils::statistics::statistics;
 
 const BASE_OT_KEY_SIZE: u16 = 128;
 const KAPPA: u16 = 256;
@@ -403,26 +404,6 @@ fn pseudonym(c: &mut Criterion) {
 // criterion_group!(benches, threshold_issuance_with_known_user_id, pseudonym);
 // criterion_main!(benches);
 
-fn timing_info(mut times: Vec<std::time::Duration>) -> String {
-    times.sort();
-    let median = {
-        let mid = times.len() / 2;
-        if times.len() % 2 == 0 {
-            (times[mid - 1] + times[mid]) / 2
-        } else {
-            times[mid]
-        }
-    };
-    let total = times.iter().sum::<std::time::Duration>();
-    format!(
-        "{:.2?} | [{:.2?}, {:.2?}, {:.2?}]",
-        total,
-        times[0],
-        median,
-        times[times.len() - 1]
-    )
-}
-
 fn main() {
     use std::time::Instant;
     let mut rng = StdRng::seed_from_u64(0u64);
@@ -518,8 +499,8 @@ fn main() {
             usk.verify(user_id, &threshold_ipk, prepared_params.clone())
                 .unwrap();
         }
-        println!("Phase1 time: {:?}", timing_info(phase1_time));
-        println!("Phase2 time: {:?}", timing_info(phase2_time));
-        println!("Aggregation time: {:?}", timing_info(aggr_time));
+        println!("Phase1 time: {:?}", statistics(phase1_time));
+        println!("Phase2 time: {:?}", statistics(phase2_time));
+        println!("Aggregation time: {:?}", statistics(aggr_time));
     }
 }
