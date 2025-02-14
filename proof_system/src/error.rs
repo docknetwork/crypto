@@ -113,7 +113,8 @@ pub enum ProofSystemError {
     ResponseForWitnessNotFoundForStatement(usize),
     NoResponseFoundForWitnessRef(usize, usize),
     MissingBlindingForStatementAtIndex(usize, usize),
-    VerifiableEncryption(u32, VerifiableEncryptionError),
+    VerifiableEncryptionError(VerifiableEncryptionError),
+    VerifiableEncryptionFailed(u32, VerifiableEncryptionError),
     NotALegoGroth16StatementProof,
     NotAVeTZ21StatementProof,
 }
@@ -181,5 +182,11 @@ impl From<SmcRangeProofError> for ProofSystemError {
 impl From<KVACError> for ProofSystemError {
     fn from(e: KVACError) -> Self {
         Self::KVACError(e)
+    }
+}
+
+impl From<VerifiableEncryptionError> for ProofSystemError {
+    fn from(e: VerifiableEncryptionError) -> Self {
+        Self::VerifiableEncryptionError(e)
     }
 }

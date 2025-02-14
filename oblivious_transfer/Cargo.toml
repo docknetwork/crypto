@@ -19,7 +19,6 @@ serde_with.workspace = true
 zeroize.workspace = true
 cipher = { version = "0.4.4", default-features = false, features = ["alloc"] }
 rayon = {workspace = true, optional = true}
-sha3.workspace = true
 aes = { version = "0.8.2", default-features = false }
 itertools.workspace = true
 byteorder = { version = "1.4", default-features = false }
@@ -32,6 +31,7 @@ ark-bls12-381.workspace = true
 serde_json = "1.0"
 rmp-serde = "1.0"
 test_utils = { path = "../test_utils" }
+sha3.workspace = true
 
 [build-dependencies]
 cc = "1.0.77"

@@ -17,7 +17,7 @@ use ark_std::{
     vec,
     vec::Vec,
 };
-use digest::DynDigest;
+use digest::{Digest, DynDigest};
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Party<F: PrimeField, const SALT_SIZE: usize> {
@@ -35,7 +35,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
     /// `\sum_{i}(b_{i}) = 0` and `\sum_{i}(c_{i}) = 0`.
     /// The returned map contains the commitments to be sent to the party with id as the corresponding
     /// key of the map.
-    pub fn init<R: RngCore>(
+    pub fn init<R: RngCore, D: Digest>(
         rng: &mut R,
         id: ParticipantId,
         batch_size: u32,
@@ -46,7 +46,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
         let mut commitments = BTreeMap::new();
         for other_id in &others {
             let (protocol, commitment) =
-                CommitmentParty::commit(rng, id, batch_size, protocol_id.clone());
+                CommitmentParty::commit::<R, D>(rng, id, batch_size, protocol_id.clone());
             cointoss_protocols.insert(other_id.clone(), protocol);
             commitments.insert(other_id.clone(), commitment);
         }
@@ -77,7 +77,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
 
     /// Process a received share from another party, verify it against the commitment receiver earlier
     /// and store the shares
-    pub fn receive_shares(
+    pub fn receive_shares<D: Digest>(
         &mut self,
         sender_id: ParticipantId,
         shares: Vec<(F, [u8; SALT_SIZE])>,
@@ -86,7 +86,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
             return Err(OTError::UnexpectedParticipant(sender_id));
         }
         let protocol = self.cointoss_protocols.get_mut(&sender_id).unwrap();
-        protocol.receive_shares(sender_id, shares)?;
+        protocol.receive_shares::<D>(sender_id, shares)?;
         Ok(())
     }
 
@@ -167,6 +167,7 @@ pub mod tests {
 
     use ark_std::rand::{rngs::StdRng, SeedableRng};
     use blake2::Blake2b512;
+    use sha3::Sha3_256;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -184,8 +185,13 @@ pub mod tests {
             for i in 1..=num_parties {
                 let mut others = all_party_set.clone();
                 others.remove(&i);
-                let (party, comm) =
-                    Party::<Fr, 256>::init(rng, i, batch_size, others, protocol_id.clone());
+                let (party, comm) = Party::<Fr, 256>::init::<_, Sha3_256>(
+                    rng,
+                    i,
+                    batch_size,
+                    others,
+                    protocol_id.clone(),
+                );
                 parties.push(party);
                 commitments.push(comm);
             }
@@ -220,7 +226,7 @@ pub mod tests {
                             .own_shares_and_salts
                             .clone();
                         parties[receiver_id as usize - 1]
-                            .receive_shares(sender_id, share)
+                            .receive_shares::<Sha3_256>(sender_id, share)
                             .unwrap();
                     }
                 }

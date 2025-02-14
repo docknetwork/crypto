@@ -55,10 +55,6 @@ For WASM, build as `cargo build --no-default-features --features=wasmer-js --tar
 The above maybe slower as it runs the tests in debug mode and some tests work on large inputs. 
 For running tests faster, run `cargo test --release`
 
-Some tess might cause a stack overflow error. To fix that, increase the stack size to about 8MB as
-
-`RUST_MIN_STACK=8388608 cargo test` or `RUST_MIN_STACK=8388608 cargo test --release`
-
 ## Benchmarking
 
 [Criterion](https://github.com/bheisler/criterion.rs) benchmarks [here](./benches)

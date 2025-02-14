@@ -5,7 +5,6 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, collections::BTreeMap, rand::RngCore, vec, vec::Vec};
 use digest::Digest;
-use sha3::Sha3_256;
 
 use super::ParticipantId;
 
@@ -40,7 +39,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
     /// Creates randomness, commits to it and returns the commitments to be sent to the other parties.
     /// The randomness will serve as a share to the joint randomness. `batch_size` is the number of
     /// random values generated.
-    pub fn commit<R: RngCore>(
+    pub fn commit<R: RngCore, D: Digest>(
         rng: &mut R,
         id: ParticipantId,
         batch_size: u32,
@@ -53,7 +52,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
                 (F::rand(rng), salt)
             })
             .collect::<Vec<_>>();
-        let commitments = Self::compute_commitments(&shares_and_salts, &protocol_id);
+        let commitments = Self::compute_commitments::<D>(&shares_and_salts, &protocol_id);
         (
             Self {
                 id,
@@ -89,7 +88,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
 
     /// Process a received share from another party, verify it against the commitment receiver earlier
     /// and store the shares
-    pub fn receive_shares(
+    pub fn receive_shares<D: Digest>(
         &mut self,
         sender_id: ParticipantId,
         shares_and_salts: Vec<(F, [u8; SALT_SIZE])>,
@@ -108,7 +107,8 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
             shares_and_salts.len(),
             OTError::IncorrectNoOfShares
         );
-        let expected_commitments = Self::compute_commitments(&shares_and_salts, &self.protocol_id);
+        let expected_commitments =
+            Self::compute_commitments::<D>(&shares_and_salts, &self.protocol_id);
         if expected_commitments != self.other_commitments.get(&sender_id).unwrap().0 {
             return Err(OTError::IncorrectCommitment);
         }
@@ -149,23 +149,23 @@ impl<F: PrimeField, const SALT_SIZE: usize> Party<F, SALT_SIZE> {
     //     2 * SECURITY_PARAM
     // }
 
-    fn compute_commitments(
+    fn compute_commitments<D: Digest>(
         shares_and_salts: &[(F, [u8; SALT_SIZE])],
         label: &[u8],
     ) -> Vec<Vec<u8>> {
         cfg_into_iter!(0..shares_and_salts.len())
-            .map(|i| hash(label, &shares_and_salts[i].0, &shares_and_salts[i].1))
+            .map(|i| hash::<F, D>(label, &shares_and_salts[i].0, &shares_and_salts[i].1))
             .collect()
     }
 }
 
-fn hash<F: PrimeField>(label: &[u8], share: &F, salt: &[u8]) -> Vec<u8> {
+fn hash<F: PrimeField, D: Digest>(label: &[u8], share: &F, salt: &[u8]) -> Vec<u8> {
     let mut bytes = vec![];
     bytes.extend_from_slice(label);
     share.serialize_compressed(&mut bytes).unwrap();
     bytes.extend_from_slice(salt);
 
-    let mut hasher = Sha3_256::new();
+    let mut hasher = D::new();
     hasher.update(bytes);
     hasher.finalize().to_vec()
 }
@@ -178,6 +178,7 @@ pub mod tests {
     use std::time::Instant;
 
     use ark_std::rand::{rngs::StdRng, SeedableRng};
+    use sha3::Sha3_256;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
 
@@ -193,8 +194,12 @@ pub mod tests {
             // All parties generate and commit to their share of the joint randomness
             let start = Instant::now();
             for i in 1..=num_parties {
-                let (party, comm) =
-                    Party::<Fr, SALT_SIZE>::commit(rng, i, batch_size, label.clone());
+                let (party, comm) = Party::<Fr, SALT_SIZE>::commit::<_, Sha3_256>(
+                    rng,
+                    i,
+                    batch_size,
+                    label.clone(),
+                );
                 parties.push(party);
                 commitments.push(comm);
             }
@@ -223,7 +228,7 @@ pub mod tests {
                         );
                         let share = parties[sender_id as usize - 1].own_shares_and_salts.clone();
                         parties[receiver_id as usize - 1]
-                            .receive_shares(sender_id, share)
+                            .receive_shares::<Sha3_256>(sender_id, share)
                             .unwrap();
                     }
                 }

@@ -26,6 +26,7 @@ dock_crypto_utils = { default-features = false, path = "../utils" }
 secret_sharing_and_dkg = { default-features = false, path = "../secret_sharing_and_dkg" }
 syra = { default-features = false, path = "../syra" }
 test_utils = { default-features = false, path = "../test_utils" }
+sha3.workspace = true
 
 [dev-dependencies]
 criterion = "0.4.0"

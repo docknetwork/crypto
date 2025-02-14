@@ -1,25 +1,5 @@
 //! Code for the prover to generate a `Proof`
 
-use ark_ec::pairing::Pairing;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{
-    collections::{BTreeMap, BTreeSet},
-    format,
-    rand::RngCore,
-    vec,
-    vec::Vec,
-    UniformRand,
-};
-
-use crate::{
-    error::ProofSystemError,
-    statement::Statement,
-    sub_protocols::{ps_signature::PSSignaturePoK, SubProtocol},
-    witness::{Witness, Witnesses},
-};
-use digest::Digest;
-use legogroth16::aggregation::srs::PreparedProverSRS;
-
 use crate::{
     constants::{
         BBDT16_KVAC_LABEL, BBS_23_LABEL, BBS_PLUS_LABEL, COMPOSITE_PROOF_CHALLENGE_LABEL,
@@ -29,10 +9,12 @@ use crate::{
         VB_ACCUM_CDH_NON_MEM_LABEL, VB_ACCUM_MEM_LABEL, VB_ACCUM_NON_MEM_LABEL, VE_TZ_21_LABEL,
         VE_TZ_21_ROBUST_LABEL,
     },
+    error::ProofSystemError,
     meta_statement::{EqualWitnesses, WitnessRef},
     prelude::SnarkpackSRS,
     proof::{AggregatedGroth16, Proof},
     proof_spec::ProofSpec,
+    statement::Statement,
     statement_proof::StatementProof,
     sub_protocols::{
         accumulator::{
@@ -61,12 +43,26 @@ use crate::{
         bound_check_smc::BoundCheckSmcProtocol,
         bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
         inequality::InequalityProtocol,
+        ps_signature::PSSignaturePoK,
         r1cs_legogorth16::R1CSLegogroth16Protocol,
         saver::SaverProtocol,
         schnorr::SchnorrProtocol,
         verifiable_encryption_tz_21::VeTZ21Protocol,
+        SubProtocol,
     },
+    witness::{Witness, Witnesses},
 };
+use ark_ec::pairing::Pairing;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{
+    collections::{BTreeMap, BTreeSet},
+    format,
+    rand::RngCore,
+    vec,
+    vec::Vec,
+    UniformRand,
+};
+use digest::Digest;
 use dock_crypto_utils::{
     aliases::FullDigest,
     expect_equality,
@@ -74,6 +70,7 @@ use dock_crypto_utils::{
     signature::MultiMessageSignatureParams,
     transcript::{MerlinTranscript, Transcript},
 };
+use legogroth16::aggregation::srs::PreparedProverSRS;
 use saver::encryption::Ciphertext;
 
 /// The SAVER randomness, ciphertext and proof to reuse when creating the composite proof. This is more

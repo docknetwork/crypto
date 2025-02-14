@@ -9,7 +9,7 @@ use ark_std::{
     rand::RngCore,
     vec::Vec,
 };
-use digest::DynDigest;
+use digest::{DynDigest, ExtendableOutput, Update};
 use oblivious_transfer_protocols::ot_based_multiplication::{
     base_ot_multi_party_pairwise::BaseOTOutput,
     batch_mul_multi_party::{
@@ -31,7 +31,7 @@ pub struct Phase2Output<F: PrimeField>(pub MultiplicationPartyOutput<F>);
 impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     Phase2<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>
 {
-    pub fn init<R: RngCore>(
+    pub fn init<R: RngCore, X: Default + Update + ExtendableOutput>(
         rng: &mut R,
         id: ParticipantId,
         masked_signing_key_share: Vec<F>,
@@ -41,7 +41,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
         gadget_vector: &GadgetVector<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     ) -> Result<(Self, BTreeMap<ParticipantId, Message1<F>>), BBSPlusError> {
-        let (p, m) = MultiplicationParty::init(
+        let (p, m) = MultiplicationParty::init::<R, X>(
             rng,
             id,
             masked_signing_key_share,
@@ -56,7 +56,10 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     }
 
     /// Process received message from Party2 of multiplication protocol
-    pub fn receive_message1<D: Default + DynDigest + Clone>(
+    pub fn receive_message1<
+        D: Default + DynDigest + Clone,
+        X: Default + Update + ExtendableOutput,
+    >(
         &mut self,
         sender_id: ParticipantId,
         message: Message1<F>,
@@ -64,7 +67,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     ) -> Result<Message2<F>, BBSPlusError> {
         let m = self
             .0
-            .receive_message1::<D>(sender_id, message, gadget_vector)?;
+            .receive_message1::<D, X>(sender_id, message, gadget_vector)?;
         Ok(m)
     }
 

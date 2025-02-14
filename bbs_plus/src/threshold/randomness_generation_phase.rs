@@ -3,7 +3,7 @@ use crate::{error::BBSPlusError, threshold::utils::compute_masked_arguments_to_m
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
-use digest::DynDigest;
+use digest::{Digest, DynDigest};
 use oblivious_transfer_protocols::{cointoss, zero_sharing};
 
 /// This is the first phase of the signing protocol where parties generate random values, jointly and
@@ -54,15 +54,16 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
     }
 
     /// Process received shares for joint randomness and zero
-    pub fn receive_shares(
+    pub fn receive_shares<D: Digest>(
         &mut self,
         sender_id: ParticipantId,
         shares: Vec<(F, [u8; SALT_SIZE])>,
         zero_shares: Vec<(F, [u8; SALT_SIZE])>,
     ) -> Result<(), BBSPlusError> {
-        self.commitment_protocol.receive_shares(sender_id, shares)?;
+        self.commitment_protocol
+            .receive_shares::<D>(sender_id, shares)?;
         self.zero_sharing_protocol
-            .receive_shares(sender_id, zero_shares)?;
+            .receive_shares::<D>(sender_id, zero_shares)?;
         Ok(())
     }
 

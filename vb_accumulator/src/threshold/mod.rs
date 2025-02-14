@@ -35,6 +35,7 @@ pub mod tests {
         dkls19_batch_mul_2p::GadgetVector,
     };
     use secret_sharing_and_dkg::shamir_ss::{deal_random_secret, deal_secret};
+    use sha3::Shake256;
     use short_group_sig::threshold_weak_bb_sig::{Phase2, SigShare};
     use test_utils::ot::do_pairwise_base_ot;
 
@@ -69,7 +70,7 @@ pub mod tests {
             let mut others = threshold_party_set.clone();
             others.remove(&i);
             let (round1, comm_zero) =
-                short_group_sig::threshold_weak_bb_sig::Phase1::<Fr, 256>::init(
+                short_group_sig::threshold_weak_bb_sig::Phase1::<Fr, 256>::init::<_, Blake2b512>(
                     rng,
                     i,
                     others,
@@ -104,7 +105,7 @@ pub mod tests {
                     let zero_share = phase1s[j as usize - 1]
                         .get_comm_shares_and_salts_for_zero_sharing_protocol_with_other(&i);
                     phase1s[i as usize - 1]
-                        .receive_shares(j, zero_share)
+                        .receive_shares::<Blake2b512>(j, zero_share)
                         .unwrap();
                 }
             }
@@ -146,7 +147,7 @@ pub mod tests {
         let start = Instant::now();
         for i in 1..=threshold_signers {
             let (phase, msgs) = if known_element {
-                Phase2::init_for_known_message(
+                Phase2::init_for_known_message::<_, Shake256>(
                     rng,
                     i,
                     secret_key_shares[i as usize - 1],
@@ -159,7 +160,7 @@ pub mod tests {
                 )
                 .unwrap()
             } else {
-                Phase2::init_for_shared_message(
+                Phase2::init_for_shared_message::<_, Shake256>(
                     rng,
                     i,
                     secret_key_shares[i as usize - 1],
@@ -187,7 +188,7 @@ pub mod tests {
         for (sender_id, msg_1s) in all_msg_1s {
             for (receiver_id, m) in msg_1s {
                 let m2 = phase2s[receiver_id as usize - 1]
-                    .receive_message1::<Blake2b512>(sender_id, m, &gadget_vector)
+                    .receive_message1::<Blake2b512, Shake256>(sender_id, m, &gadget_vector)
                     .unwrap();
                 all_msg_2s.push((receiver_id, sender_id, m2));
             }

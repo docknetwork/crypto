@@ -27,6 +27,7 @@ blake2.workspace = true
 ark-bls12-381.workspace = true
 secret_sharing_and_dkg = { path = "../secret_sharing_and_dkg" }
 test_utils = { path = "../test_utils" }
+sha3.workspace = true
 
 [features]
 default = [ "parallel" ]

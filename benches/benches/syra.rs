@@ -15,6 +15,7 @@ use oblivious_transfer_protocols::ot_based_multiplication::{
 };
 use schnorr_pok::compute_random_oracle_challenge;
 use secret_sharing_and_dkg::{common::ParticipantId, shamir_ss::deal_random_secret};
+use sha3::Shake256;
 use syra::{
     pseudonym::PseudonymGenProtocol,
     setup::{
@@ -55,7 +56,7 @@ fn do_phase1(
         let mut others = threshold_party_set.clone();
         others.remove(&i);
         let (round1, comm_zero) =
-            Phase1::<Fr, 256>::init(rng, i, others, protocol_id.clone()).unwrap();
+            Phase1::<Fr, 256>::init::<_, Blake2b512>(rng, i, others, protocol_id.clone()).unwrap();
         phase1s.push(round1);
         commitments_zero_share.push(comm_zero);
     }
@@ -84,7 +85,7 @@ fn do_phase1(
                 let zero_share = phase1s[j as usize - 1]
                     .get_comm_shares_and_salts_for_zero_sharing_protocol_with_other(&i);
                 phase1s[i as usize - 1]
-                    .receive_shares(j, zero_share)
+                    .receive_shares::<Blake2b512>(j, zero_share)
                     .unwrap();
             }
         }
@@ -122,7 +123,7 @@ fn do_phase2(
     // Signers initiate round-2 and each signer sends messages to others
     for i in 1..=threshold_signers {
         let (phase, msgs) = if known_id {
-            Phase2::init_for_user_id(
+            Phase2::init_for_user_id::<_, Shake256>(
                 rng,
                 i,
                 &secret_key_shares[i as usize - 1],
@@ -135,7 +136,7 @@ fn do_phase2(
             )
             .unwrap()
         } else {
-            Phase2::init_for_shared_user_id(
+            Phase2::init_for_shared_user_id::<_, Shake256>(
                 rng,
                 i,
                 &secret_key_shares[i as usize - 1],
@@ -161,7 +162,7 @@ fn do_phase2(
     for (sender_id, msg_1s) in all_msg_1s {
         for (receiver_id, m) in msg_1s {
             let m2 = phase2s[receiver_id as usize - 1]
-                .receive_message1::<Blake2b512>(sender_id, m, &gadget_vector)
+                .receive_message1::<Blake2b512, Shake256>(sender_id, m, &gadget_vector)
                 .unwrap();
             all_msg_2s.push((receiver_id, sender_id, m2));
         }

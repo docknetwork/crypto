@@ -42,30 +42,30 @@ use dock_crypto_utils::{aliases::FullDigest, msm::WindowTable};
 use rayon::prelude::*;
 
 /// Ciphertext and the proof of encryption. `CT` is the variant of Elgamal encryption used. See test for usage
+/// Some of the struct fields like, `ciphertexts`, `tree_openings` etc. could be created as arrays rather than vectors
+/// as their length depends on the generic constants but as the constants are large, it causes stack-overflow.
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct DkgithProof<
     G: AffineRepr,
     CT: BatchCiphertext<G>,
     const NUM_PARTIES: usize,
-    const DEPTH: usize,
-    const NUM_TOTAL_NODES: usize,
     const NUM_REPETITIONS: usize,
     const SEED_SIZE: usize = DEFAULT_SEED_SIZE,
     const SALT_SIZE: usize = DEFAULT_SALT_SIZE,
 > {
     pub challenge: Vec<u8>,
-    /// Ciphertext of the unopened shares of each witness in each iteration
-    pub ciphertexts: [CT; NUM_REPETITIONS],
+    /// Ciphertext of the unopened shares of each witness in each repetition
+    pub ciphertexts: Vec<CT>,
     /// Openings required to reconstruct tree in each iteration to reveal the shares except one
-    pub tree_openings: [TreeOpening<DEPTH, SEED_SIZE>; NUM_REPETITIONS],
-    /// Delta for each witness in each iteration
-    pub deltas: [Vec<G::ScalarField>; NUM_REPETITIONS],
+    pub tree_openings: Vec<TreeOpening<SEED_SIZE>>,
+    /// Delta for each witness in each repetition
+    pub deltas: Vec<Vec<G::ScalarField>>,
     pub salt: [u8; SALT_SIZE],
 }
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CompressedCiphertext<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>(
-    [CT; SUBSET_SIZE],
+    Vec<CT>,
     PhantomData<G>,
 );
 
@@ -73,14 +73,12 @@ impl<
         G: AffineRepr,
         CT: BatchCiphertext<G>,
         const NUM_PARTIES: usize,
-        const DEPTH: usize,
-        const NUM_TOTAL_NODES: usize,
         const NUM_REPETITIONS: usize,
         const SEED_SIZE: usize,
         const SALT_SIZE: usize,
-    >
-    DkgithProof<G, CT, NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, NUM_REPETITIONS, SEED_SIZE, SALT_SIZE>
+    > DkgithProof<G, CT, NUM_PARTIES, NUM_REPETITIONS, SEED_SIZE, SALT_SIZE>
 {
+    const CHECK_NUM_PARTIES: () = assert!(NUM_PARTIES.is_power_of_two());
     const CHECK_SALT_SIZE: () = assert!((2 * SEED_SIZE) == SALT_SIZE);
 
     pub fn new<R: RngCore, D: FullDigest + Digest, X: Default + Update + ExtendableOutput>(
@@ -90,10 +88,16 @@ impl<
         comm_key: &[G],
         enc_key: &G,
         enc_gen: &G,
-    ) -> Self {
+    ) -> Result<Self, VerifiableEncryptionError> {
+        let _ = Self::CHECK_NUM_PARTIES;
         let _ = Self::CHECK_SALT_SIZE;
         let witness_count = witnesses.len();
-        assert_eq!(comm_key.len(), witness_count);
+        if comm_key.len() != witness_count {
+            return Err(VerifiableEncryptionError::UnexpectedCommitmentKeySize(
+                comm_key.len(),
+                witness_count,
+            ));
+        }
         let mut hasher = D::default();
         let mut to_hash = Vec::with_capacity(commitment.compressed_size());
 
@@ -110,52 +114,25 @@ impl<
 
         // Populate the trees for each repetition
         let root_seeds =
-            [SeedTree::<NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, SEED_SIZE>::random_seed(rng);
-                NUM_REPETITIONS];
-        let mut seed_trees = [SeedTree::<NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, SEED_SIZE>::default();
-            NUM_REPETITIONS];
+            vec![SeedTree::<NUM_PARTIES, SEED_SIZE>::random_seed(rng); NUM_REPETITIONS];
+        let mut seed_trees = vec![SeedTree::<NUM_PARTIES, SEED_SIZE>::default(); NUM_REPETITIONS];
         cfg_iter_mut!(seed_trees)
             .zip(cfg_into_iter!(root_seeds))
             .enumerate()
             .for_each(|(rep_index, (tree, root_seed))| {
-                *tree = SeedTree::<NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, SEED_SIZE>::create_given_root_node::<X>(
+                *tree = SeedTree::<NUM_PARTIES, SEED_SIZE>::create_given_root_node::<X>(
                     root_seed, &salt, rep_index,
                 );
             });
 
         let zero_ff = G::ScalarField::zero();
-        // let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] =
-        //     [(); NUM_REPETITIONS].map(|_| {
-        //         (0..NUM_PARTIES)
-        //             .map(|_| CT::default())
-        //             .collect::<Vec<_>>()
-        //             .try_into()
-        //             .unwrap()
-        //     });
-        // let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] =
-        //     [(); NUM_REPETITIONS].map(|_| [(); NUM_PARTIES].map(|_| CT::default()));
-        // let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] =
-        //     [(); NUM_REPETITIONS].map(|_| [CT::default(); NUM_PARTIES]);
-        // let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] = from_fn(|_| from_fn(|_| CT::default()));
-        // let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] = [(); NUM_REPETITIONS].map(|_| <[CT; NUM_PARTIES]>::repeat(CT::default()).as_ref_array());
-        // let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] = [(); NUM_REPETITIONS].map(|_| arr![CT::default(); NUM_PARTIES]);
-        // let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] = [(); NUM_REPETITIONS].map(|_| array![CT::default(); NUM_PARTIES]);
-        // NOTE: This is bad way to initialize since vectors are created anyway but using the above approaches lead to
-        // runtime error of stack overflow when using BatchedHashedElgamalCiphertext
-        let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] = (0..NUM_REPETITIONS)
-            .map(|_| {
-                (0..NUM_PARTIES)
-                    .map(|_| CT::default())
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap()
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-        let mut deltas: [Vec<G::ScalarField>; NUM_REPETITIONS] =
-            [(); NUM_REPETITIONS].map(|_| vec![zero_ff; witness_count]);
-        let mut share_commitments = [[G::zero(); NUM_PARTIES]; NUM_REPETITIONS];
+        let mut cts: Vec<Vec<CT>> = (0..NUM_REPETITIONS)
+            .map(|_| (0..NUM_PARTIES).map(|_| CT::default()).collect::<Vec<_>>())
+            .collect();
+        let mut deltas: Vec<Vec<G::ScalarField>> = (0..NUM_REPETITIONS)
+            .map(|_| vec![zero_ff; witness_count])
+            .collect();
+        let mut share_commitments = vec![vec![G::zero(); NUM_PARTIES]; NUM_REPETITIONS];
 
         let enc_key_table = WindowTable::new(
             NUM_REPETITIONS * NUM_PARTIES * witness_count,
@@ -201,15 +178,12 @@ impl<
                         let shares_j = cfg_into_iter!(0..witness_count)
                             .map(|k| shares_rep[k][j])
                             .collect::<Vec<_>>();
-                        let enc_rands = CT::get_randomness_from_seed_tree::<
-                            NUM_PARTIES,
-                            DEPTH,
-                            NUM_TOTAL_NODES,
-                            SEED_SIZE,
-                            D,
-                        >(
-                            &seed_trees[rep_index], j as u16, witness_count
-                        );
+                        let enc_rands =
+                            CT::get_randomness_from_seed_tree::<NUM_PARTIES, SEED_SIZE, D>(
+                                &seed_trees[rep_index],
+                                j as u16,
+                                witness_count,
+                            );
                         *ct_j = CT::new::<D>(&shares_j, &enc_rands, &enc_key_table, &enc_gen_table);
                         // Each party commits to its share of the witnesses
                         G::Group::msm_unchecked(comm_key, &shares_j)
@@ -231,11 +205,16 @@ impl<
         let indices_to_hide =
             get_indices_to_hide::<D>(&challenge, NUM_REPETITIONS as u16, NUM_PARTIES as u16);
         // Ciphertexts for hidden shares
-        let mut ciphertexts: [CT; NUM_REPETITIONS] = [(); NUM_REPETITIONS].map(|_| CT::default());
+        let mut ciphertexts: Vec<CT> = (0..NUM_REPETITIONS).map(|_| CT::default()).collect();
         // Openings to let the verifier learn all shares except the one which prover wants to hide.
-        let mut tree_openings: [TreeOpening<DEPTH, SEED_SIZE>; NUM_REPETITIONS] =
-            [[SeedTree::<NUM_PARTIES, NUM_TOTAL_NODES, DEPTH, SEED_SIZE>::zero_seed(); DEPTH];
-                NUM_REPETITIONS];
+        let mut tree_openings: Vec<TreeOpening<SEED_SIZE>> =
+            vec![
+                vec![
+                    SeedTree::<NUM_PARTIES, SEED_SIZE>::zero_seed();
+                    SeedTree::<NUM_PARTIES, SEED_SIZE>::depth() as usize
+                ];
+                NUM_REPETITIONS
+            ];
 
         for i in 0..NUM_REPETITIONS {
             core::mem::swap(
@@ -247,13 +226,13 @@ impl<
             *t = seed_trees[i].open_seeds(indices_to_hide[i]);
         });
 
-        Self {
+        Ok(Self {
             challenge,
             ciphertexts,
             tree_openings,
             deltas,
             salt,
-        }
+        })
     }
 
     pub fn verify<D: FullDigest + Digest, X: Default + Update + ExtendableOutput>(
@@ -263,11 +242,42 @@ impl<
         enc_key: &G,
         enc_gen: &G,
     ) -> Result<(), VerifiableEncryptionError> {
+        let _ = Self::CHECK_NUM_PARTIES;
         let _ = Self::CHECK_SALT_SIZE;
         let witness_count = comm_key.len();
+        if self.ciphertexts.len() != NUM_REPETITIONS {
+            return Err(VerifiableEncryptionError::UnexpectedNumberOfCiphertexts(
+                self.ciphertexts.len(),
+                NUM_REPETITIONS,
+            ));
+        }
+        if self.tree_openings.len() != NUM_REPETITIONS {
+            return Err(VerifiableEncryptionError::UnexpectedNumberOfTreeOpenings(
+                self.tree_openings.len(),
+                NUM_REPETITIONS,
+            ));
+        }
+        if self.deltas.len() != NUM_REPETITIONS {
+            return Err(VerifiableEncryptionError::InequalNumberOfDeltas(
+                self.deltas.len(),
+                NUM_REPETITIONS,
+            ));
+        }
         for i in 0..NUM_REPETITIONS {
-            assert_eq!(self.ciphertexts[i].batch_size(), witness_count);
-            assert_eq!(self.deltas[i].len(), witness_count);
+            if self.ciphertexts[i].batch_size() != witness_count {
+                return Err(
+                    VerifiableEncryptionError::InequalNumberOfCiphertextsAndWitnesses(
+                        self.ciphertexts[i].batch_size(),
+                        witness_count,
+                    ),
+                );
+            }
+            if self.deltas[i].len() != witness_count {
+                return Err(VerifiableEncryptionError::InequalNumberOfDeltaForWitnesses(
+                    self.deltas[i].len(),
+                    witness_count,
+                ));
+            }
         }
         let hidden_indices =
             get_indices_to_hide::<D>(&self.challenge, NUM_REPETITIONS as u16, NUM_PARTIES as u16);
@@ -282,26 +292,10 @@ impl<
         hash_elem!(enc_gen, hasher, to_hash);
         DynDigest::update(&mut hasher, &self.salt);
 
-        // let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] =
-        //     [(); NUM_REPETITIONS].map(|_| {
-        //         (0..NUM_PARTIES)
-        //             .map(|_| CT::default())
-        //             .collect::<Vec<_>>()
-        //             .try_into()
-        //             .unwrap()
-        //     });
-        let mut cts: [[CT; NUM_PARTIES]; NUM_REPETITIONS] = (0..NUM_REPETITIONS)
-            .map(|_| {
-                (0..NUM_PARTIES)
-                    .map(|_| CT::default())
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap()
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-        let mut comms = [[G::zero(); NUM_PARTIES]; NUM_REPETITIONS];
+        let mut cts: Vec<Vec<CT>> = (0..NUM_REPETITIONS)
+            .map(|_| (0..NUM_PARTIES).map(|_| CT::default()).collect())
+            .collect();
+        let mut comms = vec![vec![G::zero(); NUM_PARTIES]; NUM_REPETITIONS];
 
         let zero_ff = G::ScalarField::zero();
 
@@ -314,46 +308,71 @@ impl<
             enc_gen.into_group(),
         );
 
+        // Reconstruct revealed shares
+        let seed_trees_ = (0..NUM_REPETITIONS).map(|rep_index| {
+            SeedTree::<NUM_PARTIES, SEED_SIZE>::reconstruct_tree::<X>(
+                hidden_indices[rep_index],
+                &self.tree_openings[rep_index],
+                &self.salt,
+                rep_index,
+            )
+        });
+        let mut seed_trees = Vec::with_capacity(NUM_REPETITIONS);
+        for st in seed_trees_ {
+            seed_trees.push(st?);
+        }
+
         cfg_iter_mut!(cts)
             .zip(cfg_iter_mut!(comms))
+            .zip(cfg_into_iter!(seed_trees))
             .enumerate()
-            .for_each(|(rep_index, (ct, cm))| {
+            .for_each(|(rep_index, ((ct, cm), seed_tree))| {
                 // For repetition index `rep_index`
 
-                // Reconstruct revealed shares
-                let seed_tree = SeedTree::<NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, SEED_SIZE>::reconstruct_tree::<X>(
-                    hidden_indices[rep_index],
-                    &self.tree_openings[rep_index],
-                    &self.salt,
-                    rep_index,
-                );
                 let hidden_party_index = hidden_indices[rep_index] as usize;
-                let shares_rep = cfg_into_iter!(0..witness_count).map(|i| {
-                    // For i'th witness, create its shares
-                    let mut shares_i = [zero_ff; NUM_PARTIES];
-                    cfg_iter_mut!(shares_i).enumerate().for_each(|(j, s_j)| {
-                        // For j'th party
-                        if hidden_party_index != j {
-                            *s_j = seed_tree.get_leaf_as_finite_field_element::<G::ScalarField, D>(j as u16,  &i.to_le_bytes());
-                        }
-                    });
-                    shares_i[0] += self.deltas[rep_index][i];
-                    shares_i
-                }).collect::<Vec<_>>();
+                let shares_rep = cfg_into_iter!(0..witness_count)
+                    .map(|i| {
+                        // For i'th witness, create its shares
+                        let mut shares_i = [zero_ff; NUM_PARTIES];
+                        cfg_iter_mut!(shares_i).enumerate().for_each(|(j, s_j)| {
+                            // For j'th party
+                            if hidden_party_index != j {
+                                *s_j = seed_tree
+                                    .get_leaf_as_finite_field_element::<G::ScalarField, D>(
+                                        j as u16,
+                                        &i.to_le_bytes(),
+                                    );
+                            }
+                        });
+                        shares_i[0] += self.deltas[rep_index][i];
+                        shares_i
+                    })
+                    .collect::<Vec<_>>();
 
                 // Reconstruct commitments to the shares
                 // Create ciphertexts for revealed share
                 let mut c = vec![G::Group::zero(); NUM_PARTIES];
-                cfg_iter_mut!(c).zip(cfg_iter_mut!(ct)).enumerate().for_each(|(j, (c_j, ct_j))| {
-                    if hidden_party_index != j {
-                        let shares_j = cfg_into_iter!(0..witness_count).map(|k| shares_rep[k][j]).collect::<Vec<_>>();
-                        let enc_rands = CT::get_randomness_from_seed_tree::<NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, SEED_SIZE, D>(&seed_tree, j as u16, witness_count);
-                        *ct_j = CT::new::<D>(&shares_j, &enc_rands, &enc_key_table, &enc_gen_table);
-                        *c_j = G::Group::msm_unchecked(comm_key, &shares_j);
-                    } else {
-                        *ct_j = self.ciphertexts[rep_index].clone();
-                    }
-                });
+                cfg_iter_mut!(c)
+                    .zip(cfg_iter_mut!(ct))
+                    .enumerate()
+                    .for_each(|(j, (c_j, ct_j))| {
+                        if hidden_party_index != j {
+                            let shares_j = cfg_into_iter!(0..witness_count)
+                                .map(|k| shares_rep[k][j])
+                                .collect::<Vec<_>>();
+                            let enc_rands =
+                                CT::get_randomness_from_seed_tree::<NUM_PARTIES, SEED_SIZE, D>(
+                                    &seed_tree,
+                                    j as u16,
+                                    witness_count,
+                                );
+                            *ct_j =
+                                CT::new::<D>(&shares_j, &enc_rands, &enc_key_table, &enc_gen_table);
+                            *c_j = G::Group::msm_unchecked(comm_key, &shares_j);
+                        } else {
+                            *ct_j = self.ciphertexts[rep_index].clone();
+                        }
+                    });
                 // Since the sum of all shares is the witness, sum of all commitments to the shares will be the final commitment and
                 // thus the commitment to the unrevealed share is the difference of final commitment and sum of revealed shares' commitments
                 c[hidden_party_index] = commitment.into_group() - cfg_iter!(c).sum::<G::Group>();
@@ -380,7 +399,8 @@ impl<
         X: Default + Update + ExtendableOutput,
     >(
         &self,
-    ) -> CompressedCiphertext<G, CT, SUBSET_SIZE> {
+    ) -> Result<CompressedCiphertext<G, CT, SUBSET_SIZE>, VerifiableEncryptionError> {
+        let _ = Self::CHECK_NUM_PARTIES;
         let _ = Self::CHECK_SALT_SIZE;
         const { assert!(SUBSET_SIZE <= NUM_REPETITIONS) };
 
@@ -400,45 +420,55 @@ impl<
         );
 
         let witness_count = self.ciphertexts[0].batch_size();
-        let mut compressed_cts: [CT; SUBSET_SIZE] = [(); SUBSET_SIZE].map(|_| CT::default());
+        let mut compressed_cts: Vec<CT> = (0..SUBSET_SIZE).map(|_| CT::default()).collect();
+
+        // Get the revealed shares
+        let seed_trees_ = (0..SUBSET_SIZE).map(|i| {
+            let rep_index = subset[i] as usize;
+            SeedTree::<NUM_PARTIES, SEED_SIZE>::reconstruct_tree::<X>(
+                hidden_indices[rep_index],
+                &self.tree_openings[rep_index],
+                &self.salt,
+                rep_index,
+            )
+        });
+        let mut seed_trees = Vec::with_capacity(SUBSET_SIZE);
+        for st in seed_trees_ {
+            seed_trees.push(st?);
+        }
 
         cfg_iter_mut!(compressed_cts)
             .enumerate()
             .for_each(|(i, ct)| {
                 let rep_index = subset[i] as usize;
-                // Get the revealed shares
-                let seed_tree =
-                    SeedTree::<NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, SEED_SIZE>::reconstruct_tree::<X>(
-                        hidden_indices[rep_index],
-                        &self.tree_openings[rep_index],
-                        &self.salt,
-                        rep_index,
-                    );
+                let seed_tree = &seed_trees[i];
                 // Add the revealed shares to the ciphertext of the unrevealed share to get a ciphertext of the witness.
-                let share_sum = cfg_into_iter!(0..witness_count).map(|j| {
-                    // Get sum of shares of the j'th witness
-                    let mut share_sum = cfg_into_iter!(0..NUM_PARTIES)
-                        .map(|k| {
-                            if hidden_indices[rep_index] != k as u16 {
-                                seed_tree.get_leaf_as_finite_field_element::<G::ScalarField, D>(
-                                    k as u16,
-                                    &j.to_le_bytes(),
-                                )
-                            } else {
-                                G::ScalarField::zero()
-                            }
-                        })
-                        .sum::<G::ScalarField>();
-                    // 0th share contains delta already
-                    if hidden_indices[rep_index] != 0 {
-                        share_sum += self.deltas[rep_index][j];
-                    }
-                    share_sum
-                }).collect::<Vec<_>>();
+                let share_sum = cfg_into_iter!(0..witness_count)
+                    .map(|j| {
+                        // Get sum of shares of the j'th witness
+                        let mut share_sum = cfg_into_iter!(0..NUM_PARTIES)
+                            .map(|k| {
+                                if hidden_indices[rep_index] != k as u16 {
+                                    seed_tree.get_leaf_as_finite_field_element::<G::ScalarField, D>(
+                                        k as u16,
+                                        &j.to_le_bytes(),
+                                    )
+                                } else {
+                                    G::ScalarField::zero()
+                                }
+                            })
+                            .sum::<G::ScalarField>();
+                        // 0th share contains delta already
+                        if hidden_indices[rep_index] != 0 {
+                            share_sum += self.deltas[rep_index][j];
+                        }
+                        share_sum
+                    })
+                    .collect::<Vec<_>>();
                 *ct = self.ciphertexts[rep_index].clone();
                 ct.add_to_ciphertexts(&share_sum);
             });
-        CompressedCiphertext(compressed_cts, PhantomData)
+        Ok(CompressedCiphertext(compressed_cts, PhantomData))
     }
 
     pub fn witness_count(&self) -> usize {
@@ -459,9 +489,22 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>
         comm_key: &[G],
     ) -> Result<Vec<G::ScalarField>, VerifiableEncryptionError> {
         let witness_count = comm_key.len();
+        if self.0.len() != SUBSET_SIZE {
+            return Err(VerifiableEncryptionError::UnexpectedNumberOfCiphertexts(
+                self.0.len(),
+                SUBSET_SIZE,
+            ));
+        }
         for i in 0..SUBSET_SIZE {
             let ct_i = &self.0[i];
-            assert_eq!(ct_i.batch_size(), witness_count);
+            if ct_i.batch_size() != witness_count {
+                return Err(
+                    VerifiableEncryptionError::InequalNumberOfCiphertextsAndWitnesses(
+                        ct_i.batch_size(),
+                        witness_count,
+                    ),
+                );
+            }
             let witnesses = ct_i.decrypt::<D>(dec_key);
             if *commitment == G::Group::msm_unchecked(comm_key, &witnesses).into_affine() {
                 return Ok(witnesses);
@@ -515,18 +558,17 @@ mod tests {
             // }
 
             macro_rules! run_test {
-                ($parties: expr, $reps: expr, $depth: expr, $nodes: expr, $subset_size: expr, $ct_type: ty, $ct_type_name: expr) => {{
+                ($parties: expr, $reps: expr, $subset_size: expr, $ct_type: ty, $ct_type_name: expr) => {{
                     println!(
                         "\nFor {} hashed Elgamal encryption, # witnesses = {}, # parties = {}, # repetitions = {}, subset size = {}",
                         $ct_type_name, count, $parties, $reps, $subset_size
                     );
+                    let depth = SeedTree::<$parties, SEED_SIZE>::depth() as usize;
                     let start = Instant::now();
                     let proof = DkgithProof::<
                         _,
                         $ct_type,
                         $parties,
-                        $depth,
-                        $nodes,
                         $reps,
                         SEED_SIZE,
                         SALT_SIZE,
@@ -537,12 +579,13 @@ mod tests {
                         &comm_key,
                         &pk.0,
                         &gen,
-                    );
+                    ).unwrap();
                     println!("Proof generated in: {:?}", start.elapsed());
 
                     for i in 0..$reps {
                         assert_eq!(proof.deltas[i].len(), count);
                         assert_eq!(proof.ciphertexts[i].batch_size(), count);
+                        assert_eq!(proof.tree_openings[i].len(), depth);
                     }
 
                     let start = Instant::now();
@@ -553,7 +596,7 @@ mod tests {
                     println!("Proof size: {:?}", proof.compressed_size());
 
                     let start = Instant::now();
-                    let ct = proof.compress::<$subset_size, Blake2b512, Shake256>();
+                    let ct = proof.compress::<$subset_size, Blake2b512, Shake256>().unwrap();
                     println!("Ciphertext compressed in: {:?}", start.elapsed());
                     println!("Ciphertext size: {:?}", ct.compressed_size());
 
@@ -573,13 +616,13 @@ mod tests {
             let name1 = "simple";
             let name2 = "batched";
 
-            run_test!(64, 48, 6, 127, 15, SimpleBatchElgamalCiphertext<G>, name1);
-            run_test!(16, 32, 4, 31, 30, SimpleBatchElgamalCiphertext<G>, name1);
-            run_test!(4, 64, 2, 7, 48, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(64, 48, 15, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(16, 32, 30, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(4, 64, 48, SimpleBatchElgamalCiphertext<G>, name1);
 
-            run_test!(64, 48, 6, 127, 15, BatchedHashedElgamalCiphertext<G>, name2);
-            run_test!(16, 32, 4, 31, 30, BatchedHashedElgamalCiphertext<G>, name2);
-            run_test!(4, 64, 2, 7, 48, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(64, 48, 15, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(16, 32, 30, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(4, 64, 48, BatchedHashedElgamalCiphertext<G>, name2);
         }
 
         check::<G1Affine>(1);

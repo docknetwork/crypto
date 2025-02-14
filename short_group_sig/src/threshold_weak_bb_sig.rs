@@ -39,7 +39,7 @@ use ark_std::{
     vec::Vec,
 };
 use core::fmt::Debug;
-use digest::DynDigest;
+use digest::{Digest, DynDigest, ExtendableOutput, Update};
 pub use oblivious_transfer_protocols::{
     cointoss::Commitments,
     error::OTError,
@@ -103,7 +103,7 @@ pub struct SigShare<G: AffineRepr> {
 }
 
 impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
-    pub fn init<R: RngCore>(
+    pub fn init<R: RngCore, D: Digest>(
         rng: &mut R,
         id: ParticipantId,
         others: BTreeSet<ParticipantId>,
@@ -115,7 +115,7 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         }
         let r = F::rand(rng);
         let (zero_sharing_protocol, comm_zero_share) =
-            zero_sharing::Party::init(rng, id, 2, others, protocol_id);
+            zero_sharing::Party::init::<R, D>(rng, id, 2, others, protocol_id);
         Ok((
             Self {
                 id,
@@ -175,13 +175,13 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         Ok(())
     }
 
-    pub fn receive_shares(
+    pub fn receive_shares<D: Digest>(
         &mut self,
         sender_id: ParticipantId,
         zero_shares: Vec<(F, [u8; SALT_SIZE])>,
     ) -> Result<(), ShortGroupSigError> {
         self.zero_sharing_protocol
-            .receive_shares(sender_id, zero_shares)?;
+            .receive_shares::<D>(sender_id, zero_shares)?;
         Ok(())
     }
 
@@ -196,7 +196,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 {
     /// The returned map contains the messages that need to be sent to the parties with corresponding
     /// key in the map
-    pub fn init_for_known_message<R: RngCore>(
+    pub fn init_for_known_message<R: RngCore, X: Default + Update + ExtendableOutput>(
         rng: &mut R,
         id: ParticipantId,
         signing_key: F,
@@ -208,7 +208,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         label: &'static [u8],
     ) -> Result<(Self, BTreeMap<ParticipantId, Message1<F>>), ShortGroupSigError> {
         let lambda = Self::lagrange_coeff(&phase_1_output)?;
-        Self::init(
+        Self::init::<R, X>(
             rng,
             id,
             signing_key * lambda,
@@ -224,7 +224,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     /// Assumes that the message share provided was created using Shamir secret sharing.
     /// The returned map contains the messages that need to be sent to the parties with corresponding
     /// key in the map
-    pub fn init_for_shared_message<R: RngCore>(
+    pub fn init_for_shared_message<R: RngCore, X: Default + Update + ExtendableOutput>(
         rng: &mut R,
         id: ParticipantId,
         signing_key: F,
@@ -236,7 +236,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         label: &'static [u8],
     ) -> Result<(Self, BTreeMap<ParticipantId, Message1<F>>), ShortGroupSigError> {
         let lambda = Self::lagrange_coeff(&phase_1_output)?;
-        Self::init(
+        Self::init::<R, X>(
             rng,
             id,
             (signing_key + message_share) * lambda,
@@ -250,14 +250,17 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     }
 
     /// Process received `Message1` from signer with id `sender_id`
-    pub fn receive_message1<D: Default + DynDigest + Clone>(
+    pub fn receive_message1<
+        D: Default + DynDigest + Clone,
+        X: Default + Update + ExtendableOutput,
+    >(
         &mut self,
         sender_id: ParticipantId,
         message: Message1<F>,
         gadget_vector: &GadgetVector<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     ) -> Result<Message2<F>, ShortGroupSigError> {
         self.inner
-            .receive_message1::<D>(sender_id, message, gadget_vector)
+            .receive_message1::<D, X>(sender_id, message, gadget_vector)
             .map_err(|e| e.into())
     }
 
@@ -290,7 +293,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         }
     }
 
-    fn init<R: RngCore>(
+    fn init<R: RngCore, X: Default + Update + ExtendableOutput>(
         rng: &mut R,
         id: ParticipantId,
         signing_key_term: F,
@@ -303,7 +306,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     ) -> Result<(Self, BTreeMap<ParticipantId, Message1<F>>), ShortGroupSigError> {
         let masked_r_share = phase_1_output.blinding_r + phase_1_output.r;
         let masked_sk_term_share = phase_1_output.blinding_sk_term + signing_key_term;
-        let (inner, msgs) = MultPart::<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>::init(
+        let (inner, msgs) = MultPart::<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>::init::<R, X>(
             rng,
             id,
             vec![masked_sk_term_share],
@@ -367,6 +370,7 @@ pub mod tests {
         dkls19_batch_mul_2p::GadgetVector,
     };
     use secret_sharing_and_dkg::shamir_ss::{deal_random_secret, deal_secret};
+    use sha3::Shake256;
     use std::time::Instant;
     use test_utils::ot::do_pairwise_base_ot;
 
@@ -402,7 +406,8 @@ pub mod tests {
             let mut others = threshold_party_set.clone();
             others.remove(&i);
             let (round1, comm_zero) =
-                Phase1::<Fr, 256>::init(rng, i, others, protocol_id.clone()).unwrap();
+                Phase1::<Fr, 256>::init::<_, Blake2b512>(rng, i, others, protocol_id.clone())
+                    .unwrap();
             phase1s.push(round1);
             commitments_zero_share.push(comm_zero);
         }
@@ -431,7 +436,7 @@ pub mod tests {
                     let zero_share = phase1s[j as usize - 1]
                         .get_comm_shares_and_salts_for_zero_sharing_protocol_with_other(&i);
                     phase1s[i as usize - 1]
-                        .receive_shares(j, zero_share)
+                        .receive_shares::<Blake2b512>(j, zero_share)
                         .unwrap();
                 }
             }
@@ -475,7 +480,7 @@ pub mod tests {
         let start = Instant::now();
         for i in 1..=threshold_signers {
             let (phase, msgs) = if known_message {
-                Phase2::init_for_known_message(
+                Phase2::init_for_known_message::<_, Shake256>(
                     rng,
                     i,
                     secret_key_shares[i as usize - 1],
@@ -488,7 +493,7 @@ pub mod tests {
                 )
                 .unwrap()
             } else {
-                Phase2::init_for_shared_message(
+                Phase2::init_for_shared_message::<_, Shake256>(
                     rng,
                     i,
                     secret_key_shares[i as usize - 1],
@@ -516,7 +521,7 @@ pub mod tests {
         for (sender_id, msg_1s) in all_msg_1s {
             for (receiver_id, m) in msg_1s {
                 let m2 = phase2s[receiver_id as usize - 1]
-                    .receive_message1::<Blake2b512>(sender_id, m, &gadget_vector)
+                    .receive_message1::<Blake2b512, Shake256>(sender_id, m, &gadget_vector)
                     .unwrap();
                 all_msg_2s.push((receiver_id, sender_id, m2));
             }

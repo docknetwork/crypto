@@ -38,6 +38,7 @@ rmp-serde = "1.0"
 test_utils = { path = "../test_utils" }
 ark-secp256r1.workspace = true
 sha2 = {version = "0.10.8", default-features = false}
+sha3.workspace = true
 
 [features]
 default = [ "parallel" ]

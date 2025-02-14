@@ -17,6 +17,7 @@ ark-serialize.workspace = true
 blake2.workspace = true
 kvac = { default-features = false, path = "../kvac"}
 oblivious_transfer_protocols = { default-features = false, path = "../oblivious_transfer"}
+sha3.workspace = true
 
 [features]
 default = ["parallel"]

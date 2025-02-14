@@ -1,3 +1,5 @@
+use super::merge_indexed_messages_with_blindings;
+use crate::{error::ProofSystemError, statement_proof::StatementProof};
 use ark_ec::pairing::Pairing;
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
@@ -21,10 +23,6 @@ use dock_crypto_utils::{
     try_iter::CheckLeft,
 };
 use itertools::Itertools;
-
-use crate::{error::ProofSystemError, statement_proof::StatementProof};
-
-use super::merge_indexed_messages_with_blindings;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PoKBBSSigG1SubProtocol<'a, E: Pairing> {

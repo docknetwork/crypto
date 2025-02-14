@@ -70,4 +70,4 @@ jobs:
           toolchain: stable
           override: true
       - name: Run tests
-        run: RUST_MIN_STACK=8388608 cargo test --release --all --no-fail-fast
+        run: cargo test --release --all --no-fail-fast

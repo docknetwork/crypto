@@ -2,6 +2,14 @@
 //! Implements protocol in Fig. 7.
 //! The `transfer` and `receive` are taken from the protocol 9 of the paper [Secure Two-party Threshold ECDSA from ECDSA Assumptions](https://eprint.iacr.org/2018/499)
 
+use crate::{
+    base_ot::simplest_ot::{OneOfTwoROTSenderKeys, ROTReceiverKeys},
+    configs::OTEConfig,
+    error::OTError,
+    ot_extensions::alsz_ote,
+    util::{and, is_multiple_of_8, xor, xor_in_place},
+    Bit, BitMatrix, Message,
+};
 use ark_ff::{
     field_hashers::{DefaultFieldHasher, HashToField},
     PrimeField,
@@ -13,16 +21,6 @@ use dock_crypto_utils::{join, serde_utils::ArkObjectBytes};
 use itertools::MultiUnzip;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use sha3::Shake256;
-
-use crate::{
-    base_ot::simplest_ot::{OneOfTwoROTSenderKeys, ROTReceiverKeys},
-    ot_extensions::alsz_ote,
-    util::{and, is_multiple_of_8, xor, xor_in_place},
-    Bit, BitMatrix, Message,
-};
-
-use crate::{configs::OTEConfig, error::OTError};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -83,7 +81,11 @@ pub struct ReceiverOutput<F: PrimeField>(
 );
 
 impl OTExtensionReceiverSetup {
-    pub fn new<R: RngCore, const STATISTICAL_SECURITY_PARAMETER: u16>(
+    pub fn new<
+        R: RngCore,
+        D: Default + Update + ExtendableOutput,
+        const STATISTICAL_SECURITY_PARAMETER: u16,
+    >(
         rng: &mut R,
         ote_config: OTEConfig,
         mut choices: Vec<Bit>,
@@ -106,7 +108,7 @@ impl OTExtensionReceiverSetup {
             alsz_ote::OTExtensionReceiverSetup::new(new_ote_config, choices, base_ot_keys)?;
         let row_byte_size = ote_config.row_byte_size();
         debug_assert_eq!(U.0.len(), l_prime as usize * row_byte_size);
-        let chi = gen_randomness(
+        let chi = gen_randomness::<D>(
             setup.ote_config.num_base_ot as u32,
             setup.ote_config.num_ot_extensions,
             &U,
@@ -151,12 +153,12 @@ impl OTExtensionReceiverSetup {
         ))
     }
 
-    pub fn decrypt(
+    pub fn decrypt<D: Default + Update + ExtendableOutput>(
         &self,
         encryptions: Vec<(Message, Message)>,
         message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
-        alsz_ote::OTExtensionReceiverSetup::decrypt_(
+        alsz_ote::OTExtensionReceiverSetup::decrypt_::<D>(
             self.ote_config,
             &self.T,
             &self.ot_extension_choices,
@@ -165,12 +167,12 @@ impl OTExtensionReceiverSetup {
         )
     }
 
-    pub fn decrypt_correlated(
+    pub fn decrypt_correlated<D: Default + Update + ExtendableOutput>(
         &self,
         encryptions: Vec<Message>,
         message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
-        alsz_ote::OTExtensionReceiverSetup::decrypt_correlated_(
+        alsz_ote::OTExtensionReceiverSetup::decrypt_correlated_::<D>(
             self.ote_config,
             &self.T,
             &self.ot_extension_choices,
@@ -214,7 +216,10 @@ impl OTExtensionReceiverSetup {
 }
 
 impl OTExtensionSenderSetup {
-    pub fn new<const STATISTICAL_SECURITY_PARAMETER: u16>(
+    pub fn new<
+        D: Default + Update + ExtendableOutput,
+        const STATISTICAL_SECURITY_PARAMETER: u16,
+    >(
         ote_config: OTEConfig,
         U: BitMatrix,
         rlc: RLC,
@@ -244,7 +249,7 @@ impl OTExtensionSenderSetup {
             + STATISTICAL_SECURITY_PARAMETER as u32;
         let new_ote_config = OTEConfig::new(ote_config.num_base_ot, l_prime)?;
 
-        let chi = gen_randomness(
+        let chi = gen_randomness::<D>(
             ote_config.num_base_ot as u32,
             l_prime,
             &U,
@@ -279,12 +284,12 @@ impl OTExtensionSenderSetup {
         })
     }
 
-    pub fn encrypt(
+    pub fn encrypt<D: Default + Update + ExtendableOutput>(
         &self,
         messages: Vec<(Message, Message)>,
         message_size: u32,
     ) -> Result<Vec<(Message, Message)>, OTError> {
-        alsz_ote::OTExtensionSenderSetup::encrypt_(
+        alsz_ote::OTExtensionSenderSetup::encrypt_::<D>(
             self.ote_config,
             &self.Q,
             &self.base_ot_choices,
@@ -293,12 +298,15 @@ impl OTExtensionSenderSetup {
         )
     }
 
-    pub fn encrypt_correlated<F: Sync + Sized + Fn(&Message) -> Message>(
+    pub fn encrypt_correlated<
+        F: Sync + Sized + Fn(&Message) -> Message,
+        D: Default + Update + ExtendableOutput,
+    >(
         &self,
         deltas: Vec<F>,
         message_size: u32,
     ) -> Result<(Vec<(Message, Message)>, Vec<Message>), OTError> {
-        alsz_ote::OTExtensionSenderSetup::encrypt_correlated_(
+        alsz_ote::OTExtensionSenderSetup::encrypt_correlated_::<F, D>(
             self.ote_config,
             &self.Q,
             &self.base_ot_choices,
@@ -355,12 +363,17 @@ impl<F: PrimeField> CorrelationTag<F> {
     }
 }
 
-fn gen_randomness(a: u32, b: u32, U: &BitMatrix, output_size: u32) -> Vec<u8> {
+fn gen_randomness<D: Default + Update + ExtendableOutput>(
+    a: u32,
+    b: u32,
+    U: &BitMatrix,
+    output_size: u32,
+) -> Vec<u8> {
     let mut bytes = a.to_be_bytes().to_vec();
     bytes.extend(&b.to_be_bytes());
     bytes.extend_from_slice(&U.0);
     let mut randomness = vec![0; output_size as usize];
-    let mut hasher = Shake256::default();
+    let mut hasher = D::default();
     hasher.update(&bytes);
     hasher.finalize_xof_into(&mut randomness);
     randomness
@@ -391,6 +404,7 @@ pub mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
+    use sha3::Shake256;
     use test_utils::{test_serialization, G1};
 
     #[test]
@@ -417,7 +431,7 @@ pub mod tests {
 
             let start = Instant::now();
             // Perform OT extension
-            let (ext_receiver_setup, U, rlc) = OTExtensionReceiverSetup::new::<_, SSP>(
+            let (ext_receiver_setup, U, rlc) = OTExtensionReceiverSetup::new::<_, Shake256, SSP>(
                 rng,
                 ote_config,
                 ot_ext_choices.clone(),
@@ -436,7 +450,7 @@ pub mod tests {
                 .into_iter()
                 .map(|b| b % 2 != 0)
                 .collect::<Vec<_>>();
-            let ext_sender_setup = OTExtensionSenderSetup::new::<SSP>(
+            let ext_sender_setup = OTExtensionSenderSetup::new::<Shake256, SSP>(
                 ote_config,
                 U.clone(),
                 rlc.clone(),
@@ -465,13 +479,13 @@ pub mod tests {
 
             let start = Instant::now();
             let encryptions = ext_sender_setup
-                .encrypt(messages.clone(), message_size as u32)
+                .encrypt::<Shake256>(messages.clone(), message_size as u32)
                 .unwrap();
             let encryption_time = start.elapsed();
 
             let start = Instant::now();
             let decryptions = ext_receiver_setup
-                .decrypt(encryptions, message_size as u32)
+                .decrypt::<Shake256>(encryptions, message_size as u32)
                 .unwrap();
             let decryption_time = start.elapsed();
 
@@ -497,13 +511,13 @@ pub mod tests {
                 })
                 .collect::<Vec<_>>();
             let (messages, encryptions) = ext_sender_setup
-                .encrypt_correlated(deltas.clone(), message_size as u32)
+                .encrypt_correlated::<_, Shake256>(deltas.clone(), message_size as u32)
                 .unwrap();
             let cot_encryption_time = start.elapsed();
 
             let start = Instant::now();
             let decryptions = ext_receiver_setup
-                .decrypt_correlated(encryptions, message_size as u32)
+                .decrypt_correlated::<Shake256>(encryptions, message_size as u32)
                 .unwrap();
             let cot_decryption_time = start.elapsed();
 
@@ -584,7 +598,7 @@ pub mod tests {
             }
         }
 
-        let mut checked = false;
+        let mut checked_serialization = false;
         for (base_ot_count, extended_ot_count) in [
             (256, 1024),
             (256, 2048),
@@ -603,9 +617,9 @@ pub mod tests {
                 choices,
                 1024,
                 &B,
-                !checked,
+                !checked_serialization,
             );
-            checked = true;
+            checked_serialization = true;
         }
     }
 }

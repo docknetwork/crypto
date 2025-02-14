@@ -9,7 +9,6 @@ use ark_std::{cfg_into_iter, cfg_iter, log2, rand::RngCore, vec, vec::Vec, Unifo
 use digest::{ExtendableOutput, Update};
 use dock_crypto_utils::msm::WindowTable;
 use itertools::Itertools;
-use sha3::Shake256;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -66,7 +65,7 @@ impl<G: AffineRepr> OTSenderSetup<G> {
         )
     }
 
-    pub fn encrypt<R: RngCore>(
+    pub fn encrypt<R: RngCore, D: Default + Update + ExtendableOutput>(
         &self,
         rng: &mut R,
         pk_not: ReceiverPubKey<G>,
@@ -110,10 +109,11 @@ impl<G: AffineRepr> OTSenderSetup<G> {
                     .map(|j| C_r[j] - pk_not_i)
                     .collect::<Vec<_>>();
                 pk_i.insert(0, pk_not_i);
+                let pk_i = G::Group::normalize_batch(&pk_i);
                 let enc: Vec<_> = cfg_iter!(messages[i])
                     .enumerate()
                     .map(|(j, m)| {
-                        let pad = hash_to_otp(
+                        let pad = hash_to_otp::<G, D>(
                             j as u16,
                             &pk_i[j],
                             &R,
@@ -186,7 +186,7 @@ impl<G: AffineRepr> OTReceiver<G> {
         ))
     }
 
-    pub fn decrypt(
+    pub fn decrypt<D: Default + Update + ExtendableOutput>(
         &self,
         sender_encryptions: SenderEncryptions,
         message_size: u32,
@@ -207,7 +207,7 @@ impl<G: AffineRepr> OTReceiver<G> {
         Ok(cfg_into_iter!(sender_encryptions.0)
             .enumerate()
             .map(|(i, (m, r))| {
-                let pad = hash_to_otp(self.choices[i], &self.dk[i], &r, message_size);
+                let pad = hash_to_otp::<G, D>(self.choices[i], &self.dk[i], &r, message_size);
                 let m = &m[self.choices[i] as usize];
                 xor(&pad, m)
             })
@@ -216,12 +216,17 @@ impl<G: AffineRepr> OTReceiver<G> {
 }
 
 /// Create a one time pad of required size
-fn hash_to_otp<G: CanonicalSerialize>(index: u16, pk: &G, R: &[u8], pad_size: u32) -> Vec<u8> {
+fn hash_to_otp<G: CanonicalSerialize, D: Default + Update + ExtendableOutput>(
+    index: u16,
+    pk: &G,
+    R: &[u8],
+    pad_size: u32,
+) -> Vec<u8> {
     let mut bytes = index.to_be_bytes().to_vec();
     pk.serialize_compressed(&mut bytes).unwrap();
     bytes.extend_from_slice(R);
     let mut pad = vec![0; pad_size as usize];
-    let mut hasher = Shake256::default();
+    let mut hasher = D::default();
     hasher.update(&bytes);
     hasher.finalize_xof_into(&mut pad);
     pad
@@ -236,6 +241,7 @@ pub mod tests {
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
+    use sha3::Shake256;
     use std::time::Instant;
 
     #[test]
@@ -287,7 +293,9 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let start = Instant::now();
-            let encryptions = sender_setup.encrypt(rng, pk_not, messages.clone()).unwrap();
+            let encryptions = sender_setup
+                .encrypt::<_, Shake256>(rng, pk_not, messages.clone())
+                .unwrap();
             println!(
                 "Sender encrypts messages for {} 1-of-{} OTs in {:?}",
                 m,
@@ -296,7 +304,9 @@ pub mod tests {
             );
 
             let start = Instant::now();
-            let decryptions = receiver.decrypt(encryptions, message_size as u32).unwrap();
+            let decryptions = receiver
+                .decrypt::<Shake256>(encryptions, message_size as u32)
+                .unwrap();
             println!(
                 "Receiver decrypts messages for {} 1-of-{} OTs in {:?}",
                 m,

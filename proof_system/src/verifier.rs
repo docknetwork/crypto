@@ -1864,7 +1864,7 @@ impl<E: Pairing> Proof<E> {
         if let StatementProof::VeTZ21(s) = st {
             let ve_proof = &s.ve_proof;
             // TODO: Make Shake256 a generic and ensure it matches the one used on proof generation
-            let ct = ve_proof.compress::<{ dkgith_decls::SUBSET_SIZE }, D, Shake256>();
+            let ct = ve_proof.compress::<{ dkgith_decls::SUBSET_SIZE }, D, Shake256>()?;
             Ok((ct, s.commitment))
         } else {
             Err(ProofSystemError::NotAVeTZ21StatementProof)
@@ -1879,7 +1879,7 @@ impl<E: Pairing> Proof<E> {
         let st = self.statement_proof(index)?;
         if let StatementProof::VeTZ21Robust(s) = st {
             let ve_proof = &s.ve_proof;
-            let ct = ve_proof.compress::<{ rdkgith_decls::SUBSET_SIZE }, D>();
+            let ct = ve_proof.compress::<{ rdkgith_decls::SUBSET_SIZE }, D>()?;
             Ok((ct, s.commitment))
         } else {
             Err(ProofSystemError::NotAVeTZ21StatementProof)

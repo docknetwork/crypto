@@ -49,43 +49,40 @@ use secret_sharing_and_dkg::{
 use rayon::prelude::*;
 
 /// Ciphertext and the proof of encryption. `CT` is the variant of Elgamal encryption used. See test for usage
+/// Some of the struct fields like, `ciphertexts`, `poly_commitments` etc. could be created as arrays rather than vectors
+/// as their length depends on the generic constants but as the constants are large, it causes stack-overflow.
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RdkgithProof<
     G: AffineRepr,
     CT: BatchCiphertext<G>,
     const NUM_PARTIES: usize,
     const THRESHOLD: usize,
-    const NUM_PARTIES_MINUS_THRESHOLD: usize,
 > {
     pub challenge: Vec<u8>,
     /// Commitment to the coefficients of polynomials
-    pub poly_commitments: [G; THRESHOLD],
+    pub poly_commitments: Vec<G>,
     /// Ciphertexts of the shares. The first element of the tuple is the party index
     // Following could be made a map indexed with u16 to speed up computation (lookups) by trading off memory
-    pub ciphertexts: [(u16, CT); NUM_PARTIES_MINUS_THRESHOLD],
+    pub ciphertexts: Vec<(u16, CT)>,
     /// Revealed shares and randomness used for encryption. The first element of the tuple is the party index, second is the
     /// shares of each witness for that party
-    pub shares_and_enc_rands: [(u16, Vec<G::ScalarField>, CT::Randomness); THRESHOLD],
+    pub shares_and_enc_rands: Vec<(u16, Vec<G::ScalarField>, CT::Randomness)>,
 }
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CompressedCiphertext<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>(
-    [CT; SUBSET_SIZE],
+    /// Ciphertexts
+    Vec<CT>,
     /// This is helper data for making the decryptor more efficient. The decryptor could compute this
     /// on its own from the proof.
-    [G::ScalarField; SUBSET_SIZE],
+    Vec<G::ScalarField>,
 );
 
-impl<
-        G: AffineRepr,
-        CT: BatchCiphertext<G>,
-        const NUM_PARTIES: usize,
-        const THRESHOLD: usize,
-        const NUM_PARTIES_MINUS_THRESHOLD: usize,
-    > RdkgithProof<G, CT, NUM_PARTIES, THRESHOLD, NUM_PARTIES_MINUS_THRESHOLD>
+impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRESHOLD: usize>
+    RdkgithProof<G, CT, NUM_PARTIES, THRESHOLD>
 {
     // assert_eq! does not compile in stable Rust
-    const CHECK_THRESHOLD: () = assert!(THRESHOLD + NUM_PARTIES_MINUS_THRESHOLD == NUM_PARTIES);
+    const CHECK_THRESHOLD: () = assert!(THRESHOLD <= NUM_PARTIES);
 
     pub fn new<R: RngCore, D: Digest + FullDigest>(
         rng: &mut R,
@@ -94,10 +91,15 @@ impl<
         comm_key: &[G],
         enc_key: &G,
         enc_gen: &G,
-    ) -> Self {
+    ) -> Result<Self, VerifiableEncryptionError> {
         let () = Self::CHECK_THRESHOLD;
         let witness_count = witnesses.len();
-        assert_eq!(comm_key.len(), witness_count);
+        if comm_key.len() != witness_count {
+            return Err(VerifiableEncryptionError::UnexpectedCommitmentKeySize(
+                comm_key.len(),
+                witness_count,
+            ));
+        }
         let mut hasher = D::default();
         let mut to_hash = Vec::with_capacity(commitment.compressed_size());
 
@@ -111,14 +113,16 @@ impl<
         let enc_key_table = WindowTable::new(NUM_PARTIES * witness_count, enc_key.into_group());
         let enc_gen_table = WindowTable::new(NUM_PARTIES * witness_count, enc_gen.into_group());
 
-        let mut commitments = [G::zero(); THRESHOLD];
+        let mut commitments = vec![G::zero(); THRESHOLD];
         let mut polys = Vec::with_capacity(witness_count);
-        let mut shares: [Vec<G::ScalarField>; NUM_PARTIES] =
-            [(); NUM_PARTIES].map(|_| vec![G::ScalarField::zero(); witness_count]);
+        let mut shares: Vec<Vec<G::ScalarField>> = (0..NUM_PARTIES)
+            .map(|_| vec![G::ScalarField::zero(); witness_count])
+            .collect();
         // Create randomness for encryption of each share
-        let mut enc_rands: [CT::Randomness; NUM_PARTIES] =
-            [(); NUM_PARTIES].map(|_| CT::get_randomness_from_rng(rng, witness_count));
-        let mut cts: [CT; NUM_PARTIES] = [(); NUM_PARTIES].map(|_| CT::default());
+        let mut enc_rands: Vec<CT::Randomness> = (0..NUM_PARTIES)
+            .map(|_| CT::get_randomness_from_rng(rng, witness_count))
+            .collect();
+        let mut cts: Vec<CT> = (0..NUM_PARTIES).map(|_| CT::default()).collect();
 
         // Secret share each witness such that `THRESHOLD` + 1 shares are needed to reconstruct
         for (i, w) in witnesses.into_iter().enumerate() {
@@ -156,23 +160,22 @@ impl<
         }
 
         let challenge = Box::new(hasher).finalize().to_vec();
-        // Indices of the `NUM_PARTIES_MINUS_THRESHOLD` parties for which ciphertexts of the shares will be given to the verifier.
-        let indices_to_hide = get_unique_indices_to_hide::<D>(
-            &challenge,
-            NUM_PARTIES_MINUS_THRESHOLD as u16,
-            NUM_PARTIES as u16,
-        );
+        let num_hidden = (NUM_PARTIES - THRESHOLD) as u16;
+        // Indices of the `num_hidden` parties for which ciphertexts of the shares will be given to the verifier.
+        let indices_to_hide =
+            get_unique_indices_to_hide::<D>(&challenge, num_hidden, NUM_PARTIES as u16);
 
-        let mut ciphertexts: [(u16, CT); NUM_PARTIES_MINUS_THRESHOLD] =
-            [(); NUM_PARTIES_MINUS_THRESHOLD].map(|_| (0, CT::default()));
-        let mut shares_and_enc_rands: [(u16, Vec<G::ScalarField>, CT::Randomness); THRESHOLD] =
-            [(); THRESHOLD].map(|_| {
+        let mut ciphertexts: Vec<(u16, CT)> = (0..num_hidden).map(|_| (0, CT::default())).collect();
+        let mut shares_and_enc_rands: Vec<(u16, Vec<G::ScalarField>, CT::Randomness)> = (0
+            ..THRESHOLD)
+            .map(|_| {
                 (
                     0,
                     Vec::with_capacity(witness_count),
                     CT::Randomness::default(),
                 )
-            });
+            })
+            .collect();
 
         // Prepare `THRESHOLD` number of shares and encryption randomness and `NUM_PARTIES_MINUS_THRESHOLD` number of ciphertexts to share with the verifier
         let mut ctx_idx = 0;
@@ -192,15 +195,15 @@ impl<
             }
         }
 
-        debug_assert_eq!(ctx_idx, NUM_PARTIES_MINUS_THRESHOLD);
+        debug_assert_eq!(ctx_idx, num_hidden as usize);
         debug_assert_eq!(s_idx, THRESHOLD);
 
-        Self {
+        Ok(Self {
             challenge,
             poly_commitments: commitments,
             ciphertexts,
             shares_and_enc_rands,
-        }
+        })
     }
 
     pub fn verify<D: FullDigest + Digest>(
@@ -212,26 +215,56 @@ impl<
     ) -> Result<(), VerifiableEncryptionError> {
         let () = Self::CHECK_THRESHOLD;
         let witness_count = comm_key.len();
-        for i in 0..NUM_PARTIES_MINUS_THRESHOLD {
-            assert_eq!(self.ciphertexts[i].1.batch_size(), witness_count);
-        }
-        for i in 0..THRESHOLD {
-            assert_eq!(self.shares_and_enc_rands[i].1.len(), witness_count);
-            assert!(CT::is_randomness_size_correct(
-                &self.shares_and_enc_rands[i].2,
-                witness_count
+        let num_hidden = NUM_PARTIES - THRESHOLD;
+        if self.poly_commitments.len() != THRESHOLD {
+            return Err(VerifiableEncryptionError::UnexpectedNumberOfCommitments(
+                self.poly_commitments.len(),
+                THRESHOLD,
             ));
         }
-        let hidden_indices = get_unique_indices_to_hide::<D>(
-            &self.challenge,
-            NUM_PARTIES_MINUS_THRESHOLD as u16,
-            NUM_PARTIES as u16,
-        );
-        for (i, _) in self.ciphertexts.iter() {
-            assert!(hidden_indices.contains(i));
+        if self.ciphertexts.len() != num_hidden {
+            return Err(VerifiableEncryptionError::UnexpectedNumberOfCiphertexts(
+                self.ciphertexts.len(),
+                num_hidden,
+            ));
         }
-        for (i, _, _) in self.shares_and_enc_rands.iter() {
-            assert!(!hidden_indices.contains(i));
+        if self.shares_and_enc_rands.len() != THRESHOLD {
+            return Err(
+                VerifiableEncryptionError::UnexpectedNumberOfSharesAndEncRands(
+                    self.shares_and_enc_rands.len(),
+                    THRESHOLD,
+                ),
+            );
+        }
+        for i in 0..num_hidden {
+            if self.ciphertexts[i].1.batch_size() != witness_count {
+                return Err(
+                    VerifiableEncryptionError::InequalNumberOfCiphertextsAndWitnesses(
+                        self.ciphertexts[i].1.batch_size(),
+                        witness_count,
+                    ),
+                );
+            }
+        }
+        for i in 0..THRESHOLD {
+            if self.shares_and_enc_rands[i].1.len() != witness_count {
+                return Err(
+                    VerifiableEncryptionError::InequalNumberOfSharesAndWitnesses(
+                        self.shares_and_enc_rands[i].1.len(),
+                        witness_count,
+                    ),
+                );
+            }
+            if !CT::is_randomness_size_correct(&self.shares_and_enc_rands[i].2, witness_count) {
+                return Err(VerifiableEncryptionError::IncompatibleRandomnessSize);
+            }
+        }
+        let hidden_indices =
+            get_unique_indices_to_hide::<D>(&self.challenge, num_hidden as u16, NUM_PARTIES as u16);
+        for (i, _) in self.ciphertexts.iter() {
+            if !hidden_indices.contains(i) {
+                return Err(VerifiableEncryptionError::CiphertextNotFound(*i));
+            }
         }
 
         let mut hasher = D::default();
@@ -247,7 +280,7 @@ impl<
         let enc_key_table = WindowTable::new(NUM_PARTIES * witness_count, enc_key.into_group());
         let enc_gen_table = WindowTable::new(NUM_PARTIES * witness_count, enc_gen.into_group());
 
-        let mut cts: [CT; NUM_PARTIES] = [(); NUM_PARTIES].map(|_| CT::default());
+        let mut cts: Vec<CT> = (0..NUM_PARTIES).map(|_| CT::default()).collect();
 
         cfg_iter_mut!(cts).enumerate().for_each(|(i, ct)| {
             if hidden_indices.contains(&(i as u16)) {
@@ -344,9 +377,6 @@ impl<
         let mut c = self.poly_commitments.to_vec();
         c.insert(0, *commitment);
 
-        // if G::Group::msm_unchecked(comm_key, &evals) != G::Group::msm_unchecked(&c, &power_sums) {
-        //     return Err(VerifiableEncryptionError::InvalidProof);
-        // }
         // Convert above 2 MSMs into 1
         c.extend_from_slice(comm_key);
         let mut evals = cfg_into_iter!(evals).map(|e| -e).collect::<Vec<_>>();
@@ -360,22 +390,24 @@ impl<
     /// Described in Appendix D.2 in the paper
     pub fn compress<const SUBSET_SIZE: usize, D: Digest + FullDigest>(
         &self,
-    ) -> CompressedCiphertext<G, CT, SUBSET_SIZE> {
+    ) -> Result<CompressedCiphertext<G, CT, SUBSET_SIZE>, VerifiableEncryptionError> {
         let () = Self::CHECK_THRESHOLD;
-        const { assert!(SUBSET_SIZE <= NUM_PARTIES_MINUS_THRESHOLD) };
-        let hidden_indices = get_unique_indices_to_hide::<D>(
-            &self.challenge,
-            NUM_PARTIES_MINUS_THRESHOLD as u16,
-            NUM_PARTIES as u16,
-        );
-        for (i, _) in self.ciphertexts.iter() {
-            assert!(hidden_indices.contains(i));
+        let num_hidden = NUM_PARTIES - THRESHOLD;
+        if SUBSET_SIZE > num_hidden {
+            return Err(VerifiableEncryptionError::SubsetSizeGreaterThenExpected(
+                SUBSET_SIZE,
+                num_hidden,
+            ));
         }
-        for (i, _, _) in self.shares_and_enc_rands.iter() {
-            assert!(!hidden_indices.contains(i));
+        let hidden_indices =
+            get_unique_indices_to_hide::<D>(&self.challenge, num_hidden as u16, NUM_PARTIES as u16);
+        for (i, _) in self.ciphertexts.iter() {
+            if !hidden_indices.contains(i) {
+                return Err(VerifiableEncryptionError::CiphertextNotFound(*i));
+            }
         }
         let witness_count = self.ciphertexts[0].1.batch_size();
-        let mut compressed_cts: [CT; SUBSET_SIZE] = [(); SUBSET_SIZE].map(|_| CT::default());
+        let mut compressed_cts: Vec<CT> = (0..SUBSET_SIZE).map(|_| CT::default()).collect();
 
         // Party indices for which shares are revealed
         let mut opened_indices = Vec::with_capacity(THRESHOLD);
@@ -402,7 +434,7 @@ impl<
         let subset = get_unique_indices_to_hide::<D>(
             &D::digest(&challenge_for_subset_gen),
             SUBSET_SIZE as u16,
-            NUM_PARTIES_MINUS_THRESHOLD as u16,
+            num_hidden as u16,
         )
         .into_iter()
         .map(|i| hidden_indices[i as usize])
@@ -413,7 +445,7 @@ impl<
             lagrange_basis_at_0_for_all::<G::ScalarField>(opened_indices.clone()).unwrap();
 
         // Lagrange basis for each index in `subset`
-        let mut lagrange_basis_for_hidden_indices = [G::ScalarField::zero(); SUBSET_SIZE];
+        let mut lagrange_basis_for_hidden_indices = vec![G::ScalarField::zero(); SUBSET_SIZE];
         cfg_iter_mut!(lagrange_basis_for_hidden_indices)
             .enumerate()
             .for_each(|(i, l_i)| {
@@ -457,7 +489,10 @@ impl<
                 ct.add_to_ciphertexts(&offset);
             });
 
-        CompressedCiphertext(compressed_cts, lagrange_basis_for_hidden_indices)
+        Ok(CompressedCiphertext(
+            compressed_cts,
+            lagrange_basis_for_hidden_indices,
+        ))
     }
 
     pub fn witness_count(&self) -> usize {
@@ -475,8 +510,27 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>
         comm_key: &[G],
     ) -> Result<Vec<G::ScalarField>, VerifiableEncryptionError> {
         let witness_count = comm_key.len();
+        if self.0.len() != SUBSET_SIZE {
+            return Err(VerifiableEncryptionError::UnexpectedNumberOfCiphertexts(
+                self.0.len(),
+                SUBSET_SIZE,
+            ));
+        }
+        if self.1.len() != SUBSET_SIZE {
+            return Err(VerifiableEncryptionError::UnexpectedNumberOfHelperData(
+                self.1.len(),
+                SUBSET_SIZE,
+            ));
+        }
         for i in 0..SUBSET_SIZE {
-            assert_eq!(self.0[i].batch_size(), witness_count);
+            if self.0[i].batch_size() != witness_count {
+                return Err(
+                    VerifiableEncryptionError::InequalNumberOfCiphertextsAndWitnesses(
+                        self.0[i].batch_size(),
+                        witness_count,
+                    ),
+                );
+            }
             let witnesses = self.0[i].decrypt_after_multiplying_otp::<D>(&self.1[i], dec_key);
             if *commitment == G::Group::msm_unchecked(comm_key, &witnesses).into_affine() {
                 return Ok(witnesses);
@@ -519,18 +573,18 @@ mod tests {
             let commitment = G::Group::msm_unchecked(&comm_key, &witnesses).into_affine();
 
             macro_rules! run_test {
-                ($parties: expr, $threshold: expr, $parties_minus_thresh: expr, $subset_size: expr, $ct_type: ty, $ct_type_name: expr) => {{
+                ($parties: expr, $threshold: expr, $subset_size: expr, $ct_type: ty, $ct_type_name: expr) => {{
                     println!(
                         "\nFor {} hashed Elgamal encryption, # witnesses = {}, # parties = {}, # threshold = {}, subset size = {}",
                         $ct_type_name, count, $parties, $threshold, $subset_size
                     );
+                    let parties_minus_thresh = $parties - $threshold;
                     let start = Instant::now();
                     let proof = RdkgithProof::<
                         _,
                         $ct_type,
                         $parties,
                         $threshold,
-                        $parties_minus_thresh,
                     >::new::<_, Blake2b512>(
                         &mut rng,
                         witnesses.clone(),
@@ -538,7 +592,7 @@ mod tests {
                         &comm_key,
                         &pk.0,
                         &gen,
-                    );
+                    ).unwrap();
                     println!("Proof generated in: {:?}", start.elapsed());
 
                     for i in 0..$threshold {
@@ -546,7 +600,7 @@ mod tests {
                         assert!(<$ct_type>::is_randomness_size_correct(&proof.shares_and_enc_rands[i].2, count));
                     }
 
-                    for i in 0..$parties_minus_thresh {
+                    for i in 0..parties_minus_thresh {
                         assert_eq!(proof.ciphertexts[i].1.batch_size(), count);
                     }
 
@@ -558,7 +612,7 @@ mod tests {
                     println!("Proof size: {:?}", proof.compressed_size());
 
                     let start = Instant::now();
-                    let ct = proof.compress::<$subset_size, Blake2b512>();
+                    let ct = proof.compress::<$subset_size, Blake2b512>().unwrap();
                     println!("Ciphertext compressed in: {:?}", start.elapsed());
                     println!("Ciphertext size: {:?}", ct.compressed_size());
 
@@ -578,19 +632,19 @@ mod tests {
             let name1 = "simple";
             let name2 = "batched";
 
-            run_test!(132, 64, 68, 67, SimpleBatchElgamalCiphertext<G>, name1);
-            run_test!(192, 36, 156, 145, SimpleBatchElgamalCiphertext<G>, name1);
-            run_test!(512, 23, 489, 406, SimpleBatchElgamalCiphertext<G>, name1);
-            run_test!(160, 80, 80, 55, SimpleBatchElgamalCiphertext<G>, name1);
-            run_test!(256, 226, 30, 30, SimpleBatchElgamalCiphertext<G>, name1);
-            run_test!(704, 684, 20, 20, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(132, 64, 68, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(192, 36, 156, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(512, 23, 489, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(160, 80, 80, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(256, 226, 30, SimpleBatchElgamalCiphertext<G>, name1);
+            run_test!(704, 684, 20, SimpleBatchElgamalCiphertext<G>, name1);
 
-            run_test!(132, 64, 68, 67, BatchedHashedElgamalCiphertext<G>, name2);
-            run_test!(192, 36, 156, 145, BatchedHashedElgamalCiphertext<G>, name2);
-            run_test!(512, 23, 489, 406, BatchedHashedElgamalCiphertext<G>, name2);
-            run_test!(160, 80, 80, 55, BatchedHashedElgamalCiphertext<G>, name2);
-            run_test!(256, 226, 30, 30, BatchedHashedElgamalCiphertext<G>, name2);
-            run_test!(704, 684, 20, 20, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(132, 64, 68, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(192, 36, 156, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(512, 23, 489, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(160, 80, 80, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(256, 226, 30, BatchedHashedElgamalCiphertext<G>, name2);
+            run_test!(704, 684, 20, BatchedHashedElgamalCiphertext<G>, name2);
         }
 
         check::<G1Affine>(1);

@@ -17,7 +17,7 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
-use digest::Digest;
+use digest::{Digest, ExtendableOutput, Update};
 use schnorr_pok::discrete_log::PokDiscreteLog;
 use serde::{Deserialize, Serialize};
 
@@ -96,7 +96,12 @@ impl<G: AffineRepr> Participant<G> {
         ))
     }
 
-    pub fn receive_sender_pubkey<R: RngCore, D: Digest, const KEY_SIZE: u16>(
+    pub fn receive_sender_pubkey<
+        R: RngCore,
+        D: Digest,
+        X: Default + Update + ExtendableOutput,
+        const KEY_SIZE: u16,
+    >(
         &mut self,
         rng: &mut R,
         sender_id: ParticipantId,
@@ -116,7 +121,7 @@ impl<G: AffineRepr> Participant<G> {
             return Err(OTError::AlreadyHaveSenderPubkeyFrom(sender_id));
         }
         let SenderPubKeyAndProof(S, proof) = sender_pk_and_proof;
-        let (receiver_keys, pub_key) = ROTReceiverKeys::new_verifiable::<_, _, D, KEY_SIZE>(
+        let (receiver_keys, pub_key) = ROTReceiverKeys::new_verifiable::<_, _, D, X, KEY_SIZE>(
             rng,
             self.count,
             self.receiver_choices.get(&sender_id).unwrap().clone(),
@@ -128,7 +133,11 @@ impl<G: AffineRepr> Participant<G> {
         Ok(pub_key)
     }
 
-    pub fn receive_receiver_pubkey<const KEY_SIZE: u16>(
+    pub fn receive_receiver_pubkey<
+        D: Digest,
+        X: Default + Update + ExtendableOutput,
+        const KEY_SIZE: u16,
+    >(
         &mut self,
         sender_id: ParticipantId,
         R: ReceiverPubKeys<G>,
@@ -147,8 +156,8 @@ impl<G: AffineRepr> Participant<G> {
         }
         if let Some(sender_setup) = self.sender_setup.get(&sender_id) {
             let sender_keys =
-                OneOfTwoROTSenderKeys::try_from(sender_setup.derive_keys::<KEY_SIZE>(R)?)?;
-            let (sender_challenger, challenges) = VSROTChallenger::new(&sender_keys)?;
+                OneOfTwoROTSenderKeys::try_from(sender_setup.derive_keys::<X, KEY_SIZE>(R)?)?;
+            let (sender_challenger, challenges) = VSROTChallenger::new::<D>(&sender_keys)?;
             self.sender_challenger.insert(sender_id, sender_challenger);
             self.sender_keys.insert(sender_id, sender_keys);
             Ok(challenges)
@@ -157,7 +166,7 @@ impl<G: AffineRepr> Participant<G> {
         }
     }
 
-    pub fn receive_challenges(
+    pub fn receive_challenges<D: Digest>(
         &mut self,
         sender_id: ParticipantId,
         challenges: Challenges,
@@ -172,7 +181,7 @@ impl<G: AffineRepr> Participant<G> {
             return Err(OTError::AlreadyHaveChallengesFrom(sender_id));
         }
         if let Some(receiver_keys) = self.receiver_keys.get(&sender_id) {
-            let (receiver_responder, responses) = VSROTResponder::new(
+            let (receiver_responder, responses) = VSROTResponder::new::<D>(
                 receiver_keys,
                 self.receiver_choices.get(&sender_id).unwrap().clone(),
                 challenges,
@@ -206,7 +215,7 @@ impl<G: AffineRepr> Participant<G> {
         }
     }
 
-    pub fn receive_hashed_keys(
+    pub fn receive_hashed_keys<D: Digest>(
         &mut self,
         sender_id: ParticipantId,
         hashed_keys: Vec<(HashedKey, HashedKey)>,
@@ -218,7 +227,7 @@ impl<G: AffineRepr> Participant<G> {
             return Err(OTError::NotABaseOTSender(sender_id));
         }
         if let Some(receiver_responder) = self.receiver_responder.remove(&sender_id) {
-            receiver_responder.verify_sender_hashed_keys(hashed_keys)?;
+            receiver_responder.verify_sender_hashed_keys::<D>(hashed_keys)?;
             Ok(())
         } else {
             Err(OTError::ReceiverEitherNotReadyForHashedKeysOrAlreadyVerifiedIt(sender_id))
@@ -250,6 +259,7 @@ pub mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
+    use sha3::Shake256;
 
     pub fn check_base_ot_keys(
         choices: &[Bit],
@@ -288,7 +298,9 @@ pub mod tests {
         for (sender_id, pks) in sender_pks {
             for (id, pk) in pks {
                 let recv_pk = base_ots[id as usize - 1]
-                    .receive_sender_pubkey::<_, Blake2b512, KEY_SIZE>(rng, sender_id, pk, &B)
+                    .receive_sender_pubkey::<_, Blake2b512, Shake256, KEY_SIZE>(
+                        rng, sender_id, pk, &B,
+                    )
                     .unwrap();
                 receiver_pks.insert((id, sender_id), recv_pk);
             }
@@ -300,14 +312,14 @@ pub mod tests {
 
         for ((sender, receiver), pk) in receiver_pks {
             let chal = base_ots[receiver as usize - 1]
-                .receive_receiver_pubkey::<KEY_SIZE>(sender, pk)
+                .receive_receiver_pubkey::<Blake2b512, Shake256, KEY_SIZE>(sender, pk)
                 .unwrap();
             challenges.insert((receiver, sender), chal);
         }
 
         for ((sender, receiver), chal) in challenges {
             let resp = base_ots[receiver as usize - 1]
-                .receive_challenges(sender, chal)
+                .receive_challenges::<Blake2b512>(sender, chal)
                 .unwrap();
             responses.insert((receiver, sender), resp);
         }
@@ -321,7 +333,7 @@ pub mod tests {
 
         for ((sender, receiver), hk) in hashed_keys {
             base_ots[receiver as usize - 1]
-                .receive_hashed_keys(sender, hk)
+                .receive_hashed_keys::<Blake2b512>(sender, hk)
                 .unwrap()
         }
 

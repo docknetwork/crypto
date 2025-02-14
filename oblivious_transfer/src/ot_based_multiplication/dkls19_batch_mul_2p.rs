@@ -4,32 +4,30 @@
 //! Party2 as the receiver
 
 use crate::{
+    base_ot::simplest_ot::{OneOfTwoROTSenderKeys, ROTReceiverKeys},
+    configs::OTEConfig,
+    error::OTError,
     ot_based_multiplication::dkls18_mul_2p::{
         add_tau_to_transcript, add_to_transcript, MultiplicationOTEParams,
     },
+    ot_extensions::kos_ote::{
+        CorrelationTag, OTExtensionReceiverSetup, OTExtensionSenderSetup, RLC as KOSRLC,
+    },
+    util::is_multiple_of_8,
     Bit, BitMatrix,
 };
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec::Vec, UniformRand};
-use digest::{Digest, DynDigest};
+use digest::{Digest, DynDigest, ExtendableOutput, Update};
 use dock_crypto_utils::{
     concat_slices, hashing_utils::field_elem_from_try_and_incr, join, serde_utils::ArkObjectBytes,
+    transcript::Transcript,
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::{
-    base_ot::simplest_ot::{OneOfTwoROTSenderKeys, ROTReceiverKeys},
-    configs::OTEConfig,
-    error::OTError,
-    ot_extensions::kos_ote::{
-        CorrelationTag, OTExtensionReceiverSetup, OTExtensionSenderSetup, RLC as KOSRLC,
-    },
-    util::is_multiple_of_8,
-};
-use dock_crypto_utils::transcript::Transcript;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -166,7 +164,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         })
     }
 
-    pub fn receive<D: Default + DynDigest + Clone>(
+    pub fn receive<D: Default + DynDigest + Clone, X: Default + Update + ExtendableOutput>(
         self,
         U: BitMatrix,
         rlc: KOSRLC,
@@ -186,7 +184,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         let ote_config = OTEConfig::new(self.ote_params.num_base_ot(), batch_size * overhead)?;
 
         let correlations = self.get_ote_correlation();
-        let ext_sender_setup = OTExtensionSenderSetup::new::<STATISTICAL_SECURITY_PARAMETER>(
+        let ext_sender_setup = OTExtensionSenderSetup::new::<X, STATISTICAL_SECURITY_PARAMETER>(
             ote_config,
             U,
             rlc,
@@ -258,7 +256,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     Party2<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>
 {
     /// Assumes that the base OT is already done and this party for the sender in that.
-    pub fn new<R: RngCore>(
+    pub fn new<R: RngCore, D: Default + Update + ExtendableOutput>(
         rng: &mut R,
         b: Vec<F>,
         base_ot_keys: OneOfTwoROTSenderKeys,
@@ -271,7 +269,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         let beta = (0..batch_size * overhead as usize)
             .map(|_| bool::rand(rng))
             .collect::<Vec<_>>();
-        Self::new_with_given_ote_choices(
+        Self::new_with_given_ote_choices::<R, D>(
             rng,
             b,
             beta,
@@ -284,7 +282,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 
     /// Same as `Self::new` except the choices used in OT extension are provided by the caller and
     /// not generated internally
-    pub fn new_with_given_ote_choices<R: RngCore>(
+    pub fn new_with_given_ote_choices<R: RngCore, D: Default + Update + ExtendableOutput>(
         rng: &mut R,
         b: Vec<F>,
         beta: Vec<Bit>,
@@ -324,6 +322,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             .collect::<Vec<F>>();
         let (ext_receiver_setup, U, rlc) = OTExtensionReceiverSetup::new::<
             _,
+            D,
             STATISTICAL_SECURITY_PARAMETER,
         >(rng, ote_config, beta.clone(), base_ot_keys)?;
         let gamma_b = cfg_into_iter!(0..batch_size as usize)
@@ -439,17 +438,16 @@ impl<F: PrimeField> Party2Shares<F> {
 pub mod tests {
     use super::*;
     use crate::base_ot::simplest_ot::tests::do_1_of_2_base_ot;
-    use std::time::{Duration, Instant};
-
     use ark_bls12_381::Bls12_381;
     use ark_ec::pairing::Pairing;
-
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
     use blake2::Blake2b512;
     use dock_crypto_utils::transcript::new_merlin_transcript;
+    use sha3::Shake256;
+    use std::time::{Duration, Instant};
     use test_utils::{test_serialization, G1};
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
@@ -500,7 +498,7 @@ pub mod tests {
             party1_time += start.elapsed();
 
             let start = Instant::now();
-            let (party2, U, kos_rlc, gamma_b) = Party2::new(
+            let (party2, U, kos_rlc, gamma_b) = Party2::new::<_, Shake256>(
                 rng,
                 b.clone(),
                 base_ot_sender_keys,
@@ -514,7 +512,7 @@ pub mod tests {
             let start = Instant::now();
             let (shares_1, tau, rlc, gamma_a) = party1
                 .clone()
-                .receive::<Blake2b512>(
+                .receive::<Blake2b512, Shake256>(
                     U,
                     kos_rlc,
                     gamma_b.clone(),

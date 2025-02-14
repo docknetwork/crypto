@@ -10,7 +10,12 @@
 use crate::{
     aes_prng::{AesRng, SEED_SIZE as AES_RNG_SEED_SIZE},
     base_ot::simplest_ot::{OneOfTwoROTSenderKeys, ROTReceiverKeys},
-    util::{boolvec_to_u8vec, divide_by_8, transpose, u8vec_to_boolvec, xor, xor_in_place},
+    configs::OTEConfig,
+    error::OTError,
+    util::{
+        boolvec_to_u8vec, divide_by_8, is_multiple_of_8, transpose, u8vec_to_boolvec, xor,
+        xor_in_place,
+    },
     Bit, BitMatrix, Key, Message,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -24,13 +29,10 @@ use ark_std::{
 use digest::{ExtendableOutput, Update};
 use dock_crypto_utils::join;
 use itertools::Itertools;
-use sha3::Shake256;
-
-use crate::{configs::OTEConfig, error::OTError, util::is_multiple_of_8};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 
 #[derive(
     Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
@@ -102,7 +104,11 @@ impl OTExtensionReceiverSetup {
     }
 
     /// For protocol 5. Assumes base OT done and keys are correct
-    pub fn new_with_active_security<R: RngCore, const STATISTICAL_SECURITY_PARAMETER: u16>(
+    pub fn new_with_active_security<
+        R: RngCore,
+        D: Default + Update + ExtendableOutput,
+        const STATISTICAL_SECURITY_PARAMETER: u16,
+    >(
         rng: &mut R,
         ote_config: OTEConfig,
         mut ot_ext_choices: Vec<Bit>,
@@ -153,10 +159,10 @@ impl OTExtensionReceiverSetup {
                     .map_err(|_| OTError::TooManyChoices(packed_choices.len()))?;
 
                 let (i_0, i_1, i_2, i_3) = join!(
-                    hash_prg(i, j, &xor(&prg_i.0, &prg_j.0), packed_choices_len),
-                    hash_prg(i, j, &xor(&prg_i.0, &prg_j.1), packed_choices_len),
-                    hash_prg(i, j, &xor(&prg_i.1, &prg_j.0), packed_choices_len),
-                    hash_prg(i, j, &xor(&prg_i.1, &prg_j.1), packed_choices_len)
+                    hash_prg::<D>(i, j, &xor(&prg_i.0, &prg_j.0), packed_choices_len),
+                    hash_prg::<D>(i, j, &xor(&prg_i.0, &prg_j.1), packed_choices_len),
+                    hash_prg::<D>(i, j, &xor(&prg_i.1, &prg_j.0), packed_choices_len),
+                    hash_prg::<D>(i, j, &xor(&prg_i.1, &prg_j.1), packed_choices_len)
                 );
                 hashes.insert((i, j), (i_0, i_1, i_2, i_3));
             }
@@ -220,12 +226,12 @@ impl OTExtensionReceiverSetup {
         ))
     }
 
-    pub fn decrypt(
+    pub fn decrypt<D: Default + Update + ExtendableOutput>(
         &self,
         encryptions: Vec<(Message, Message)>,
         message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
-        Self::decrypt_(
+        Self::decrypt_::<D>(
             self.ote_config,
             &self.T,
             &self.ot_extension_choices,
@@ -234,12 +240,12 @@ impl OTExtensionReceiverSetup {
         )
     }
 
-    pub fn decrypt_correlated(
+    pub fn decrypt_correlated<D: Default + Update + ExtendableOutput>(
         &self,
         encryptions: Vec<Message>,
         message_size: u32,
     ) -> Result<Vec<Message>, OTError> {
-        Self::decrypt_correlated_(
+        Self::decrypt_correlated_::<D>(
             self.ote_config,
             &self.T,
             &self.ot_extension_choices,
@@ -248,17 +254,20 @@ impl OTExtensionReceiverSetup {
         )
     }
 
-    pub fn decrypt_random(&self, message_size: u32) -> Vec<Message> {
+    pub fn decrypt_random<D: Default + Update + ExtendableOutput>(
+        &self,
+        message_size: u32,
+    ) -> Vec<Message> {
         let row_byte_size = self.ote_config.row_byte_size();
         cfg_into_iter!(0..self.ote_config.num_ot_extensions as usize)
             .map(|i| {
                 let t = &self.T.0[i * row_byte_size..(i + 1) * row_byte_size as usize];
-                hash_to_otp(i as u32, &t, message_size)
+                hash_to_otp::<D>(i as u32, &t, message_size)
             })
             .collect()
     }
 
-    pub(crate) fn decrypt_(
+    pub(crate) fn decrypt_<D: Default + Update + ExtendableOutput>(
         ote_config: OTEConfig,
         T: &BitMatrix,
         ot_extension_choices: &[Bit],
@@ -278,13 +287,13 @@ impl OTExtensionReceiverSetup {
                 let t = &T.0[i * row_byte_size..(i + 1) * row_byte_size];
                 xor(
                     if !ot_extension_choices[i] { &e1 } else { &e2 },
-                    &hash_to_otp(i as u32, &t, message_size),
+                    &hash_to_otp::<D>(i as u32, &t, message_size),
                 )
             })
             .collect())
     }
 
-    pub fn decrypt_correlated_(
+    pub fn decrypt_correlated_<D: Default + Update + ExtendableOutput>(
         ote_config: OTEConfig,
         T: &BitMatrix,
         ot_extension_choices: &[Bit],
@@ -305,7 +314,7 @@ impl OTExtensionReceiverSetup {
                 let t = &T.0[i * row_byte_size..(i + 1) * row_byte_size];
                 xor(
                     if !ot_extension_choices[i] { &zero } else { &e },
-                    &hash_to_otp(i as u32, &t, message_size),
+                    &hash_to_otp::<D>(i as u32, &t, message_size),
                 )
             })
             .collect())
@@ -407,7 +416,10 @@ impl OTExtensionSenderSetup {
     }
 
     /// For protocol 5. Assumes base OT done and keys are correct
-    pub fn new_with_active_security<const STATISTICAL_SECURITY_PARAMETER: u16>(
+    pub fn new_with_active_security<
+        D: Default + Update + ExtendableOutput,
+        const STATISTICAL_SECURITY_PARAMETER: u16,
+    >(
         ote_config: OTEConfig,
         U: BitMatrix,
         base_ot_choices: Vec<Bit>,
@@ -461,7 +473,7 @@ impl OTExtensionSenderSetup {
                     };
 
                     let xor_a_b = xor(&prgs[i as usize], &prgs[j as usize]);
-                    if h != &hash_prg(i, j, &xor_a_b, column_size as u32) {
+                    if h != &hash_prg::<D>(i, j, &xor_a_b, column_size as u32) {
                         return Err(OTError::ConsistencyCheckFailed(i, j));
                     }
                     let start_i = i as usize * column_size;
@@ -472,7 +484,7 @@ impl OTExtensionSenderSetup {
                     let u_j = &U.0[start_j..end_j];
                     let mut xor_a_b_u = xor(&xor_a_b, u_i);
                     xor_in_place(&mut xor_a_b_u, u_j);
-                    if h_inv != &hash_prg(i, j, &xor_a_b_u, column_size as u32) {
+                    if h_inv != &hash_prg::<D>(i, j, &xor_a_b_u, column_size as u32) {
                         return Err(OTError::ConsistencyCheckFailed(i, j));
                     }
                     if u_i == u_j {
@@ -539,12 +551,12 @@ impl OTExtensionSenderSetup {
         })
     }
 
-    pub fn encrypt(
+    pub fn encrypt<D: Default + Update + ExtendableOutput>(
         &self,
         messages: Vec<(Message, Message)>,
         message_size: u32,
     ) -> Result<Vec<(Message, Message)>, OTError> {
-        Self::encrypt_(
+        Self::encrypt_::<D>(
             self.ote_config,
             &self.Q,
             &self.base_ot_choices,
@@ -554,12 +566,15 @@ impl OTExtensionSenderSetup {
     }
 
     /// For correlated OT
-    pub fn encrypt_correlated<F: Sync + Sized + Fn(&Message) -> Message>(
+    pub fn encrypt_correlated<
+        F: Sync + Sized + Fn(&Message) -> Message,
+        D: Default + Update + ExtendableOutput,
+    >(
         &self,
         deltas: Vec<F>,
         message_size: u32,
     ) -> Result<(Vec<(Message, Message)>, Vec<Message>), OTError> {
-        Self::encrypt_correlated_(
+        Self::encrypt_correlated_::<F, D>(
             self.ote_config,
             &self.Q,
             &self.base_ot_choices,
@@ -569,19 +584,22 @@ impl OTExtensionSenderSetup {
     }
 
     /// For Sender Random OT
-    pub fn encrypt_random(&self, message_size: u32) -> Vec<(Message, Message)> {
+    pub fn encrypt_random<D: Default + Update + ExtendableOutput>(
+        &self,
+        message_size: u32,
+    ) -> Vec<(Message, Message)> {
         let row_byte_size = self.ote_config.row_byte_size();
         cfg_into_iter!(0..self.ote_config.num_ot_extensions as usize)
             .map(|i| {
                 let q = &self.Q.0[i * row_byte_size..(i + 1) * row_byte_size];
-                let x1 = hash_to_otp(i as u32, &q, message_size);
-                let x2 = hash_to_otp(i as u32, &xor(&q, &self.base_ot_choices), message_size);
+                let x1 = hash_to_otp::<D>(i as u32, &q, message_size);
+                let x2 = hash_to_otp::<D>(i as u32, &xor(&q, &self.base_ot_choices), message_size);
                 (x1, x2)
             })
             .collect()
     }
 
-    pub(crate) fn encrypt_(
+    pub(crate) fn encrypt_<D: Default + Update + ExtendableOutput>(
         ote_config: OTEConfig,
         Q: &BitMatrix,
         base_ot_choices: &[u8],
@@ -599,17 +617,20 @@ impl OTExtensionSenderSetup {
             .enumerate()
             .map(|(i, (m1, m2))| {
                 let q = &Q.0[i * row_byte_size..(i + 1) * row_byte_size];
-                let e1 = xor(&m1, &hash_to_otp(i as u32, &q, message_size));
+                let e1 = xor(&m1, &hash_to_otp::<D>(i as u32, &q, message_size));
                 let e2 = xor(
                     &m2,
-                    &hash_to_otp(i as u32, &xor(&q, base_ot_choices), message_size),
+                    &hash_to_otp::<D>(i as u32, &xor(&q, base_ot_choices), message_size),
                 );
                 (e1, e2)
             })
             .collect())
     }
 
-    pub fn encrypt_correlated_<F: Sync + Sized + Fn(&Message) -> Message>(
+    pub fn encrypt_correlated_<
+        F: Sync + Sized + Fn(&Message) -> Message,
+        D: Default + Update + ExtendableOutput,
+    >(
         ote_config: OTEConfig,
         Q: &BitMatrix,
         s: &[u8],
@@ -627,9 +648,9 @@ impl OTExtensionSenderSetup {
             .enumerate()
             .map(|(i, delta)| {
                 let q = &Q.0[i * row_byte_size..(i + 1) * row_byte_size];
-                let x1 = hash_to_otp(i as u32, &q, message_size);
+                let x1 = hash_to_otp::<D>(i as u32, &q, message_size);
                 let x2 = delta(&x1);
-                let e = xor(&x2, &hash_to_otp(i as u32, &xor(&q, &s), message_size));
+                let e = xor(&x2, &hash_to_otp::<D>(i as u32, &xor(&q, &s), message_size));
                 ((x1, x2), e)
             })
             .collect::<Vec<_>>()
@@ -683,12 +704,17 @@ impl OTExtensionSenderSetup {
     }
 }
 
-fn hash_prg(i: u16, j: u16, input: &[u8], output_size: u32) -> Vec<u8> {
+fn hash_prg<D: Default + Update + ExtendableOutput>(
+    i: u16,
+    j: u16,
+    input: &[u8],
+    output_size: u32,
+) -> Vec<u8> {
     let mut bytes = i.to_le_bytes().to_vec();
     bytes.extend_from_slice(&j.to_le_bytes());
     bytes.extend_from_slice(input);
     let mut out = vec![0; output_size as usize];
-    let mut hasher = Shake256::default();
+    let mut hasher = D::default();
     hasher.update(&bytes);
     hasher.finalize_xof_into(&mut out);
     out
@@ -706,11 +732,15 @@ fn key_to_aes_rng(key: &Key) -> AesRng {
 }
 
 /// Create a one time pad of required size
-fn hash_to_otp(index: u32, q: &[u8], pad_size: u32) -> Vec<u8> {
+fn hash_to_otp<D: Default + Update + ExtendableOutput>(
+    index: u32,
+    q: &[u8],
+    pad_size: u32,
+) -> Vec<u8> {
     let mut bytes = index.to_be_bytes().to_vec();
     bytes.extend_from_slice(q);
     let mut pad = vec![0; pad_size as usize];
-    let mut hasher = Shake256::default();
+    let mut hasher = D::default();
     hasher.update(&bytes);
     hasher.finalize_xof_into(&mut pad);
     pad
@@ -743,6 +773,7 @@ pub mod tests {
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
+    use sha3::Shake256;
 
     #[test]
     fn alsz() {
@@ -799,10 +830,10 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let encryptions = ext_sender_setup
-                .encrypt(messages.clone(), message_size as u32)
+                .encrypt::<Shake256>(messages.clone(), message_size as u32)
                 .unwrap();
             let decryptions = ext_receiver_setup
-                .decrypt(encryptions, message_size as u32)
+                .decrypt::<Shake256>(encryptions, message_size as u32)
                 .unwrap();
             assert_eq!(decryptions.len(), extended_ot_count);
             cfg_into_iter!(decryptions)
@@ -826,10 +857,10 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let (messages, encryptions) = ext_sender_setup
-                .encrypt_correlated(deltas.clone(), message_size as u32)
+                .encrypt_correlated::<_, Shake256>(deltas.clone(), message_size as u32)
                 .unwrap();
             let decryptions = ext_receiver_setup
-                .decrypt_correlated(encryptions, message_size as u32)
+                .decrypt_correlated::<Shake256>(encryptions, message_size as u32)
                 .unwrap();
             assert_eq!(messages.len(), extended_ot_count);
             assert_eq!(decryptions.len(), extended_ot_count);
@@ -846,8 +877,8 @@ pub mod tests {
                 });
 
             // Perform Sender Random OT extension
-            let messages = ext_sender_setup.encrypt_random(message_size as u32);
-            let decryptions = ext_receiver_setup.decrypt_random(message_size as u32);
+            let messages = ext_sender_setup.encrypt_random::<Shake256>(message_size as u32);
+            let decryptions = ext_receiver_setup.decrypt_random::<Shake256>(message_size as u32);
             cfg_into_iter!(decryptions)
                 .enumerate()
                 .for_each(|(i, dec)| {
@@ -931,10 +962,10 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let encryptions = ext_sender_setup
-                .encrypt(messages.clone(), message_size as u32)
+                .encrypt::<Shake256>(messages.clone(), message_size as u32)
                 .unwrap();
             let decryptions = ext_receiver_setup
-                .decrypt(encryptions, message_size as u32)
+                .decrypt::<Shake256>(encryptions, message_size as u32)
                 .unwrap();
             assert_eq!(decryptions.len(), extended_ot_count);
             cfg_into_iter!(decryptions)
@@ -949,8 +980,8 @@ pub mod tests {
                 });
 
             // Perform Random OT extension
-            let messages = ext_sender_setup.encrypt_random(message_size as u32);
-            let decryptions = ext_receiver_setup.decrypt_random(message_size as u32);
+            let messages = ext_sender_setup.encrypt_random::<Shake256>(message_size as u32);
+            let decryptions = ext_receiver_setup.decrypt_random::<Shake256>(message_size as u32);
             cfg_into_iter!(decryptions)
                 .enumerate()
                 .for_each(|(i, dec)| {
@@ -991,7 +1022,7 @@ pub mod tests {
 
             // Perform OT extension
             let (ext_receiver_setup, U, hashes) =
-                OTExtensionReceiverSetup::new_with_active_security::<_, SSP>(
+                OTExtensionReceiverSetup::new_with_active_security::<_, Shake256, SSP>(
                     rng,
                     ote_config,
                     ot_ext_choices.clone(),
@@ -1007,14 +1038,15 @@ pub mod tests {
                 .into_iter()
                 .map(|b| b % 2 != 0)
                 .collect::<Vec<_>>();
-            let ext_sender_setup = OTExtensionSenderSetup::new_with_active_security::<SSP>(
-                ote_config,
-                U,
-                base_ot_choices,
-                base_ot_receiver_keys,
-                hashes,
-            )
-            .unwrap();
+            let ext_sender_setup =
+                OTExtensionSenderSetup::new_with_active_security::<Shake256, SSP>(
+                    ote_config,
+                    U,
+                    base_ot_choices,
+                    base_ot_receiver_keys,
+                    hashes,
+                )
+                .unwrap();
 
             let messages = (0..extended_ot_count)
                 .map(|_| {
@@ -1034,10 +1066,10 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let encryptions = ext_sender_setup
-                .encrypt(messages.clone(), message_size as u32)
+                .encrypt::<Shake256>(messages.clone(), message_size as u32)
                 .unwrap();
             let decryptions = ext_receiver_setup
-                .decrypt(encryptions, message_size as u32)
+                .decrypt::<Shake256>(encryptions, message_size as u32)
                 .unwrap();
             assert_eq!(decryptions.len(), extended_ot_count);
             cfg_into_iter!(decryptions)

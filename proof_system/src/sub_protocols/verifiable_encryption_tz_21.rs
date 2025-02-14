@@ -21,11 +21,6 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 // TODO: The parameters used for both protocols are hardcoded here but they should be generic as
 // different curves or different applications might need different values than these.
 
-// NOTE: Some of the parameters used can cause a stackoverflow due to large number of arrays being
-// allocated on stack. An ideal solution would be to find a library that can grow the stack as needed.
-// Without that, using a bigger stack of 8MB with `RUST_MIN_STACK` flag like `RUST_MIN_STACK=8388608 cargo test`
-// successfully runs the test on MacOS. However, such a large stack might not be possible on other platforms
-
 pub mod dkgith_decls {
     use super::BatchedHashedElgamalCiphertext;
     use verifiable_encryption::tz_21::dkgith::{CompressedCiphertext, DkgithProof};
@@ -33,8 +28,6 @@ pub mod dkgith_decls {
     pub const NUM_PARTIES: usize = 16;
     pub const NUM_REPS: usize = 32;
     pub const SUBSET_SIZE: usize = 30;
-    pub const DEPTH: usize = 4;
-    pub const NUM_NODES: usize = 31;
 
     pub const SEED_SIZE: usize = 16;
     pub const SALT_SIZE: usize = 32;
@@ -43,8 +36,6 @@ pub mod dkgith_decls {
         G,
         BatchedHashedElgamalCiphertext<G>,
         NUM_PARTIES,
-        DEPTH,
-        NUM_NODES,
         NUM_REPS,
         SEED_SIZE,
         SALT_SIZE,
@@ -59,22 +50,9 @@ pub mod rdkgith_decls {
 
     pub const NUM_PARTIES: usize = 192;
     pub const THRESHOLD: usize = 36;
-    pub const NUM_PARTIES_MINUS_THRESHOLD: usize = 156;
     pub const SUBSET_SIZE: usize = 145;
 
-    // Very large values cause stack overflow so use them when testing on smaller stack
-    // pub const NUM_PARTIES: usize = 50;
-    // pub const THRESHOLD: usize = 35;
-    // pub const NUM_PARTIES_MINUS_THRESHOLD: usize = 15;
-    // pub const SUBSET_SIZE: usize = 10;
-
-    pub type Proof<G> = RdkgithProof<
-        G,
-        BatchedHashedElgamalCiphertext<G>,
-        NUM_PARTIES,
-        THRESHOLD,
-        NUM_PARTIES_MINUS_THRESHOLD,
-    >;
+    pub type Proof<G> = RdkgithProof<G, BatchedHashedElgamalCiphertext<G>, NUM_PARTIES, THRESHOLD>;
     pub type Ciphertext<G> =
         CompressedCiphertext<G, BatchedHashedElgamalCiphertext<G>, SUBSET_SIZE>;
 }
@@ -121,7 +99,7 @@ macro_rules! impl_common_funcs {
                 &comm_key,
                 &self.enc_params.public_key,
                 &self.enc_params.gen,
-            );
+            )?;
             self.$proof_field_name = Some(ve_proof);
             self.init_schnorr_protocol(witnesses, blindings, commitment, comm_key)
         }
@@ -176,7 +154,7 @@ macro_rules! impl_common_funcs {
                 &self.enc_params.public_key,
                 &self.enc_params.gen,
             )
-            .map_err(|e| ProofSystemError::VerifiableEncryption(self.id as u32, e))?;
+            .map_err(|e| ProofSystemError::VerifiableEncryptionFailed(self.id as u32, e))?;
             // NOTE: value of id is dummy
             let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
             sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resps)

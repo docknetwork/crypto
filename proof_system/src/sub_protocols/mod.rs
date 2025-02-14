@@ -15,36 +15,34 @@ pub mod saver;
 pub mod schnorr;
 pub mod verifiable_encryption_tz_21;
 
-use crate::error::ProofSystemError;
-use ark_ec::pairing::Pairing;
-use ark_ff::PrimeField;
-use ark_std::{format, io::Write};
-use core::borrow::Borrow;
-use itertools::{EitherOrBoth, Itertools};
-
-use crate::sub_protocols::{
-    accumulator::{
-        cdh::{
-            KBPositiveAccumulatorMembershipCDHSubProtocol,
-            KBUniversalAccumulatorMembershipCDHSubProtocol,
-            KBUniversalAccumulatorNonMembershipCDHSubProtocol,
-            VBAccumulatorMembershipCDHSubProtocol, VBAccumulatorNonMembershipCDHSubProtocol,
+use crate::{
+    error::ProofSystemError,
+    sub_protocols::{
+        accumulator::{
+            cdh::{
+                KBPositiveAccumulatorMembershipCDHSubProtocol,
+                KBUniversalAccumulatorMembershipCDHSubProtocol,
+                KBUniversalAccumulatorNonMembershipCDHSubProtocol,
+                VBAccumulatorMembershipCDHSubProtocol, VBAccumulatorNonMembershipCDHSubProtocol,
+            },
+            keyed_verification::{
+                KBUniversalAccumulatorMembershipKVSubProtocol,
+                KBUniversalAccumulatorNonMembershipKVSubProtocol,
+                VBAccumulatorMembershipKVSubProtocol,
+            },
+            KBPositiveAccumulatorMembershipSubProtocol,
+            KBUniversalAccumulatorMembershipSubProtocol,
+            KBUniversalAccumulatorNonMembershipSubProtocol,
         },
-        keyed_verification::{
-            KBUniversalAccumulatorMembershipKVSubProtocol,
-            KBUniversalAccumulatorNonMembershipKVSubProtocol, VBAccumulatorMembershipKVSubProtocol,
-        },
-        KBPositiveAccumulatorMembershipSubProtocol, KBUniversalAccumulatorMembershipSubProtocol,
-        KBUniversalAccumulatorNonMembershipSubProtocol,
+        bbdt16_kvac::PoKOfMACSubProtocol,
+        bound_check_bpp::BoundCheckBppProtocol,
+        bound_check_legogroth16::BoundCheckLegoGrothProtocol,
+        bound_check_smc::BoundCheckSmcProtocol,
+        bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
+        inequality::InequalityProtocol,
+        r1cs_legogorth16::R1CSLegogroth16Protocol,
+        verifiable_encryption_tz_21::VeTZ21Protocol,
     },
-    bbdt16_kvac::PoKOfMACSubProtocol,
-    bound_check_bpp::BoundCheckBppProtocol,
-    bound_check_legogroth16::BoundCheckLegoGrothProtocol,
-    bound_check_smc::BoundCheckSmcProtocol,
-    bound_check_smc_with_kv::BoundCheckSmcWithKVProtocol,
-    inequality::InequalityProtocol,
-    r1cs_legogorth16::R1CSLegogroth16Protocol,
-    verifiable_encryption_tz_21::VeTZ21Protocol,
 };
 use accumulator::{
     detached::{
@@ -52,6 +50,11 @@ use accumulator::{
     },
     VBAccumulatorMembershipSubProtocol, VBAccumulatorNonMembershipSubProtocol,
 };
+use ark_ec::pairing::Pairing;
+use ark_ff::PrimeField;
+use ark_std::{format, io::Write};
+use core::borrow::Borrow;
+use itertools::{EitherOrBoth, Itertools};
 
 /// Various sub-protocols that are executed to create a `StatementProof` which are then combined to
 /// form a `Proof`

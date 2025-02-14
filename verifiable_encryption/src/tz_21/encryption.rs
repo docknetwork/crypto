@@ -62,12 +62,10 @@ pub trait BatchCiphertext<G: AffineRepr>:
     /// Get randomness for encryption deterministically. Used in DKGitH
     fn get_randomness_from_seed_tree<
         const NUM_PARTIES: usize,
-        const DEPTH: usize,
-        const NUM_TOTAL_NODES: usize,
         const SEED_SIZE: usize,
         D: FullDigest,
     >(
-        seed_tree: &SeedTree<NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, SEED_SIZE>,
+        seed_tree: &SeedTree<NUM_PARTIES, SEED_SIZE>,
         party_index: u16,
         witness_count: usize,
     ) -> Self::Randomness;
@@ -143,12 +141,10 @@ impl<G: AffineRepr> BatchCiphertext<G> for SimpleBatchElgamalCiphertext<G> {
 
     fn get_randomness_from_seed_tree<
         const NUM_PARTIES: usize,
-        const DEPTH: usize,
-        const NUM_TOTAL_NODES: usize,
         const SEED_SIZE: usize,
         D: FullDigest,
     >(
-        seed_tree: &SeedTree<NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, SEED_SIZE>,
+        seed_tree: &SeedTree<NUM_PARTIES, SEED_SIZE>,
         party_index: u16,
         witness_count: usize,
     ) -> Self::Randomness {
@@ -226,12 +222,10 @@ impl<G: AffineRepr> BatchCiphertext<G> for BatchedHashedElgamalCiphertext<G> {
 
     fn get_randomness_from_seed_tree<
         const NUM_PARTIES: usize,
-        const DEPTH: usize,
-        const NUM_TOTAL_NODES: usize,
         const SEED_SIZE: usize,
         D: FullDigest,
     >(
-        seed_tree: &SeedTree<NUM_PARTIES, DEPTH, NUM_TOTAL_NODES, SEED_SIZE>,
+        seed_tree: &SeedTree<NUM_PARTIES, SEED_SIZE>,
         party_index: u16,
         witness_count: usize,
     ) -> Self::Randomness {

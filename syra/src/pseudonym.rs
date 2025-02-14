@@ -17,8 +17,8 @@
 //! Follows the notation of the paper and thus uses the multiplicative notation.
 //!
 //! The user creates `K_1 = F^s.G^r_1` and `K_2 = F^{β.s}.G^r_2` and uses the protocol for multiplicative relation among `K_1`, `K_2` and `E`
-//! to prove that the exponents of `F` in `K_2` is the product of exponents of `F` in `K_1` and `E` while also proving the equality of those exponents
-//! with the ones in `H`. Following is the detailed protocol with P and V denoting the prover and verifier respectively.
+//! to prove that the exponent of `F` in `K_2`, i.e.`β.s` is the product of exponents of `F` in `K_1`, i.e. `s` and `F` in `E` i.e. `β` while also proving the
+//! equality of that exponent with the exponents of `F` in `H` i.e. `β.s`. Following is the detailed protocol with P and V denoting the prover and verifier respectively.
 //!
 //! 1. P chooses random `r_1, r_2` and computes `K_1 = F^s.G^r_1` and `K_2 = F^{β.s}.G^r_2`. Now `K_2 = E^s.G^{r_2 - α.s}`. Let `r3 = r2 - α*s`
 //! 2. Now P starts executing the Schnorr protocol. It chooses random `θ_1, θ_2, θ_3, R_1, R_2, R_3, R_4`.

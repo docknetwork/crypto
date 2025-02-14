@@ -7,7 +7,7 @@ use ark_std::{
     rand::RngCore,
     vec::Vec,
 };
-use digest::DynDigest;
+use digest::{Digest, DynDigest};
 use dock_crypto_utils::expect_equality;
 use oblivious_transfer_protocols::{cointoss, zero_sharing, ParticipantId};
 
@@ -48,7 +48,7 @@ pub struct BBSPlusSignatureShare<E: Pairing> {
 }
 
 impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
-    pub fn init_for_bbs_plus<R: RngCore>(
+    pub fn init_for_bbs_plus<R: RngCore, D: Digest>(
         rng: &mut R,
         batch_size: u32,
         id: ParticipantId,
@@ -68,10 +68,10 @@ impl<F: PrimeField, const SALT_SIZE: usize> Phase1<F, SALT_SIZE> {
         let r = (0..batch_size).map(|_| F::rand(rng)).collect();
         // 2 because 2 random values `e` and `s` need to be generated per signature
         let (commitment_protocol, comm) =
-            cointoss::Party::commit(rng, id, 2 * batch_size, protocol_id.clone());
+            cointoss::Party::commit::<R, D>(rng, id, 2 * batch_size, protocol_id.clone());
         // Each signature will have its own zero-sharing of `alpha` and `beta`
         let (zero_sharing_protocol, comm_zero_share) =
-            zero_sharing::Party::init(rng, id, 2 * batch_size, others, protocol_id);
+            zero_sharing::Party::init::<R, D>(rng, id, 2 * batch_size, others, protocol_id);
         Ok((
             Self {
                 id,
@@ -204,25 +204,23 @@ impl<E: Pairing> BBSPlusSignatureShare<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, Fr};
-    use ark_ff::Zero;
-    use std::time::{Duration, Instant};
-
     use crate::{
         setup::{PublicKeyG2, SecretKey},
         threshold::multiplication_phase::Phase2,
     };
-    use oblivious_transfer_protocols::ot_based_multiplication::{
-        dkls18_mul_2p::MultiplicationOTEParams, dkls19_batch_mul_2p::GadgetVector,
-    };
-
+    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_ff::Zero;
     use ark_std::{
         rand::{rngs::StdRng, SeedableRng},
         UniformRand,
     };
     use blake2::Blake2b512;
-
+    use oblivious_transfer_protocols::ot_based_multiplication::{
+        dkls18_mul_2p::MultiplicationOTEParams, dkls19_batch_mul_2p::GadgetVector,
+    };
     use secret_sharing_and_dkg::shamir_ss::deal_random_secret;
+    use sha3::Shake256;
+    use std::time::{Duration, Instant};
     use test_utils::ot::do_pairwise_base_ot;
 
     pub fn trusted_party_keygen<R: RngCore, F: PrimeField>(
@@ -294,14 +292,15 @@ pub mod tests {
                 let start = Instant::now();
                 let mut others = threshold_party_set.clone();
                 others.remove(&i);
-                let (round1, comm, comm_zero) = Phase1::<Fr, 256>::init_for_bbs_plus(
-                    rng,
-                    sig_batch_size,
-                    i,
-                    others,
-                    protocol_id.clone(),
-                )
-                .unwrap();
+                let (round1, comm, comm_zero) =
+                    Phase1::<Fr, 256>::init_for_bbs_plus::<_, Blake2b512>(
+                        rng,
+                        sig_batch_size,
+                        i,
+                        others,
+                        protocol_id.clone(),
+                    )
+                    .unwrap();
                 phase1_times.insert(i, start.elapsed());
                 round1s.push(round1);
                 commitments.push(comm);
@@ -339,7 +338,7 @@ pub mod tests {
                         phase1_times.insert(j, *phase1_times.get(&j).unwrap() + start.elapsed());
                         let start = Instant::now();
                         round1s[i as usize - 1]
-                            .receive_shares(j, share, zero_share)
+                            .receive_shares::<Blake2b512>(j, share, zero_share)
                             .unwrap();
                         phase1_times.insert(i, *phase1_times.get(&i).unwrap() + start.elapsed());
                     }
@@ -378,7 +377,7 @@ pub mod tests {
                 let start = Instant::now();
                 let mut others = threshold_party_set.clone();
                 others.remove(&i);
-                let (phase, U) = Phase2::init(
+                let (phase, U) = Phase2::init::<_, Shake256>(
                     rng,
                     i,
                     round1outs[i as usize - 1].masked_signing_key_shares.clone(),
@@ -400,7 +399,7 @@ pub mod tests {
                 for (receiver_id, m) in msg_1s {
                     let start = Instant::now();
                     let m2 = round2s[receiver_id as usize - 1]
-                        .receive_message1::<Blake2b512>(sender_id, m, &gadget_vector)
+                        .receive_message1::<Blake2b512, Shake256>(sender_id, m, &gadget_vector)
                         .unwrap();
                     phase2_times.insert(
                         receiver_id,

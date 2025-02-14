@@ -3,7 +3,10 @@ use crate::{
     error::ProofSystemError,
     meta_statement::{MetaStatement, MetaStatements},
     setup_params::SetupParams,
-    statement::{Statement, Statements},
+    statement::{
+        bound_check_smc::{SmcParamsAndCommitmentKey, SmcParamsWithPairingAndCommitmentKey},
+        Statement, Statements,
+    },
 };
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
@@ -34,10 +37,6 @@ use saver::prelude::{
 };
 use serde::{Deserialize, Serialize};
 use smc_range_proof::prelude::MemberCommitmentKey;
-
-use crate::statement::bound_check_smc::{
-    SmcParamsAndCommitmentKey, SmcParamsWithPairingAndCommitmentKey,
-};
 use vb_accumulator::{
     kb_positive_accumulator::setup::{
         PreparedPublicKey as KBPreparedAccumPk, PreparedSetupParams as KBPreparedAccumParams,

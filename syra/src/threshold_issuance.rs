@@ -34,7 +34,7 @@ use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, ops::Mul, rand::RngCore, vec::Vec};
-use digest::DynDigest;
+use digest::{DynDigest, ExtendableOutput, Update};
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -89,7 +89,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     /// This internally uses `init_for_known_message` of threshold weak-BB signature as the signers must
     /// know the full message which here is the user id. This is important to prevent the user from
     /// getting multiple signatures over the arbitrary user ids.
-    pub fn init_for_user_id<R: RngCore>(
+    pub fn init_for_user_id<R: RngCore, X: Default + Update + ExtendableOutput>(
         rng: &mut R,
         id: ParticipantId,
         issuer_sk: &IssuerSecretKey<F>,
@@ -104,7 +104,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             F,
             KAPPA,
             STATISTICAL_SECURITY_PARAMETER,
-        >::init_for_known_message(
+        >::init_for_known_message::<R, X>(
             rng,
             id,
             issuer_sk.0,
@@ -122,7 +122,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     /// the share is not of some bogus value. A way to achieve signing with user-id
     /// shares could be for the user to prove that the shares belong to "certain user-id" (likely in a commitment)
     /// before the signers call this function.
-    pub fn init_for_shared_user_id<R: RngCore>(
+    pub fn init_for_shared_user_id<R: RngCore, X: Default + Update + ExtendableOutput>(
         rng: &mut R,
         id: ParticipantId,
         issuer_sk: &IssuerSecretKey<F>,
@@ -137,7 +137,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             F,
             KAPPA,
             STATISTICAL_SECURITY_PARAMETER,
-        >::init_for_shared_message(
+        >::init_for_shared_message::<R, X>(
             rng,
             id,
             issuer_sk.0,
@@ -152,14 +152,17 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     }
 
     /// Process received `Message1` from signer with id `sender_id`
-    pub fn receive_message1<D: Default + DynDigest + Clone>(
+    pub fn receive_message1<
+        D: Default + DynDigest + Clone,
+        X: Default + Update + ExtendableOutput,
+    >(
         &mut self,
         sender_id: ParticipantId,
         message: Message1<F>,
         gadget_vector: &GadgetVector<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>,
     ) -> Result<Message2<F>, SyraError> {
         self.0
-            .receive_message1::<D>(sender_id, message, gadget_vector)
+            .receive_message1::<D, X>(sender_id, message, gadget_vector)
             .map_err(|e| e.into())
     }
 
@@ -229,6 +232,7 @@ mod tests {
     use blake2::Blake2b512;
     use schnorr_pok::compute_random_oracle_challenge;
     use secret_sharing_and_dkg::shamir_ss::{deal_random_secret, deal_secret};
+    use sha3::Shake256;
     use short_group_sig::threshold_weak_bb_sig::Phase1;
     use std::{collections::BTreeSet, time::Instant};
     use test_utils::ot::do_pairwise_base_ot;
@@ -265,7 +269,8 @@ mod tests {
             let mut others = threshold_party_set.clone();
             others.remove(&i);
             let (round1, comm_zero) =
-                Phase1::<Fr, 256>::init(rng, i, others, protocol_id.clone()).unwrap();
+                Phase1::<Fr, 256>::init::<_, Blake2b512>(rng, i, others, protocol_id.clone())
+                    .unwrap();
             phase1s.push(round1);
             commitments_zero_share.push(comm_zero);
         }
@@ -294,7 +299,7 @@ mod tests {
                     let zero_share = phase1s[j as usize - 1]
                         .get_comm_shares_and_salts_for_zero_sharing_protocol_with_other(&i);
                     phase1s[i as usize - 1]
-                        .receive_shares(j, zero_share)
+                        .receive_shares::<Blake2b512>(j, zero_share)
                         .unwrap();
                 }
             }
@@ -333,7 +338,7 @@ mod tests {
         // Signers initiate round-2 and each signer sends messages to others
         for i in 1..=threshold_signers {
             let (phase, msgs) = if known_id {
-                Phase2::init_for_user_id(
+                Phase2::init_for_user_id::<_, Shake256>(
                     rng,
                     i,
                     &secret_key_shares[i as usize - 1],
@@ -346,7 +351,7 @@ mod tests {
                 )
                 .unwrap()
             } else {
-                Phase2::init_for_shared_user_id(
+                Phase2::init_for_shared_user_id::<_, Shake256>(
                     rng,
                     i,
                     &secret_key_shares[i as usize - 1],
@@ -372,7 +377,7 @@ mod tests {
         for (sender_id, msg_1s) in all_msg_1s {
             for (receiver_id, m) in msg_1s {
                 let m2 = phase2s[receiver_id as usize - 1]
-                    .receive_message1::<Blake2b512>(sender_id, m, &gadget_vector)
+                    .receive_message1::<Blake2b512, Shake256>(sender_id, m, &gadget_vector)
                     .unwrap();
                 all_msg_2s.push((receiver_id, sender_id, m2));
             }

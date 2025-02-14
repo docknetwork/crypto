@@ -24,8 +24,6 @@
 //!
 //! More docs in the corresponding modules.
 
-// TODO: Replace asserts with error handling in non-test code.
-
 #[macro_use]
 pub mod util;
 

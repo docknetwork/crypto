@@ -3,18 +3,6 @@
 //! Multiplication participants are called Party1 and Party2 where Party1 acts as the OT sender and Party2 as the
 //! receiver
 
-use ark_ff::{BigInteger, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec, vec::Vec, UniformRand};
-use digest::{Digest, DynDigest};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-
-use crate::{Bit, BitMatrix};
-use dock_crypto_utils::{
-    concat_slices, hashing_utils::field_elem_from_try_and_incr, serde_utils::ArkObjectBytes,
-};
-
 use crate::{
     base_ot::simplest_ot::{OneOfTwoROTSenderKeys, ROTReceiverKeys},
     configs::OTEConfig,
@@ -22,10 +10,19 @@ use crate::{
     ot_extensions::kos_ote::{
         CorrelationTag, OTExtensionReceiverSetup, OTExtensionSenderSetup, RLC as KOSRLC,
     },
+    util::is_multiple_of_8,
+    Bit, BitMatrix,
 };
-use dock_crypto_utils::transcript::Transcript;
-
-use crate::util::is_multiple_of_8;
+use ark_ff::{BigInteger, PrimeField};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec, vec::Vec, UniformRand};
+use digest::{Digest, DynDigest, ExtendableOutput, Update};
+use dock_crypto_utils::{
+    concat_slices, hashing_utils::field_elem_from_try_and_incr, serde_utils::ArkObjectBytes,
+    transcript::Transcript,
+};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -155,7 +152,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         })
     }
 
-    pub fn receive<D: Default + DynDigest + Clone>(
+    pub fn receive<D: Default + DynDigest + Clone, X: Default + Update + ExtendableOutput>(
         self,
         U: BitMatrix,
         rlc: KOSRLC,
@@ -168,7 +165,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
             self.ote_params.num_extensions(),
         )?;
         let correlations = self.get_ote_correlation();
-        let ext_sender_setup = OTExtensionSenderSetup::new::<STATISTICAL_SECURITY_PARAMETER>(
+        let ext_sender_setup = OTExtensionSenderSetup::new::<X, STATISTICAL_SECURITY_PARAMETER>(
             ote_config,
             U,
             rlc,
@@ -201,7 +198,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
     Party2<F, KAPPA, STATISTICAL_SECURITY_PARAMETER>
 {
     /// Assumes that the base OT is already done and this party for the sender in that.
-    pub fn new<R: RngCore>(
+    pub fn new<R: RngCore, X: Default + Update + ExtendableOutput>(
         rng: &mut R,
         beta: F,
         base_ot_keys: OneOfTwoROTSenderKeys,
@@ -222,6 +219,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         let ote_config = OTEConfig::new(ote_params.num_base_ot(), ote_params.num_extensions())?;
         let (ext_receiver_setup, U, rlc) = OTExtensionReceiverSetup::new::<
             _,
+            X,
             STATISTICAL_SECURITY_PARAMETER,
         >(
             rng, ote_config, encoded_beta.clone(), base_ot_keys
@@ -333,6 +331,7 @@ pub mod tests {
     };
     use blake2::Blake2b512;
     use dock_crypto_utils::transcript::new_merlin_transcript;
+    use sha3::Shake256;
     use test_utils::test_serialization;
 
     type Fr = <Bls12_381 as Pairing>::ScalarField;
@@ -372,7 +371,7 @@ pub mod tests {
                 ote_params,
             )
             .unwrap();
-            let (party2, U, kos_rlc) = Party2::new(
+            let (party2, U, kos_rlc) = Party2::new::<_, Shake256>(
                 rng,
                 beta,
                 base_ot_sender_keys,
@@ -384,7 +383,7 @@ pub mod tests {
 
             let (share_1, tau, rlc) = party1
                 .clone()
-                .receive::<Blake2b512>(U, kos_rlc, &mut party1_transcript, &gadget_vector)
+                .receive::<Blake2b512, Shake256>(U, kos_rlc, &mut party1_transcript, &gadget_vector)
                 .unwrap();
             let share_2 = party2
                 .clone()

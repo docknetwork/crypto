@@ -4,6 +4,13 @@
 //! This module first implements a Random OT (ROT) which can then be used to realize an OT with actual messages
 //! Allows to run multiple instances of 1-of-n ROTs (Random OT).
 
+use crate::{
+    configs::OTConfig,
+    error::OTError,
+    util,
+    util::{is_multiple_of_8, multiples_of_g},
+    Bit, Key,
+};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -19,15 +26,8 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
-use crate::{error::OTError, util, Bit, Key};
-
-use crate::util::{is_multiple_of_8, multiples_of_g};
-
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-use crate::configs::OTConfig;
-use sha3::{Sha3_256, Shake256};
 
 /// Public key created by base OT sender and sent to the receiver
 #[serde_as]
@@ -189,7 +189,7 @@ impl<G: AffineRepr> ROTSenderSetup<G> {
     }
 
     /// Derive the sender's keys using receiver's public key
-    pub fn derive_keys<const KEY_SIZE: u16>(
+    pub fn derive_keys<D: Default + Update + ExtendableOutput, const KEY_SIZE: u16>(
         &self,
         R: ReceiverPubKeys<G>,
     ) -> Result<ROTSenderKeys, OTError> {
@@ -217,7 +217,7 @@ impl<G: AffineRepr> ROTSenderSetup<G> {
                         } else {
                             (yR[i] - jT[j - 1]).into_affine()
                         };
-                        hash_to_otp::<G, KEY_SIZE>(i as u32, &self.S, &R.0[i], &jt)
+                        hash_to_otp::<G, D, KEY_SIZE>(i as u32, &self.S, &R.0[i], &jt)
                     })
                     .collect::<Vec<_>>()
             })
@@ -228,7 +228,12 @@ impl<G: AffineRepr> ROTSenderSetup<G> {
 
 impl ROTReceiverKeys {
     /// Create symmetric keys and the public keys of receiver of the Random OT protocol.
-    pub fn new<R: RngCore, G: AffineRepr, const KEY_SIZE: u16>(
+    pub fn new<
+        R: RngCore,
+        G: AffineRepr,
+        D: Default + Update + ExtendableOutput,
+        const KEY_SIZE: u16,
+    >(
         rng: &mut R,
         ot_config: OTConfig,
         choices: Vec<u16>,
@@ -267,14 +272,20 @@ impl ROTReceiverKeys {
         }
         let keys = cfg_iter!(xS)
             .enumerate()
-            .map(|(i, xs)| hash_to_otp::<G, KEY_SIZE>(i as u32, &S.0, &R[i], xs))
+            .map(|(i, xs)| hash_to_otp::<G, D, KEY_SIZE>(i as u32, &S.0, &R[i], xs))
             .collect::<Vec<_>>();
         Ok((Self(keys), ReceiverPubKeys(R)))
     }
 
     /// Create symmetric keys and the public keys of receiver of the Verified Simplest OT protocol.
     /// Verifies the proof of knowledge of secret key.
-    pub fn new_verifiable<R: RngCore, G: AffineRepr, D: Digest, const KEY_SIZE: u16>(
+    pub fn new_verifiable<
+        R: RngCore,
+        G: AffineRepr,
+        D: Digest,
+        X: Default + Update + ExtendableOutput,
+        const KEY_SIZE: u16,
+    >(
         rng: &mut R,
         num_ot: u16,
         choices: Vec<Bit>,
@@ -290,7 +301,7 @@ impl ROTReceiverKeys {
         if !schnorr_proof.verify(&S.0, B, &challenge) {
             return Err(OTError::InvalidSchnorrProof);
         }
-        Self::new::<_, _, KEY_SIZE>(
+        Self::new::<_, _, X, KEY_SIZE>(
             rng,
             OTConfig::new_2_message(num_ot)?,
             cfg_into_iter!(choices).map(|c| u16::from(c)).collect(),
@@ -302,17 +313,19 @@ impl ROTReceiverKeys {
 
 impl VSROTChallenger {
     /// OT sender creates challenges for the receiver. Refers to step 5 of the VSOT protocol
-    pub fn new(derived_keys: &OneOfTwoROTSenderKeys) -> Result<(Self, Challenges), OTError> {
+    pub fn new<D: Digest>(
+        derived_keys: &OneOfTwoROTSenderKeys,
+    ) -> Result<(Self, Challenges), OTError> {
         if derived_keys.len() == 0 {
             return Err(OTError::NeedNonZeroNumberOfDerivedKeys);
         }
         let (challenges, double_hashed_keys_0, hashed_keys) = cfg_iter!(derived_keys.0)
             .enumerate()
             .map(|(i, keys)| {
-                let hash_key_0 = hash_key(&keys.0, i as u16);
-                let hash_key_1 = hash_key(&keys.1, i as u16);
-                let double_hash_key_0 = hash_key(&hash_key_0, i as u16);
-                let double_hash_key_1 = hash_key(&hash_key_1, i as u16);
+                let hash_key_0 = hash_key::<D>(&keys.0, i as u16);
+                let hash_key_1 = hash_key::<D>(&keys.1, i as u16);
+                let double_hash_key_0 = hash_key::<D>(&hash_key_0, i as u16);
+                let double_hash_key_1 = hash_key::<D>(&hash_key_1, i as u16);
                 let challenge = util::xor(&double_hash_key_0, &double_hash_key_1);
                 (
                     challenge,
@@ -361,7 +374,7 @@ impl VSROTChallenger {
 
 impl VSROTResponder {
     /// OT receiver receives challenges from the sender and creates responses. Refers to step 6 of the VSOT protocol
-    pub fn new(
+    pub fn new<D: Digest>(
         derived_keys: &ROTReceiverKeys,
         choices: Vec<Bit>,
         challenges: Challenges,
@@ -384,8 +397,8 @@ impl VSROTResponder {
         let (hashed_keys, responses) = cfg_iter!(derived_keys.0)
             .enumerate()
             .map(|(i, key)| {
-                let hashed_key = hash_key(key, i as u16);
-                let mut resp = hash_key(&hashed_key, i as u16);
+                let hashed_key = hash_key::<D>(key, i as u16);
+                let mut resp = hash_key::<D>(&hashed_key, i as u16);
                 // Evaluating both arms of `if` block to prevent side channel
                 if choices[i] {
                     resp = util::xor(&resp, &challenges.0[i]);
@@ -410,7 +423,7 @@ impl VSROTResponder {
     }
 
     /// OT receiver verifies that the hashed keys are correct. Refers to step 8 of the VSOT protocol
-    pub fn verify_sender_hashed_keys(
+    pub fn verify_sender_hashed_keys<D: Digest>(
         &self,
         sender_hashed_keys: Vec<(HashedKey, HashedKey)>,
     ) -> Result<(), OTError> {
@@ -430,8 +443,8 @@ impl VSROTResponder {
             if !check1 {
                 return Err(i as u16);
             }
-            let double_hash_key_0 = hash_key(&k_0.0, i as u16);
-            let double_hash_key_1 = hash_key(&k_1.0, i as u16);
+            let double_hash_key_0 = hash_key::<D>(&k_0.0, i as u16);
+            let double_hash_key_1 = hash_key::<D>(&k_1.0, i as u16);
             let challenge = util::xor(&double_hash_key_0, &double_hash_key_1);
             let check2 = challenge == self.challenges.0[i];
             if !check2 {
@@ -483,7 +496,11 @@ impl OneOfTwoROTSenderKeys {
 }
 
 // TODO: Make it use const generic for key size and generic digest
-pub fn hash_to_otp<G: CanonicalSerialize, const KEY_SIZE: u16>(
+pub fn hash_to_otp<
+    G: CanonicalSerialize,
+    D: Default + Update + ExtendableOutput,
+    const KEY_SIZE: u16,
+>(
     index: u32,
     s: &G,
     r: &G,
@@ -495,15 +512,15 @@ pub fn hash_to_otp<G: CanonicalSerialize, const KEY_SIZE: u16>(
     input.serialize_compressed(&mut bytes).unwrap();
     index.serialize_compressed(&mut bytes).unwrap();
     let mut key = vec![0; KEY_SIZE as usize / 8];
-    let mut hasher = Shake256::default();
+    let mut hasher = D::default();
     Update::update(&mut hasher, &bytes);
     hasher.finalize_xof_into(&mut key);
     key
 }
 
 // TODO: Make it use const generic for key size and generic digest
-pub fn hash_key(key: &[u8], index: u16) -> Vec<u8> {
-    let mut hasher = Sha3_256::new();
+pub fn hash_key<D: Digest>(key: &[u8], index: u16) -> Vec<u8> {
+    let mut hasher = D::new();
     Digest::update(&mut hasher, index.to_be_bytes());
     Digest::update(&mut hasher, &key);
     hasher.finalize().to_vec()
@@ -519,6 +536,7 @@ pub mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
+    use sha3::Shake256;
     use std::time::Instant;
     use test_utils::{test_serialization, G1};
 
@@ -534,12 +552,19 @@ pub mod tests {
         let base_ot_choices = (0..base_ot_count)
             .map(|_| u16::rand(rng) % 2)
             .collect::<Vec<_>>();
-        let (base_ot_receiver_keys, R) =
-            ROTReceiverKeys::new::<_, _, KEY_SIZE>(rng, ot_config, base_ot_choices.clone(), S, B)
-                .unwrap();
+        let (base_ot_receiver_keys, R) = ROTReceiverKeys::new::<_, _, Shake256, KEY_SIZE>(
+            rng,
+            ot_config,
+            base_ot_choices.clone(),
+            S,
+            B,
+        )
+        .unwrap();
 
         let base_ot_sender_keys = OneOfTwoROTSenderKeys::try_from(
-            base_ot_sender_setup.derive_keys::<KEY_SIZE>(R).unwrap(),
+            base_ot_sender_setup
+                .derive_keys::<Shake256, KEY_SIZE>(R)
+                .unwrap(),
         )
         .unwrap();
         (base_ot_choices, base_ot_sender_keys, base_ot_receiver_keys)
@@ -579,7 +604,7 @@ pub mod tests {
             let (sender_setup, S) = ROTSenderSetup::new(rng, ot_config, B);
 
             let start = Instant::now();
-            let (receiver_keys, R) = ROTReceiverKeys::new::<_, _, KEY_SIZE>(
+            let (receiver_keys, R) = ROTReceiverKeys::new::<_, _, Shake256, KEY_SIZE>(
                 rng,
                 ot_config,
                 choices.clone(),
@@ -595,7 +620,7 @@ pub mod tests {
 
             let start = Instant::now();
             let sender_keys = sender_setup
-                .derive_keys::<KEY_SIZE>(R.clone())
+                .derive_keys::<Shake256, KEY_SIZE>(R.clone())
                 .expect("Error in creating keys for OT sender");
             println!("Sender creates {} ROTs in {:?}", string, start.elapsed());
 
@@ -684,6 +709,7 @@ pub mod tests {
                     StdRng,
                     <Bls12_381 as Pairing>::G1Affine,
                     Blake2b512,
+                    Shake256,
                     KEY_SIZE,
                 >(rng, num_base_ot, choices.clone(), S, &schnorr_proof, B)
                 .expect("Error in creating keys for OT receiver");
@@ -695,7 +721,7 @@ pub mod tests {
 
             let start = Instant::now();
             let sender_keys = sender_setup
-                .derive_keys::<KEY_SIZE>(R)
+                .derive_keys::<Shake256, KEY_SIZE>(R)
                 .expect("Error in creating keys for OT sender");
             println!(
                 "Sender creates {} 1-of-2 VROTs in {:?}",
@@ -705,8 +731,8 @@ pub mod tests {
 
             let sender_keys = OneOfTwoROTSenderKeys::try_from(sender_keys).unwrap();
             let start = Instant::now();
-            let (sender_challenger, challenges) =
-                VSROTChallenger::new(&sender_keys).expect("Error in creating keys challenges");
+            let (sender_challenger, challenges) = VSROTChallenger::new::<Blake2b512>(&sender_keys)
+                .expect("Error in creating keys challenges");
             println!(
                 "Sender creates challenge for {} 1-of-2 VROTs in {:?}",
                 num_base_ot,
@@ -714,9 +740,12 @@ pub mod tests {
             );
 
             let start = Instant::now();
-            let (receiver_responder, responses) =
-                VSROTResponder::new(&receiver_keys, choices.clone(), challenges.clone())
-                    .expect("Error in creating responses");
+            let (receiver_responder, responses) = VSROTResponder::new::<Blake2b512>(
+                &receiver_keys,
+                choices.clone(),
+                challenges.clone(),
+            )
+            .expect("Error in creating responses");
             println!(
                 "Receiver creates responses for {} 1-of-2 VROTs in {:?}",
                 num_base_ot,
@@ -745,7 +774,7 @@ pub mod tests {
 
             let start = Instant::now();
             receiver_responder
-                .verify_sender_hashed_keys(hashed_keys)
+                .verify_sender_hashed_keys::<Blake2b512>(hashed_keys)
                 .expect("Error in verifying hashed keys from OT sender");
             println!(
                 "Receiver verifies hashed keys for {} 1-of-2 VROTs in {:?}",
