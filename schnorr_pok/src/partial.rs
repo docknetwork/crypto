@@ -1,5 +1,5 @@
 use crate::{
-    discrete_log::{PokDiscreteLogProtocol, PokTwoDiscreteLogsProtocol},
+    discrete_log::{PokDiscreteLogProtocol, PokPedersenCommitmentProtocol},
     error::SchnorrError,
     SchnorrCommitment,
 };
@@ -69,7 +69,7 @@ pub struct PartialPokDiscreteLog<G: AffineRepr> {
     Serialize,
     Deserialize,
 )]
-pub struct Partial1PokTwoDiscreteLogs<G: AffineRepr> {
+pub struct Partial1PokPedersenCommitment<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
     #[serde_as(as = "ArkObjectBytes")]
@@ -91,7 +91,7 @@ pub struct Partial1PokTwoDiscreteLogs<G: AffineRepr> {
     Serialize,
     Deserialize,
 )]
-pub struct Partial2PokTwoDiscreteLogs<G: AffineRepr> {
+pub struct Partial2PokPedersenCommitment<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
     #[serde_as(as = "ArkObjectBytes")]
@@ -113,7 +113,7 @@ pub struct Partial2PokTwoDiscreteLogs<G: AffineRepr> {
     Serialize,
     Deserialize,
 )]
-pub struct PartialPokTwoDiscreteLogs<G: AffineRepr> {
+pub struct PartialPokPedersenCommitment<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
 }
@@ -146,23 +146,29 @@ impl<G: AffineRepr> PokDiscreteLogProtocol<G> {
     }
 }
 
-impl<G: AffineRepr> PokTwoDiscreteLogsProtocol<G> {
+impl<G: AffineRepr> PokPedersenCommitmentProtocol<G> {
     /// Generate proof when no response has to be generated.
-    pub fn gen_partial_proof(self) -> PartialPokTwoDiscreteLogs<G> {
-        PartialPokTwoDiscreteLogs { t: self.t }
+    pub fn gen_partial_proof(self) -> PartialPokPedersenCommitment<G> {
+        PartialPokPedersenCommitment { t: self.t }
     }
 
     /// Generate proof when only response for witness1 has to be generated.
-    pub fn gen_partial1_proof(self, challenge: &G::ScalarField) -> Partial1PokTwoDiscreteLogs<G> {
-        Partial1PokTwoDiscreteLogs {
+    pub fn gen_partial1_proof(
+        self,
+        challenge: &G::ScalarField,
+    ) -> Partial1PokPedersenCommitment<G> {
+        Partial1PokPedersenCommitment {
             t: self.t,
             response1: self.blinding1 + (self.witness1 * *challenge),
         }
     }
 
     /// Generate proof when only response for witness2 has to be generated.
-    pub fn gen_partial2_proof(self, challenge: &G::ScalarField) -> Partial2PokTwoDiscreteLogs<G> {
-        Partial2PokTwoDiscreteLogs {
+    pub fn gen_partial2_proof(
+        self,
+        challenge: &G::ScalarField,
+    ) -> Partial2PokPedersenCommitment<G> {
+        Partial2PokPedersenCommitment {
             t: self.t,
             response2: self.blinding2 + (self.witness2 * *challenge),
         }
@@ -256,7 +262,7 @@ impl<G: AffineRepr> PartialPokDiscreteLog<G> {
     }
 }
 
-impl<G: AffineRepr> PartialPokTwoDiscreteLogs<G> {
+impl<G: AffineRepr> PartialPokPedersenCommitment<G> {
     pub fn verify(
         &self,
         y: &G,
@@ -279,11 +285,13 @@ impl<G: AffineRepr> PartialPokTwoDiscreteLogs<G> {
         y: &G,
         writer: W,
     ) -> Result<(), SchnorrError> {
-        PokTwoDiscreteLogsProtocol::compute_challenge_contribution(base1, base2, y, &self.t, writer)
+        PokPedersenCommitmentProtocol::compute_challenge_contribution(
+            base1, base2, y, &self.t, writer,
+        )
     }
 }
 
-impl<G: AffineRepr> Partial1PokTwoDiscreteLogs<G> {
+impl<G: AffineRepr> Partial1PokPedersenCommitment<G> {
     pub fn verify(
         &self,
         y: &G,
@@ -305,11 +313,13 @@ impl<G: AffineRepr> Partial1PokTwoDiscreteLogs<G> {
         y: &G,
         writer: W,
     ) -> Result<(), SchnorrError> {
-        PokTwoDiscreteLogsProtocol::compute_challenge_contribution(base1, base2, y, &self.t, writer)
+        PokPedersenCommitmentProtocol::compute_challenge_contribution(
+            base1, base2, y, &self.t, writer,
+        )
     }
 }
 
-impl<G: AffineRepr> Partial2PokTwoDiscreteLogs<G> {
+impl<G: AffineRepr> Partial2PokPedersenCommitment<G> {
     pub fn verify(
         &self,
         y: &G,
@@ -331,14 +341,16 @@ impl<G: AffineRepr> Partial2PokTwoDiscreteLogs<G> {
         y: &G,
         writer: W,
     ) -> Result<(), SchnorrError> {
-        PokTwoDiscreteLogsProtocol::compute_challenge_contribution(base1, base2, y, &self.t, writer)
+        PokPedersenCommitmentProtocol::compute_challenge_contribution(
+            base1, base2, y, &self.t, writer,
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compute_random_oracle_challenge;
+    use crate::pok_generalized_pedersen::compute_random_oracle_challenge;
     use ark_bls12_381::{Fr, G1Affine, G1Projective};
     use ark_ec::VariableBaseMSM;
     use ark_std::{
@@ -348,7 +360,7 @@ mod tests {
     use blake2::Blake2b512;
 
     #[test]
-    fn schnorr_partial() {
+    fn discrete_log_partial() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let count = 10;
         let bases_1 = (0..count)
@@ -415,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn discrete_log_partial() {
+    fn ped_comm_partial() {
         let mut rng = StdRng::seed_from_u64(0u64);
         let base1 = G1Affine::rand(&mut rng);
         let base2 = G1Affine::rand(&mut rng);
@@ -474,16 +486,16 @@ mod tests {
         let blinding3 = Fr::rand(&mut rng);
         let blinding4 = Fr::rand(&mut rng);
 
-        let protocol_1 = PokTwoDiscreteLogsProtocol::init(
+        let protocol_1 = PokPedersenCommitmentProtocol::init(
             witness1, blinding1, &base1, witness2, blinding2, &base2,
         );
-        let protocol_2 = PokTwoDiscreteLogsProtocol::init(
+        let protocol_2 = PokPedersenCommitmentProtocol::init(
             witness1, blinding1, &base3, witness2, blinding2, &base4,
         );
-        let protocol_3 = PokTwoDiscreteLogsProtocol::init(
+        let protocol_3 = PokPedersenCommitmentProtocol::init(
             witness1, blinding1, &base5, witness3, blinding3, &base6,
         );
-        let protocol_4 = PokTwoDiscreteLogsProtocol::init(
+        let protocol_4 = PokPedersenCommitmentProtocol::init(
             witness4, blinding4, &base7, witness2, blinding2, &base8,
         );
 

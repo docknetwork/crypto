@@ -26,8 +26,8 @@ use dock_crypto_utils::{
 };
 use itertools::multiunzip;
 use schnorr_pok::{
-    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
-    partial::Partial1PokTwoDiscreteLogs,
+    discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
+    partial::Partial1PokPedersenCommitment,
     SchnorrCommitment, SchnorrResponse,
 };
 use serde::{Deserialize, Serialize};
@@ -62,9 +62,9 @@ pub struct PoKOfMACProtocol<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub E: G,
     /// Protocol to prove knowledge of `1/l, t` in `E`
-    pub sc_E: PokTwoDiscreteLogsProtocol<G>,
+    pub sc_E: PokPedersenCommitmentProtocol<G>,
     /// Protocol to prove knowledge of `l, r` in `C`
-    pub sc_C: PokTwoDiscreteLogsProtocol<G>,
+    pub sc_C: PokPedersenCommitmentProtocol<G>,
     /// For proving relation `E - h - \sum_{i in D}(g_vec_i*m_i)` = `sum_{j notin D}(g_vec_j*m_j) + B_0*{-r/l} + f*t`
     pub sc_comm_msgs: SchnorrCommitment<G>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
@@ -83,8 +83,8 @@ pub struct PoKOfMAC<G: AffineRepr> {
     pub E: G,
     #[serde_as(as = "ArkObjectBytes")]
     pub C: G,
-    pub sc_E: Partial1PokTwoDiscreteLogs<G>,
-    pub sc_C: PokTwoDiscreteLogs<G>,
+    pub sc_E: Partial1PokPedersenCommitment<G>,
+    pub sc_C: PokPedersenCommitment<G>,
     #[serde_as(as = "ArkObjectBytes")]
     pub t_msgs: G,
     pub sc_resp_msgs: SchnorrResponse<G>,
@@ -128,8 +128,10 @@ impl<G: AffineRepr> PoKOfMACProtocol<G> {
         let E = C * alpha + f * t;
         let E_affine = E.into_affine();
         let t_blinding = G::ScalarField::rand(rng);
-        let sc_E = PokTwoDiscreteLogsProtocol::init(alpha, rand(rng), &C_affine, t, t_blinding, &f);
-        let sc_C = PokTwoDiscreteLogsProtocol::init(l, rand(rng), &E_affine, gamma, rand(rng), &f);
+        let sc_E =
+            PokPedersenCommitmentProtocol::init(alpha, rand(rng), &C_affine, t, t_blinding, &f);
+        let sc_C =
+            PokPedersenCommitmentProtocol::init(l, rand(rng), &E_affine, gamma, rand(rng), &f);
 
         // Iterator of tuples of form `(g_vec_i, blinding_i, message_i)`
         let msg_comm_iter = indexed_blindings

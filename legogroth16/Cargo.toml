@@ -1,6 +1,6 @@
 [package]
 name = "legogroth16"
-version = "0.16.0"
+version = "0.17.0"
 authors = [ "arkworks contributors", "Dock.io" ]
 description = "An implementation of the LegoGroth16, the Legosnark variant of Groth16 zkSNARK proof system"
 repository.workspace = true
@@ -29,7 +29,7 @@ num-bigint = { version = "0.4", default-features = false, optional = true }
 log = "0.4"
 ark-groth16 = { workspace = true, optional = true }
 ark-snark = { version = "^0.4.0", default-features = false, optional = true }
-dock_crypto_utils = { version = "0.21.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.22.0", default-features = false, path = "../utils" }
 
 [dev-dependencies]
 ark-bn254 = { version = "^0.4.0", default-features = false, features = ["curve"] }

@@ -6,12 +6,12 @@ use ark_ec::pairing::Pairing;
 
 use ark_serialize::*;
 use ark_std::{cfg_iter, rand::RngCore};
+use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
 use serde::{Deserialize, Serialize};
+use utils::join;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
-use utils::join;
 
 use super::UnpackedBlindedMessages;
 use crate::{
@@ -205,7 +205,7 @@ mod tests {
         One,
     };
     use blake2::Blake2b512;
-    use schnorr_pok::compute_random_oracle_challenge;
+    use schnorr_pok::pok_generalized_pedersen::compute_random_oracle_challenge;
 
     use crate::{
         helpers::{rand, IndexIsOutOfBounds},

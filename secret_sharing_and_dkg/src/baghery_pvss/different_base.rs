@@ -226,7 +226,7 @@ impl<G: AffineRepr> EncryptedShare<G> {
         }
     }
 
-    // Proof of knowledge of same secret key in public key and the encrypted share can be done by existing PokTwoDiscreteLogsProtocol protocol
+    // Proof of knowledge of same secret key in public key and the encrypted share can be done by existing PokPedersenCommitmentProtocol protocol
 }
 
 #[cfg(test)]

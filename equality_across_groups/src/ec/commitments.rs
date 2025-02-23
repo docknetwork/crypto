@@ -5,10 +5,12 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
 use core::ops::{Add, Sub};
 use dock_crypto_utils::commitment::PedersenCommitmentKey;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A Pedersen commitment to a value. Encapsulates the `value` and `randomness` as well.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct CommitmentWithOpening<G: AffineRepr> {
+    #[zeroize(skip)]
     pub comm: G,
     pub value: G::ScalarField,
     pub randomness: G::ScalarField,
@@ -25,7 +27,7 @@ pub struct PointCommitment<G: AffineRepr> {
 
 /// A pair of Pedersen commitment, one for each coordinate of an Elliptic curve point. Encapsulates the coordinates
 /// and randomness in each commitment as well.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct PointCommitmentWithOpening<G: AffineRepr> {
     /// `x` coordinate
     pub x: G::ScalarField,
@@ -35,6 +37,7 @@ pub struct PointCommitmentWithOpening<G: AffineRepr> {
     pub y: G::ScalarField,
     /// Randomness in the commitment of `y` coordinate
     pub r_y: G::ScalarField,
+    #[zeroize(skip)]
     pub comm: PointCommitment<G>,
 }
 
@@ -57,9 +60,21 @@ impl<C: AffineRepr> PointCommitmentWithOpening<C> {
         comm_key: &PedersenCommitmentKey<C>,
     ) -> Result<Self, Error> {
         let (x, y) = point_coords_as_scalar_field_elements::<P, C>(point)?;
+        Ok(Self::new_given_randomness_and_coords(
+            x, y, r_x, r_y, comm_key,
+        ))
+    }
+
+    pub fn new_given_randomness_and_coords(
+        x: C::ScalarField,
+        y: C::ScalarField,
+        r_x: C::ScalarField,
+        r_y: C::ScalarField,
+        comm_key: &PedersenCommitmentKey<C>,
+    ) -> Self {
         let comm_x = comm_key.commit(&x, &r_x);
         let comm_y = comm_key.commit(&y, &r_y);
-        Ok(Self {
+        Self {
             x,
             y,
             r_x,
@@ -68,7 +83,7 @@ impl<C: AffineRepr> PointCommitmentWithOpening<C> {
                 x: comm_x,
                 y: comm_y,
             },
-        })
+        }
     }
 }
 

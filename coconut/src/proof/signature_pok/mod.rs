@@ -154,9 +154,10 @@ mod tests {
     #[cfg(feature = "parallel")]
     use rayon::prelude::*;
 
-    use schnorr_pok::{compute_random_oracle_challenge, error::SchnorrError};
-
     use crate::{proof::MessageUnpackingError, setup::test_setup, CommitMessage, Signature};
+    use schnorr_pok::{
+        error::SchnorrError, pok_generalized_pedersen::compute_random_oracle_challenge,
+    };
 
     use super::SignaturePoKGenerator;
 

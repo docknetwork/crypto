@@ -1,7 +1,9 @@
-//! Proof of knowledge of ECDSA public key committed on a short Weierstrass curve. Is a slight variation of the protocol described in section 6 of the paper [ZKAttest Ring and Group Signatures for Existing ECDSA Keys](https://eprint.iacr.org/2021/1183)
+//! Proof of knowledge of ECDSA signature with public key committed on a short Weierstrass curve. Is a slight variation of the protocol
+//! described in section 6 of the paper [ZKAttest Ring and Group Signatures for Existing ECDSA Keys](https://eprint.iacr.org/2021/1183).
+//! However, the point addition and scalar multiplication used are from the paper [CDLS: Proving Knowledge of Committed Discrete Logarithms with Soundness](https://eprint.iacr.org/2023/1595)
 //!
-//! To prove the knowledge of the public key, an ECDSA signature on the verifier's chosen message is generated
-//! which should be verifiable using the public key but the signature can't be transmitted entirely as the public key
+//! To prove the knowledge of the signature, an ECDSA signature on the verifier's chosen message is generated
+//! which should be verifiable using the committed public key but the signature can't be transmitted entirely as the public key
 //! can be learnt from the signature.
 //!
 //! An ECDSA signature `(r, s)` is transformed to `(R, z=s/r)` as per the paper. The new ECDSA verification equation
@@ -21,18 +23,20 @@
 use crate::{
     ec::{
         commitments::{CommitmentWithOpening, PointCommitment, PointCommitmentWithOpening},
-        sw_point_addition::PointAdditionProof,
-        sw_scalar_mult::ScalarMultiplicationProof,
+        sw_point_addition::{PointAdditionProof, PointAdditionProtocol},
+        sw_scalar_mult::{ScalarMultiplicationProof, ScalarMultiplicationProtocol},
     },
     error::Error,
-    tom256::Affine as Tom256Affine,
+    tom256::{Affine as Tom256Affine, Fr as Tom256Fr},
 };
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{Field, PrimeField};
+use ark_ff::{BigInteger, Field, PrimeField};
 use ark_secp256r1::{Affine, Fr, G_GENERATOR_X, G_GENERATOR_Y};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec};
-use dock_crypto_utils::{commitment::PedersenCommitmentKey, transcript::Transcript};
+use dock_crypto_utils::{
+    commitment::PedersenCommitmentKey, randomized_mult_checker::RandomizedMultChecker,
+};
 use kvac::bbs_sharp::ecdsa;
 
 const SECP_GEN: Affine = Affine::new_unchecked(G_GENERATOR_X, G_GENERATOR_Y);
@@ -44,18 +48,46 @@ pub struct TransformedEcdsaSig {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ProofOfKnowledgeEcdsaPublicKey<const NUM_REPS_SCALAR_MULT: usize = 128> {
+pub struct CommitmentWithRandomness(PointCommitment<crate::tom256::Affine>);
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct PoKEcdsaSigCommittedPublicKeyProtocol<const NUM_REPS_SCALAR_MULT: usize = 128> {
     /// Point R from signature
     pub R: Affine,
-    // Question: Is there any additional proof of correctness of `comm_z` and `comm_minus_zR` needed?
     /// Commitment to scalar `z`
     pub comm_z: Affine,
     /// Commitment to coordinates of `-z*R`
-    pub comm_minus_zR: PointCommitment<Tom256Affine>,
+    pub comm_minus_zR: PointCommitment<crate::tom256::Affine>,
+    /// Randomness in the commitment to coordinates of `-g*t*r^-1`
+    pub comm_minus_g_t_r_inv_rand: (
+        <crate::tom256::Affine as AffineRepr>::ScalarField,
+        <crate::tom256::Affine as AffineRepr>::ScalarField,
+    ),
+    /// Protocol for relation `z * -R = -z*R`
+    pub protocol_minus_zR:
+        ScalarMultiplicationProtocol<Affine, crate::tom256::Affine, NUM_REPS_SCALAR_MULT>,
+    /// Protocol for relation `-g*t*r^-1 = q + z*(-R)`
+    pub protocol_add: PointAdditionProtocol<Affine, crate::tom256::Affine>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct PoKEcdsaSigCommittedPublicKey<const NUM_REPS_SCALAR_MULT: usize = 128> {
+    /// Point R from signature
+    pub R: Affine,
+    /// Commitment to scalar `z`
+    pub comm_z: Affine,
+    /// Commitment to coordinates of `-z*R`
+    pub comm_minus_zR: PointCommitment<crate::tom256::Affine>,
+    /// Randomness in the commitment to coordinates of `-g*t*r^-1`
+    pub comm_minus_g_t_r_inv_rand: (
+        <crate::tom256::Affine as AffineRepr>::ScalarField,
+        <crate::tom256::Affine as AffineRepr>::ScalarField,
+    ),
     /// Proof of relation `z * -R = -z*R`
-    pub proof_minus_zR: ScalarMultiplicationProof<Affine, Tom256Affine, NUM_REPS_SCALAR_MULT>,
+    pub proof_minus_zR:
+        ScalarMultiplicationProof<Affine, crate::tom256::Affine, NUM_REPS_SCALAR_MULT>,
     /// Proof of relation `-g*t*r^-1 = q + z*(-R)`
-    pub proof_add: PointAdditionProof<Affine, Tom256Affine>,
+    pub proof_add: PointAdditionProof<Affine, crate::tom256::Affine>,
 }
 
 impl TransformedEcdsaSig {
@@ -98,11 +130,13 @@ impl TransformedEcdsaSig {
     }
 }
 
-impl<const NUM_REPS_SCALAR_MULT: usize> ProofOfKnowledgeEcdsaPublicKey<NUM_REPS_SCALAR_MULT> {
-    /// Proof that the (transformed) ECDSA signature on the pre-hashed message `hashed_message` can
+impl<const NUM_REPS_SCALAR_MULT: usize>
+    PoKEcdsaSigCommittedPublicKeyProtocol<NUM_REPS_SCALAR_MULT>
+{
+    /// Prove that the (transformed) ECDSA signature on the pre-hashed message `hashed_message` can
     /// be verified by the public key `public_key`. `comm_public_key` is the commitment to the
     /// coordinates of the public key point
-    pub fn new<R: RngCore>(
+    pub fn init<R: RngCore>(
         rng: &mut R,
         sig: TransformedEcdsaSig,
         hashed_message: Fr,
@@ -110,7 +144,6 @@ impl<const NUM_REPS_SCALAR_MULT: usize> ProofOfKnowledgeEcdsaPublicKey<NUM_REPS_
         comm_public_key: PointCommitmentWithOpening<Tom256Affine>,
         comm_key_secp: &PedersenCommitmentKey<Affine>,
         comm_key_tom: &PedersenCommitmentKey<Tom256Affine>,
-        transcript: &mut (impl Transcript + Clone + Write),
     ) -> Result<Self, Error> {
         let minus_R = sig.R.neg();
         let minus_zR = (minus_R * sig.z).into_affine();
@@ -120,12 +153,10 @@ impl<const NUM_REPS_SCALAR_MULT: usize> ProofOfKnowledgeEcdsaPublicKey<NUM_REPS_
             .into_affine();
         let comm_z = CommitmentWithOpening::new(rng, sig.z, comm_key_secp);
         let comm_minus_zR = PointCommitmentWithOpening::new(rng, &minus_zR, comm_key_tom)?;
-        transcript.append(b"R", &sig.R);
-        transcript.append(b"comm_z", &comm_z.comm);
-        transcript.append(b"comm_minus_zR", &comm_minus_zR.comm);
-        transcript.append(b"minus_g_t_r_inv", &minus_g_t_r_inv);
-        let proof_minus_zR =
-            ScalarMultiplicationProof::<Affine, Tom256Affine, NUM_REPS_SCALAR_MULT>::new(
+        let comm_minus_g_t_r_inv =
+            PointCommitmentWithOpening::new(rng, &minus_g_t_r_inv, comm_key_tom)?;
+        let protocol_minus_zR =
+            ScalarMultiplicationProtocol::<Affine, Tom256Affine, NUM_REPS_SCALAR_MULT>::init(
                 rng,
                 comm_z.clone(),
                 comm_minus_zR.clone(),
@@ -133,58 +164,156 @@ impl<const NUM_REPS_SCALAR_MULT: usize> ProofOfKnowledgeEcdsaPublicKey<NUM_REPS_
                 minus_R,
                 comm_key_secp,
                 comm_key_tom,
-                transcript,
             )?;
-        let proof_add = PointAdditionProof::new(
+        let protocol_add = PointAdditionProtocol::init(
             rng,
             comm_minus_zR.clone(),
             comm_public_key.clone(),
+            comm_minus_g_t_r_inv.clone(),
             minus_zR,
             public_key,
             minus_g_t_r_inv,
             comm_key_tom,
-            transcript,
         )?;
         Ok(Self {
             R: sig.R,
             comm_z: comm_z.comm,
             comm_minus_zR: comm_minus_zR.comm,
-            proof_minus_zR,
-            proof_add,
+            comm_minus_g_t_r_inv_rand: (comm_minus_g_t_r_inv.r_x, comm_minus_g_t_r_inv.r_y),
+            protocol_minus_zR,
+            protocol_add,
         })
     }
 
+    pub fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), Error> {
+        self.R.serialize_compressed(&mut writer)?;
+        self.comm_z.serialize_compressed(&mut writer)?;
+        self.comm_minus_zR.serialize_compressed(&mut writer)?;
+        self.comm_minus_g_t_r_inv_rand
+            .0
+            .serialize_compressed(&mut writer)?;
+        self.comm_minus_g_t_r_inv_rand
+            .1
+            .serialize_compressed(&mut writer)?;
+        self.protocol_minus_zR.challenge_contribution(&mut writer)?;
+        self.protocol_add.challenge_contribution(&mut writer)?;
+        Ok(())
+    }
+
+    pub fn gen_proof(
+        self,
+        challenge: &Tom256Fr,
+    ) -> PoKEcdsaSigCommittedPublicKey<NUM_REPS_SCALAR_MULT> {
+        let challenge_bytes = challenge.0.to_bytes_le();
+        let proof_minus_zR = self.protocol_minus_zR.gen_proof(&challenge_bytes);
+        let proof_add = self.protocol_add.gen_proof(challenge);
+        PoKEcdsaSigCommittedPublicKey {
+            R: self.R,
+            comm_z: self.comm_z,
+            comm_minus_zR: self.comm_minus_zR,
+            comm_minus_g_t_r_inv_rand: self.comm_minus_g_t_r_inv_rand,
+            proof_minus_zR,
+            proof_add,
+        }
+    }
+}
+
+impl<const NUM_REPS_SCALAR_MULT: usize> PoKEcdsaSigCommittedPublicKey<NUM_REPS_SCALAR_MULT> {
+    /// Proof that the (transformed) ECDSA signature on the pre-hashed message `hashed_message` can
+    /// be verified by the committed public key. `comm_public_key` is the commitment to the
+    /// coordinates of the public key point
     pub fn verify(
         &self,
         hashed_message: Fr,
         comm_public_key: &PointCommitment<Tom256Affine>,
+        challenge: &Tom256Fr,
         comm_key_secp: &PedersenCommitmentKey<Affine>,
         comm_key_tom: &PedersenCommitmentKey<Tom256Affine>,
-        transcript: &mut (impl Transcript + Clone + Write),
     ) -> Result<(), Error> {
         let minus_R = self.R.neg();
         let minus_g_t_r_inv = (SECP_GEN * (hashed_message * TransformedEcdsaSig::r_inv(&self.R)?))
             .neg()
             .into_affine();
-        transcript.append(b"R", &self.R);
-        transcript.append(b"comm_z", &self.comm_z);
-        transcript.append(b"comm_minus_zR", &self.comm_minus_zR);
-        transcript.append(b"minus_g_t_r_inv", &minus_g_t_r_inv);
+        let comm_minus_g_t_r_inv = PointCommitmentWithOpening::new_given_randomness(
+            &minus_g_t_r_inv,
+            self.comm_minus_g_t_r_inv_rand.0,
+            self.comm_minus_g_t_r_inv_rand.1,
+            comm_key_tom,
+        )?;
+        let challenge_bytes = challenge.0.to_bytes_le();
         self.proof_minus_zR.verify(
             &self.comm_z,
             &self.comm_minus_zR,
             &minus_R,
+            &challenge_bytes,
             comm_key_secp,
             comm_key_tom,
-            transcript,
         )?;
         self.proof_add.verify(
             &self.comm_minus_zR,
             comm_public_key,
-            &minus_g_t_r_inv,
+            &comm_minus_g_t_r_inv.comm,
+            challenge,
             comm_key_tom,
-            transcript,
         )?;
+        Ok(())
+    }
+
+    /// Same as `Self::verify` but delegated the scalar multiplication checks to `RandomizedMultChecker`
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        hashed_message: Fr,
+        comm_public_key: PointCommitment<Tom256Affine>,
+        challenge: &Tom256Fr,
+        comm_key_secp: PedersenCommitmentKey<Affine>,
+        comm_key_tom: PedersenCommitmentKey<Tom256Affine>,
+        rmc_1: &mut RandomizedMultChecker<Affine>,
+        rmc_2: &mut RandomizedMultChecker<Tom256Affine>,
+    ) -> Result<(), Error> {
+        let minus_R = self.R.neg();
+        let minus_g_t_r_inv = (SECP_GEN * (hashed_message * TransformedEcdsaSig::r_inv(&self.R)?))
+            .neg()
+            .into_affine();
+        let comm_minus_g_t_r_inv = PointCommitmentWithOpening::new_given_randomness(
+            &minus_g_t_r_inv,
+            self.comm_minus_g_t_r_inv_rand.0,
+            self.comm_minus_g_t_r_inv_rand.1,
+            &comm_key_tom,
+        )?;
+        let challenge_bytes = challenge.0.to_bytes_le();
+        self.proof_minus_zR.verify_using_randomized_mult_checker(
+            self.comm_z,
+            self.comm_minus_zR,
+            minus_R,
+            &challenge_bytes,
+            comm_key_secp,
+            comm_key_tom,
+            rmc_1,
+            rmc_2,
+        )?;
+        self.proof_add.verify_using_randomized_mult_checker(
+            self.comm_minus_zR,
+            comm_public_key,
+            comm_minus_g_t_r_inv.comm,
+            challenge,
+            comm_key_tom,
+            rmc_2,
+        )?;
+        Ok(())
+    }
+
+    pub fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), Error> {
+        self.R.serialize_compressed(&mut writer)?;
+        self.comm_z.serialize_compressed(&mut writer)?;
+        self.comm_minus_zR.serialize_compressed(&mut writer)?;
+        self.comm_minus_g_t_r_inv_rand
+            .0
+            .serialize_compressed(&mut writer)?;
+        self.comm_minus_g_t_r_inv_rand
+            .1
+            .serialize_compressed(&mut writer)?;
+        self.proof_minus_zR.challenge_contribution(&mut writer)?;
+        self.proof_add.challenge_contribution(&mut writer)?;
         Ok(())
     }
 }
@@ -203,7 +332,7 @@ mod tests {
     };
     use blake2::Blake2b512;
     use bulletproofs_plus_plus::prelude::SetupParams as BppSetupParams;
-    use dock_crypto_utils::transcript::new_merlin_transcript;
+    use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
     use rand_core::OsRng;
     use std::time::Instant;
     use test_utils::statistics::statistics;
@@ -223,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn pok_ecdsa_pubkey() {
+    fn pok_ecdsa_sig_comm_pubkey() {
         let mut rng = OsRng::default();
 
         let comm_key_secp = PedersenCommitmentKey::<Affine>::new::<Blake2b512>(b"test1");
@@ -234,10 +363,9 @@ mod tests {
 
         let mut prov_time = vec![];
         let mut ver_time = vec![];
-        // Since the proof size depends on the values of the random challenge bits of the scalar multiplication protocol
-        let mut proof_sizes = vec![];
+        let mut ver_rmc_time = vec![];
         let num_iters = 10;
-        for _ in 0..num_iters {
+        for i in 0..num_iters {
             let message = Fr::rand(&mut rng);
             let sig = ecdsa::Signature::new_prehashed(&mut rng, message, sk);
             let transformed_sig = TransformedEcdsaSig::new(&sig, message, pk).unwrap();
@@ -251,7 +379,8 @@ mod tests {
             prover_transcript.append(b"comm_key_tom", &comm_key_tom);
             prover_transcript.append(b"comm_pk", &comm_pk.comm);
             prover_transcript.append(b"message", &message);
-            let proof = ProofOfKnowledgeEcdsaPublicKey::<128>::new(
+
+            let protocol = PoKEcdsaSigCommittedPublicKeyProtocol::<128>::init(
                 &mut rng,
                 transformed_sig,
                 message,
@@ -259,12 +388,14 @@ mod tests {
                 comm_pk.clone(),
                 &comm_key_secp,
                 &comm_key_tom,
-                &mut prover_transcript,
             )
             .unwrap();
+            protocol
+                .challenge_contribution(&mut prover_transcript)
+                .unwrap();
+            let challenge_prover = prover_transcript.challenge_scalar(b"challenge");
+            let proof = protocol.gen_proof(&challenge_prover);
             prov_time.push(start.elapsed());
-
-            proof_sizes.push(proof.compressed_size());
 
             let start = Instant::now();
             let mut verifier_transcript = new_merlin_transcript(b"test");
@@ -272,23 +403,63 @@ mod tests {
             verifier_transcript.append(b"comm_key_tom", &comm_key_tom);
             verifier_transcript.append(b"comm_pk", &comm_pk.comm);
             verifier_transcript.append(b"message", &message);
+
+            proof
+                .challenge_contribution(&mut verifier_transcript)
+                .unwrap();
+            let challenge_verifier = verifier_transcript.challenge_scalar(b"challenge");
+            assert_eq!(challenge_prover, challenge_verifier);
             proof
                 .verify(
                     message,
                     &comm_pk.comm,
+                    &challenge_verifier,
                     &comm_key_secp,
                     &comm_key_tom,
-                    &mut verifier_transcript,
                 )
                 .unwrap();
             ver_time.push(start.elapsed());
+
+            let start = Instant::now();
+            let mut verifier_transcript = new_merlin_transcript(b"test");
+            verifier_transcript.append(b"comm_key_secp", &comm_key_secp);
+            verifier_transcript.append(b"comm_key_tom", &comm_key_tom);
+            verifier_transcript.append(b"comm_pk", &comm_pk.comm);
+            verifier_transcript.append(b"message", &message);
+
+            proof
+                .challenge_contribution(&mut verifier_transcript)
+                .unwrap();
+            let challenge_verifier = verifier_transcript.challenge_scalar(b"challenge");
+            assert_eq!(challenge_prover, challenge_verifier);
+
+            let mut checker_1 = RandomizedMultChecker::<Affine>::new_using_rng(&mut rng);
+            let mut checker_2 = RandomizedMultChecker::<Tom256Affine>::new_using_rng(&mut rng);
+
+            proof
+                .verify_using_randomized_mult_checker(
+                    message,
+                    comm_pk.comm,
+                    &challenge_verifier,
+                    comm_key_secp,
+                    comm_key_tom,
+                    &mut checker_1,
+                    &mut checker_2,
+                )
+                .unwrap();
+            ver_rmc_time.push(start.elapsed());
+
+            if i == 0 {
+                println!("Proof size = {} bytes", proof.compressed_size());
+            }
         }
 
+        println!("For {num_iters} iterations");
         println!("Proving time: {:?}", statistics(prov_time));
         println!("Verifying time: {:?}", statistics(ver_time));
         println!(
-            "Proof size (bytes): {:?}",
-            statistics::<usize, usize>(proof_sizes)
+            "Verifying time with randomized multiplication check: {:?}",
+            statistics(ver_rmc_time)
         );
     }
 
@@ -341,11 +512,8 @@ mod tests {
 
         let mut prov_time = vec![];
         let mut ver_time = vec![];
-        // Since the proof size depends on the values of the random challenge bits of the scalar multiplication protocol
-        let mut total_proof_sizes = vec![];
-        let mut dl_eq_proof_sizes = vec![];
         let num_iters = 10;
-        for _ in 0..num_iters {
+        for i in 0..num_iters {
             let message = Fr::rand(&mut rng);
             let sig = ecdsa::Signature::new_prehashed(&mut rng, message, sk);
 
@@ -362,7 +530,8 @@ mod tests {
             prover_transcript.append(b"bls_comm_pk_x", &bls_comm_pk_x);
             prover_transcript.append(b"bls_comm_pk_y", &bls_comm_pk_y);
             prover_transcript.append(b"message", &message);
-            let pok_pubkey = ProofOfKnowledgeEcdsaPublicKey::<128>::new(
+
+            let protocol = PoKEcdsaSigCommittedPublicKeyProtocol::<128>::init(
                 &mut rng,
                 transformed_sig,
                 message,
@@ -370,9 +539,13 @@ mod tests {
                 comm_pk.clone(),
                 &comm_key_secp,
                 &comm_key_tom,
-                &mut prover_transcript,
             )
             .unwrap();
+            protocol
+                .challenge_contribution(&mut prover_transcript)
+                .unwrap();
+            let challenge_prover = prover_transcript.challenge_scalar(b"challenge");
+            let proof = protocol.gen_proof(&challenge_prover);
 
             // Proof that x coordinate is same in both Tom-256 and BLS12-381 commitments
             let proof_eq_pk_x = ProofLargeWitness::<
@@ -431,13 +604,21 @@ mod tests {
             verifier_transcript.append(b"bls_comm_pk_x", &bls_comm_pk_x);
             verifier_transcript.append(b"bls_comm_pk_y", &bls_comm_pk_y);
             verifier_transcript.append(b"message", &message);
-            pok_pubkey
+            proof
+                .challenge_contribution(&mut verifier_transcript)
+                .unwrap();
+
+            let challenge_verifier = verifier_transcript.challenge_scalar(b"challenge");
+            assert_eq!(challenge_prover, challenge_verifier);
+
+            // verify_using_randomized_mult_checker can be used like previous test to make it much faster.
+            proof
                 .verify(
                     message,
                     &comm_pk.comm,
+                    &challenge_verifier,
                     &comm_key_secp,
                     &comm_key_tom,
-                    &mut verifier_transcript,
                 )
                 .unwrap();
 
@@ -464,23 +645,22 @@ mod tests {
                 .unwrap();
             ver_time.push(start.elapsed());
 
-            let s_pk = pok_pubkey.compressed_size();
-            let s_pk_x = proof_eq_pk_x.compressed_size();
-            let s_pk_y = proof_eq_pk_y.compressed_size();
-            total_proof_sizes.push(s_pk + s_pk_x + s_pk_y);
-            dl_eq_proof_sizes.push(s_pk_x + s_pk_y);
+            if i == 0 {
+                println!(
+                    "Total proof size = {} bytes",
+                    proof.compressed_size()
+                        + proof_eq_pk_x.compressed_size()
+                        + proof_eq_pk_y.compressed_size()
+                );
+                println!(
+                    "Proof size for equality of committed x and y coordinates = {} bytes",
+                    proof_eq_pk_x.compressed_size() + proof_eq_pk_y.compressed_size()
+                );
+            }
         }
 
         println!("For {} iterations", num_iters);
         println!("Proving time: {:?}", statistics(prov_time));
         println!("Verifying time: {:?}", statistics(ver_time));
-        println!(
-            "Total proof size (bytes): {:?}",
-            statistics::<usize, usize>(total_proof_sizes)
-        );
-        println!(
-            "Proof size for equality of committed x and y coordinates (bytes): {:?}",
-            statistics::<usize, usize>(dl_eq_proof_sizes)
-        );
     }
 }

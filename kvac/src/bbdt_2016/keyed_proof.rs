@@ -158,7 +158,7 @@ impl<G: AffineRepr> KeyedProof<G> {
     ) -> Result<ProofOfInvalidityOfKeyedProof<G>, KVACError> {
         let pk = pk.into();
         let g_0 = g_0.into();
-        let protocol = UnknownDiscreteLogInequalityProtocol::new(
+        let protocol = UnknownDiscreteLogInequalityProtocol::init(
             rng, secret_key, g_0, &self.B_0, pk, &self.C,
         )?;
         let mut challenge_bytes = vec![];

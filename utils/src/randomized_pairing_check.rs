@@ -9,7 +9,7 @@ use ark_std::{cfg_iter, ops::MulAssign, rand::Rng, vec, vec::Vec, UniformRand};
 use rayon::prelude::*;
 
 /// Inspired from Snarkpack implementation - <https://github.com/nikkolasg/snarkpack/blob/main/src/pairing_check.rs>
-/// RandomizedPairingChecker represents a check of the form `e(A,B)e(C,D)... = T`. Checks can
+/// RandomizedPairingChecker represents a check of the form `e(A,B) + e(C,D) + ... = T`. Checks can
 /// be aggregated together using random linear combination. The efficiency comes
 /// from keeping the results from the miller loop output before proceeding to a final
 /// exponentiation when verifying if all checks are verified.

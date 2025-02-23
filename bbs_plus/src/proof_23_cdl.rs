@@ -45,7 +45,7 @@ use dock_crypto_utils::{
 };
 use itertools::multiunzip;
 use schnorr_pok::{
-    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
+    discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
     error::SchnorrError,
     partial::PartialSchnorrResponse,
     SchnorrCommitment, SchnorrResponse,
@@ -79,7 +79,7 @@ pub struct PoKOfSignature23G1Protocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
     /// For proving relation `B_bar = d * r1 + A_bar * -e`
-    pub sc_comm_1: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+    pub sc_comm_1: PokPedersenCommitmentProtocol<E::G1Affine>,
     /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + sum_{j notin D}(h_j*m_j)`
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
@@ -100,7 +100,7 @@ pub struct PoKOfSignature23G1Proof<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
     /// Proof of relation `B_bar = d * r3 + A_bar * -e`
-    pub sc_resp_1: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_resp_1: PokPedersenCommitment<E::G1Affine>,
     /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
     #[serde_as(as = "ArkObjectBytes")]
     pub T2: E::G1Affine,
@@ -162,7 +162,7 @@ impl<E: Pairing> PoKOfSignature23G1Protocol<E> {
         // of `(e, r1)`, and the second of `(r2, {m_j}_{j \notin D})`. The secret knowledge items are
         // referred to as witnesses, and the public items as instances.
 
-        let sc_comm_1 = PokTwoDiscreteLogsProtocol::init(
+        let sc_comm_1 = PokPedersenCommitmentProtocol::init(
             -signature.e,
             E::ScalarField::rand(rng),
             &A_bar_affine,

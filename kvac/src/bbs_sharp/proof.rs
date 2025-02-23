@@ -32,7 +32,7 @@ use dock_crypto_utils::{
 };
 use itertools::multiunzip;
 use schnorr_pok::{
-    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
+    discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
     SchnorrCommitment, SchnorrResponse,
 };
 use serde::{Deserialize, Serialize};
@@ -82,7 +82,7 @@ pub struct PoKOfMACProtocol<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub blinding_pk: G::ScalarField,
     /// For proving relation `B_bar = A_hat * -e + D * r1`
-    pub sc_B_bar: PokTwoDiscreteLogsProtocol<G>,
+    pub sc_B_bar: PokPedersenCommitmentProtocol<G>,
     /// For proving relation `g_0 + user_pk + \sum_{i in D}(g_vec_i*m_i)` = `d*r3 + sum_{j notin D}(g_vec_j * -m_j) + g * blinding_pk`
     pub sc_comm_msgs: SchnorrCommitment<G>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
@@ -115,7 +115,7 @@ pub struct PoKOfMAC<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub blinded_pk: G,
     /// For proving relation `B_bar = A_hat * -e + D * r1`
-    pub sc_B_bar: PokTwoDiscreteLogs<G>,
+    pub sc_B_bar: PokPedersenCommitment<G>,
     /// For proving relation `g_0 + user_pk + \sum_{i in D}(g_vec_i*m_i)` = `d*r3 + sum_{j notin D}(g_vec_j * -m_j) + g * blinding_pk`
     #[serde_as(as = "ArkObjectBytes")]
     pub t_msgs: G,
@@ -382,7 +382,7 @@ impl<G: AffineRepr> PoKOfMACProtocol<G> {
             HardwareSignatureType::Ecdsa => user_public_key.get_blinded_for_ecdsa(&blinding_pk),
         };
 
-        let sc_C_bar = PokTwoDiscreteLogsProtocol::init(
+        let sc_C_bar = PokPedersenCommitmentProtocol::init(
             minus_e,
             G::ScalarField::rand(rng),
             &A_hat,

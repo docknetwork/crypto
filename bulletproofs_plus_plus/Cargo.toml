@@ -1,6 +1,6 @@
 [package]
 name = "bulletproofs_plus_plus"
-version = "0.7.0"
+version = "0.8.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -18,7 +18,7 @@ serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
 rayon = { workspace = true, optional = true }
-dock_crypto_utils = { version = "0.21.0", default-features = false, path = "../utils" }
+dock_crypto_utils = { version = "0.22.0", default-features = false, path = "../utils" }
 
 [dev-dependencies]
 blake2.workspace = true

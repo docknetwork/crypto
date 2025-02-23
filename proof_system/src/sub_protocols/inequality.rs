@@ -54,7 +54,7 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
         let randomness = G::ScalarField::rand(rng);
         let comm = self.comm_key.commit(&message, &randomness);
         self.inequality_protocol = Some(
-            DiscreteLogInequalityProtocol::new_for_inequality_with_public_value(
+            DiscreteLogInequalityProtocol::init_for_inequality_with_public_value(
                 rng,
                 message,
                 randomness,

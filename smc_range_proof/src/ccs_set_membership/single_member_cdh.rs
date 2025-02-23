@@ -8,7 +8,9 @@ use crate::{
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
-use schnorr_pok::{discrete_log::PokTwoDiscreteLogsProtocol, partial::Partial2PokTwoDiscreteLogs};
+use schnorr_pok::{
+    discrete_log::PokPedersenCommitmentProtocol, partial::Partial2PokPedersenCommitment,
+};
 use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -16,7 +18,7 @@ pub struct SetMembershipCheckProtocol<E: Pairing> {
     /// Protocol for proving knowledge of the weak-BB signature on the set member
     pub pok_sig: PoKOfSignatureG1Protocol<E>,
     /// Protocol for proving knowledge of the opening to commitment to the set member
-    pub sc: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+    pub sc: PokPedersenCommitmentProtocol<E::G1Affine>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -24,7 +26,7 @@ pub struct SetMembershipCheckProof<E: Pairing> {
     /// Proof of knowledge of the weak-BB signature on the set member
     pub pok_sig: PoKOfSignatureG1<E>,
     /// Proof of knowledge of the opening to commitment to the set member
-    pub sc: Partial2PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc: Partial2PokPedersenCommitment<E::G1Affine>,
 }
 
 impl<E: Pairing> SetMembershipCheckProtocol<E> {
@@ -39,7 +41,7 @@ impl<E: Pairing> SetMembershipCheckProtocol<E> {
         let s = E::ScalarField::rand(rng);
         let pok_sig =
             PoKOfSignatureG1Protocol::init(rng, sig, member, Some(s), &params.bb_sig_params.g1);
-        let sc = PokTwoDiscreteLogsProtocol::init(
+        let sc = PokPedersenCommitmentProtocol::init(
             member,
             s,
             &comm_key.g,

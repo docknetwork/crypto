@@ -12,8 +12,8 @@ use dock_crypto_utils::{
     randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
 };
 use schnorr_pok::{
-    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
-    partial::Partial1PokTwoDiscreteLogs,
+    discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
+    partial::Partial1PokPedersenCommitment,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -28,7 +28,7 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     #[zeroize(skip)]
     pub A_bar: E::G1Affine,
     /// For proving relation `sigma_bar = g1 * r - sigma' * m`
-    pub sc: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+    pub sc: PokPedersenCommitmentProtocol<E::G1Affine>,
 }
 
 #[serde_as]
@@ -48,10 +48,10 @@ pub struct PoKOfSignatureG1<E: Pairing> {
     pub A_prime: E::G1Affine,
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: E::G1Affine,
-    /// The following could be achieved by using Either<PokTwoDiscreteLogs, Partial1PokTwoDiscreteLogs> but serialization
+    /// The following could be achieved by using Either<PokPedersenCommitment, Partial1PokPedersenCommitment> but serialization
     /// for Either is not supported out of the box and had to be implemented
-    pub sc: Option<PokTwoDiscreteLogs<E::G1Affine>>,
-    pub sc_partial: Option<Partial1PokTwoDiscreteLogs<E::G1Affine>>,
+    pub sc: Option<PokPedersenCommitment<E::G1Affine>>,
+    pub sc_partial: Option<Partial1PokPedersenCommitment<E::G1Affine>>,
 }
 
 impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
@@ -90,7 +90,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let A_prime_neg = A_prime.neg();
         // A_bar = g1 * r - A_prime * m
         let A_bar = g1.mul_bigint(sig_r) + A_prime_neg * message;
-        let sc = PokTwoDiscreteLogsProtocol::init(
+        let sc = PokPedersenCommitmentProtocol::init(
             sig_randomizer,
             sig_randomizer_blinding,
             g1,
@@ -324,6 +324,7 @@ mod tests {
             PoKOfSignatureG1Protocol::<Bls12_381>::init(&mut rng, sig, message, None, &params.g1);
 
         let mut chal_bytes_prover = vec![];
+        pk.serialize_compressed(&mut chal_bytes_prover).unwrap();
         protocol
             .challenge_contribution(&params.g1, &mut chal_bytes_prover)
             .unwrap();
@@ -333,6 +334,7 @@ mod tests {
         let proof = protocol.gen_proof(&challenge_prover);
 
         let mut chal_bytes_verifier = vec![];
+        pk.serialize_compressed(&mut chal_bytes_verifier).unwrap();
         proof
             .challenge_contribution(&params.g1, &mut chal_bytes_verifier)
             .unwrap();

@@ -20,17 +20,16 @@ use ark_ec::{
     pairing::{Pairing, PairingOutput},
     AffineRepr, CurveGroup,
 };
-use core::mem;
-
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
+use core::mem;
 use dock_crypto_utils::{msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker};
-
 use schnorr_pok::{
     discrete_log::{
-        PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
+        PokDiscreteLog, PokDiscreteLogProtocol, PokPedersenCommitment,
+        PokPedersenCommitmentProtocol,
     },
-    partial::Partial2PokTwoDiscreteLogs,
+    partial::Partial2PokPedersenCommitment,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -51,13 +50,13 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     /// Protocol for proving knowledge of `beta` in `T2 = v * beta`
     pub sc_T2: PokDiscreteLogProtocol<E::G1Affine>,
     /// For proving knowledge of `message` and `delta_1` in `T1 * message + u * delta_1 = 0`
-    pub sc_T1_x: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+    pub sc_T1_x: PokPedersenCommitmentProtocol<E::G1Affine>,
     /// For proving knowledge of `message` and `delta_2` in `T2 * message + v * delta_2 = 0`
-    pub sc_T2_x: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+    pub sc_T2_x: PokPedersenCommitmentProtocol<E::G1Affine>,
     /// For proving knowledge of `e` and `delta_3` in `T1 * e + u * delta_3 = 0`
-    pub sc_T1_e: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+    pub sc_T1_e: PokPedersenCommitmentProtocol<E::G1Affine>,
     /// For proving knowledge of `e` and `delta_4` in `T2 * e + v * delta_4 = 0`
-    pub sc_T2_e: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+    pub sc_T2_e: PokPedersenCommitmentProtocol<E::G1Affine>,
     /// Commitment to randomness from the 1st step of the Schnorr protocol over the pairing equation.
     #[zeroize(skip)]
     pub R_3: PairingOutput<E>,
@@ -84,18 +83,18 @@ pub struct PoKOfSignatureG1<E: Pairing> {
     pub sc_T1: PokDiscreteLog<E::G1Affine>,
     /// Proof of knowledge of `beta` in `T2 = v * beta`
     pub sc_T2: PokDiscreteLog<E::G1Affine>,
-    /// The following could be achieved by using Either<PokTwoDiscreteLogs, Partial2PokTwoDiscreteLogs> but serialization
+    /// The following could be achieved by using Either<PokPedersenCommitment, Partial2PokPedersenCommitment> but serialization
     /// for Either is not supported out of the box and had to be implemented
     /// For relation `T1 * message + u * delta_1 = 0`
-    pub sc_T1_x: Option<PokTwoDiscreteLogs<E::G1Affine>>,
+    pub sc_T1_x: Option<PokPedersenCommitment<E::G1Affine>>,
     /// For relation `T1 * message + u * delta_1 = 0`
-    pub sc_T1_x_partial: Option<Partial2PokTwoDiscreteLogs<E::G1Affine>>,
+    pub sc_T1_x_partial: Option<Partial2PokPedersenCommitment<E::G1Affine>>,
     /// For relation `T2 * message + v * delta_2 = 0`
-    pub sc_T2_x: Partial2PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_T2_x: Partial2PokPedersenCommitment<E::G1Affine>,
     /// For relation `T1 * e + u * delta_3 = 0`
-    pub sc_T1_e: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_T1_e: PokPedersenCommitment<E::G1Affine>,
     /// For relation `T2 * e + v * delta_4 = 0`
-    pub sc_T2_e: Partial2PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_T2_e: Partial2PokPedersenCommitment<E::G1Affine>,
     /// Commitment to randomness from the 1st step of the Schnorr protocol over the pairing equation.
     pub R_3: PairingOutput<E>,
 }
@@ -141,14 +140,26 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let r_delta_4 = E::ScalarField::rand(rng);
         let sc_T1 = PokDiscreteLogProtocol::init(alpha, r_alpha, &proving_key.X);
         let sc_T2 = PokDiscreteLogProtocol::init(beta, r_beta, &proving_key.Y);
-        let sc_T1_x =
-            PokTwoDiscreteLogsProtocol::init(message, r_x, &T1, delta_1, r_delta_1, &proving_key.X);
-        let sc_T2_x =
-            PokTwoDiscreteLogsProtocol::init(message, r_x, &T2, delta_2, r_delta_2, &proving_key.Y);
+        let sc_T1_x = PokPedersenCommitmentProtocol::init(
+            message,
+            r_x,
+            &T1,
+            delta_1,
+            r_delta_1,
+            &proving_key.X,
+        );
+        let sc_T2_x = PokPedersenCommitmentProtocol::init(
+            message,
+            r_x,
+            &T2,
+            delta_2,
+            r_delta_2,
+            &proving_key.Y,
+        );
         let sc_T1_e =
-            PokTwoDiscreteLogsProtocol::init(e, r_e, &T1, delta_3, r_delta_3, &proving_key.X);
+            PokPedersenCommitmentProtocol::init(e, r_e, &T1, delta_3, r_delta_3, &proving_key.X);
         let sc_T2_e =
-            PokTwoDiscreteLogsProtocol::init(e, r_e, &T2, delta_4, r_delta_4, &proving_key.Y);
+            PokPedersenCommitmentProtocol::init(e, r_e, &T2, delta_4, r_delta_4, &proving_key.Y);
         let g2_prepared = E::G2Prepared::from(params.g2);
         let pk_0_prepared = E::G2Prepared::from(pk.0);
         let pk_1_prepared = E::G2Prepared::from(pk.1);
@@ -586,7 +597,7 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use schnorr_pok::compute_random_oracle_challenge;
+    use schnorr_pok::pok_generalized_pedersen::compute_random_oracle_challenge;
 
     #[test]
     fn proof_of_knowledge_of_signature() {

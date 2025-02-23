@@ -3,29 +3,31 @@
 //! The following are specializations of the Schnorr protocol implemented using `SchnorrCommitment` and `SchnorrResponse`.
 //! Proving knowledge of 1 or 2 discrete logs is quite common and the following avoid creating vectors.
 //!
-//! To prove knowledge of a single discrete log, i.e. given public `y` and `g`, prove knowledge of `x` in `g * x = y`:
-//! 1. Prover chooses a random `r` and computes `t = g * r`
-//! 2. Hashes `t` towards getting a challenge `c`.
+//! To prove knowledge of a single discrete log, i.e. given public `Y` and `G`, prove knowledge of `x` in `G * x = Y`:
+//! 1. Prover chooses a random `r` and computes `T = G * r`
+//! 2. Hashes `T` towards getting a challenge `c`.
 //! 3. Computes response `s = r + c*x` and sends it to the verifier.
-//! 4. Verifier checks if `g * s = t + y*c`
+//! 4. Verifier checks if `G * s = T + Y*c`
 //!
-//! To prove knowledge of 2 discrete logs, i.e. given public `y`, `g1` and `g2`, prove knowledge of `x1` and `x2` in `g1 * x1 + g2 * x2 = y`.
-//! 1. Prover chooses 2 random `r1` and `r2` and computes `t = g1 * r1 + g2 * r2`
-//! 2. Hashes `t` towards getting a challenge `c`.
+//! To prove knowledge of 2 discrete logs, i.e. given public `Y`, `G1` and `G2`, prove knowledge of `x1` and `x2` in `G1 * x1 + G2 * x2 = Y`.
+//! 1. Prover chooses 2 random `r1` and `r2` and computes `T = G1 * r1 + G2 * r2`
+//! 2. Hashes `T` towards getting a challenge `c`.
 //! 3. Computes 2 responses `s1 = r1 + c*x1` and `s2 = r2 + c*x2` and sends them to the verifier.
-//! 4. Verifier checks if `g1 * s1 + g2 * s2 = t + y*c`
+//! 4. Verifier checks if `G1 * s1 + G2 * s2 = T + Y*c`
 
 use crate::error::SchnorrError;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{io::Write, vec::Vec};
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use ark_std::{io::Write, ops::Neg, vec::Vec};
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker, serde_utils::ArkObjectBytes,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// Protocol for proving knowledge of discrete log, i.e given public `y` and `g`, prove knowledge of `x` in `g * x = y`
+/// Protocol for proving knowledge of discrete log, i.e given public `Y` and `G`, prove knowledge of `x` in `G * x = y`
 #[serde_as]
 #[derive(
     Default,
@@ -73,7 +75,7 @@ pub struct PokDiscreteLog<G: AffineRepr> {
     pub response: G::ScalarField,
 }
 
-/// Protocol for proving knowledge of 2 discrete logs, i.e given public `y`, `g1` and `g2`, prove knowledge of `x1` and `x2` in `g1 * x1 + g2 * x2 = y`
+/// Protocol for proving knowledge of 2 discrete logs, i.e given public `Y`, `G1` and `G2`, prove knowledge of `x1` and `x2` in `G1 * x1 + G2 * x2 = Y`
 #[serde_as]
 #[derive(
     Default,
@@ -88,7 +90,7 @@ pub struct PokDiscreteLog<G: AffineRepr> {
     Zeroize,
     ZeroizeOnDrop,
 )]
-pub struct PokTwoDiscreteLogsProtocol<G: AffineRepr> {
+pub struct PokPedersenCommitmentProtocol<G: AffineRepr> {
     #[zeroize(skip)]
     #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
@@ -115,7 +117,7 @@ pub struct PokTwoDiscreteLogsProtocol<G: AffineRepr> {
     Serialize,
     Deserialize,
 )]
-pub struct PokTwoDiscreteLogs<G: AffineRepr> {
+pub struct PokPedersenCommitment<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub t: G,
     #[serde_as(as = "ArkObjectBytes")]
@@ -179,9 +181,19 @@ impl<G: AffineRepr> PokDiscreteLog<G> {
         expected -= y.mul_bigint(challenge.into_bigint());
         expected.into_affine() == self.t
     }
+
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        y: G,
+        base: G,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        rmc.add_2(base, &self.response, y, &challenge.neg(), self.t)
+    }
 }
 
-impl<G: AffineRepr> PokTwoDiscreteLogsProtocol<G> {
+impl<G: AffineRepr> PokPedersenCommitmentProtocol<G> {
     pub fn init(
         witness1: G::ScalarField,
         blinding1: G::ScalarField,
@@ -212,10 +224,10 @@ impl<G: AffineRepr> PokTwoDiscreteLogsProtocol<G> {
         Self::compute_challenge_contribution(base1, base2, y, &self.t, writer)
     }
 
-    pub fn gen_proof(self, challenge: &G::ScalarField) -> PokTwoDiscreteLogs<G> {
+    pub fn gen_proof(self, challenge: &G::ScalarField) -> PokPedersenCommitment<G> {
         let response1 = self.blinding1 + (self.witness1 * *challenge);
         let response2 = self.blinding2 + (self.witness2 * *challenge);
-        PokTwoDiscreteLogs {
+        PokPedersenCommitment {
             t: self.t,
             response1,
             response2,
@@ -237,7 +249,7 @@ impl<G: AffineRepr> PokTwoDiscreteLogsProtocol<G> {
     }
 }
 
-impl<G: AffineRepr> PokTwoDiscreteLogs<G> {
+impl<G: AffineRepr> PokPedersenCommitment<G> {
     pub fn challenge_contribution<W: Write>(
         &self,
         base1: &G,
@@ -245,7 +257,9 @@ impl<G: AffineRepr> PokTwoDiscreteLogs<G> {
         y: &G,
         writer: W,
     ) -> Result<(), SchnorrError> {
-        PokTwoDiscreteLogsProtocol::compute_challenge_contribution(base1, base2, y, &self.t, writer)
+        PokPedersenCommitmentProtocol::compute_challenge_contribution(
+            base1, base2, y, &self.t, writer,
+        )
     }
 
     /// `base1*response1 + base2*response2 - y*challenge == t`
@@ -255,12 +269,31 @@ impl<G: AffineRepr> PokTwoDiscreteLogs<G> {
         expected -= y.mul_bigint(challenge.into_bigint());
         expected.into_affine() == self.t
     }
+
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        y: G,
+        base1: G,
+        base2: G,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        rmc.add_3(
+            base1,
+            &self.response1,
+            base2,
+            &self.response2,
+            y,
+            &challenge.neg(),
+            self.t,
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{compute_random_oracle_challenge, test_serialization};
+    use crate::{pok_generalized_pedersen::compute_random_oracle_challenge, test_serialization};
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_ec::pairing::Pairing;
     use ark_std::{
@@ -270,7 +303,7 @@ mod tests {
     use blake2::Blake2b512;
 
     #[test]
-    fn schnorr_single() {
+    fn discrete_log() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         macro_rules! check {
@@ -309,6 +342,25 @@ mod tests {
                 assert_eq!(challenge_prover, challenge_verifier);
 
                 test_serialization!(PokDiscreteLog<<Bls12_381 as Pairing>::$group_affine>, proof);
+
+                let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+                proof.verify_using_randomized_mult_checker(
+                    y,
+                    base,
+                    &challenge_verifier,
+                    &mut checker,
+                );
+                assert!(checker.verify());
+
+                // Incorrect should fail
+                let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+                proof.verify_using_randomized_mult_checker(
+                    base,
+                    y,
+                    &challenge_verifier,
+                    &mut checker,
+                );
+                assert!(!checker.verify());
             };
         }
 
@@ -317,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn schnorr_double() {
+    fn pedersen_comm() {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         macro_rules! check {
@@ -330,7 +382,7 @@ mod tests {
                 let blinding1 = Fr::rand(&mut rng);
                 let blinding2 = Fr::rand(&mut rng);
                 let protocol =
-                    PokTwoDiscreteLogsProtocol::<<Bls12_381 as Pairing>::$group_affine>::init(
+                    PokPedersenCommitmentProtocol::<<Bls12_381 as Pairing>::$group_affine>::init(
                         witness1, blinding1, &base1, witness2, blinding2, &base2,
                     );
                 let mut chal_contrib_prover = vec![];
@@ -339,7 +391,7 @@ mod tests {
                     .unwrap();
 
                 test_serialization!(
-                    PokTwoDiscreteLogsProtocol<<Bls12_381 as Pairing>::$group_affine>,
+                    PokPedersenCommitmentProtocol<<Bls12_381 as Pairing>::$group_affine>,
                     protocol
                 );
 
@@ -359,9 +411,29 @@ mod tests {
                 assert_eq!(challenge_prover, challenge_verifier);
 
                 test_serialization!(
-                    PokTwoDiscreteLogs<<Bls12_381 as Pairing>::$group_affine>,
+                    PokPedersenCommitment<<Bls12_381 as Pairing>::$group_affine>,
                     proof
                 );
+
+                let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+                proof.verify_using_randomized_mult_checker(
+                    y,
+                    base1,
+                    base2,
+                    &challenge_verifier,
+                    &mut checker,
+                );
+                assert!(checker.verify());
+
+                let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+                proof.verify_using_randomized_mult_checker(
+                    y,
+                    base2,
+                    base1,
+                    &challenge_verifier,
+                    &mut checker,
+                );
+                assert!(!checker.verify());
             };
         }
 

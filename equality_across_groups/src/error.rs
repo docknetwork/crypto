@@ -1,4 +1,6 @@
+use ark_serialize::SerializationError;
 use bulletproofs_plus_plus::error::BulletproofsPlusPlusError;
+use schnorr_pok::error::SchnorrError;
 
 #[derive(Debug)]
 pub enum Error {
@@ -18,11 +20,14 @@ pub enum Error {
     InvalidPointAddResult,
     InverseProofFailed,
     LambdaProofFailed,
+    TxProofFailed,
+    TyProofFailed,
     IncorrectTxOpening,
     IncorrectTx,
     IncorrectTyOpening,
     IncorrectTy,
     InsufficientNumberOfRepetitions(usize, usize),
+    InsufficientChallengeSize(usize, usize),
     ExpectedEvenButFoundOddAtRep(usize),
     ExpectedOddButFoundEvenAtRep(usize),
     // TODO: Rename
@@ -31,11 +36,25 @@ pub enum Error {
     IncorrectScalarOpeningAtIndex(usize),
     EcdsaSigResponseNotInvertible,
     InvalidTransformedEcdsaSig,
-    BulletproofsPlusPlusError(BulletproofsPlusPlusError),
+    BulletproofsPlusPlus(BulletproofsPlusPlusError),
+    Schnorr(SchnorrError),
+    Serialization(SerializationError),
 }
 
 impl From<BulletproofsPlusPlusError> for Error {
     fn from(e: BulletproofsPlusPlusError) -> Self {
-        Self::BulletproofsPlusPlusError(e)
+        Self::BulletproofsPlusPlus(e)
+    }
+}
+
+impl From<SchnorrError> for Error {
+    fn from(e: SchnorrError) -> Self {
+        Self::Schnorr(e)
+    }
+}
+
+impl From<SerializationError> for Error {
+    fn from(e: SerializationError) -> Self {
+        Self::Serialization(e)
     }
 }

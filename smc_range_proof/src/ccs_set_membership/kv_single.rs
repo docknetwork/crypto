@@ -8,7 +8,9 @@ use crate::{
 use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
-use schnorr_pok::{discrete_log::PokTwoDiscreteLogsProtocol, partial::Partial2PokTwoDiscreteLogs};
+use schnorr_pok::{
+    discrete_log::PokPedersenCommitmentProtocol, partial::Partial2PokPedersenCommitment,
+};
 use short_group_sig::{
     weak_bb_sig::SecretKey,
     weak_bb_sig_pok_kv::{PoKOfSignatureG1KV, PoKOfSignatureG1KVProtocol},
@@ -17,13 +19,13 @@ use short_group_sig::{
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SetMembershipCheckWithKVProtocol<G: AffineRepr> {
     pub pok_sig: PoKOfSignatureG1KVProtocol<G>,
-    pub sc: PokTwoDiscreteLogsProtocol<G>,
+    pub sc: PokPedersenCommitmentProtocol<G>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SetMembershipCheckWithKVProof<G: AffineRepr> {
     pub pok_sig: PoKOfSignatureG1KV<G>,
-    pub sc: Partial2PokTwoDiscreteLogs<G>,
+    pub sc: Partial2PokPedersenCommitment<G>,
 }
 
 impl<G: AffineRepr> SetMembershipCheckWithKVProtocol<G> {
@@ -44,7 +46,8 @@ impl<G: AffineRepr> SetMembershipCheckWithKVProtocol<G> {
             Some(blinding),
             &params.bb_sig_params,
         );
-        let sc = PokTwoDiscreteLogsProtocol::init(member, blinding, &comm_key.g, r, m, &comm_key.h);
+        let sc =
+            PokPedersenCommitmentProtocol::init(member, blinding, &comm_key.g, r, m, &comm_key.h);
         Ok(Self { pok_sig, sc })
     }
 

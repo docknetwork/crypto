@@ -41,7 +41,7 @@ use dock_crypto_utils::{
 };
 use itertools::multiunzip;
 use schnorr_pok::{
-    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
+    discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
     error::SchnorrError,
     partial::PartialSchnorrResponse,
     SchnorrCommitment, SchnorrResponse,
@@ -78,7 +78,7 @@ pub struct PoKOfMACProtocol<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub d: G,
     /// For proving relation `C - d = B_0 * -e + g * r2`
-    pub sc_C: PokTwoDiscreteLogsProtocol<G>,
+    pub sc_C: PokPedersenCommitmentProtocol<G>,
     /// For proving relation `h + \sum_{i in D}(g_vec_i*m_i)` = `d*r3 + g*{-s'} + sum_{j notin D}(g_vec_j*m_j)`
     pub sc_comm_msgs: SchnorrCommitment<G>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
@@ -98,7 +98,7 @@ pub struct PoKOfMAC<G: AffineRepr> {
     pub C: G,
     #[serde_as(as = "ArkObjectBytes")]
     pub d: G,
-    pub sc_C: PokTwoDiscreteLogs<G>,
+    pub sc_C: PokPedersenCommitment<G>,
     #[serde_as(as = "ArkObjectBytes")]
     pub t_msgs: G,
     /// The following could be achieved by using Either<SchnorrResponse, PartialSchnorrResponse> but serialization
@@ -149,7 +149,7 @@ impl<G: AffineRepr> PoKOfMACProtocol<G> {
         let d = b_r1 - params.g * r2;
         let d_affine = d.into();
 
-        let sc_C = PokTwoDiscreteLogsProtocol::init(
+        let sc_C = PokPedersenCommitmentProtocol::init(
             minus_e,
             G::ScalarField::rand(rng),
             &B_0_affine,

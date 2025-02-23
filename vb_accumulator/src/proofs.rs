@@ -106,14 +106,14 @@ use ark_ec::{
 use ark_ff::{Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{
+    msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker, serde_utils::*,
+};
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
-use zeroize::{Zeroize, ZeroizeOnDrop};
-
-use dock_crypto_utils::{msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use short_group_sig::common::ProvingKey;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Common elements of the randomized witness between membership and non-membership witness
 #[serde_as]

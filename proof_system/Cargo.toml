@@ -1,6 +1,6 @@
 [package]
 name = "proof_system"
-version = "0.32.0"
+version = "0.33.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -27,19 +27,19 @@ zeroize.workspace = true
 itertools.workspace = true
 chacha20poly1305 = {version = "0.10.1", default-features = false}
 sha3.workspace = true
-bbs_plus = { version = "0.23.0", default-features = false, path = "../bbs_plus" }
-schnorr_pok = { version = "0.21.0", default-features = false, path = "../schnorr_pok" }
-vb_accumulator = { version = "0.27.0", default-features = false, path = "../vb_accumulator" }
-dock_crypto_utils = { version = "0.21.0", default-features = false, path = "../utils" }
-saver = { version = "0.19.0", default-features = false, path = "../saver" }
-coconut-crypto = { version = "0.12.0", default-features = false, path = "../coconut" }
+bbs_plus = { version = "0.24.0", default-features = false, path = "../bbs_plus" }
+schnorr_pok = { version = "0.22.0", default-features = false, path = "../schnorr_pok" }
+vb_accumulator = { version = "0.28.0", default-features = false, path = "../vb_accumulator" }
+dock_crypto_utils = { version = "0.22.0", default-features = false, path = "../utils" }
+saver = { version = "0.20.0", default-features = false, path = "../saver" }
+coconut-crypto = { version = "0.13.0", default-features = false, path = "../coconut" }
 merlin = { package = "dock_merlin", version = "3.0.0", default-features = false, path = "../merlin" }
-legogroth16 = { version = "0.16.0", default-features = false, features = ["circom", "aggregation"], path = "../legogroth16" }
-bulletproofs_plus_plus = { version = "0.7.0", default-features = false, path = "../bulletproofs_plus_plus" }
-smc_range_proof = { version = "0.7.0", default-features = false, path = "../smc_range_proof" }
-short_group_sig = { version = "0.5.0", default-features = false, path = "../short_group_sig" }
-kvac = { version = "0.6.0", default-features = false, path = "../kvac" }
-verifiable_encryption = { version = "0.1.0", default-features = false, path = "../verifiable_encryption" }
+legogroth16 = { version = "0.17.0", default-features = false, features = ["circom", "aggregation"], path = "../legogroth16" }
+bulletproofs_plus_plus = { version = "0.8.0", default-features = false, path = "../bulletproofs_plus_plus" }
+smc_range_proof = { version = "0.8.0", default-features = false, path = "../smc_range_proof" }
+short_group_sig = { version = "0.6.0", default-features = false, path = "../short_group_sig" }
+kvac = { version = "0.7.0", default-features = false, path = "../kvac" }
+verifiable_encryption = { version = "0.2.0", default-features = false, path = "../verifiable_encryption" }
 
 [dev-dependencies]
 ark-bls12-381.workspace = true

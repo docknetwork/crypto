@@ -85,7 +85,7 @@ use dock_crypto_utils::{
 };
 use itertools::multiunzip;
 use schnorr_pok::{
-    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
+    discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
     error::SchnorrError,
     partial::PartialSchnorrResponse,
     SchnorrCommitment, SchnorrResponse,
@@ -127,7 +127,7 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
     /// For proving relation `A_bar - d = A_prime * -e + h_0 * r2`
-    pub sc_comm_1: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+    pub sc_comm_1: PokPedersenCommitmentProtocol<E::G1Affine>,
     /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + sum_{j notin D}(h_j*m_j)`
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
     #[serde_as(as = "Vec<ArkObjectBytes>")]
@@ -148,7 +148,7 @@ pub struct PoKOfSignatureG1Proof<E: Pairing> {
     #[serde_as(as = "ArkObjectBytes")]
     pub d: E::G1Affine,
     /// Proof of relation `A_bar - d = A_prime * -e + h_0 * r2`
-    pub sc_resp_1: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_resp_1: PokPedersenCommitment<E::G1Affine>,
     /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
     #[serde_as(as = "ArkObjectBytes")]
     pub T2: E::G1Affine,
@@ -214,7 +214,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let A_prime_affine = A_prime.into_affine();
 
         // Commit to randomness with `h_0` and `A'`, i.e. `bases_1[0]*randomness_1[0] + bases_1[1]*randomness_1[1]`
-        let sc_comm_1 = PokTwoDiscreteLogsProtocol::init(
+        let sc_comm_1 = PokPedersenCommitmentProtocol::init(
             -signature.e,
             E::ScalarField::rand(rng),
             &A_prime_affine,
@@ -689,13 +689,17 @@ mod tests {
             // Protocol can be serialized
             test_serialization!($protocol<Bls12_381>, pok);
 
+            let start = Instant::now();
             let mut chal_bytes_prover = vec![];
+            keypair
+                .public_key
+                .serialize_compressed(&mut chal_bytes_prover)
+                .unwrap();
             pok.challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_prover)
                 .unwrap();
             let challenge_prover =
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_prover);
 
-            let start = Instant::now();
             let proof = pok.gen_proof(&challenge_prover).unwrap();
             proof_create_duration += start.elapsed();
 
@@ -703,7 +707,12 @@ mod tests {
             assert!(params.is_valid());
             assert!(public_key.is_valid());
 
+            let start = Instant::now();
             let mut chal_bytes_verifier = vec![];
+            keypair
+                .public_key
+                .serialize_compressed(&mut chal_bytes_verifier)
+                .unwrap();
             proof
                 .challenge_contribution(&revealed_msgs, &params, &mut chal_bytes_verifier)
                 .unwrap();
@@ -711,9 +720,6 @@ mod tests {
                 compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes_verifier);
 
             assert_eq!(chal_bytes_prover, chal_bytes_verifier);
-
-            let mut proof_verif_duration = Duration::default();
-            let start = Instant::now();
             proof
                 .verify(
                     &revealed_msgs,
@@ -722,7 +728,7 @@ mod tests {
                     params.clone(),
                 )
                 .unwrap();
-            proof_verif_duration += start.elapsed();
+            let proof_verif_duration = start.elapsed();
 
             // Proof can be serialized
             test_serialization!($proof<Bls12_381>, proof);
@@ -876,6 +882,9 @@ mod tests {
 
 
             let mut chal_bytes_prover = vec![];
+            keypair_1.public_key.serialize_compressed(&mut chal_bytes_prover).unwrap();
+            keypair_2.public_key.serialize_compressed(&mut chal_bytes_prover).unwrap();
+            keypair_3.public_key.serialize_compressed(&mut chal_bytes_prover).unwrap();
             pok_1
                 .challenge_contribution(&revealed_msgs_1, &params_1, &mut chal_bytes_prover)
                 .unwrap();
@@ -894,6 +903,9 @@ mod tests {
 
             // The verifier generates the challenge on its own.
             let mut chal_bytes_verifier = vec![];
+            keypair_1.public_key.serialize_compressed(&mut chal_bytes_verifier).unwrap();
+            keypair_2.public_key.serialize_compressed(&mut chal_bytes_verifier).unwrap();
+            keypair_3.public_key.serialize_compressed(&mut chal_bytes_verifier).unwrap();
             proof_1
                 .challenge_contribution(&revealed_msgs_1, &params_1, &mut chal_bytes_verifier)
                 .unwrap();
@@ -984,6 +996,9 @@ mod tests {
             let mut chal_bytes_prover = vec![];
             let mut poks = vec![];
             let mut proofs = vec![];
+
+            keypair.public_key.serialize_compressed(&mut chal_bytes_prover).unwrap();
+
             for i in 0..sig_count {
                 msgs.push(
                     (0..message_count)
@@ -1014,6 +1029,7 @@ mod tests {
             }
 
             let mut chal_bytes_verifier = vec![];
+            keypair.public_key.serialize_compressed(&mut chal_bytes_verifier).unwrap();
 
             for proof in &proofs {
                 proof

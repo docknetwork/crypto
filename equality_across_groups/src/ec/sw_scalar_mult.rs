@@ -1,183 +1,265 @@
-//! Proof of scalar multiplication on short Weierstrass curve. Is a variation of the protocol described in section 5 of the paper [ZKAttest Ring and Group Signatures for Existing ECDSA Keys](https://eprint.iacr.org/2021/1183)
+//! Proof of scalar multiplication on short Weierstrass curve. The protocol, called CDLSD, is described in section 4.2, construction 4.1 of the paper [CDLS: Proving Knowledge of Committed Discrete Logarithms with Soundness](https://eprint.iacr.org/2023/1595)
 //!
-//! The protocol proves that for committed curve point `r` and committed scalar `lambda` and public curve point `g`, `r = g * lambda`.
-//! The verifier only has commitments to `r`'s coordinates `x` and `y` and `lambda` but knows `g`.
+//! The protocol proves that for committed curve point `S` and committed scalar `omega` and public curve point `R`, `S = R * omega`.
+//! The verifier only has commitments to `S`'s coordinates `x` and `y` and `omega` but knows `R`.
 //!
-//! The idea is the prover generates a random point say `j = g * alpha` where coordinates of `j` are `(gamma_1, gamma_2)`.
-//! Now it proves using the protocol of point addition that sum of points `r` and `j` is another point say `l` and it knows
-//! the opening of point `l`. The prover repeats this protocol several times as per the security parameter of the protocol
+//! The idea is the prover generates a random point say `J = R * alpha` and the point `K` such that `K = (alpha - omega) * R`
+//! Now it proves using the protocol of point addition that sum of points `S` and `K` is point `J` and it knows
+//! the opening of these points. `alpha` is chosen to not be either of `(0, omega, 2*omega)` to avoid point doubling or points
+//! at infinity in point addition protocol. The prover repeats this protocol several times as per the security parameter of the protocol
 //!
-//! The protocol in the paper commits to point `l` and later reveals its opening but the implementation here
-//! does not commit to it, it simply reveals `l`.
-//!
-//! Following is the description (one repetition)
-//! - Prover creates random scalar `alpha` and corresponding point `g * alpha` with coordinates `(gamma_1, gamma_2)`.
-//! - Prover commits to `alpha, gamma_1, gamma_2` and sends to verifier (appends in the proof transcript)
-//! - Prover generates a challenge bit and if it's 0, it sends the verifier openings of the commitments to `alpha, gamma_1, gamma_2`.
-//! - If challenge bit is 1, it sends the sum of points `g * alpha` and `g * lambda` and openings `alpha + lambda` and randomness
-//!   in the commitments to `lambda` and `alpha`.
-//! - The verifier accordingly checks these.
 
 use crate::{
     ec::{
-        commitments::{CommitmentWithOpening, PointCommitment, PointCommitmentWithOpening},
-        sw_point_addition::PointAdditionProof,
+        commitments::{
+            point_coords_as_scalar_field_elements, CommitmentWithOpening, PointCommitment,
+            PointCommitmentWithOpening,
+        },
+        sw_point_addition::{PointAdditionProof, PointAdditionProtocol},
     },
     error::Error,
 };
 use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::{Field, One, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, io::Write, rand::RngCore, vec::Vec, UniformRand};
+use ark_std::{cfg_into_iter, cfg_iter, io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::{
-    commitment::PedersenCommitmentKey, msm::WindowTable, transcript::Transcript,
+    commitment::PedersenCommitmentKey, msm::WindowTable,
+    randomized_mult_checker::RandomizedMultChecker,
 };
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-/// Proof in the repetition where challenge bit is even. Contains opening to the commitments
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, CanonicalSerialize, CanonicalDeserialize)]
-pub struct EvenRep<P: AffineRepr, C: AffineRepr> {
-    pub alpha: P::ScalarField,
-    pub beta_1: P::ScalarField,
-    pub beta_2: C::ScalarField,
-    pub beta_3: C::ScalarField,
+/// Protocol for proving scalar multiplication with committed point and committed scalar.
+/// `P` is the curve where the points live and `C` is the curve where commitments (to their coordinates) live.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ScalarMultiplicationProtocol<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize = 128> {
+    /// The scalar
+    pub omega: P::ScalarField,
+    /// Randomness in the commitment to the scalar
+    pub omega_rand: P::ScalarField,
+    sub_protocols: Vec<ScalarMultiplicationProtocolSingleRep<P, C>>,
 }
 
-/// Proof in the repetition where challenge bit is odd
-#[derive(Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct OddRep<P: AffineRepr, C: AffineRepr> {
-    pub z1: P::ScalarField,
-    pub z2: P::ScalarField,
-    /// The sum of points `g * alpha` and `g * lambda`, i.e. `t = g * (alpha + lambda)`
-    pub t: P,
-    pub addition_proof: PointAdditionProof<P, C>,
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ScalarMultiplicationProtocolSingleRep<P: AffineRepr, C: AffineRepr> {
+    /// Commitment to `alpha`
+    pub comm_alpha: CommitmentWithOpening<P>,
+    /// Commitment to the point `alpha * R`
+    pub comm_alpha_point: PointCommitmentWithOpening<C>,
+    /// Commitment to the point `(alpha - omega) * R`
+    pub comm_alpha_minus_omega_point: PointCommitmentWithOpening<C>,
+    pub add: PointAdditionProtocol<P, C>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum OddEvenRep<P: AffineRepr, C: AffineRepr> {
-    EvenRep(EvenRep<P, C>),
-    OddRep(OddRep<P, C>),
-}
-
-/// Single repetition of proof of scalar multiplication.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ScalarMultiplicationProofSingleRep<P: AffineRepr, C: AffineRepr> {
-    /// Commitment to random scalar `alpha`
-    pub a1: P,
-    /// Commitment to coordinates of the point formed by scalar multiplication with random scalar `alpha`
-    pub a2_a3: PointCommitment<C>,
-    pub odd_even_rep: OddEvenRep<P, C>,
-}
-
-/// Proof of scalar multiplication.
+/// Proof of scalar multiplication with committed point and committed scalar.
+/// `P` is the curve where the points live and `C` is the curve where commitments (to their coordinates) live.
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ScalarMultiplicationProof<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize = 128>(
-    // Creating an array overflows the stack at 128 reps.
-    // pub [ScalarMultiplicationProofSingleRep<P, C>; NUM_REPS],
-    pub Vec<ScalarMultiplicationProofSingleRep<P, C>>,
+    Vec<ScalarMultiplicationProofSingleRep<P, C>>,
 );
 
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct ScalarMultiplicationProofSingleRep<P: AffineRepr, C: AffineRepr> {
+    /// Commitment to `alpha`
+    pub comm_alpha: P,
+    /// Commitment to the point `alpha * R`
+    pub comm_alpha_point: PointCommitment<C>,
+    /// Commitment to the point `(alpha - omega) * R`
+    pub comm_alpha_minus_omega_point: PointCommitment<C>,
+    pub add: PointAdditionProof<P, C>,
+    pub z1: P::ScalarField,
+    pub z2: P::ScalarField,
+    pub z3: C::ScalarField,
+    pub z4: C::ScalarField,
+}
+
 impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
-    ScalarMultiplicationProof<P, C, NUM_REPS>
+    ScalarMultiplicationProtocol<P, C, NUM_REPS>
 {
     /// For proving `base * scalar = result` where `comm_scalar` and `comm_result` are commitments to `scalar`
     /// and `result` respectively
-    pub fn new<R: RngCore>(
-        mut rng: &mut R,
+    pub fn init<R: RngCore>(
+        rng: &mut R,
         comm_scalar: CommitmentWithOpening<P>,
         comm_result: PointCommitmentWithOpening<C>,
         result: P,
         base: P,
         comm_key_1: &PedersenCommitmentKey<P>,
         comm_key_2: &PedersenCommitmentKey<C>,
-        transcript: &mut (impl Transcript + Clone + Write),
     ) -> Result<Self, Error> {
-        let mut proofs = Vec::<ScalarMultiplicationProofSingleRep<P, C>>::with_capacity(NUM_REPS);
-        // Random scalars
-        let alpha = (0..NUM_REPS)
-            .map(|_| P::ScalarField::rand(&mut rng))
-            .collect::<Vec<_>>();
+        let mut protocols = Vec::with_capacity(NUM_REPS);
+        let twice_omega = comm_scalar.value.double();
+        // Ensure that alpha is neither 0 nor omega (the scalar) nor 2*omega to avoid point doubling or points at infinity in point addition protocol
+        let mut alpha = Vec::with_capacity(NUM_REPS);
+        while alpha.len() < NUM_REPS {
+            let alpha_i = P::ScalarField::rand(rng);
+            if alpha_i.is_zero() || alpha_i == comm_scalar.value || alpha_i == twice_omega {
+                continue;
+            } else {
+                alpha.push(alpha_i);
+            }
+        }
 
-        // Randomness for the commitment
+        // Randomness for the commitments to alpha and the points
         let beta_1 = (0..NUM_REPS)
-            .map(|_| P::ScalarField::rand(&mut rng))
+            .map(|_| P::ScalarField::rand(rng))
             .collect::<Vec<_>>();
         let beta_2 = (0..NUM_REPS)
-            .map(|_| C::ScalarField::rand(&mut rng))
+            .map(|_| C::ScalarField::rand(rng))
             .collect::<Vec<_>>();
         let beta_3 = (0..NUM_REPS)
-            .map(|_| C::ScalarField::rand(&mut rng))
+            .map(|_| C::ScalarField::rand(rng))
+            .collect::<Vec<_>>();
+        let beta_4 = (0..NUM_REPS)
+            .map(|_| C::ScalarField::rand(rng))
+            .collect::<Vec<_>>();
+        let beta_5 = (0..NUM_REPS)
+            .map(|_| C::ScalarField::rand(rng))
             .collect::<Vec<_>>();
 
         let base_table = WindowTable::new(NUM_REPS, base.into_group());
         // Points base * alpha_i
-        let gamma = P::Group::normalize_batch(&base_table.multiply_many(&alpha));
+        let alpha_point = base_table.multiply_many(&alpha);
+        // Point base * - omega
+        let minus_omega_point = result.into_group().neg();
+        // Points base * (alpha_i - omega)
+        let alpha_minus_omega_point = cfg_iter!(alpha_point)
+            .map(|a| minus_omega_point + a)
+            .collect::<Vec<_>>();
+
+        let alpha_point = P::Group::normalize_batch(&alpha_point);
+        let alpha_minus_omega_point = P::Group::normalize_batch(&alpha_minus_omega_point);
+
         // Commit to alpha_i
-        let a1 = P::Group::normalize_batch(
-            &cfg_into_iter!(0..NUM_REPS)
-                .map(|i| comm_key_1.commit_as_projective(&alpha[i], &beta_1[i]))
-                .collect::<Vec<_>>(),
-        );
-        // Commit to coordinates of gamma_i
-        let a2_a3_ = cfg_into_iter!(0..NUM_REPS)
+        let mut comm_alpha = cfg_into_iter!(0..NUM_REPS)
+            .map(|i| CommitmentWithOpening::new_given_randomness(alpha[i], beta_1[i], comm_key_1))
+            .collect::<Vec<_>>();
+
+        // Commit to base * alpha_i
+        let comm_alpha_point_ = cfg_into_iter!(0..NUM_REPS)
             .map(|i| {
                 PointCommitmentWithOpening::<C>::new_given_randomness::<P>(
-                    &gamma[i], beta_2[i], beta_3[i], comm_key_2,
+                    &alpha_point[i],
+                    beta_2[i],
+                    beta_3[i],
+                    comm_key_2,
                 )
             })
             .collect::<Vec<_>>();
-        let mut a2_a3 = Vec::with_capacity(NUM_REPS);
-        for a in a2_a3_ {
-            a2_a3.push(a?);
+        let mut comm_alpha_point = Vec::with_capacity(NUM_REPS);
+        for c in comm_alpha_point_ {
+            comm_alpha_point.push(c?);
         }
 
-        let mut c_byte = [0_u8; 1];
-        for i in 0..NUM_REPS {
-            transcript.append(b"a_1", &a1[i]);
-            transcript.append(b"a2_a3", &a2_a3[i].comm);
-            transcript.challenge_bytes(b"challenge", &mut c_byte);
-            if c_byte[0] & 1 == 0 {
-                proofs.push(ScalarMultiplicationProofSingleRep {
-                    a1: a1[i],
-                    a2_a3: a2_a3[i].comm.clone(),
-                    odd_even_rep: OddEvenRep::EvenRep(EvenRep {
-                        alpha: alpha[i],
-                        beta_1: beta_1[i],
-                        beta_2: beta_2[i],
-                        beta_3: beta_3[i],
-                    }),
-                });
-            } else {
-                let z1 = alpha[i] + comm_scalar.value;
-                let z2 = beta_1[i] + comm_scalar.randomness;
-                // t = g * (alpha + lambda)
-                let t = base_table.multiply(&z1).into_affine();
-                let addition_proof = PointAdditionProof::<P, C>::new(
-                    rng,
-                    a2_a3[i].clone(),
-                    comm_result.clone(),
-                    gamma[i],
-                    result,
-                    t,
+        // Commit to base * (alpha_i - omega)
+        let comm_alpha_minus_omega_point_ = cfg_into_iter!(0..NUM_REPS)
+            .map(|i| {
+                PointCommitmentWithOpening::<C>::new_given_randomness::<P>(
+                    &alpha_minus_omega_point[i],
+                    beta_4[i],
+                    beta_5[i],
                     comm_key_2,
-                    transcript,
-                )?;
-                proofs.push(ScalarMultiplicationProofSingleRep {
-                    a1: a1[i],
-                    a2_a3: a2_a3[i].comm.clone(),
-                    odd_even_rep: OddEvenRep::OddRep(OddRep {
-                        z1,
-                        z2,
-                        t,
-                        addition_proof,
-                    }),
-                });
-            }
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut comm_alpha_minus_omega_point = Vec::with_capacity(NUM_REPS);
+        for c in comm_alpha_minus_omega_point_ {
+            comm_alpha_minus_omega_point.push(c?);
         }
-        Ok(Self(proofs))
+
+        // Following can be parallelized if PointAdditionProtocol and its sub-protocols accept randomness
+        for i in 0..NUM_REPS {
+            let add = PointAdditionProtocol::<P, C>::init(
+                rng,
+                comm_result.clone(),
+                comm_alpha_minus_omega_point[0].clone(), // using index 0 because these are mutated below
+                comm_alpha_point[0].clone(), // using index 0 because these are mutated below
+                result,
+                alpha_minus_omega_point[i],
+                alpha_point[i],
+                comm_key_2,
+            )?;
+            protocols.push(ScalarMultiplicationProtocolSingleRep {
+                comm_alpha: comm_alpha.remove(0),
+                comm_alpha_point: comm_alpha_point.remove(0),
+                comm_alpha_minus_omega_point: comm_alpha_minus_omega_point.remove(0),
+                add,
+            });
+        }
+        Ok(Self {
+            omega: comm_scalar.value,
+            omega_rand: comm_scalar.randomness,
+            sub_protocols: protocols,
+        })
     }
 
+    pub fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), Error> {
+        for i in 0..NUM_REPS {
+            self.sub_protocols[i]
+                .comm_alpha
+                .comm
+                .serialize_compressed(&mut writer)?;
+            self.sub_protocols[i]
+                .comm_alpha_point
+                .comm
+                .serialize_compressed(&mut writer)?;
+            self.sub_protocols[i]
+                .comm_alpha_minus_omega_point
+                .comm
+                .serialize_compressed(&mut writer)?;
+            self.sub_protocols[i]
+                .add
+                .challenge_contribution(&mut writer)?;
+        }
+        Ok(())
+    }
+
+    pub fn gen_proof(self, challenge: &[u8]) -> ScalarMultiplicationProof<P, C, NUM_REPS> {
+        // This assert should generally pass but can be avoided by enlarging the given challenge with an XOF
+        assert!((challenge.len() * 8) >= NUM_REPS);
+        let one = C::ScalarField::one();
+        let minus_one = one.neg();
+        let proofs = cfg_into_iter!(self.sub_protocols)
+            .enumerate()
+            .map(|(i, p)| {
+                let byte_idx = i / 8;
+                let bit_idx = i % 8;
+                let c = (challenge[byte_idx] >> bit_idx) & 1;
+                // If c = 0, send opening of point alpha * base else send opening of (alpha-omega) * base
+                if c == 0 {
+                    ScalarMultiplicationProofSingleRep {
+                        comm_alpha: p.comm_alpha.comm,
+                        comm_alpha_point: p.comm_alpha_point.comm,
+                        comm_alpha_minus_omega_point: p.comm_alpha_minus_omega_point.comm,
+                        add: p.add.gen_proof(&minus_one),
+                        z1: p.comm_alpha.value,
+                        z2: p.comm_alpha.randomness,
+                        z3: p.comm_alpha_point.r_x,
+                        z4: p.comm_alpha_point.r_y,
+                    }
+                } else {
+                    ScalarMultiplicationProofSingleRep {
+                        comm_alpha: p.comm_alpha.comm,
+                        comm_alpha_point: p.comm_alpha_point.comm,
+                        comm_alpha_minus_omega_point: p.comm_alpha_minus_omega_point.comm,
+                        add: p.add.gen_proof(&one),
+                        z1: p.comm_alpha.value - self.omega,
+                        z2: p.comm_alpha.randomness - self.omega_rand,
+                        z3: p.comm_alpha_minus_omega_point.r_x,
+                        z4: p.comm_alpha_minus_omega_point.r_y,
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+        ScalarMultiplicationProof(proofs)
+    }
+}
+
+impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
+    ScalarMultiplicationProof<P, C, NUM_REPS>
+{
     /// For verifying `base * scalar = result` where `comm_scalar` and `comm_result` are commitments to `scalar`
     /// and `result` respectively
     pub fn verify(
@@ -185,9 +267,9 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
         comm_scalar: &P,
         comm_result: &PointCommitment<C>,
         base: &P,
+        challenge: &[u8],
         comm_key_1: &PedersenCommitmentKey<P>,
         comm_key_2: &PedersenCommitmentKey<C>,
-        transcript: &mut (impl Transcript + Clone + Write),
     ) -> Result<(), Error> {
         if self.0.len() != NUM_REPS {
             return Err(Error::InsufficientNumberOfRepetitions(
@@ -195,126 +277,187 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
                 NUM_REPS,
             ));
         }
+        if (challenge.len() * 8) < NUM_REPS {
+            return Err(Error::InsufficientChallengeSize(
+                challenge.len() * 8,
+                NUM_REPS,
+            ));
+        }
         let base_table = WindowTable::new(NUM_REPS, base.into_group());
-        let mut c_byte = [0_u8; 1];
+        let one = C::ScalarField::one();
+        let minus_one = one.neg();
+        let comm_minus_scalar = comm_scalar.into_group().neg();
+        // Following can be parallelized
         for i in 0..NUM_REPS {
-            transcript.append(b"a_1", &self.0[i].a1);
-            transcript.append(b"a2_a3", &self.0[i].a2_a3);
-            transcript.challenge_bytes(b"challenge", &mut c_byte);
-            if c_byte[0] & 1 == 0 {
-                match self.0[i].odd_even_rep {
-                    OddEvenRep::EvenRep(rep) => {
-                        let gamma_i = base_table.multiply(&rep.alpha).into_affine();
-                        if self.0[i].a1 != comm_key_1.commit(&rep.alpha, &rep.beta_1) {
-                            return Err(Error::IncorrectA1OpeningAtIndex(i));
-                        }
-                        if self.0[i].a2_a3
-                            != PointCommitmentWithOpening::new_given_randomness(
-                                &gamma_i, rep.beta_2, rep.beta_3, comm_key_2,
-                            )?
-                            .comm
-                        {
-                            return Err(Error::IncorrectPointOpeningAtIndex(i));
-                        }
-                    }
-                    _ => return Err(Error::ExpectedEvenButFoundOddAtRep(i)),
+            let byte_idx = i / 8;
+            let bit_idx = i % 8;
+            let c = (challenge[byte_idx] >> bit_idx) & 1;
+            let p = base_table.multiply(&self.0[i].z1).into_affine();
+            let p_comm = PointCommitmentWithOpening::new_given_randomness(
+                &p,
+                self.0[i].z3,
+                self.0[i].z4,
+                comm_key_2,
+            )?;
+            // If c = 0, expect opening of point alpha * base else expect opening of (alpha-omega) * base
+            if c == 0 {
+                if self.0[i].comm_alpha
+                    != CommitmentWithOpening::new_given_randomness(
+                        self.0[i].z1,
+                        self.0[i].z2,
+                        comm_key_1,
+                    )
+                    .comm
+                {
+                    return Err(Error::IncorrectScalarOpeningAtIndex(i));
                 }
+                if p_comm.comm != self.0[i].comm_alpha_point {
+                    return Err(Error::IncorrectPointOpeningAtIndex(i));
+                }
+                self.0[i].add.verify(
+                    comm_result,
+                    &self.0[i].comm_alpha_minus_omega_point,
+                    &self.0[i].comm_alpha_point,
+                    &minus_one,
+                    comm_key_2,
+                )?;
             } else {
-                match self.0[i].odd_even_rep {
-                    OddEvenRep::OddRep(rep) => {
-                        // Check g * z1 + h * z2 = Com(alpha) + Com(lambda)
-                        if comm_key_1.commit_as_projective(&rep.z1, &rep.z2)
-                            != self.0[i].a1 + comm_scalar
-                        {
-                            return Err(Error::IncorrectScalarOpeningAtIndex(i));
-                        }
-                        let er = rep.addition_proof.verify(
-                            &self.0[i].a2_a3,
-                            comm_result,
-                            &rep.t,
-                            comm_key_2,
-                            transcript,
-                        );
-                        if er.is_err() {
-                            return er;
-                        }
-                    }
-                    _ => return Err(Error::ExpectedOddButFoundEvenAtRep(i)),
+                if (self.0[i].comm_alpha + comm_minus_scalar).into_affine()
+                    != CommitmentWithOpening::new_given_randomness(
+                        self.0[i].z1,
+                        self.0[i].z2,
+                        comm_key_1,
+                    )
+                    .comm
+                {
+                    return Err(Error::IncorrectScalarOpeningAtIndex(i));
                 }
+                if p_comm.comm != self.0[i].comm_alpha_minus_omega_point {
+                    return Err(Error::IncorrectPointOpeningAtIndex(i));
+                }
+                self.0[i].add.verify(
+                    comm_result,
+                    &self.0[i].comm_alpha_minus_omega_point,
+                    &self.0[i].comm_alpha_point,
+                    &one,
+                    comm_key_2,
+                )?;
             }
         }
         Ok(())
     }
-}
 
-impl<P: AffineRepr, C: AffineRepr> Default for OddEvenRep<P, C> {
-    fn default() -> Self {
-        OddEvenRep::EvenRep(EvenRep::default())
+    /// Same as `Self::verify` but delegated the scalar multiplication checks to `RandomizedMultChecker`
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        comm_scalar: P,
+        comm_result: PointCommitment<C>,
+        base: P,
+        challenge: &[u8],
+        comm_key_1: PedersenCommitmentKey<P>,
+        comm_key_2: PedersenCommitmentKey<C>,
+        rmc_1: &mut RandomizedMultChecker<P>,
+        rmc_2: &mut RandomizedMultChecker<C>,
+    ) -> Result<(), Error> {
+        if self.0.len() != NUM_REPS {
+            return Err(Error::InsufficientNumberOfRepetitions(
+                self.0.len(),
+                NUM_REPS,
+            ));
+        }
+        if (challenge.len() * 8) < NUM_REPS {
+            return Err(Error::InsufficientChallengeSize(
+                challenge.len() * 8,
+                NUM_REPS,
+            ));
+        }
+        let base_table = WindowTable::new(NUM_REPS, base.into_group());
+        let one = C::ScalarField::one();
+        let minus_one = one.neg();
+        let comm_minus_scalar = comm_scalar.into_group().neg();
+        for i in 0..NUM_REPS {
+            let byte_idx = i / 8;
+            let bit_idx = i % 8;
+            let c = (challenge[byte_idx] >> bit_idx) & 1;
+            let p = base_table.multiply(&self.0[i].z1).into_affine();
+            let (p_x, p_y) = point_coords_as_scalar_field_elements::<P, C>(&p)?;
+            if c == 0 {
+                rmc_1.add_2(
+                    comm_key_1.g,
+                    &self.0[i].z1,
+                    comm_key_1.h,
+                    &self.0[i].z2,
+                    self.0[i].comm_alpha,
+                );
+                rmc_2.add_2(
+                    comm_key_2.g,
+                    &p_x,
+                    comm_key_2.h,
+                    &self.0[i].z3,
+                    self.0[i].comm_alpha_point.x,
+                );
+                rmc_2.add_2(
+                    comm_key_2.g,
+                    &p_y,
+                    comm_key_2.h,
+                    &self.0[i].z4,
+                    self.0[i].comm_alpha_point.y,
+                );
+                self.0[i].add.verify_using_randomized_mult_checker(
+                    comm_result,
+                    self.0[i].comm_alpha_minus_omega_point,
+                    self.0[i].comm_alpha_point,
+                    &minus_one,
+                    comm_key_2,
+                    rmc_2,
+                )?;
+            } else {
+                rmc_1.add_2(
+                    comm_key_1.g,
+                    &self.0[i].z1,
+                    comm_key_1.h,
+                    &self.0[i].z2,
+                    (self.0[i].comm_alpha + comm_minus_scalar).into_affine(),
+                );
+                rmc_2.add_2(
+                    comm_key_2.g,
+                    &p_x,
+                    comm_key_2.h,
+                    &self.0[i].z3,
+                    self.0[i].comm_alpha_minus_omega_point.x,
+                );
+                rmc_2.add_2(
+                    comm_key_2.g,
+                    &p_y,
+                    comm_key_2.h,
+                    &self.0[i].z4,
+                    self.0[i].comm_alpha_minus_omega_point.y,
+                );
+                self.0[i].add.verify_using_randomized_mult_checker(
+                    comm_result,
+                    self.0[i].comm_alpha_minus_omega_point,
+                    self.0[i].comm_alpha_point,
+                    &one,
+                    comm_key_2,
+                    rmc_2,
+                )?;
+            }
+        }
+        Ok(())
     }
-}
 
-mod serialization {
-    use super::*;
-    use ark_serialize::{Compress, SerializationError, Valid, Validate};
-    use ark_std::io::Read;
-
-    impl<P: AffineRepr, C: AffineRepr> Valid for OddEvenRep<P, C> {
-        fn check(&self) -> Result<(), SerializationError> {
-            match self {
-                Self::EvenRep(e) => e.check(),
-                Self::OddRep(e) => e.check(),
-            }
+    pub fn challenge_contribution<W: Write>(&self, mut writer: W) -> Result<(), Error> {
+        for i in 0..NUM_REPS {
+            self.0[i].comm_alpha.serialize_compressed(&mut writer)?;
+            self.0[i]
+                .comm_alpha_point
+                .serialize_compressed(&mut writer)?;
+            self.0[i]
+                .comm_alpha_minus_omega_point
+                .serialize_compressed(&mut writer)?;
+            self.0[i].add.challenge_contribution(&mut writer)?;
         }
-    }
-
-    impl<P: AffineRepr, C: AffineRepr> CanonicalSerialize for OddEvenRep<P, C> {
-        fn serialize_with_mode<W: Write>(
-            &self,
-            mut writer: W,
-            compress: Compress,
-        ) -> Result<(), SerializationError> {
-            match self {
-                Self::EvenRep(r) => {
-                    CanonicalSerialize::serialize_with_mode(&0u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(r, &mut writer, compress)
-                }
-                Self::OddRep(r) => {
-                    CanonicalSerialize::serialize_with_mode(&1u8, &mut writer, compress)?;
-                    CanonicalSerialize::serialize_with_mode(r, &mut writer, compress)
-                }
-            }
-        }
-
-        fn serialized_size(&self, compress: Compress) -> usize {
-            match self {
-                Self::EvenRep(r) => 0u8.serialized_size(compress) + r.serialized_size(compress),
-                Self::OddRep(r) => 1u8.serialized_size(compress) + r.serialized_size(compress),
-            }
-        }
-    }
-
-    impl<P: AffineRepr, C: AffineRepr> CanonicalDeserialize for OddEvenRep<P, C> {
-        fn deserialize_with_mode<R: Read>(
-            mut reader: R,
-            compress: Compress,
-            validate: Validate,
-        ) -> Result<Self, SerializationError> {
-            let t: u8 =
-                CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
-            match t {
-                0u8 => Ok(Self::EvenRep(CanonicalDeserialize::deserialize_with_mode(
-                    &mut reader,
-                    compress,
-                    validate,
-                )?)),
-                1u8 => Ok(Self::OddRep(CanonicalDeserialize::deserialize_with_mode(
-                    &mut reader,
-                    compress,
-                    validate,
-                )?)),
-                _ => Err(SerializationError::InvalidData),
-            }
-        }
+        Ok(())
     }
 }
 
@@ -339,10 +482,10 @@ mod tests {
 
         let mut prov_time = vec![];
         let mut ver_time = vec![];
-        // Since the proof size depends on the values of the random challenge bits
-        let mut proof_sizes = vec![];
+        let mut ver_rmc_time = vec![];
         let num_iters = 10;
-        for _ in 0..num_iters {
+        const NUM_REPS: usize = 128;
+        for i in 0..num_iters {
             let base = secpAff::rand(&mut rng);
             let scalar = secpFr::rand(&mut rng);
             let result = (base * scalar).into_affine();
@@ -357,7 +500,8 @@ mod tests {
             prover_transcript.append(b"comm_key_2", &comm_key_2);
             prover_transcript.append(b"comm_scalar", &comm_scalar.comm);
             prover_transcript.append(b"comm_result", &comm_result.comm);
-            let proof = ScalarMultiplicationProof::<secpAff, tomAff>::new(
+
+            let protocol = ScalarMultiplicationProtocol::<secpAff, tomAff, NUM_REPS>::init(
                 &mut rng,
                 comm_scalar.clone(),
                 comm_result.clone(),
@@ -365,12 +509,15 @@ mod tests {
                 base,
                 &comm_key_1,
                 &comm_key_2,
-                &mut prover_transcript,
             )
             .unwrap();
+            protocol
+                .challenge_contribution(&mut prover_transcript)
+                .unwrap();
+            let mut challenge_prover = [0_u8; NUM_REPS / 8];
+            prover_transcript.challenge_bytes(b"challenge", &mut challenge_prover);
+            let proof = protocol.gen_proof(&challenge_prover);
             prov_time.push(start.elapsed());
-
-            proof_sizes.push(proof.compressed_size());
 
             let start = Instant::now();
             let mut verifier_transcript = new_merlin_transcript(b"test");
@@ -379,24 +526,68 @@ mod tests {
             verifier_transcript.append(b"comm_scalar", &comm_scalar.comm);
             verifier_transcript.append(b"comm_result", &comm_result.comm);
             proof
+                .challenge_contribution(&mut verifier_transcript)
+                .unwrap();
+
+            let mut challenge_verifier = [0_u8; NUM_REPS / 8];
+            verifier_transcript.challenge_bytes(b"challenge", &mut challenge_verifier);
+            assert_eq!(challenge_prover, challenge_verifier);
+
+            proof
                 .verify(
                     &comm_scalar.comm,
                     &comm_result.comm,
                     &base,
+                    &challenge_verifier,
                     &comm_key_1,
                     &comm_key_2,
-                    &mut verifier_transcript,
                 )
                 .unwrap();
             ver_time.push(start.elapsed());
-        }
 
-        println!("For {} iterations", num_iters);
+            let start = Instant::now();
+            let mut verifier_transcript = new_merlin_transcript(b"test");
+            verifier_transcript.append(b"comm_key_1", &comm_key_1);
+            verifier_transcript.append(b"comm_key_2", &comm_key_2);
+            verifier_transcript.append(b"comm_scalar", &comm_scalar.comm);
+            verifier_transcript.append(b"comm_result", &comm_result.comm);
+            proof
+                .challenge_contribution(&mut verifier_transcript)
+                .unwrap();
+
+            let mut challenge_verifier = [0_u8; NUM_REPS / 8];
+            verifier_transcript.challenge_bytes(b"challenge", &mut challenge_verifier);
+            assert_eq!(challenge_prover, challenge_verifier);
+
+            let mut checker_1 = RandomizedMultChecker::<secpAff>::new_using_rng(&mut rng);
+            let mut checker_2 = RandomizedMultChecker::<tomAff>::new_using_rng(&mut rng);
+
+            proof
+                .verify_using_randomized_mult_checker(
+                    comm_scalar.comm,
+                    comm_result.comm,
+                    base,
+                    &challenge_verifier,
+                    comm_key_1,
+                    comm_key_2,
+                    &mut checker_1,
+                    &mut checker_2,
+                )
+                .unwrap();
+            assert!(checker_1.verify());
+            assert!(checker_2.verify());
+            ver_rmc_time.push(start.elapsed());
+
+            if i == 0 {
+                println!("Proof size = {} bytes", proof.compressed_size());
+            }
+        }
+        println!("For {num_iters} iterations");
         println!("Proving time: {:?}", statistics(prov_time));
         println!("Verifying time: {:?}", statistics(ver_time));
         println!(
-            "Proof size (bytes): {:?}",
-            statistics::<usize, usize>(proof_sizes)
+            "Verifying time with randomized multiplication check: {:?}",
+            statistics(ver_rmc_time)
         );
     }
 }

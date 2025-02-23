@@ -167,7 +167,7 @@ impl<E: Pairing> PoKG2DiscreteLogInPairing<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{compute_random_oracle_challenge, test_serialization};
+    use crate::{pok_generalized_pedersen::compute_random_oracle_challenge, test_serialization};
     use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
     use ark_ec::pairing::Pairing;
     use ark_std::{

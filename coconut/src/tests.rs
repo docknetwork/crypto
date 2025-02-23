@@ -14,7 +14,7 @@ use blake2::Blake2b512;
 
 type G1 = <Bls12_381 as Pairing>::G1;
 
-use schnorr_pok::compute_random_oracle_challenge;
+use schnorr_pok::pok_generalized_pedersen::compute_random_oracle_challenge;
 
 use crate::{
     setup::test_setup, BlindSignature, CommitMessage, CommitmentOrMessage, MessagesPoKGenerator,

@@ -35,14 +35,13 @@ use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use digest::{Digest, DynDigest};
-use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
-
 use dock_crypto_utils::{
     affine_group_element_from_byte_slices, concat_slices,
     hashing_utils::{hash_to_field, projective_group_elem_from_try_and_incr},
     join,
     serde_utils::*,
 };
+use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use short_group_sig::common::ProvingKey;

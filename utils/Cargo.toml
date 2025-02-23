@@ -1,6 +1,6 @@
 [package]
 name = "dock_crypto_utils"
-version = "0.21.0"
+version = "0.22.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -34,6 +34,7 @@ blake2.workspace = true
 ark-bls12-381.workspace = true
 chacha20poly1305 = {version = "0.10.1", default-features = false}
 ark-secp256r1.workspace = true
+ark-std = {workspace = true, features = ["getrandom"]}
 
 [features]
 default = ["parallel"]

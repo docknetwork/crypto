@@ -15,7 +15,15 @@ use rayon::prelude::*;
 /// A Pedersen commitment key `(g, h)`. The Pedersen commitment will be `g * m + h * r` with opening `(m, r)`
 #[serde_as]
 #[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Debug,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct PedersenCommitmentKey<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]

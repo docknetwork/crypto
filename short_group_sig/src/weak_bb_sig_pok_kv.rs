@@ -13,8 +13,8 @@ use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
-    discrete_log::{PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol},
-    partial::Partial1PokTwoDiscreteLogs,
+    discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
+    partial::Partial1PokPedersenCommitment,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -29,7 +29,7 @@ pub struct PoKOfSignatureG1KVProtocol<G: AffineRepr> {
     #[zeroize(skip)]
     pub A_bar: G,
     /// For proving relation `A_bar = g1 * r - A' * m`
-    pub sc: PokTwoDiscreteLogsProtocol<G>,
+    pub sc: PokPedersenCommitmentProtocol<G>,
 }
 
 /// Proof of knowledge of weak-BB signature in the keyed-verification model
@@ -45,10 +45,10 @@ pub struct PoKOfSignatureG1KV<G: AffineRepr> {
     #[serde_as(as = "ArkObjectBytes")]
     pub A_bar: G,
     /// For proving relation `A_bar = g1 * r - A' * m`
-    /// The following could be achieved by using Either<PokTwoDiscreteLogs, Partial1PokTwoDiscreteLogs> but serialization
+    /// The following could be achieved by using Either<PokPedersenCommitment, Partial1PokPedersenCommitment> but serialization
     /// for Either is not supported out of the box and had to be implemented
-    pub sc: Option<PokTwoDiscreteLogs<G>>,
-    pub sc_partial: Option<Partial1PokTwoDiscreteLogs<G>>,
+    pub sc: Option<PokPedersenCommitment<G>>,
+    pub sc_partial: Option<Partial1PokPedersenCommitment<G>>,
 }
 
 impl<G: AffineRepr> PoKOfSignatureG1KVProtocol<G> {
@@ -87,7 +87,7 @@ impl<G: AffineRepr> PoKOfSignatureG1KVProtocol<G> {
         let A_prime_neg = A_prime.neg();
         // A_bar = g1 * r - A' * m
         let A_bar = g1.mul_bigint(sig_r) + A_prime_neg * message;
-        let sc = PokTwoDiscreteLogsProtocol::init(
+        let sc = PokPedersenCommitmentProtocol::init(
             sig_randomizer,
             sc_blinding,
             g1,

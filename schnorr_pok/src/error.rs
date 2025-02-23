@@ -17,6 +17,9 @@ pub enum SchnorrError {
     MissingBlindingAtIndex(usize),
     MissingResponseAtIndex(usize),
     FoundCommonIndexInOwnAndReceivedResponses(usize),
+    NotAProduct,
+    NotASquare,
+    NotAnInverse,
 }
 
 impl From<SerializationError> for SchnorrError {

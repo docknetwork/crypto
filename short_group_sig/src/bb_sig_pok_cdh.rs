@@ -19,9 +19,8 @@ use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
-
 use schnorr_pok::discrete_log::{
-    PokDiscreteLog, PokDiscreteLogProtocol, PokTwoDiscreteLogs, PokTwoDiscreteLogsProtocol,
+    PokDiscreteLog, PokDiscreteLogProtocol, PokPedersenCommitment, PokPedersenCommitmentProtocol,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -39,7 +38,7 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     /// `w2 * e * r1/r2`
     #[zeroize(skip)]
     pub w2_prime: E::G2Affine,
-    pub sc_1: PokTwoDiscreteLogsProtocol<E::G1Affine>,
+    pub sc_1: PokPedersenCommitmentProtocol<E::G1Affine>,
     /// Protocol for proving knowledge of `e * r1 / r2` in `w2' = w2 * {e * r1 / r2}`
     pub sc_2: PokDiscreteLogProtocol<E::G2Affine>,
 }
@@ -54,7 +53,7 @@ pub struct PoKOfSignatureG1<E: Pairing> {
     pub A_bar: E::G1Affine,
     /// `w2 * e * r1/r2`
     pub w2_prime: E::G2Affine,
-    pub sc_1: PokTwoDiscreteLogs<E::G1Affine>,
+    pub sc_1: PokPedersenCommitment<E::G1Affine>,
     pub sc_2: PokDiscreteLog<E::G2Affine>,
 }
 
@@ -81,7 +80,7 @@ impl<E: Pairing> PoKOfSignatureG1Protocol<E> {
         let g1 = g1.into();
         // A_bar = g1 * r - A' * message
         let A_bar = g1 * r1 + A_prime_neg * message;
-        let sc_comm_1 = PokTwoDiscreteLogsProtocol::init(
+        let sc_comm_1 = PokPedersenCommitmentProtocol::init(
             r1,
             E::ScalarField::rand(rng),
             &g1,
@@ -232,7 +231,7 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use schnorr_pok::compute_random_oracle_challenge;
+    use schnorr_pok::pok_generalized_pedersen::compute_random_oracle_challenge;
 
     #[test]
     fn proof_of_knowledge_of_signature() {
