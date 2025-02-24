@@ -15,7 +15,11 @@
 //!
 //! Thus using the protocols for scalar multiplication and point addition, the prover proves:
 //! - Given commitments to `z` and `-z*R`, the scalar multiplication of `z` and `-R` is indeed `-z*R`
-//! - Given commitments to `q` and `-z*R`, the sum of `q` and `-z*R` is indeed `-g*t*r^-1`
+//! - Given commitments to `q` and `-z*R`, the sum of `q` and `-z*R` is indeed `-g*t*r^-1`. Note that the `-g*t*r^-1` is public but
+//! the point addition protocol expects all 3 points to be committed so the prover commits to `-g*t*r^-1` and the proof
+//! contains the randomness used in its commitment. The verifier can itself compute `-g*t*r^-1` so using the randomness in the proof,
+//! it computes the same commitment to `-g*t*r^-1` as the prover's. So I could use a point addition protocol where the resulting point
+//! isn't committed but that protocol isn't going to be any better than the currently implemented one.
 //!
 
 #![allow(non_snake_case)]
@@ -58,7 +62,8 @@ pub struct PoKEcdsaSigCommittedPublicKeyProtocol<const NUM_REPS_SCALAR_MULT: usi
     pub comm_z: Affine,
     /// Commitment to coordinates of `-z*R`
     pub comm_minus_zR: PointCommitment<crate::tom256::Affine>,
-    /// Randomness in the commitment to coordinates of `-g*t*r^-1`
+    /// Randomness in the commitment to coordinates of `-g*t*r^-1` so verifier can create the same commitment
+    /// to `-g*t*r^-1` as the prover.
     pub comm_minus_g_t_r_inv_rand: (
         <crate::tom256::Affine as AffineRepr>::ScalarField,
         <crate::tom256::Affine as AffineRepr>::ScalarField,
@@ -78,7 +83,8 @@ pub struct PoKEcdsaSigCommittedPublicKey<const NUM_REPS_SCALAR_MULT: usize = 128
     pub comm_z: Affine,
     /// Commitment to coordinates of `-z*R`
     pub comm_minus_zR: PointCommitment<crate::tom256::Affine>,
-    /// Randomness in the commitment to coordinates of `-g*t*r^-1`
+    /// Randomness in the commitment to coordinates of `-g*t*r^-1` so verifier can create the same commitment
+    /// to `-g*t*r^-1` as the prover.
     pub comm_minus_g_t_r_inv_rand: (
         <crate::tom256::Affine as AffineRepr>::ScalarField,
         <crate::tom256::Affine as AffineRepr>::ScalarField,

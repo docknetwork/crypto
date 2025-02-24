@@ -228,6 +228,7 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
                 let bit_idx = i % 8;
                 let c = (challenge[byte_idx] >> bit_idx) & 1;
                 // If c = 0, send opening of point alpha * base else send opening of (alpha-omega) * base
+                // If c = 0, the point addition protocol gets a challenge value of "-1" else it gets the value "1"
                 if c == 0 {
                     ScalarMultiplicationProofSingleRep {
                         comm_alpha: p.comm_alpha.comm,
@@ -300,6 +301,7 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
                 comm_key_2,
             )?;
             // If c = 0, expect opening of point alpha * base else expect opening of (alpha-omega) * base
+            // If c = 0, the point addition protocol gets a challenge value of "-1" else it gets the value "1"
             if c == 0 {
                 if self.0[i].comm_alpha
                     != CommitmentWithOpening::new_given_randomness(
