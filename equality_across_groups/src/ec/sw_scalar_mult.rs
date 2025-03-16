@@ -13,13 +13,13 @@ use crate::{
     ec::{
         commitments::{
             point_coords_as_scalar_field_elements, CommitmentWithOpening, PointCommitment,
-            PointCommitmentWithOpening,
+            PointCommitmentWithOpening, SWPoint,
         },
         sw_point_addition::{PointAdditionProof, PointAdditionProtocol},
     },
     error::Error,
 };
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::{short_weierstrass::Affine, AffineRepr, CurveGroup};
 use ark_ff::{Field, One, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
@@ -34,7 +34,7 @@ use rayon::prelude::*;
 /// Protocol for proving scalar multiplication with committed point and committed scalar.
 /// `P` is the curve where the points live and `C` is the curve where commitments (to their coordinates) live.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct ScalarMultiplicationProtocol<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize = 128> {
+pub struct ScalarMultiplicationProtocol<P: SWPoint, C: SWPoint, const NUM_REPS: usize = 128> {
     /// The scalar
     pub omega: P::ScalarField,
     /// Randomness in the commitment to the scalar
@@ -43,7 +43,7 @@ pub struct ScalarMultiplicationProtocol<P: AffineRepr, C: AffineRepr, const NUM_
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct ScalarMultiplicationProtocolSingleRep<P: AffineRepr, C: AffineRepr> {
+pub struct ScalarMultiplicationProtocolSingleRep<P: SWPoint, C: SWPoint> {
     /// Commitment to `alpha`
     pub comm_alpha: CommitmentWithOpening<P>,
     /// Commitment to the point `alpha * R`
@@ -56,14 +56,14 @@ pub struct ScalarMultiplicationProtocolSingleRep<P: AffineRepr, C: AffineRepr> {
 /// Proof of scalar multiplication with committed point and committed scalar.
 /// `P` is the curve where the points live and `C` is the curve where commitments (to their coordinates) live.
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ScalarMultiplicationProof<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize = 128>(
+pub struct ScalarMultiplicationProof<P: SWPoint, C: SWPoint, const NUM_REPS: usize = 128>(
     Vec<ScalarMultiplicationProofSingleRep<P, C>>,
 );
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ScalarMultiplicationProofSingleRep<P: AffineRepr, C: AffineRepr> {
+pub struct ScalarMultiplicationProofSingleRep<P: SWPoint, C: SWPoint> {
     /// Commitment to `alpha`
-    pub comm_alpha: P,
+    pub comm_alpha: Affine<P>,
     /// Commitment to the point `alpha * R`
     pub comm_alpha_point: PointCommitment<C>,
     /// Commitment to the point `(alpha - omega) * R`
@@ -75,19 +75,17 @@ pub struct ScalarMultiplicationProofSingleRep<P: AffineRepr, C: AffineRepr> {
     pub z4: C::ScalarField,
 }
 
-impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
-    ScalarMultiplicationProtocol<P, C, NUM_REPS>
-{
+impl<P: SWPoint, C: SWPoint, const NUM_REPS: usize> ScalarMultiplicationProtocol<P, C, NUM_REPS> {
     /// For proving `base * scalar = result` where `comm_scalar` and `comm_result` are commitments to `scalar`
     /// and `result` respectively
     pub fn init<R: RngCore>(
         rng: &mut R,
         comm_scalar: CommitmentWithOpening<P>,
         comm_result: PointCommitmentWithOpening<C>,
-        result: P,
-        base: P,
-        comm_key_1: &PedersenCommitmentKey<P>,
-        comm_key_2: &PedersenCommitmentKey<C>,
+        result: Affine<P>,
+        base: Affine<P>,
+        comm_key_1: &PedersenCommitmentKey<Affine<P>>,
+        comm_key_2: &PedersenCommitmentKey<Affine<C>>,
     ) -> Result<Self, Error> {
         let mut protocols = Vec::with_capacity(NUM_REPS);
         let twice_omega = comm_scalar.value.double();
@@ -129,8 +127,9 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
             .map(|a| minus_omega_point + a)
             .collect::<Vec<_>>();
 
-        let alpha_point = P::Group::normalize_batch(&alpha_point);
-        let alpha_minus_omega_point = P::Group::normalize_batch(&alpha_minus_omega_point);
+        let alpha_point = <Affine<P> as AffineRepr>::Group::normalize_batch(&alpha_point);
+        let alpha_minus_omega_point =
+            <Affine<P> as AffineRepr>::Group::normalize_batch(&alpha_minus_omega_point);
 
         // Commit to alpha_i
         let mut comm_alpha = cfg_into_iter!(0..NUM_REPS)
@@ -232,8 +231,8 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
                 if c == 0 {
                     ScalarMultiplicationProofSingleRep {
                         comm_alpha: p.comm_alpha.comm,
-                        comm_alpha_point: p.comm_alpha_point.comm,
-                        comm_alpha_minus_omega_point: p.comm_alpha_minus_omega_point.comm,
+                        comm_alpha_point: p.comm_alpha_point.comm.clone(),
+                        comm_alpha_minus_omega_point: p.comm_alpha_minus_omega_point.comm.clone(),
                         add: p.add.gen_proof(&minus_one),
                         z1: p.comm_alpha.value,
                         z2: p.comm_alpha.randomness,
@@ -243,8 +242,8 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
                 } else {
                     ScalarMultiplicationProofSingleRep {
                         comm_alpha: p.comm_alpha.comm,
-                        comm_alpha_point: p.comm_alpha_point.comm,
-                        comm_alpha_minus_omega_point: p.comm_alpha_minus_omega_point.comm,
+                        comm_alpha_point: p.comm_alpha_point.comm.clone(),
+                        comm_alpha_minus_omega_point: p.comm_alpha_minus_omega_point.comm.clone(),
                         add: p.add.gen_proof(&one),
                         z1: p.comm_alpha.value - self.omega,
                         z2: p.comm_alpha.randomness - self.omega_rand,
@@ -258,19 +257,17 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
     }
 }
 
-impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
-    ScalarMultiplicationProof<P, C, NUM_REPS>
-{
+impl<P: SWPoint, C: SWPoint, const NUM_REPS: usize> ScalarMultiplicationProof<P, C, NUM_REPS> {
     /// For verifying `base * scalar = result` where `comm_scalar` and `comm_result` are commitments to `scalar`
     /// and `result` respectively
     pub fn verify(
         &self,
-        comm_scalar: &P,
+        comm_scalar: &Affine<P>,
         comm_result: &PointCommitment<C>,
-        base: &P,
+        base: &Affine<P>,
         challenge: &[u8],
-        comm_key_1: &PedersenCommitmentKey<P>,
-        comm_key_2: &PedersenCommitmentKey<C>,
+        comm_key_1: &PedersenCommitmentKey<Affine<P>>,
+        comm_key_2: &PedersenCommitmentKey<Affine<C>>,
     ) -> Result<(), Error> {
         if self.0.len() != NUM_REPS {
             return Err(Error::InsufficientNumberOfRepetitions(
@@ -293,7 +290,7 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
             let byte_idx = i / 8;
             let bit_idx = i % 8;
             let c = (challenge[byte_idx] >> bit_idx) & 1;
-            let p = base_table.multiply(&self.0[i].z1).into_affine();
+            let p = (&base_table * &self.0[i].z1).into_affine();
             let p_comm = PointCommitmentWithOpening::new_given_randomness(
                 &p,
                 self.0[i].z3,
@@ -352,14 +349,14 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
     /// Same as `Self::verify` but delegated the scalar multiplication checks to `RandomizedMultChecker`
     pub fn verify_using_randomized_mult_checker(
         &self,
-        comm_scalar: P,
+        comm_scalar: Affine<P>,
         comm_result: PointCommitment<C>,
-        base: P,
+        base: Affine<P>,
         challenge: &[u8],
-        comm_key_1: PedersenCommitmentKey<P>,
-        comm_key_2: PedersenCommitmentKey<C>,
-        rmc_1: &mut RandomizedMultChecker<P>,
-        rmc_2: &mut RandomizedMultChecker<C>,
+        comm_key_1: PedersenCommitmentKey<Affine<P>>,
+        comm_key_2: PedersenCommitmentKey<Affine<C>>,
+        rmc_1: &mut RandomizedMultChecker<Affine<P>>,
+        rmc_2: &mut RandomizedMultChecker<Affine<C>>,
     ) -> Result<(), Error> {
         if self.0.len() != NUM_REPS {
             return Err(Error::InsufficientNumberOfRepetitions(
@@ -381,7 +378,7 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
             let byte_idx = i / 8;
             let bit_idx = i % 8;
             let c = (challenge[byte_idx] >> bit_idx) & 1;
-            let p = base_table.multiply(&self.0[i].z1).into_affine();
+            let p = (&base_table * &self.0[i].z1).into_affine();
             let (p_x, p_y) = point_coords_as_scalar_field_elements::<P, C>(&p)?;
             if c == 0 {
                 rmc_1.add_2(
@@ -466,8 +463,8 @@ impl<P: AffineRepr, C: AffineRepr, const NUM_REPS: usize>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tom256::Affine as tomAff;
-    use ark_secp256r1::{Affine as secpAff, Fr as secpFr};
+    use crate::tom256::{Affine as tomAff, Config as tomConfig};
+    use ark_secp256r1::{Affine as secpAff, Config as secpConfig, Fr as secpFr};
     use ark_std::UniformRand;
     use blake2::Blake2b512;
     use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
@@ -503,7 +500,7 @@ mod tests {
             prover_transcript.append(b"comm_scalar", &comm_scalar.comm);
             prover_transcript.append(b"comm_result", &comm_result.comm);
 
-            let protocol = ScalarMultiplicationProtocol::<secpAff, tomAff, NUM_REPS>::init(
+            let protocol = ScalarMultiplicationProtocol::<secpConfig, tomConfig, NUM_REPS>::init(
                 &mut rng,
                 comm_scalar.clone(),
                 comm_result.clone(),

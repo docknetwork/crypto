@@ -51,7 +51,7 @@ impl<G: AffineRepr> CCSPerfectRangeProofWithKVProtocol<G> {
             value,
             randomness,
             max,
-            params.get_supported_base_for_range_proof(),
+            params.get_max_base_for_range_proof(),
             comm_key,
             params,
         )

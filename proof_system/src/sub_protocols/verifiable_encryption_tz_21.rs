@@ -14,7 +14,9 @@ use ark_std::{
     UniformRand,
 };
 use digest::Digest;
-use dock_crypto_utils::{aliases::FullDigest, elgamal::BatchedHashedElgamalCiphertext};
+use dock_crypto_utils::{
+    aliases::FullDigest, elgamal::BatchedHashedElgamalCiphertext, transcript::Transcript,
+};
 use sha3::Shake256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -65,16 +67,14 @@ pub struct VeTZ21Protocol<'a, G: AffineRepr> {
     pub comm_key: &'a [G],
     #[zeroize(skip)]
     pub enc_params: &'a ElgamalEncryptionParams<G>,
-    #[zeroize(skip)]
-    pub ve_proof: Option<dkgith_decls::Proof<G>>,
-    #[zeroize(skip)]
-    pub ve_robust_proof: Option<rdkgith_decls::Proof<G>>,
     pub sp: Option<SchnorrProtocol<'a, G>>,
+    #[zeroize(skip)]
+    pub variant_type: bool,
 }
 
 macro_rules! impl_common_funcs {
-    ($group: ident, $proof_gen_func: path, $proof_ver_func: path, $proof_field_name: ident, $proof_struct_name: ident, $sp_variant: ident, $init_fn_name: ident, $chal_fn_name: ident, $proof_gen_fn_name: ident, $proof_ver_fn_name: ident) => {
-        pub fn $init_fn_name<R: RngCore, D: FullDigest + Digest>(
+    ($group: ident, $proof_gen_func: path, $proof_ver_func: path, $variant_type: expr, $proof_struct_name: ident, $sp_variant: ident, $init_fn_name: ident, $chal_fn_name: ident, $proof_gen_fn_name: ident, $proof_ver_fn_name: ident) => {
+        pub fn $init_fn_name<R: RngCore>(
             &mut self,
             rng: &mut R,
             mut witnesses: Vec<$group::ScalarField>,
@@ -91,24 +91,17 @@ macro_rules! impl_common_funcs {
             // Commit to the witneses
             let comm_key = &self.comm_key[..witnesses.len()];
             let commitment = $group::Group::msm_unchecked(comm_key, &witnesses).into_affine();
-            // Generate the VE proof
-            let ve_proof = $proof_gen_func(
-                rng,
-                witnesses.clone(),
-                &commitment,
-                &comm_key,
-                &self.enc_params.public_key,
-                &self.enc_params.gen,
-            )?;
-            self.$proof_field_name = Some(ve_proof);
+            self.variant_type = $variant_type;
             self.init_schnorr_protocol(witnesses, blindings, commitment, comm_key)
         }
 
         pub fn $chal_fn_name<W: Write>(
+            enc_params: &'a ElgamalEncryptionParams<G>,
             comm_key: &[G],
             proof: &$proof_struct_name<$group>,
             mut writer: W,
         ) -> Result<(), ProofSystemError> {
+            enc_params.serialize_compressed(&mut writer)?;
             let ck = comm_key[0..proof.ve_proof.witness_count()].as_ref();
             ck.serialize_compressed(&mut writer)?;
             proof.commitment.serialize_compressed(&mut writer)?;
@@ -116,20 +109,37 @@ macro_rules! impl_common_funcs {
             Ok(())
         }
 
-        pub fn $proof_gen_fn_name<E: Pairing<G1Affine = $group>>(
+        pub fn $proof_gen_fn_name<
+            E: Pairing<G1Affine = $group>,
+            R: RngCore,
+            D: FullDigest + Digest,
+        >(
             &mut self,
+            rng: &mut R,
             challenge: &$group::ScalarField,
+            transcript: &mut impl Transcript,
         ) -> Result<StatementProof<E>, ProofSystemError> {
             if self.sp.is_none() {
                 return Err(ProofSystemError::SubProtocolNotReadyToGenerateProof(
                     self.id,
                 ));
             }
-            // Don't generate response for all indices except for the last one since their response will come from proofs of one of the signatures.
             let witness_count = self.sp.as_ref().unwrap().commitment_key.len();
+            let witnesses = self.sp.as_ref().unwrap().witnesses.clone().unwrap();
+            let comm_key = &self.comm_key[..witness_count];
+            // Generate the VE proof
+            let ve_proof = $proof_gen_func(
+                rng,
+                witnesses,
+                comm_key,
+                &self.enc_params.public_key,
+                &self.enc_params.gen,
+                transcript,
+            )?;
+            // Don't generate response for all indices except for the last one since their response will come from proofs of one of the signatures.
             let skip_for = BTreeSet::from_iter(0..(witness_count - 1));
             Ok(StatementProof::$sp_variant($proof_struct_name {
-                ve_proof: self.$proof_field_name.take().unwrap(),
+                ve_proof: ve_proof,
                 commitment: self.sp.as_ref().unwrap().commitment.clone(),
                 sp: self
                     .sp
@@ -143,6 +153,7 @@ macro_rules! impl_common_funcs {
             &self,
             challenge: &$group::ScalarField,
             proof: &$proof_struct_name<$group>,
+            transcript: &mut impl Transcript,
             missing_resps: BTreeMap<usize, $group::ScalarField>,
         ) -> Result<(), ProofSystemError> {
             let witness_count = proof.ve_proof.witness_count();
@@ -153,6 +164,7 @@ macro_rules! impl_common_funcs {
                 comm_key,
                 &self.enc_params.public_key,
                 &self.enc_params.gen,
+                transcript,
             )
             .map_err(|e| ProofSystemError::VerifiableEncryptionFailed(self.id as u32, e))?;
             // NOTE: value of id is dummy
@@ -170,8 +182,7 @@ impl<'a, G: AffineRepr> VeTZ21Protocol<'a, G> {
             comm_key,
             enc_params,
             sp: None,
-            ve_proof: None,
-            ve_robust_proof: None,
+            variant_type: false,
         }
     }
 
@@ -180,7 +191,7 @@ impl<'a, G: AffineRepr> VeTZ21Protocol<'a, G> {
         G,
         dkgith_decls::Proof::new::<R, D, Shake256>,
         dkgith_decls::Proof::verify::<D, Shake256>,
-        ve_proof,
+        true,
         VeTZ21Proof,
         VeTZ21,
         init,
@@ -193,7 +204,7 @@ impl<'a, G: AffineRepr> VeTZ21Protocol<'a, G> {
         G,
         rdkgith_decls::Proof::new::<R, D>,
         rdkgith_decls::Proof::verify::<D>,
-        ve_robust_proof,
+        false,
         VeTZ21RobustProof,
         VeTZ21Robust,
         init_robust,
@@ -221,6 +232,7 @@ impl<'a, G: AffineRepr> VeTZ21Protocol<'a, G> {
                 self.id,
             ));
         }
+        self.enc_params.serialize_compressed(&mut writer)?;
         self.sp
             .as_ref()
             .unwrap()

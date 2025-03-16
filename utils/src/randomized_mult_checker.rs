@@ -13,8 +13,7 @@ use ark_std::{rand::Rng, vec::Vec, UniformRand};
 /// The single check above is simplified by combining terms of `G1`, `H1`, etc to reduce the size of the multi-scalar multiplication
 #[derive(Debug, Clone)]
 pub struct RandomizedMultChecker<G: AffineRepr> {
-    // map is more expensive than a vector here as comparing (for order relation) curve points requires serializing
-    // and hashing the points which makes it slow (checked with gxxhash and a test)
+    // map is more expensive than a vector (checked with a test)
     // args: BTreeMap<SortableAffine<G>, G::ScalarField>,
     ///
     /// Verification will expect the multi-scalar multiplication of first and second vector to be one.
@@ -78,6 +77,10 @@ impl<G: AffineRepr> RandomizedMultChecker<G> {
         G::Group::msm_unchecked(&self.args.0, &self.args.1).is_zero()
     }
 
+    pub fn len(&self) -> usize {
+        self.args.0.len()
+    }
+
     fn add(&mut self, p: G, s: G::ScalarField) {
         // If the point already exists, update the scalar corresponding to the point
         if let Some(i) = self.args.0.iter().position(|&p_i| p_i == p) {
@@ -114,20 +117,7 @@ impl<G: AffineRepr> RandomizedMultChecker<G> {
 //
 // impl<G: AffineRepr> Ord for SortableAffine<G> {
 //     fn cmp(&self, other: &Self) -> Ordering {
-//         let mut b1 = vec![0_u8; self.0.compressed_size()];
-//         let mut b2 = vec![0_u8; other.0.compressed_size()];
-//         self.0.serialize_uncompressed(&mut b1).unwrap();
-//         other.0.serialize_uncompressed(&mut b2).unwrap();
-//         let seed = 1234;
-//         let h1 = gxhash128(&b1, seed);
-//         let h2 = gxhash128(&b2, seed);
-//         if h1 < h2 {
-//             Ordering::Less
-//         } else if h1 > h2 {
-//             Ordering::Greater
-//         } else {
-//             Ordering::Equal
-//         }
+//         self.0.x().cmp(&other.0.x())
 //     }
 // }
 //

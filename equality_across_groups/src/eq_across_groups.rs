@@ -442,7 +442,7 @@ impl<
 
         let chal_byte_size = Self::challenge_byte_size();
         let mut c_bytes = vec![0; chal_byte_size];
-        transcript.challenge_bytes(b"c", &mut c_bytes);
+        transcript.challenge_bytes(b"challenge", &mut c_bytes);
 
         // if CHALLENGE_BIT_SIZE is not multiple of 8, then unset MSBs beyond CHALLENGE_BIT_SIZE
         c_bytes[chal_byte_size - 1] = c_bytes[chal_byte_size - 1] & Self::challenge_mask();

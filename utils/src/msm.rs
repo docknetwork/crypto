@@ -1,9 +1,8 @@
+use crate::serde_utils::*;
 use ark_ec::{scalar_mul::fixed_base::FixedBase, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{fmt::Debug, vec::Vec};
-
-use crate::serde_utils::*;
+use ark_std::{fmt::Debug, ops::Mul, vec::Vec};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -48,6 +47,14 @@ impl<G: CurveGroup> WindowTable<G> {
 
     pub fn window_size(num_multiplications: usize) -> usize {
         FixedBase::get_mul_window_size(num_multiplications)
+    }
+}
+
+impl<G: CurveGroup> Mul<&G::ScalarField> for &WindowTable<G> {
+    type Output = G;
+
+    fn mul(self, rhs: &G::ScalarField) -> Self::Output {
+        FixedBase::windowed_mul(self.outerc, self.window_size, &self.table, rhs)
     }
 }
 

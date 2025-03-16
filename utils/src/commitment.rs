@@ -57,7 +57,7 @@ impl<G: AffineRepr> PedersenCommitmentKey<G> {
         G::Group::normalize_batch(
             &cfg_into_iter!(messages)
                 .zip(cfg_into_iter!(randomness))
-                .map(|(m_i, r_i)| g_table.multiply(m_i) + h_table.multiply(r_i))
+                .map(|(m_i, r_i)| &g_table * m_i + &h_table * r_i)
                 .collect::<Vec<_>>(),
         )
     }

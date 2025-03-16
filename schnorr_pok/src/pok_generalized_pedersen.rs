@@ -25,7 +25,7 @@
 //!
 //! Above can be generalized to more than 2 `x`s
 //!
-//! There is another variant of the protocol which gives shorter proof but is not implemented:
+//! Following is another variant of the protocol which gives shorter proof (when multiple relations are proved), but is not implemented:
 //!
 //! 1. Prover creates `r` and then `T = r * G`.
 //! 2. Prover computes challenge as `c = Hash(G||Y||T)`.
@@ -35,10 +35,12 @@
 //!
 //! The problem with this variant is that it leads to poorer failure reporting as in case of failure, it can't be
 //! pointed out which relation failed to verify. Eg. say there are 2 relations being proven which leads to 2
-//! `T`s `T1` and `T2` and 2 responses `s1` and `s2`. If only the responses and challenge are sent then
+//! `T`s `T1` and `T2` and 2 responses `s1` and `s2`. If only the responses `s1` and `s2` and challenge `c` are sent then
 //! in case of failure, the verifier will only know that its computed challenge `c'` doesn't match prover's given
 //! challenge `c` but won't know which response `s1` or `s2` or both were incorrect. This is not the case
-//! with the implemented variant as verifier checks 2 equations `s1 = r1 + x1*c` and `s2 = r2 + x2*c`
+//! with the implemented variant as verifier checks 2 equations `s1 = r1 + x1*c` and `s2 = r2 + x2*c`. Secondly,
+//! this variation can't be sped up using a randomized scalar multiplication check (see `RandomizedMultChecker`
+//! and its usage) when multiple relations are involved.
 //!
 
 use crate::error::SchnorrError;

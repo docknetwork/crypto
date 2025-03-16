@@ -271,7 +271,7 @@ impl<E: Pairing> Proof<E> {
                 }
                 let enc_params = $s.get_enc_params(&proof_spec.setup_params, $s_idx)?;
                 let mut sp = VeTZ21Protocol::new($s_idx, comm_key, enc_params);
-                sp.$init_name::<R, D>($rng, $w, b)?;
+                sp.$init_name::<R>($rng, $w, b)?;
                 transcript.set_label($label);
                 sp.challenge_contribution(&mut transcript)?;
                 sub_protocols.push(SubProtocol::VeTZ21(sp));
@@ -1022,10 +1022,14 @@ impl<E: Pairing> Proof<E> {
                     sp.gen_proof_contribution(&challenge)?
                 }
                 SubProtocol::VeTZ21(mut sp) => {
-                    if sp.ve_proof.is_some() {
-                        sp.gen_proof_contribution(&challenge)?
+                    if sp.variant_type {
+                        sp.gen_proof_contribution::<_, R, D>(rng, &challenge, &mut transcript)?
                     } else {
-                        sp.gen_proof_contribution_robust(&challenge)?
+                        sp.gen_proof_contribution_robust::<_, R, D>(
+                            rng,
+                            &challenge,
+                            &mut transcript,
+                        )?
                     }
                 }
             });

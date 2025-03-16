@@ -4,10 +4,12 @@
 //! Pedersen commitments to each of the 6 coordinates, `ax, ay, bx, by, tx, ty`.
 
 use crate::{
-    ec::commitments::{CommitmentWithOpening, PointCommitment, PointCommitmentWithOpening},
+    ec::commitments::{
+        CommitmentWithOpening, PointCommitment, PointCommitmentWithOpening, SWPoint,
+    },
     error::Error,
 };
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::{short_weierstrass::Affine, AffineRepr, CurveGroup};
 use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, marker::PhantomData, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
@@ -23,59 +25,61 @@ use schnorr_pok::{
 /// Protocol for point addition when only the commitments to the points being added is known to the verifier.
 /// `P` is the curve where the points live and `C` is the curve where commitments (to their coordinates) live.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct PointAdditionProtocol<P: AffineRepr, C: AffineRepr> {
+pub struct PointAdditionProtocol<P: SWPoint, C: SWPoint> {
     /// Commitment to `tau = (by - ay) / (bx - ax)`
     pub comm_tau: CommitmentWithOpening<C>,
     /// To prove `tau` is properly created
-    pub tau: ProductProtocol<C>,
+    pub tau: ProductProtocol<Affine<C>>,
     /// To prove `tau^2` is properly created
-    pub tau_sqr: SquareProtocol<C>,
+    pub tau_sqr: SquareProtocol<Affine<C>>,
     /// To prove `tau*(ax - tx)` is properly created
-    pub tau_ax_minus_tx: ProductProtocol<C>,
+    pub tau_ax_minus_tx: ProductProtocol<Affine<C>>,
     /// To prove `(bx - ax)` is not zero
-    pub bx_minus_ax: DiscreteLogInequalityProtocol<C>,
+    pub bx_minus_ax: DiscreteLogInequalityProtocol<Affine<C>>,
     /// To prove opening of commitment to `ay`
-    pub ay: PokPedersenCommitmentProtocol<C>,
+    pub ay: PokPedersenCommitmentProtocol<Affine<C>>,
     _phantom: PhantomData<P>,
 }
 
 /// Proof of point addition when only the commitments to the points being added is known to the verifier.
 /// `P` is the curve where the points live and `C` is the curve where commitments (to their coordinates) live.
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PointAdditionProof<P: AffineRepr, C: AffineRepr> {
+pub struct PointAdditionProof<P: SWPoint, C: SWPoint> {
     /// Commitment to `tau = (by - ay) / (bx - ax)`
-    pub comm_tau: C,
+    pub comm_tau: Affine<C>,
     /// To prove `tau` is properly created
-    pub tau: ProductProof<C>,
+    pub tau: ProductProof<Affine<C>>,
     /// To prove `tau^2` is properly created
-    pub tau_sqr: SquareProof<C>,
+    pub tau_sqr: SquareProof<Affine<C>>,
     /// To prove `tau*(ax - tx)` is properly created
-    pub tau_ax_minus_tx: ProductProof<C>,
+    pub tau_ax_minus_tx: ProductProof<Affine<C>>,
     /// To prove `(bx - ax)` is not zero
-    pub bx_minus_ax: InequalityProof<C>,
+    pub bx_minus_ax: InequalityProof<Affine<C>>,
     /// To prove opening of commitment to `ay`
-    pub ay: PokPedersenCommitment<C>,
+    pub ay: PokPedersenCommitment<Affine<C>>,
     _phantom: PhantomData<P>,
 }
 
-impl<P: AffineRepr, C: AffineRepr> PointAdditionProtocol<P, C> {
+impl<P: SWPoint, C: SWPoint> PointAdditionProtocol<P, C> {
     /// Prove that `a + b = t`. `comm_a`, `comm_b` and `comm_t` are commitments to `a`, `b` and `t` respectively.
     pub fn init<R: RngCore>(
         rng: &mut R,
         comm_a: PointCommitmentWithOpening<C>,
         comm_b: PointCommitmentWithOpening<C>,
         comm_t: PointCommitmentWithOpening<C>,
-        a: P,
-        b: P,
-        t: P,
-        comm_key: &PedersenCommitmentKey<C>,
+        a: Affine<P>,
+        b: Affine<P>,
+        t: Affine<P>,
+        comm_key: &PedersenCommitmentKey<Affine<C>>,
     ) -> Result<Self, Error> {
         Self::ensure_addition_possible(&a, &b, &t)?;
         if (a + b) != t.into_group() {
             return Err(Error::InvalidPointAddResult);
         }
 
+        // Commitment to b - a
         let comm_b_minus_a = &comm_b - &comm_a;
+        // Commitment to a + t
         let comm_a_plus_t = &comm_a + &comm_t;
         let by_minus_ay = comm_b_minus_a.y;
         let bx_minus_ax = comm_b_minus_a.x;
@@ -116,6 +120,7 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProtocol<P, C> {
             comm_a_plus_t.r_y,
             comm_key,
         )?;
+        // To prove that (ba - ax) ≠ 0
         let bx_minus_ax = DiscreteLogInequalityProtocol::init_for_inequality_with_public_value(
             rng,
             comm_b_minus_a.x,
@@ -153,7 +158,7 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProtocol<P, C> {
         // Following 2 are still following the old pattern of generating challenge contribution so
         // passing zero (default) values. This is ugly but not wrong as the expected arguments are already
         // being added to the challenge contribution
-        let zero = C::zero();
+        let zero = Affine::<C>::zero();
         self.bx_minus_ax
             .challenge_contribution_for_public_inequality(
                 &zero,
@@ -183,7 +188,11 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProtocol<P, C> {
         }
     }
 
-    pub fn ensure_addition_possible(a: &P, b: &P, t: &P) -> Result<(), Error> {
+    pub fn ensure_addition_possible(
+        a: &Affine<P>,
+        b: &Affine<P>,
+        t: &Affine<P>,
+    ) -> Result<(), Error> {
         if a.is_zero() || b.is_zero() || t.is_zero() {
             return Err(Error::PointAtInfinity);
         }
@@ -197,7 +206,7 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProtocol<P, C> {
     }
 }
 
-impl<P: AffineRepr, C: AffineRepr> PointAdditionProof<P, C> {
+impl<P: SWPoint, C: SWPoint> PointAdditionProof<P, C> {
     /// Check the proof that `a + b = t`
     /// Its assumed that verifier "trusts" that commitment to point `a`, `b` and `t` are `comm_a`, `comm_b` and `comm_t` respectively
     pub fn verify(
@@ -206,7 +215,7 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProof<P, C> {
         comm_b: &PointCommitment<C>,
         comm_t: &PointCommitment<C>,
         challenge: &C::ScalarField,
-        comm_key: &PedersenCommitmentKey<C>,
+        comm_key: &PedersenCommitmentKey<Affine<C>>,
     ) -> Result<(), Error> {
         let comm_b_minus_a = comm_b - comm_a;
         let comm_a_plus_t = comm_a + comm_t;
@@ -218,7 +227,7 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProof<P, C> {
             challenge,
             comm_key,
         ) {
-            return Err(Error::LambdaProofFailed);
+            return Err(Error::TauProofFailed);
         }
 
         if !self.tau_sqr.verify(
@@ -227,7 +236,7 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProof<P, C> {
             &challenge,
             comm_key,
         ) {
-            return Err(Error::LambdaProofFailed);
+            return Err(Error::TauSquareProofFailed);
         }
 
         if !self.tau_ax_minus_tx.verify(
@@ -264,8 +273,8 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProof<P, C> {
         comm_b: PointCommitment<C>,
         comm_t: PointCommitment<C>,
         challenge: &C::ScalarField,
-        comm_key: PedersenCommitmentKey<C>,
-        rmc: &mut RandomizedMultChecker<C>,
+        comm_key: PedersenCommitmentKey<Affine<C>>,
+        rmc: &mut RandomizedMultChecker<Affine<C>>,
     ) -> Result<(), Error> {
         let comm_b_minus_a = &comm_b - &comm_a;
         let comm_a_plus_t = &comm_a + &comm_t;
@@ -315,7 +324,7 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProof<P, C> {
         // Following 2 are still following the old pattern of generating challenge contribution so
         // passing zero (default) values. This is ugly but not wrong as the expected arguments are already
         // being added to the challenge contribution
-        let zero = C::zero();
+        let zero = Affine::<C>::zero();
         self.bx_minus_ax
             .challenge_contribution_for_public_inequality(
                 &zero,
@@ -332,9 +341,9 @@ impl<P: AffineRepr, C: AffineRepr> PointAdditionProof<P, C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tom256::Affine as tomAff;
+    use crate::tom256::{Affine as tomAff, Config as tomConfig};
     use ark_ec::{CurveGroup, Group};
-    use ark_secp256r1::Affine as secpAff;
+    use ark_secp256r1::{Affine as secpAff, Config as secpConfig};
     use ark_std::UniformRand;
     use blake2::Blake2b512;
     use dock_crypto_utils::transcript::{new_merlin_transcript, Transcript};
@@ -357,15 +366,18 @@ mod tests {
             let b = secpAff::rand(&mut rng);
             let t = (a + b).into_affine();
 
-            let comm_a =
-                PointCommitmentWithOpening::<tomAff>::new::<_, secpAff>(&mut rng, &a, &comm_key)
-                    .unwrap();
-            let comm_b =
-                PointCommitmentWithOpening::<tomAff>::new::<_, secpAff>(&mut rng, &b, &comm_key)
-                    .unwrap();
-            let comm_t =
-                PointCommitmentWithOpening::<tomAff>::new::<_, secpAff>(&mut rng, &t, &comm_key)
-                    .unwrap();
+            let comm_a = PointCommitmentWithOpening::<tomConfig>::new::<_, secpConfig>(
+                &mut rng, &a, &comm_key,
+            )
+            .unwrap();
+            let comm_b = PointCommitmentWithOpening::<tomConfig>::new::<_, secpConfig>(
+                &mut rng, &b, &comm_key,
+            )
+            .unwrap();
+            let comm_t = PointCommitmentWithOpening::<tomConfig>::new::<_, secpConfig>(
+                &mut rng, &t, &comm_key,
+            )
+            .unwrap();
 
             let start = Instant::now();
 
@@ -375,7 +387,7 @@ mod tests {
             prover_transcript.append(b"comm_b", &comm_b.comm);
             prover_transcript.append(b"comm_t", &comm_t.comm);
 
-            let protocol = PointAdditionProtocol::<secpAff, tomAff>::init(
+            let protocol = PointAdditionProtocol::<secpConfig, tomConfig>::init(
                 &mut rng,
                 comm_a.clone(),
                 comm_b.clone(),
@@ -450,18 +462,18 @@ mod tests {
 
             // Sum of a and -a should give error
             let minus_a = a.neg();
-            let comm_minus_a = PointCommitmentWithOpening::<tomAff>::new::<_, secpAff>(
+            let comm_minus_a = PointCommitmentWithOpening::<tomConfig>::new::<_, secpConfig>(
                 &mut rng, &minus_a, &comm_key,
             )
             .unwrap();
-            let comm_zero = PointCommitmentWithOpening::<tomAff>::new::<_, secpAff>(
+            let comm_zero = PointCommitmentWithOpening::<tomConfig>::new::<_, secpConfig>(
                 &mut rng, &minus_a, &comm_key,
             )
             .unwrap();
 
             let mut prover_transcript = new_merlin_transcript(b"test");
             prover_transcript.append(b"comm_key", &comm_key);
-            assert!(PointAdditionProtocol::<secpAff, tomAff>::init(
+            assert!(PointAdditionProtocol::<secpConfig, tomConfig>::init(
                 &mut rng,
                 comm_a.clone(),
                 comm_minus_a.clone(),
@@ -475,13 +487,13 @@ mod tests {
 
             // Sum of a and a should give error
             let a_dbl = a.into_group().double().into_affine();
-            let comm_a_dbl = PointCommitmentWithOpening::<tomAff>::new::<_, secpAff>(
+            let comm_a_dbl = PointCommitmentWithOpening::<tomConfig>::new::<_, secpConfig>(
                 &mut rng, &a_dbl, &comm_key,
             )
             .unwrap();
             let mut prover_transcript = new_merlin_transcript(b"test");
             prover_transcript.append(b"comm_key", &comm_key);
-            assert!(PointAdditionProtocol::<secpAff, tomAff>::init(
+            assert!(PointAdditionProtocol::<secpConfig, tomConfig>::init(
                 &mut rng,
                 comm_a.clone(),
                 comm_a.clone(),
@@ -495,7 +507,7 @@ mod tests {
 
             // Verifying with incorrect sum fails
             let random_point = secpAff::rand(&mut rng);
-            let comm_rand = PointCommitmentWithOpening::<tomAff>::new::<_, secpAff>(
+            let comm_rand = PointCommitmentWithOpening::<tomConfig>::new::<_, secpConfig>(
                 &mut rng,
                 &random_point,
                 &comm_key,

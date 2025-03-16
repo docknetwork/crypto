@@ -48,7 +48,7 @@ impl<E: Pairing> CLSRangeProofProtocol<E> {
             randomness,
             min,
             max,
-            params.get_supported_base_for_range_proof(),
+            params.get_max_base_for_range_proof(),
             comm_key,
             params,
         )

@@ -63,18 +63,18 @@ macro_rules! impl_common_functions {
             self.set.len()
         }
 
-        /// The base these params supported for range-proof.
-        pub fn get_supported_base_for_range_proof(&self) -> u16 {
+        /// The maximum base these params support for range-proof.
+        pub fn get_max_base_for_range_proof(&self) -> u16 {
             self.supported_set_size() as u16
         }
 
         /// Check if the given base can be used with these params
         pub fn validate_base(&self, base: u16) -> Result<(), SmcRangeProofError> {
             // If params support a larger base, then its fine.
-            if self.get_supported_base_for_range_proof() < base {
+            if self.get_max_base_for_range_proof() < base {
                 return Err(SmcRangeProofError::UnsupportedBase(
                     base,
-                    self.get_supported_base_for_range_proof(),
+                    self.get_max_base_for_range_proof(),
                 ));
             }
             Ok(())

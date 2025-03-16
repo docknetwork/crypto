@@ -193,6 +193,7 @@ mod tests {
     ) -> Result<(ProofArbitraryRange<G>, Duration, Duration), BulletproofsPlusPlusError> {
         let start = Instant::now();
         let mut transcript = new_merlin_transcript(b"BPP/tests");
+        transcript.append(b"setup", &setup_params);
         let proof = ProofArbitraryRange::new_with_given_base(
             rng,
             base,
@@ -206,6 +207,7 @@ mod tests {
 
         let start = Instant::now();
         let mut transcript = new_merlin_transcript(b"BPP/tests");
+        transcript.append(b"setup", &setup_params);
         proof.verify(num_bits, &setup_params, &mut transcript)?;
         let verifying_time = start.elapsed();
         Ok((proof, proving_time, verifying_time))

@@ -21,7 +21,7 @@ pub fn get_unique_indices_to_hide<D: Digest>(
     let mut output = BTreeSet::<u16>::new();
     let mut c = challenge.to_vec();
     while (output.len() as u16) < num_indices {
-        // Divide the bytearray into 2-byte chunks and each chunk is used to create a u16
+        // Divide the bytearray into 2-byte chunks and each chunk is used to create a u16 < num_parties
         for c_i in c.chunks(2) {
             output.insert(get_bounded_u16_from_u8_slice(c_i, num_parties));
             if output.len() as u16 == num_indices {
@@ -47,7 +47,7 @@ pub fn get_indices_to_hide<D: Digest>(
     let mut output = Vec::with_capacity(num_indices as usize);
     let mut c = challenge.to_vec();
     while (output.len() as u16) < num_indices {
-        // Divide the bytearray into 2-byte chunks and each chunk is used to create a u16
+        // Divide the bytearray into 2-byte chunks and each chunk is used to create a u16 < num_parties
         for c_i in c.chunks(2) {
             output.push(get_bounded_u16_from_u8_slice(c_i, num_parties));
             if output.len() as u16 == num_indices {

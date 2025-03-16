@@ -159,7 +159,7 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
             self.bpp_randomness.take().unwrap(),
         )?;
         let proof = prover.prove(rng, self.setup_params.clone(), transcript)?;
-        // Don't generated response for index 0 since its response will come from proofs of one of the signatures.
+        // Don't generate response for index 0 since its response will come from proofs of one of the signatures.
         let skip_for = BTreeSet::from([0]);
         Ok(StatementProof::BoundCheckBpp(BoundCheckBppProof {
             bpp_proof: ProofArbitraryRange {

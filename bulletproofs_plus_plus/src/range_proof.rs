@@ -1138,9 +1138,11 @@ mod tests {
         }
         let prover = Prover::new_with_given_base(base, num_bits, V.clone(), v, gamma).unwrap();
         let mut transcript = new_merlin_transcript(b"BPP/tests");
+        transcript.append(b"setup", &setup_params);
         let prf = prover.prove(&mut rng, setup_params.clone(), &mut transcript)?;
 
         let mut transcript = new_merlin_transcript(b"BPP/tests");
+        transcript.append(b"setup", &setup_params);
         prf.verify(num_bits, &V, &setup_params, &mut transcript)?;
         Ok(())
     }

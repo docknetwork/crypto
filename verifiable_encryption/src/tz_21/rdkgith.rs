@@ -32,13 +32,14 @@ use crate::{
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{boxed::Box, cfg_into_iter, cfg_iter, cfg_iter_mut, rand::RngCore, vec, vec::Vec};
-use digest::{Digest, DynDigest};
+use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut, rand::RngCore, vec, vec::Vec};
+use digest::Digest;
 use dock_crypto_utils::{
     aliases::FullDigest,
     ff::{powers, powers_starting_from},
     hashing_utils::hash_to_field,
     msm::WindowTable,
+    transcript::Transcript,
 };
 use secret_sharing_and_dkg::{
     common::{lagrange_basis_at_0, lagrange_basis_at_0_for_all},
@@ -47,6 +48,10 @@ use secret_sharing_and_dkg::{
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+
+const POLY_COMMITMENT_LABEL: &'static [u8; 16] = b"poly_commitments";
+const CIPHERTEXTS_LABEL: &'static [u8; 11] = b"ciphertexts";
+const CHALLENGE_LABEL: &'static [u8; 9] = b"challenge";
 
 /// Ciphertext and the proof of encryption. `CT` is the variant of Elgamal encryption used. See test for usage
 /// Some of the struct fields like, `ciphertexts`, `poly_commitments` etc. could be created as arrays rather than vectors
@@ -84,13 +89,17 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
     // assert_eq! does not compile in stable Rust
     const CHECK_THRESHOLD: () = assert!(THRESHOLD <= NUM_PARTIES);
 
+    /// Create verifiable encryption of vector `witnesses` that are also committed in a Pedersen commitment
+    /// created with the commitment key `comm_key`. The encryption key is `enc_key` and group generator
+    /// used in that key is `gen`. Its assumed that the public values like commitment key, commitment, encryption key,
+    /// encryption key generator are all included in the transcript.
     pub fn new<R: RngCore, D: Digest + FullDigest>(
         rng: &mut R,
         witnesses: Vec<G::ScalarField>,
-        commitment: &G,
         comm_key: &[G],
         enc_key: &G,
         enc_gen: &G,
+        transcript: &mut impl Transcript,
     ) -> Result<Self, VerifiableEncryptionError> {
         let () = Self::CHECK_THRESHOLD;
         let witness_count = witnesses.len();
@@ -100,15 +109,6 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
                 witness_count,
             ));
         }
-        let mut hasher = D::default();
-        let mut to_hash = Vec::with_capacity(commitment.compressed_size());
-
-        hash_elem!(commitment, hasher, to_hash);
-        for c in comm_key {
-            hash_elem!(c, hasher, to_hash);
-        }
-        hash_elem!(enc_key, hasher, to_hash);
-        hash_elem!(enc_gen, hasher, to_hash);
 
         let enc_key_table = WindowTable::new(NUM_PARTIES * witness_count, enc_key.into_group());
         let enc_gen_table = WindowTable::new(NUM_PARTIES * witness_count, enc_gen.into_group());
@@ -153,13 +153,17 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
         });
 
         for i in 0..THRESHOLD {
-            hash_elem!(commitments[i], hasher, to_hash);
+            // hash_elem!(commitments[i], hasher, to_hash);
+            transcript.append(POLY_COMMITMENT_LABEL, &commitments[i]);
         }
         for i in 0..NUM_PARTIES {
-            hash_elem!(cts[i], hasher, to_hash);
+            // hash_elem!(cts[i], hasher, to_hash);
+            transcript.append(CIPHERTEXTS_LABEL, &cts[i]);
         }
 
-        let challenge = Box::new(hasher).finalize().to_vec();
+        // Challenge can also be an array since the digest function is a parameter which makes the output size also known at compile time
+        let mut challenge = vec![0; (NUM_PARTIES - THRESHOLD) * 2];
+        transcript.challenge_bytes(CHALLENGE_LABEL, &mut challenge);
         let num_hidden = (NUM_PARTIES - THRESHOLD) as u16;
         // Indices of the `num_hidden` parties for which ciphertexts of the shares will be given to the verifier.
         let indices_to_hide =
@@ -206,12 +210,17 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
         })
     }
 
+    /// Verify the proof of verifiable encryption of values that are also committed in a Pedersen commitment
+    /// `commitment` created with the commitment key `comm_key`. The encryption key is `enc_key` and group
+    /// generator used in that key is `gen`. Its assumed that the public values like commitment key, commitment,
+    /// encryption key, encryption key generator are all included in the transcript.
     pub fn verify<D: FullDigest + Digest>(
         &self,
         commitment: &G,
         comm_key: &[G],
         enc_key: &G,
         enc_gen: &G,
+        transcript: &mut impl Transcript,
     ) -> Result<(), VerifiableEncryptionError> {
         let () = Self::CHECK_THRESHOLD;
         let witness_count = comm_key.len();
@@ -267,16 +276,6 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
             }
         }
 
-        let mut hasher = D::default();
-        let mut to_hash = Vec::with_capacity(commitment.compressed_size());
-
-        hash_elem!(commitment, hasher, to_hash);
-        for c in comm_key {
-            hash_elem!(c, hasher, to_hash);
-        }
-        hash_elem!(enc_key, hasher, to_hash);
-        hash_elem!(enc_gen, hasher, to_hash);
-
         let enc_key_table = WindowTable::new(NUM_PARTIES * witness_count, enc_key.into_group());
         let enc_gen_table = WindowTable::new(NUM_PARTIES * witness_count, enc_gen.into_group());
 
@@ -303,15 +302,16 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
         });
 
         for i in 0..THRESHOLD {
-            hash_elem!(self.poly_commitments[i], hasher, to_hash);
+            transcript.append(POLY_COMMITMENT_LABEL, &self.poly_commitments[i]);
         }
         for i in 0..NUM_PARTIES {
-            hash_elem!(cts[i], hasher, to_hash);
+            transcript.append(CIPHERTEXTS_LABEL, &cts[i]);
         }
 
         core::mem::drop(cts);
 
-        let challenge = Box::new(hasher).finalize().to_vec();
+        let mut challenge = vec![0; (NUM_PARTIES - THRESHOLD) * 2];
+        transcript.challenge_bytes(CHALLENGE_LABEL, &mut challenge);
         if challenge != self.challenge {
             return Err(VerifiableEncryptionError::InvalidProof);
         }
@@ -555,31 +555,41 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use dock_crypto_utils::elgamal::{keygen, BatchedHashedElgamalCiphertext};
+    use dock_crypto_utils::{
+        elgamal::{keygen, BatchedHashedElgamalCiphertext},
+        transcript::new_merlin_transcript,
+    };
     use std::time::Instant;
 
     #[test]
     fn prove_verify() {
-        fn check<G: AffineRepr>(count: usize) {
+        fn check<G: AffineRepr>(num_witnesses: usize) {
             let mut rng = StdRng::seed_from_u64(0u64);
 
             let gen = G::rand(&mut rng);
             let (sk, pk) = keygen::<_, G>(&mut rng, &gen);
 
-            let witnesses = (0..count)
+            let witnesses = (0..num_witnesses)
                 .map(|_| G::ScalarField::rand(&mut rng))
                 .collect::<Vec<_>>();
-            let comm_key = (0..count).map(|_| G::rand(&mut rng)).collect::<Vec<_>>();
+            let comm_key = (0..num_witnesses)
+                .map(|_| G::rand(&mut rng))
+                .collect::<Vec<_>>();
             let commitment = G::Group::msm_unchecked(&comm_key, &witnesses).into_affine();
 
             macro_rules! run_test {
                 ($parties: expr, $threshold: expr, $subset_size: expr, $ct_type: ty, $ct_type_name: expr) => {{
                     println!(
                         "\nFor {} hashed Elgamal encryption, # witnesses = {}, # parties = {}, # threshold = {}, subset size = {}",
-                        $ct_type_name, count, $parties, $threshold, $subset_size
+                        $ct_type_name, num_witnesses, $parties, $threshold, $subset_size
                     );
                     let parties_minus_thresh = $parties - $threshold;
                     let start = Instant::now();
+                    let mut prover_transcript = new_merlin_transcript(b"test");
+                    prover_transcript.append(b"comm_key", &comm_key);
+                    prover_transcript.append(b"enc_key", &pk);
+                    prover_transcript.append(b"enc_gen", &gen);
+                    prover_transcript.append(b"commitment", &commitment);
                     let proof = RdkgithProof::<
                         _,
                         $ct_type,
@@ -588,28 +598,51 @@ mod tests {
                     >::new::<_, Blake2b512>(
                         &mut rng,
                         witnesses.clone(),
-                        &commitment,
                         &comm_key,
                         &pk.0,
                         &gen,
+                        &mut prover_transcript
                     ).unwrap();
                     println!("Proof generated in: {:?}", start.elapsed());
 
                     for i in 0..$threshold {
-                        assert_eq!(proof.shares_and_enc_rands[i].1.len(), count);
-                        assert!(<$ct_type>::is_randomness_size_correct(&proof.shares_and_enc_rands[i].2, count));
+                        assert_eq!(proof.shares_and_enc_rands[i].1.len(), num_witnesses);
+                        assert!(<$ct_type>::is_randomness_size_correct(&proof.shares_and_enc_rands[i].2, num_witnesses));
                     }
 
                     for i in 0..parties_minus_thresh {
-                        assert_eq!(proof.ciphertexts[i].1.batch_size(), count);
+                        assert_eq!(proof.ciphertexts[i].1.batch_size(), num_witnesses);
                     }
 
                     let start = Instant::now();
+                    let mut verifier_transcript = new_merlin_transcript(b"test");
+                    verifier_transcript.append(b"comm_key", &comm_key);
+                    verifier_transcript.append(b"enc_key", &pk);
+                    verifier_transcript.append(b"enc_gen", &gen);
+                    verifier_transcript.append(b"commitment", &commitment);
                     proof
-                        .verify::<Blake2b512>(&commitment, &comm_key, &pk.0, &gen)
+                        .verify::<Blake2b512>(&commitment, &comm_key, &pk.0, &gen, &mut verifier_transcript)
                         .unwrap();
                     println!("Proof verified in: {:?}", start.elapsed());
                     println!("Proof size: {:?}", proof.compressed_size());
+
+                    let invalid_comm = (commitment + G::rand(&mut rng)).into_affine();
+                    let mut verifier_transcript = new_merlin_transcript(b"test");
+                    verifier_transcript.append(b"comm_key", &comm_key);
+                    verifier_transcript.append(b"enc_key", &pk);
+                    verifier_transcript.append(b"enc_gen", &gen);
+                    verifier_transcript.append(b"commitment", &invalid_comm);
+                    assert!(proof
+                        .verify::<Blake2b512>(&invalid_comm, &comm_key, &pk.0, &gen, &mut verifier_transcript).is_err());
+
+                    let invalid_pk = G::rand(&mut rng);
+                    let mut verifier_transcript = new_merlin_transcript(b"test");
+                    verifier_transcript.append(b"comm_key", &comm_key);
+                    verifier_transcript.append(b"enc_key", &invalid_pk);
+                    verifier_transcript.append(b"enc_gen", &gen);
+                    verifier_transcript.append(b"commitment", &commitment);
+                    assert!(proof
+                        .verify::<Blake2b512>(&commitment, &comm_key, &invalid_pk, &gen, &mut verifier_transcript).is_err());
 
                     let start = Instant::now();
                     let ct = proof.compress::<$subset_size, Blake2b512>().unwrap();
@@ -617,7 +650,7 @@ mod tests {
                     println!("Ciphertext size: {:?}", ct.compressed_size());
 
                     for i in 0..$subset_size {
-                        assert_eq!(ct.0[i].batch_size(), count);
+                        assert_eq!(ct.0[i].batch_size(), num_witnesses);
                     }
 
                     let start = Instant::now();

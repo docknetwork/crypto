@@ -63,7 +63,7 @@ impl<E: Pairing> CCSPerfectRangeProofProtocol<E> {
             value,
             randomness,
             max,
-            params.get_supported_base_for_range_proof(),
+            params.get_max_base_for_range_proof(),
             comm_key,
             params,
         )

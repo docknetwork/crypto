@@ -666,8 +666,10 @@ impl<E: Pairing> Proof<E> {
                 Statement::VeTZ21(s) => match proof {
                     StatementProof::VeTZ21(p) => {
                         let comm_key = s.get_comm_key(&proof_spec.setup_params, s_idx)?.as_slice();
+                        let enc_params = s.get_enc_params(&proof_spec.setup_params, s_idx)?;
                         transcript.set_label(VE_TZ_21_LABEL);
                         VeTZ21Protocol::compute_challenge_contribution(
+                            enc_params,
                             comm_key,
                             p,
                             &mut transcript,
@@ -678,8 +680,10 @@ impl<E: Pairing> Proof<E> {
                 Statement::VeTZ21Robust(s) => match proof {
                     StatementProof::VeTZ21Robust(p) => {
                         let comm_key = s.get_comm_key(&proof_spec.setup_params, s_idx)?.as_slice();
+                        let enc_params = s.get_enc_params(&proof_spec.setup_params, s_idx)?;
                         transcript.set_label(VE_TZ_21_ROBUST_LABEL);
                         VeTZ21Protocol::compute_challenge_contribution_robust(
+                            enc_params,
                             comm_key,
                             p,
                             &mut transcript,
@@ -813,7 +817,7 @@ impl<E: Pairing> Proof<E> {
                         )?,
                     );
                 }
-                sp.$func_name::<D>(&challenge, $p, missing_resps)?
+                sp.$func_name::<D>(&challenge, $p, &mut transcript, missing_resps)?
             }
         }
 

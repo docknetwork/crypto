@@ -1,4 +1,4 @@
-use ark_bls12_381::{Bls12_381, G1Affine};
+use ark_bls12_381::{Bls12_381, Fr, G1Affine};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     rand::{prelude::StdRng, SeedableRng},
@@ -7,7 +7,9 @@ use ark_std::{
 use blake2::Blake2b512;
 use dock_crypto_utils::elgamal::keygen;
 use proof_system::{
-    prelude::{EqualWitnesses, MetaStatements, ProofSpec, Witness, WitnessRef, Witnesses},
+    prelude::{
+        EqualWitnesses, MetaStatements, ProofSpec, VerifierConfig, Witness, WitnessRef, Witnesses,
+    },
     proof::Proof,
     setup_params::ElgamalEncryptionParams,
     statement::{
@@ -163,6 +165,87 @@ macro_rules! gen_tests {
                 msg_count,
                 start.elapsed()
             );
+
+            // Correct message verifiably encrypted but meta statement is specifying equality with another message
+            let mut meta_statements_wrong = MetaStatements::new();
+            meta_statements_wrong.add_witness_equality(EqualWitnesses(
+                vec![(0, 0), (1, 0)]
+                    .into_iter()
+                    .collect::<BTreeSet<WitnessRef>>(),
+            ));
+            let prover_proof_spec = ProofSpec::new(
+                prover_statements.clone(),
+                meta_statements_wrong.clone(),
+                vec![],
+                None,
+            );
+            prover_proof_spec.validate().unwrap();
+
+            let proof = Proof::new::<StdRng, Blake2b512>(
+                &mut rng,
+                prover_proof_spec,
+                witnesses.clone(),
+                None,
+                Default::default(),
+            )
+            .unwrap()
+            .0;
+
+            let verifier_proof_spec = ProofSpec::new(
+                verifier_statements.clone(),
+                meta_statements_wrong,
+                vec![],
+                None,
+            );
+            verifier_proof_spec.validate().unwrap();
+            assert!(proof
+                .verify::<StdRng, Blake2b512>(&mut rng, verifier_proof_spec, None, Default::default())
+                .is_err());
+
+            // Verifiably encrypt a message which was not signed
+            let mut witnesses_wrong = Witnesses::new();
+            witnesses_wrong.add(PoKSignatureBBSG1Wit::new_as_witness(
+                sig,
+                msgs.into_iter().enumerate().collect(),
+            ));
+            witnesses_wrong.add(Witness::$wit_variant(vec![Fr::rand(&mut rng)]));
+
+            let prover_proof_spec =
+                ProofSpec::new(prover_statements, meta_statements.clone(), vec![], None);
+            prover_proof_spec.validate().unwrap();
+
+            let proof = Proof::new::<StdRng, Blake2b512>(
+                &mut rng,
+                prover_proof_spec,
+                witnesses_wrong,
+                None,
+                Default::default(),
+            )
+            .unwrap()
+            .0;
+
+            let verifier_proof_spec =
+                ProofSpec::new(verifier_statements.clone(), meta_statements, vec![], None);
+            verifier_proof_spec.validate().unwrap();
+            assert!(proof
+                .clone()
+                .verify::<StdRng, Blake2b512>(
+                    &mut rng,
+                    verifier_proof_spec.clone(),
+                    None,
+                    Default::default()
+                )
+                .is_err());
+            assert!(proof
+                .verify::<StdRng, Blake2b512>(
+                    &mut rng,
+                    verifier_proof_spec,
+                    None,
+                    VerifierConfig {
+                        use_lazy_randomized_pairing_checks: Some(false),
+                    },
+                )
+                .is_err());
         }
 
         #[test]

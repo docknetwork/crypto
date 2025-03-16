@@ -1,34 +1,40 @@
 use crate::error::Error;
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::{
+    models::short_weierstrass::{Affine, SWCurveConfig},
+    AffineRepr, CurveGroup,
+};
 use ark_ff::{BigInteger, Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
+use ark_std::{fmt::Debug, rand::RngCore, vec, vec::Vec, UniformRand};
 use core::ops::{Add, Sub};
 use dock_crypto_utils::commitment::PedersenCommitmentKey;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+pub trait SWPoint: SWCurveConfig + Clone + Copy + PartialEq {}
+impl<T: SWCurveConfig + Clone + Copy + PartialEq> SWPoint for T {}
+
 /// A Pedersen commitment to a value. Encapsulates the `value` and `randomness` as well.
 #[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
-pub struct CommitmentWithOpening<G: AffineRepr> {
+pub struct CommitmentWithOpening<G: SWPoint> {
     #[zeroize(skip)]
-    pub comm: G,
+    pub comm: Affine<G>,
     pub value: G::ScalarField,
     pub randomness: G::ScalarField,
 }
 
 /// A pair of Pedersen commitment, one for each coordinate of an Elliptic curve point.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PointCommitment<G: AffineRepr> {
+pub struct PointCommitment<G: SWPoint> {
     /// Pedersen commitment of `x` coordinate
-    pub x: G,
+    pub x: Affine<G>,
     /// Pedersen commitment of `y` coordinate
-    pub y: G,
+    pub y: Affine<G>,
 }
 
 /// A pair of Pedersen commitment, one for each coordinate of an Elliptic curve point. Encapsulates the coordinates
 /// and randomness in each commitment as well.
 #[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
-pub struct PointCommitmentWithOpening<G: AffineRepr> {
+pub struct PointCommitmentWithOpening<G: SWPoint> {
     /// `x` coordinate
     pub x: G::ScalarField,
     /// Randomness in the commitment of `x` coordinate
@@ -41,11 +47,11 @@ pub struct PointCommitmentWithOpening<G: AffineRepr> {
     pub comm: PointCommitment<G>,
 }
 
-impl<C: AffineRepr> PointCommitmentWithOpening<C> {
-    pub fn new<R: RngCore, P: AffineRepr>(
+impl<C: SWPoint> PointCommitmentWithOpening<C> {
+    pub fn new<R: RngCore, P: SWPoint>(
         rng: &mut R,
-        point: &P,
-        comm_key: &PedersenCommitmentKey<C>,
+        point: &Affine<P>,
+        comm_key: &PedersenCommitmentKey<Affine<C>>,
     ) -> Result<Self, Error> {
         let r_x = C::ScalarField::rand(rng);
         let r_y = C::ScalarField::rand(rng);
@@ -53,11 +59,11 @@ impl<C: AffineRepr> PointCommitmentWithOpening<C> {
     }
 
     /// `r_x` and `r_y` are randomness in the Pedersen commitments to x and y coordinates respectively
-    pub fn new_given_randomness<P: AffineRepr>(
-        point: &P,
+    pub fn new_given_randomness<P: SWPoint>(
+        point: &Affine<P>,
         r_x: C::ScalarField,
         r_y: C::ScalarField,
-        comm_key: &PedersenCommitmentKey<C>,
+        comm_key: &PedersenCommitmentKey<Affine<C>>,
     ) -> Result<Self, Error> {
         let (x, y) = point_coords_as_scalar_field_elements::<P, C>(point)?;
         Ok(Self::new_given_randomness_and_coords(
@@ -70,7 +76,7 @@ impl<C: AffineRepr> PointCommitmentWithOpening<C> {
         y: C::ScalarField,
         r_x: C::ScalarField,
         r_y: C::ScalarField,
-        comm_key: &PedersenCommitmentKey<C>,
+        comm_key: &PedersenCommitmentKey<Affine<C>>,
     ) -> Self {
         let comm_x = comm_key.commit(&x, &r_x);
         let comm_y = comm_key.commit(&y, &r_y);
@@ -87,7 +93,7 @@ impl<C: AffineRepr> PointCommitmentWithOpening<C> {
     }
 }
 
-impl<G: AffineRepr> Add for &PointCommitment<G> {
+impl<G: SWPoint> Add for &PointCommitment<G> {
     type Output = PointCommitment<G>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -98,7 +104,7 @@ impl<G: AffineRepr> Add for &PointCommitment<G> {
     }
 }
 
-impl<G: AffineRepr> Sub for &PointCommitment<G> {
+impl<G: SWPoint> Sub for &PointCommitment<G> {
     type Output = PointCommitment<G>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -109,7 +115,7 @@ impl<G: AffineRepr> Sub for &PointCommitment<G> {
     }
 }
 
-impl<G: AffineRepr> Add for &PointCommitmentWithOpening<G> {
+impl<G: SWPoint> Add for &PointCommitmentWithOpening<G> {
     type Output = PointCommitmentWithOpening<G>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -123,7 +129,7 @@ impl<G: AffineRepr> Add for &PointCommitmentWithOpening<G> {
     }
 }
 
-impl<G: AffineRepr> Sub for &PointCommitmentWithOpening<G> {
+impl<G: SWPoint> Sub for &PointCommitmentWithOpening<G> {
     type Output = PointCommitmentWithOpening<G>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -137,11 +143,11 @@ impl<G: AffineRepr> Sub for &PointCommitmentWithOpening<G> {
     }
 }
 
-impl<G: AffineRepr> CommitmentWithOpening<G> {
+impl<G: SWPoint> CommitmentWithOpening<G> {
     pub fn new<R: RngCore>(
         rng: &mut R,
         value: G::ScalarField,
-        comm_key: &PedersenCommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<Affine<G>>,
     ) -> Self {
         let randomness = G::ScalarField::rand(rng);
         let comm = comm_key.commit(&value, &randomness);
@@ -155,7 +161,7 @@ impl<G: AffineRepr> CommitmentWithOpening<G> {
     pub fn new_given_randomness(
         value: G::ScalarField,
         randomness: G::ScalarField,
-        comm_key: &PedersenCommitmentKey<G>,
+        comm_key: &PedersenCommitmentKey<Affine<G>>,
     ) -> Self {
         let comm = comm_key.commit(&value, &randomness);
         Self {
@@ -166,11 +172,11 @@ impl<G: AffineRepr> CommitmentWithOpening<G> {
     }
 }
 
-/// Converts the `x` and `y` coordinates of the point in group `P` as scalars of group `G`
+/// Converts the `x` and `y` coordinates of the point in group `P` as scalars of group `G`.
 /// Expects the extension degree of `P`'s base field to be 1 and expects the base field of `P` to be same as
 /// scalar field of `G`
-pub fn point_coords_as_scalar_field_elements<P: AffineRepr, G: AffineRepr>(
-    point: &P,
+pub fn point_coords_as_scalar_field_elements<P: SWPoint, G: SWPoint>(
+    point: &Affine<P>,
 ) -> Result<(G::ScalarField, G::ScalarField), Error> {
     if G::ScalarField::MODULUS.to_bytes_le()
         != <P::BaseField as Field>::BasePrimeField::MODULUS.to_bytes_le()

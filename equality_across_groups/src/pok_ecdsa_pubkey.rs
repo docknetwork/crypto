@@ -31,11 +31,11 @@ use crate::{
         sw_scalar_mult::{ScalarMultiplicationProof, ScalarMultiplicationProtocol},
     },
     error::Error,
-    tom256::{Affine as Tom256Affine, Fr as Tom256Fr},
+    tom256::{Affine as Tom256Affine, Config as Tom256Config, Fr as Tom256Fr},
 };
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, Field, PrimeField};
-use ark_secp256r1::{Affine, Fr, G_GENERATOR_X, G_GENERATOR_Y};
+use ark_secp256r1::{Affine, Config, Fr, G_GENERATOR_X, G_GENERATOR_Y};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec};
 use dock_crypto_utils::{
@@ -51,49 +51,38 @@ pub struct TransformedEcdsaSig {
     pub z: Fr,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommitmentWithRandomness(PointCommitment<crate::tom256::Affine>);
-
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PoKEcdsaSigCommittedPublicKeyProtocol<const NUM_REPS_SCALAR_MULT: usize = 128> {
     /// Point R from signature
     pub R: Affine,
     /// Commitment to scalar `z`
     pub comm_z: Affine,
     /// Commitment to coordinates of `-z*R`
-    pub comm_minus_zR: PointCommitment<crate::tom256::Affine>,
+    pub comm_minus_zR: PointCommitment<Tom256Config>,
     /// Randomness in the commitment to coordinates of `-g*t*r^-1` so verifier can create the same commitment
     /// to `-g*t*r^-1` as the prover.
-    pub comm_minus_g_t_r_inv_rand: (
-        <crate::tom256::Affine as AffineRepr>::ScalarField,
-        <crate::tom256::Affine as AffineRepr>::ScalarField,
-    ),
+    pub comm_minus_g_t_r_inv_rand: (Tom256Fr, Tom256Fr),
     /// Protocol for relation `z * -R = -z*R`
-    pub protocol_minus_zR:
-        ScalarMultiplicationProtocol<Affine, crate::tom256::Affine, NUM_REPS_SCALAR_MULT>,
+    pub protocol_minus_zR: ScalarMultiplicationProtocol<Config, Tom256Config, NUM_REPS_SCALAR_MULT>,
     /// Protocol for relation `-g*t*r^-1 = q + z*(-R)`
-    pub protocol_add: PointAdditionProtocol<Affine, crate::tom256::Affine>,
+    pub protocol_add: PointAdditionProtocol<Config, Tom256Config>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PoKEcdsaSigCommittedPublicKey<const NUM_REPS_SCALAR_MULT: usize = 128> {
     /// Point R from signature
     pub R: Affine,
     /// Commitment to scalar `z`
     pub comm_z: Affine,
     /// Commitment to coordinates of `-z*R`
-    pub comm_minus_zR: PointCommitment<crate::tom256::Affine>,
+    pub comm_minus_zR: PointCommitment<Tom256Config>,
     /// Randomness in the commitment to coordinates of `-g*t*r^-1` so verifier can create the same commitment
     /// to `-g*t*r^-1` as the prover.
-    pub comm_minus_g_t_r_inv_rand: (
-        <crate::tom256::Affine as AffineRepr>::ScalarField,
-        <crate::tom256::Affine as AffineRepr>::ScalarField,
-    ),
+    pub comm_minus_g_t_r_inv_rand: (Tom256Fr, Tom256Fr),
     /// Proof of relation `z * -R = -z*R`
-    pub proof_minus_zR:
-        ScalarMultiplicationProof<Affine, crate::tom256::Affine, NUM_REPS_SCALAR_MULT>,
+    pub proof_minus_zR: ScalarMultiplicationProof<Config, Tom256Config, NUM_REPS_SCALAR_MULT>,
     /// Proof of relation `-g*t*r^-1 = q + z*(-R)`
-    pub proof_add: PointAdditionProof<Affine, crate::tom256::Affine>,
+    pub proof_add: PointAdditionProof<Config, Tom256Config>,
 }
 
 impl TransformedEcdsaSig {
@@ -147,7 +136,7 @@ impl<const NUM_REPS_SCALAR_MULT: usize>
         sig: TransformedEcdsaSig,
         hashed_message: Fr,
         public_key: Affine,
-        comm_public_key: PointCommitmentWithOpening<Tom256Affine>,
+        comm_public_key: PointCommitmentWithOpening<Tom256Config>,
         comm_key_secp: &PedersenCommitmentKey<Affine>,
         comm_key_tom: &PedersenCommitmentKey<Tom256Affine>,
     ) -> Result<Self, Error> {
@@ -162,7 +151,7 @@ impl<const NUM_REPS_SCALAR_MULT: usize>
         let comm_minus_g_t_r_inv =
             PointCommitmentWithOpening::new(rng, &minus_g_t_r_inv, comm_key_tom)?;
         let protocol_minus_zR =
-            ScalarMultiplicationProtocol::<Affine, Tom256Affine, NUM_REPS_SCALAR_MULT>::init(
+            ScalarMultiplicationProtocol::<Config, Tom256Config, NUM_REPS_SCALAR_MULT>::init(
                 rng,
                 comm_z.clone(),
                 comm_minus_zR.clone(),
@@ -231,7 +220,7 @@ impl<const NUM_REPS_SCALAR_MULT: usize> PoKEcdsaSigCommittedPublicKey<NUM_REPS_S
     pub fn verify(
         &self,
         hashed_message: Fr,
-        comm_public_key: &PointCommitment<Tom256Affine>,
+        comm_public_key: &PointCommitment<Tom256Config>,
         challenge: &Tom256Fr,
         comm_key_secp: &PedersenCommitmentKey<Affine>,
         comm_key_tom: &PedersenCommitmentKey<Tom256Affine>,
@@ -269,7 +258,7 @@ impl<const NUM_REPS_SCALAR_MULT: usize> PoKEcdsaSigCommittedPublicKey<NUM_REPS_S
     pub fn verify_using_randomized_mult_checker(
         &self,
         hashed_message: Fr,
-        comm_public_key: PointCommitment<Tom256Affine>,
+        comm_public_key: PointCommitment<Tom256Config>,
         challenge: &Tom256Fr,
         comm_key_secp: PedersenCommitmentKey<Affine>,
         comm_key_tom: PedersenCommitmentKey<Tom256Affine>,

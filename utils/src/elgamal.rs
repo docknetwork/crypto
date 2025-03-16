@@ -112,7 +112,7 @@ impl<G: AffineRepr> Ciphertext<G> {
         public_key: &WindowTable<G::Group>,
         gen: &WindowTable<G::Group>,
     ) -> Self {
-        let enc1 = (public_key.multiply(randomness) + msg).into_affine();
+        let enc1 = ((public_key * randomness) + msg).into_affine();
         Self {
             encrypted: enc1,
             eph_pk: gen.multiply(randomness).into_affine(),
