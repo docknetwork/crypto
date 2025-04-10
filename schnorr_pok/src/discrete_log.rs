@@ -270,6 +270,7 @@ impl<G: AffineRepr> PokPedersenCommitment<G> {
         expected.into_affine() == self.t
     }
 
+    /// Same as `Self::verify` except it uses `RandomizedMultChecker` to combine the scalar multiplication checks into a single
     pub fn verify_using_randomized_mult_checker(
         &self,
         y: G,

@@ -1,6 +1,13 @@
 //! Using SAVER with Groth16
+use crate::{
+    encryption::Ciphertext, error::SaverError, keygen::EncryptionKey, setup::EncryptionGens,
+};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, PrimeField};
+pub use ark_groth16::{
+    prepare_verifying_key, Groth16, PreparedVerifyingKey, Proof, ProvingKey as Groth16ProvingKey,
+    VerifyingKey,
+};
 use ark_relations::r1cs::{ConstraintSynthesizer, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -11,25 +18,15 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
-
-use legogroth16::aggregation::{groth16::AggregateProof, srs::VerifierSRS};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-
-use crate::encryption::Ciphertext;
-pub use ark_groth16::{
-    prepare_verifying_key, Groth16, PreparedVerifyingKey, Proof, ProvingKey as Groth16ProvingKey,
-    VerifyingKey,
-};
 use dock_crypto_utils::{
     ff::{non_zero_random, powers, sum_of_powers},
     randomized_pairing_check::RandomizedPairingChecker,
+    serde_utils::*,
+    transcript::Transcript,
 };
-
-use crate::error::SaverError;
-use dock_crypto_utils::{serde_utils::*, transcript::Transcript};
-
-use crate::{keygen::EncryptionKey, setup::EncryptionGens};
+use legogroth16::aggregation::{groth16::AggregateProof, srs::VerifierSRS};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 #[serde_as]
 #[derive(

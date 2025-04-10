@@ -80,10 +80,10 @@ impl<G: AffineRepr> Ciphertext<G> {
         public_key: &G,
         gen: &G,
     ) -> (Self, G::ScalarField) {
-        let alpha = G::ScalarField::rand(rng);
+        let randomness = G::ScalarField::rand(rng);
         (
-            Self::new_given_randomness(msg, &alpha, public_key, gen),
-            alpha,
+            Self::new_given_randomness(msg, &randomness, public_key, gen),
+            randomness,
         )
     }
 
@@ -96,9 +96,9 @@ impl<G: AffineRepr> Ciphertext<G> {
         gen: &G,
     ) -> Self {
         let b = randomness.into_bigint();
-        let enc1 = (public_key.mul_bigint(b) + msg).into_affine();
+        let encrypted = (public_key.mul_bigint(b) + msg).into_affine();
         Self {
-            encrypted: enc1,
+            encrypted,
             eph_pk: gen.mul_bigint(b).into_affine(),
         }
     }
@@ -112,9 +112,9 @@ impl<G: AffineRepr> Ciphertext<G> {
         public_key: &WindowTable<G::Group>,
         gen: &WindowTable<G::Group>,
     ) -> Self {
-        let enc1 = ((public_key * randomness) + msg).into_affine();
+        let encrypted = ((public_key * randomness) + msg).into_affine();
         Self {
-            encrypted: enc1,
+            encrypted,
             eph_pk: gen.multiply(randomness).into_affine(),
         }
     }
@@ -157,10 +157,10 @@ impl<G: AffineRepr> HashedElgamalCiphertext<G> {
         public_key: &G,
         gen: &G,
     ) -> (Self, G::ScalarField) {
-        let alpha = G::ScalarField::rand(rng);
+        let randomness = G::ScalarField::rand(rng);
         (
-            Self::new_given_randomness::<D>(msg, &alpha, public_key, gen),
-            alpha,
+            Self::new_given_randomness::<D>(msg, &randomness, public_key, gen),
+            randomness,
         )
     }
 
@@ -245,10 +245,10 @@ impl<G: AffineRepr> BatchedHashedElgamalCiphertext<G> {
         public_key: &G,
         gen: &G,
     ) -> (Self, G::ScalarField) {
-        let alpha = G::ScalarField::rand(rng);
+        let randomness = G::ScalarField::rand(rng);
         (
-            Self::new_given_randomness::<D>(msgs, &alpha, public_key, gen),
-            alpha,
+            Self::new_given_randomness::<D>(msgs, &randomness, public_key, gen),
+            randomness,
         )
     }
 

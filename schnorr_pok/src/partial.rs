@@ -9,11 +9,14 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
     io::Write,
-    ops::Add,
+    iter,
+    ops::{Add, Neg},
     vec,
     vec::Vec,
 };
-use dock_crypto_utils::{expect_equality, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::{
+    expect_equality, randomized_mult_checker::RandomizedMultChecker, serde_utils::ArkObjectBytes,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Same};
 
@@ -186,6 +189,61 @@ impl<G: AffineRepr> PartialSchnorrResponse<G> {
         challenge: &G::ScalarField,
         missing_responses: BTreeMap<usize, G::ScalarField>,
     ) -> Result<(), SchnorrError> {
+        let full_resp = self.pre_verify(bases, missing_responses)?;
+        if (G::Group::msm_unchecked(bases, &full_resp)
+            .add(y.mul_bigint((-*challenge).into_bigint())))
+        .into_affine()
+            == *t
+        {
+            Ok(())
+        } else {
+            Err(SchnorrError::InvalidResponse)
+        }
+    }
+
+    /// Same as `Self::is_valid` except it uses `RandomizedMultChecker` to combine the scalar multiplication checks into a single
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        bases: Vec<G>,
+        y: G,
+        t: G,
+        challenge: &G::ScalarField,
+        missing_responses: BTreeMap<usize, G::ScalarField>,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) -> Result<(), SchnorrError> {
+        let full_resp = self.pre_verify(&bases, missing_responses)?;
+        rmc.add_many(
+            bases.into_iter().chain(iter::once(y)),
+            full_resp.iter().chain(iter::once(&-*challenge)),
+            t,
+        );
+        Ok(())
+    }
+
+    /// Get indices for which it does not have any response. These responses will be fetched from other protocols.
+    pub fn get_missing_response_indices(&self) -> BTreeSet<usize> {
+        let mut ids = BTreeSet::new();
+        for i in 0..self.total_responses {
+            if !self.responses.contains_key(&i) {
+                ids.insert(i);
+            }
+        }
+        ids
+    }
+
+    /// Get response for the specified discrete log
+    pub fn get_response(&self, idx: usize) -> Result<&G::ScalarField, SchnorrError> {
+        match self.responses.get(&idx) {
+            Some(r) => Ok(r),
+            None => Err(SchnorrError::MissingResponseAtIndex(idx)),
+        }
+    }
+
+    pub fn pre_verify(
+        &self,
+        bases: &[G],
+        missing_responses: BTreeMap<usize, G::ScalarField>,
+    ) -> Result<Vec<G::ScalarField>, SchnorrError> {
         expect_equality!(
             self.total_responses,
             bases.len(),
@@ -208,34 +266,7 @@ impl<G: AffineRepr> PartialSchnorrResponse<G> {
         for (i, r) in &self.responses {
             full_resp[*i] = *r;
         }
-        if (G::Group::msm_unchecked(bases, &full_resp)
-            .add(y.mul_bigint((-*challenge).into_bigint())))
-        .into_affine()
-            == *t
-        {
-            Ok(())
-        } else {
-            Err(SchnorrError::InvalidResponse)
-        }
-    }
-
-    /// Get indices for which it does not have any response. These responses will be fetched from other protocols.
-    pub fn get_missing_response_indices(&self) -> BTreeSet<usize> {
-        let mut ids = BTreeSet::new();
-        for i in 0..self.total_responses {
-            if !self.responses.contains_key(&i) {
-                ids.insert(i);
-            }
-        }
-        ids
-    }
-
-    /// Get response for the specified discrete log
-    pub fn get_response(&self, idx: usize) -> Result<&G::ScalarField, SchnorrError> {
-        match self.responses.get(&idx) {
-            Some(r) => Ok(r),
-            None => Err(SchnorrError::MissingResponseAtIndex(idx)),
-        }
+        Ok(full_resp)
     }
 }
 
@@ -250,6 +281,17 @@ impl<G: AffineRepr> PartialPokDiscreteLog<G> {
         let mut expected = base.mul_bigint(response.into_bigint());
         expected -= y.mul_bigint(challenge.into_bigint());
         expected.into_affine() == self.t
+    }
+
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        y: G,
+        base: G,
+        challenge: &G::ScalarField,
+        response: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        rmc.add_2(base, response, y, &challenge.neg(), self.t)
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -276,6 +318,27 @@ impl<G: AffineRepr> PartialPokPedersenCommitment<G> {
         expected += base2.mul_bigint(response2.into_bigint());
         expected -= y.mul_bigint(challenge.into_bigint());
         expected.into_affine() == self.t
+    }
+
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        y: G,
+        base1: G,
+        base2: G,
+        challenge: &G::ScalarField,
+        response1: &G::ScalarField,
+        response2: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        rmc.add_3(
+            base1,
+            response1,
+            base2,
+            response2,
+            y,
+            &challenge.neg(),
+            self.t,
+        )
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -306,6 +369,27 @@ impl<G: AffineRepr> Partial1PokPedersenCommitment<G> {
         expected.into_affine() == self.t
     }
 
+    /// Same as `Self::verify` except it uses `RandomizedMultChecker` to combine the scalar multiplication checks into a single
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        y: G,
+        base1: G,
+        base2: G,
+        challenge: &G::ScalarField,
+        response2: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        rmc.add_3(
+            base1,
+            &self.response1,
+            base2,
+            response2,
+            y,
+            &challenge.neg(),
+            self.t,
+        )
+    }
+
     pub fn challenge_contribution<W: Write>(
         &self,
         base1: &G,
@@ -332,6 +416,27 @@ impl<G: AffineRepr> Partial2PokPedersenCommitment<G> {
         expected += base2.mul_bigint(self.response2.into_bigint());
         expected -= y.mul_bigint(challenge.into_bigint());
         expected.into_affine() == self.t
+    }
+
+    /// Same as `Self::verify` except it uses `RandomizedMultChecker` to combine the scalar multiplication checks into a single
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        y: G,
+        base1: G,
+        base2: G,
+        challenge: &G::ScalarField,
+        response1: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        rmc.add_3(
+            base1,
+            response1,
+            base2,
+            &self.response2,
+            y,
+            &challenge.neg(),
+            self.t,
+        )
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -418,12 +523,35 @@ mod tests {
         assert_eq!(resp_2.get_missing_response_indices(), common_wit_indices);
         let missing_responses = resp_1.get_responses(&common_wit_indices).unwrap();
         resp_2
-            .is_valid(&bases_2, &y_2, &comm_2.t, &challenge, missing_responses)
+            .is_valid(
+                &bases_2,
+                &y_2,
+                &comm_2.t,
+                &challenge,
+                missing_responses.clone(),
+            )
             .unwrap();
 
         for i in common_wit_indices {
             assert!(resp_2.get_response(i).is_err());
         }
+
+        // Verify using RandomizedMultChecker
+        let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+        resp_1
+            .verify_using_randomized_mult_checker(bases_1, y_1, comm_1.t, &challenge, &mut checker)
+            .unwrap();
+        resp_2
+            .verify_using_randomized_mult_checker(
+                bases_2,
+                y_2,
+                comm_2.t,
+                &challenge,
+                missing_responses,
+                &mut checker,
+            )
+            .unwrap();
+        assert!(checker.verify());
     }
 
     #[test]
@@ -562,5 +690,41 @@ mod tests {
             &challenge_verifier,
             &proof_1.response2
         ));
+
+        // Verify using RandomizedMultChecker
+        let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+        proof_1.verify_using_randomized_mult_checker(
+            y_1,
+            base1,
+            base2,
+            &challenge_verifier,
+            &mut checker,
+        );
+        proof_2.verify_using_randomized_mult_checker(
+            y_2,
+            base3,
+            base4,
+            &challenge_verifier,
+            &proof_1.response1,
+            &proof_1.response2,
+            &mut checker,
+        );
+        proof_3.verify_using_randomized_mult_checker(
+            y_3,
+            base5,
+            base6,
+            &challenge_verifier,
+            &proof_1.response1,
+            &mut checker,
+        );
+        proof_4.verify_using_randomized_mult_checker(
+            y_4,
+            base7,
+            base8,
+            &challenge_verifier,
+            &proof_1.response2,
+            &mut checker,
+        );
+        assert!(checker.verify());
     }
 }

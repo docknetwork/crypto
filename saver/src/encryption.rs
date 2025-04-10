@@ -7,6 +7,7 @@ use crate::{
     saver_groth16, saver_legogroth16,
     setup::PreparedEncryptionGens,
     utils,
+    utils::CHUNK_TYPE,
 };
 use ark_ec::{
     pairing::{Pairing, PairingOutput},
@@ -23,16 +24,13 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
+use dock_crypto_utils::{
+    ff::non_zero_random, randomized_pairing_check::RandomizedPairingChecker, serde_utils::*,
+    solve_discrete_log::solve_discrete_log_bsgs_alt,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::utils::CHUNK_TYPE;
-use dock_crypto_utils::{ff::non_zero_random, serde_utils::*};
-
-use dock_crypto_utils::{
-    randomized_pairing_check::RandomizedPairingChecker,
-    solve_discrete_log::solve_discrete_log_bsgs_alt,
-};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -667,8 +665,9 @@ impl<E: Pairing> Encryption<E> {
         g_i_v_i: PairingOutput<E>,
         p: PairingOutput<E>,
     ) -> crate::Result<CHUNK_TYPE> {
-        solve_discrete_log_bsgs_alt(chunk_max_val, g_i_v_i, p)
-            .ok_or(SaverError::CouldNotFindDiscreteLog)
+        let r = solve_discrete_log_bsgs_alt(chunk_max_val as u64, g_i_v_i, p)
+            .ok_or(SaverError::CouldNotFindDiscreteLog)?;
+        Ok(r as CHUNK_TYPE)
     }
 
     /// Relies on precomputation

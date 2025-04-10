@@ -51,12 +51,14 @@ use ark_std::{
     cfg_iter,
     collections::{BTreeMap, BTreeSet},
     io::Write,
+    iter,
     vec::Vec,
 };
 use core::ops::Add;
 use digest::Digest;
 use dock_crypto_utils::{
-    expect_equality, hashing_utils::field_elem_from_try_and_incr, serde_utils::ArkObjectBytes,
+    expect_equality, hashing_utils::field_elem_from_try_and_incr,
+    randomized_mult_checker::RandomizedMultChecker, serde_utils::ArkObjectBytes,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -166,6 +168,28 @@ impl<G: AffineRepr> SchnorrResponse<G> {
         }
     }
 
+    /// Same as `Self::is_valid` except it uses `RandomizedMultChecker` to combine the scalar multiplication checks into a single
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        bases: Vec<G>,
+        y: G,
+        t: G,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) -> Result<(), SchnorrError> {
+        expect_equality!(
+            self.0.len(),
+            bases.len(),
+            SchnorrError::ExpectedSameSizeSequences
+        );
+        rmc.add_many(
+            bases.into_iter().chain(iter::once(y)),
+            self.0.iter().chain(iter::once(&-*challenge)),
+            t,
+        );
+        Ok(())
+    }
+
     /// Get response for the specified discrete log
     pub fn get_response(&self, idx: usize) -> Result<&G::ScalarField, SchnorrError> {
         if idx >= self.0.len() {
@@ -261,7 +285,7 @@ mod tests {
                 .map(|_| Fr::rand(&mut rng))
                 .collect::<Vec<_>>();
 
-            let comm = SchnorrCommitment::new(&bases, blindings);
+            let comm = SchnorrCommitment::new(&bases, blindings.clone());
             test_serialization!(SchnorrCommitment<$group_element_affine>, comm);
 
             let challenge = Fr::rand(&mut rng);
@@ -270,9 +294,14 @@ mod tests {
 
             resp.is_valid(&bases, &y, &comm.t, &challenge).unwrap();
 
-            drop(comm);
-
             test_serialization!(SchnorrResponse<$group_element_affine>, resp);
+
+            // Verify using RandomizedMultChecker
+
+            let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+            resp.verify_using_randomized_mult_checker(bases, y, comm.t, &challenge, &mut checker)
+                .unwrap();
+            assert!(checker.verify());
         };
     }
 

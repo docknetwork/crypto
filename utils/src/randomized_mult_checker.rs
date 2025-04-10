@@ -1,6 +1,11 @@
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::{One, Zero};
-use ark_std::{rand::Rng, vec::Vec, UniformRand};
+use ark_std::{
+    iter::{IntoIterator, Iterator},
+    rand::Rng,
+    vec::Vec,
+    UniformRand,
+};
 
 /// Represents a scalar multiplication check of the form `G1 * a1 + G2 * a2 + G3 * a3 + ... = T`.
 /// Several checks can be added of forms either `G1 * a1 = T1` or `G1 * a1 + H1 * b1 = T2` or `G1 * a1 + H1 * b1 + J1 * c1 = T3`
@@ -15,7 +20,6 @@ use ark_std::{rand::Rng, vec::Vec, UniformRand};
 pub struct RandomizedMultChecker<G: AffineRepr> {
     // map is more expensive than a vector (checked with a test)
     // args: BTreeMap<SortableAffine<G>, G::ScalarField>,
-    ///
     /// Verification will expect the multi-scalar multiplication of first and second vector to be one.
     args: (Vec<G>, Vec<G::ScalarField>),
     /// The random value chosen during creation
@@ -67,6 +71,20 @@ impl<G: AffineRepr> RandomizedMultChecker<G> {
         self.add(p1, self.current_random * s1);
         self.add(p2, self.current_random * s2);
         self.add(p3, self.current_random * s3);
+        self.add(t, -self.current_random);
+        self.current_random *= self.random;
+    }
+
+    /// Add a check of the form `<a, b> = t`. Expects `a` and `b` to be of the same length
+    pub fn add_many<'a>(
+        &mut self,
+        a: impl IntoIterator<Item = G>,
+        b: impl IntoIterator<Item = &'a G::ScalarField>,
+        t: G,
+    ) {
+        for (a_i, b_i) in a.into_iter().zip(b) {
+            self.add(a_i, self.current_random * b_i);
+        }
         self.add(t, -self.current_random);
         self.current_random *= self.random;
     }
@@ -254,6 +272,11 @@ mod test {
         checker.add_3(g1, &a1, g2, &a2, g3, &a3, c9);
         checker.add_3(h1, &a4, h2, &a5, h3, &a6, c10);
         checker.add_3(h1, &a2, h2, &a3, h3, &a4, c11);
+        assert!(checker.verify());
+
+        let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+        checker.add_many([g3, h3], [&a3, &a6], c8);
+        checker.add_many([g1, g2, g3], [&a1, &a2, &a3], c9);
         assert!(checker.verify());
     }
 

@@ -1,5 +1,6 @@
 //! Using SAVER with LegoGroth16
 
+use crate::{keygen::EncryptionKey, setup::EncryptionGens};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::PrimeField;
 use ark_relations::r1cs::ConstraintSynthesizer;
@@ -14,8 +15,6 @@ use legogroth16::{
     create_random_proof, generate_parameters_with_qap, verify_qap_proof, LibsnarkReduction,
     PreparedVerifyingKey, Proof, VerifyingKey,
 };
-
-use crate::{keygen::EncryptionKey, setup::EncryptionGens};
 
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProvingKey<E: Pairing> {
