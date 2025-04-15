@@ -21,8 +21,8 @@ pub fn new_merlin_transcript(label: &'static [u8]) -> impl Transcript + Clone + 
     Clone, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
 )]
 pub struct MerlinTranscript {
-    merlin: Merlin,
-    next_label: Vec<u8>,
+    pub merlin: Merlin,
+    pub next_label: Vec<u8>,
 }
 
 impl MerlinTranscript {

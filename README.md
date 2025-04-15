@@ -8,7 +8,7 @@ Library providing privacy enhancing cryptographic primitives.
 
 ## Primitives
 
-1. [Schnorr proof of knowledge protocol](./schnorr_pok) to prove knowledge of discrete log and inequality of discrete logs. [This](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) is a good reference. 
+1. [Sigma protocols](./schnorr_pok) to prove knowledge of discrete log, equality, inequality of discrete logs, knowledge of opening of a generalized Pedersen commitment, etc. [This](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) is a good reference. 
 2. [BBS and BBS+ signatures](./bbs_plus) for anonymous credentials. BBS+ is based on the paper [Anonymous Attestation Using the Strong Diffie Hellman Assumption Revisited](https://eprint.iacr.org/2016/663) and 
    BBS is based on the paper [Revisiting BBS Signatures](https://eprint.iacr.org/2023/275). Also implements the threshold variants of these based on the paper [Threshold BBS+ Signatures for Distributed Anonymous Credential Issuance](https://eprint.iacr.org/2023/602)
 3. [Dynamic accumulators, both positive and universal](./vb_accumulator). Based on the papers [Dynamic Universal Accumulator with Batch Update over Bilinear Groups](https://eprint.iacr.org/2020/777) and [Efficient Constructions of Pairing Based Accumulators](https://eprint.iacr.org/2021/638). Implements a keyed-verification variant of these accumulators as well which does not require pairings.
@@ -31,6 +31,7 @@ Library providing privacy enhancing cryptographic primitives.
 12. [Keyed-Verification Anonymous Credentials (KVAC)](./kvac). Implements Keyed-Verification Anonymous Credentials (KVAC) schemes.
 13. [SyRA](./syra). Implements sybil resilient signatures to be used for generating pseudonyms for low-entropy credential attributes.
 14. [Verifiable encryption](./verifiable_encryption) using the paper [Verifiable Encryption from MPC-in-the-Head](https://eprint.iacr.org/2021/1704.pdf).
+15. [Utilities](./utils) like inner product, hadamard product, polynomial utilities, solving discrete log, Elgamal encryption, etc.
 
 ## Composite proof system
 
@@ -63,4 +64,7 @@ Some tests also print time consumed by the operations, run `cargo test --release
 
 ## WASM wrapper
 
-A WASM wrapper has been created over this repo [here](https://github.com/docknetwork/crypto-wasm). The wrapper is then used to create [this Typescript library](https://github.com/docknetwork/crypto-wasm-ts) which is more ergonomic than using the wrapper as the wrapper contains free floating functions.
+A WASM wrapper has been created over this repo [here](https://github.com/docknetwork/crypto-wasm). 
+The wrapper is then used to create [this Typescript library](https://github.com/docknetwork/crypto-wasm-ts) which is more ergonomic 
+than using the wrapper as the wrapper contains free floating functions. The Typescript wrapper also contains abstractions for 
+anonymous credentials like schemas, credentials, presentations, etc.
