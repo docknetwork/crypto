@@ -39,12 +39,10 @@ fn blind_bbs_plus_sig_and_message_equality() {
     // do not use the unblinded/blind signature in proofs.  Hence, this test.
 
     blind_bbs_plus_sig_and_message_equality_aux(true).unwrap();
-    if blind_bbs_plus_sig_and_message_equality_aux(false).is_ok() {
-        // NOTE: current behaviour is that proof creation succeeds and verification of the created proof yields:
-        // Err(ProofSystemError::BBSPlusProofContributionFailed(1,BBSPlusError::SecondSchnorrVerificationFailed))
-        // but this test requires only that proof creation and verification do not BOTH succeed
-        panic!("expected to fail");
-    }
+    // NOTE: current behaviour is that proof creation succeeds and verification of the created proof yields:
+    // Err(ProofSystemError::BBSPlusProofContributionFailed(1,BBSPlusError::SecondSchnorrVerificationFailed))
+    // but this test requires only that proof creation and verification do not BOTH succeed
+    assert!(blind_bbs_plus_sig_and_message_equality_aux(false).is_err());
 }
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
