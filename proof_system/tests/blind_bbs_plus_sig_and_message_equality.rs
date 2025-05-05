@@ -35,7 +35,6 @@ fn blind_bbs_plus_sig_and_message_equality() {
     // This test was motivated by the fact that the existing blinding tests
     //   proof_system/tests/bbs_plus_and_accumulators.rs
     //     requesting_partially_blind_bbs_plus_sig
-    //     requesting_partially_blind_bbs_plus_sig
     //     requesting_partially_blind_bbs_sig
     // do not use the unblinded/blind signature in proofs.  Hence, this test.
 
