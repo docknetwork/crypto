@@ -1,4 +1,4 @@
-use ark_ff::PrimeField;
+use ark_ff::Field;
 use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut, rand::Rng, vec::Vec};
 
 #[cfg(feature = "parallel")]
@@ -18,7 +18,7 @@ macro_rules! cfg_iter_sum {
 }
 
 /// Inner product of 2 vectors `a` and `b`
-pub fn inner_product<F: PrimeField>(a: &[F], b: &[F]) -> F {
+pub fn inner_product<F: Field>(a: &[F], b: &[F]) -> F {
     let size = a.len().min(b.len());
     let product = cfg_into_iter!(0..size).map(|i| a[i] * b[i]);
     let zero = F::zero;
@@ -26,7 +26,7 @@ pub fn inner_product<F: PrimeField>(a: &[F], b: &[F]) -> F {
 }
 
 /// Hadamard product of two vectors of scalars
-pub fn hadamard_product<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
+pub fn hadamard_product<F: Field>(a: &[F], b: &[F]) -> Vec<F> {
     cfg_iter!(a)
         .zip(cfg_iter!(b))
         .map(|(a_i, b_i)| *a_i * b_i)
@@ -34,7 +34,7 @@ pub fn hadamard_product<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
 }
 
 /// Add two vectors of scalars
-pub fn add_vecs<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
+pub fn add_vecs<F: Field>(a: &[F], b: &[F]) -> Vec<F> {
     let (a_len, b_len) = (a.len(), b.len());
     let res_len = ark_std::cmp::max(a_len, b_len);
     cfg_into_iter!(0..res_len)
@@ -47,7 +47,7 @@ pub fn add_vecs<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
 }
 
 /// Weighted inner product of 2 vectors `a` and `b` with weight `w`. Calculated as `\sum_{i=0}(a_i * b_i * w^{i+1})`
-pub fn weighted_inner_product<F: PrimeField>(a: &[F], b: &[F], w: &F) -> F {
+pub fn weighted_inner_product<F: Field>(a: &[F], b: &[F], w: &F) -> F {
     let size = a.len().min(b.len());
 
     let mut weights = powers(w, size as u32 + 1);
@@ -60,11 +60,11 @@ pub fn weighted_inner_product<F: PrimeField>(a: &[F], b: &[F], w: &F) -> F {
 }
 
 /// Weighted inner product of the vector `n` with itself. Calculated as `\sum_{i=0}(n_i * n_i * w^{i+1})`
-pub fn weighted_norm<F: PrimeField>(n: &[F], w: &F) -> F {
+pub fn weighted_norm<F: Field>(n: &[F], w: &F) -> F {
     weighted_inner_product(n, n, w)
 }
 
-pub fn non_zero_random<F: PrimeField, R: Rng>(rng: &mut R) -> F {
+pub fn non_zero_random<F: Field, R: Rng>(rng: &mut R) -> F {
     let mut r = F::rand(rng);
     while r.is_zero() {
         r = F::rand(rng);
@@ -73,7 +73,7 @@ pub fn non_zero_random<F: PrimeField, R: Rng>(rng: &mut R) -> F {
 }
 
 /// Powers of a finite field as `[1, s, s^2, .. s^{num-1}]`
-pub fn powers<F: PrimeField>(s: &F, num: u32) -> Vec<F> {
+pub fn powers<F: Field>(s: &F, num: u32) -> Vec<F> {
     let mut powers = Vec::with_capacity(num as usize);
     if num > 0 {
         powers.push(F::one());
@@ -85,7 +85,7 @@ pub fn powers<F: PrimeField>(s: &F, num: u32) -> Vec<F> {
 }
 
 /// Powers of a finite field as `[start, start*exp, start * exp^2, .. start * exp^{num-1}]`
-pub fn powers_starting_from<F: PrimeField>(start: F, exp: &F, num: u32) -> Vec<F> {
+pub fn powers_starting_from<F: Field>(start: F, exp: &F, num: u32) -> Vec<F> {
     let mut powers = Vec::with_capacity(num as usize);
     if num > 0 {
         powers.push(start);
@@ -99,17 +99,17 @@ pub fn powers_starting_from<F: PrimeField>(start: F, exp: &F, num: u32) -> Vec<F
 /// SUM of a geometric progression
 /// SUM a^i = (1 - a^n) / (1 - a) = -(1-a^n)/-(1-a)
 /// = (a^n - 1) / (a - 1)
-pub fn sum_of_powers<F: PrimeField>(r: &F, num: u32) -> F {
+pub fn sum_of_powers<F: Field>(r: &F, num: u32) -> F {
     (r.pow([num as u64]) - &F::one()) * (*r - F::one()).inverse().unwrap()
 }
 
 /// Return a scaled vector by multiplying each of its elements by `factor`. Returns `[arr_0 * factor, arr_1 * factor, arr_2 * factor, ...]`
-pub fn scale<F: PrimeField>(arr: &[F], factor: &F) -> Vec<F> {
+pub fn scale<F: Field>(arr: &[F], factor: &F) -> Vec<F> {
     cfg_iter!(arr).map(|elem| *elem * factor).collect()
 }
 
 /// Mutate a vector `arr` by multiplying each of its elements by `factor`.
-pub fn scale_mut<F: PrimeField>(arr: &mut [F], factor: &F) {
+pub fn scale_mut<F: Field>(arr: &mut [F], factor: &F) {
     cfg_iter_mut!(arr).for_each(|elem| *elem = *elem * factor);
 }
 

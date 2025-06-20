@@ -1,17 +1,12 @@
+use crate::{pairs, pairs::Pairs};
 use alloc::vec::Vec;
-
-use crate::pairs;
-
-use crate::pairs::Pairs;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::*;
-
+use core::iter::Zip;
 use serde::{de::Error, Deserialize, Deserializer, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 use zeroize::Zeroize;
-
-use core::iter::Zip;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

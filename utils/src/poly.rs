@@ -1,4 +1,4 @@
-use ark_ff::{PrimeField, Zero};
+use ark_ff::{Field, Zero};
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
 use ark_std::{cfg_into_iter, vec::Vec};
 
@@ -7,7 +7,7 @@ use rayon::prelude::*;
 
 /// Naive multiplication (n^2) of 2 polynomials defined over prime fields
 /// Note: Using multiply operator from ark-poly is orders of magnitude slower than naive multiplication
-pub fn multiply_poly<F: PrimeField>(
+pub fn multiply_poly<F: Field>(
     left: &DensePolynomial<F>,
     right: &DensePolynomial<F>,
 ) -> DensePolynomial<F> {
@@ -23,7 +23,7 @@ pub fn multiply_poly<F: PrimeField>(
 }
 
 /// Multiply given polynomials together
-pub fn multiply_many_polys<F: PrimeField>(polys: Vec<DensePolynomial<F>>) -> DensePolynomial<F> {
+pub fn multiply_many_polys<F: Field>(polys: Vec<DensePolynomial<F>>) -> DensePolynomial<F> {
     #[cfg(not(feature = "parallel"))]
     let r = polys
         .into_iter()
@@ -43,7 +43,7 @@ pub fn multiply_many_polys<F: PrimeField>(polys: Vec<DensePolynomial<F>>) -> Den
 }
 
 /// Given a vector of polynomials `polys` and scalars `coeffs`, return their inner product `polys[0] * coeffs[0] + polys[1] * coeffs[1] + ...`
-pub fn inner_product_poly<F: PrimeField>(
+pub fn inner_product_poly<F: Field>(
     polys: &[DensePolynomial<F>],
     coeffs: Vec<F>,
 ) -> DensePolynomial<F> {
@@ -56,7 +56,7 @@ pub fn inner_product_poly<F: PrimeField>(
 }
 
 /// Create a polynomial from given `roots` as `(x-roots[0])*(x-roots[1])*(x-roots[2])*..`
-pub fn poly_from_roots<F: PrimeField>(roots: &[F]) -> DensePolynomial<F> {
+pub fn poly_from_roots<F: Field>(roots: &[F]) -> DensePolynomial<F> {
     if roots.is_empty() {
         return DensePolynomial::zero();
     }

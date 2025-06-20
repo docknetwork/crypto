@@ -1,5 +1,5 @@
 use crate::{extend_some::ExtendSome, misc::rand};
-use ark_ff::PrimeField;
+use ark_ff::Field;
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
     rand::RngCore,
@@ -15,7 +15,7 @@ pub trait MultiMessageSignatureParams {
 
 /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
 /// By default, a message is blinded with random blinding.
-pub enum MessageOrBlinding<'a, F: PrimeField> {
+pub enum MessageOrBlinding<'a, F: Field> {
     /// Message will be blinded using random blinding.
     BlindMessageRandomly(&'a F),
     /// Message will be revealed, and thus won't be included in the proof of knowledge.
@@ -24,7 +24,7 @@ pub enum MessageOrBlinding<'a, F: PrimeField> {
     BlindMessageWithConcreteBlinding { message: &'a F, blinding: F },
 }
 
-impl<'a, F: PrimeField> MessageOrBlinding<'a, F> {
+impl<'a, F: Field> MessageOrBlinding<'a, F> {
     /// Blinds given `message` using supplied `blinding`.
     pub fn blind_message_with(message: &'a F, blinding: F) -> Self {
         Self::BlindMessageWithConcreteBlinding { message, blinding }
@@ -35,7 +35,7 @@ impl<'a, F: PrimeField> MessageOrBlinding<'a, F> {
 pub fn split_messages_and_blindings<
     'a,
     R: RngCore,
-    F: PrimeField,
+    F: Field,
     MBI: IntoIterator<Item = MessageOrBlinding<'a, F>>,
 >(
     rng: &mut R,
