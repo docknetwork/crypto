@@ -16,9 +16,8 @@ use ark_std::{
     rand::RngCore,
     vec::Vec,
 };
-use dock_crypto_utils::misc::n_rand;
+use dock_crypto_utils::{misc::n_rand, msm::multiply_field_elems_with_same_group_elem};
 
-use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 

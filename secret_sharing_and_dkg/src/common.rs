@@ -307,7 +307,7 @@ impl<G: AffineRepr, S: SecretShare<G>> SharesAccumulator<G, S> {
     }
 
     /// Compute the final share after receiving shares from all other participants.
-    pub fn gen_final_share<'a>(
+    pub fn gen_final_share(
         participant_id: ParticipantId,
         threshold: ShareId,
         shares: BTreeMap<ParticipantId, S>,
@@ -320,7 +320,7 @@ impl<G: AffineRepr, S: SecretShare<G>> SharesAccumulator<G, S> {
             return Err(SSError::BelowThreshold(threshold, len));
         }
 
-        let final_share = S::compute_final(shares.values().cloned().into_iter().collect());
+        let final_share = S::compute_final(shares.values().cloned().collect());
         let mut final_comm_coeffs = vec![G::Group::zero(); threshold as usize];
 
         for comm in coeff_comms.values() {
@@ -374,7 +374,7 @@ impl<G: AffineRepr, S: SecretShare<G>> SharesAccumulator<G, S> {
 impl<G: AffineRepr> SharesAccumulator<G, VerifiableShare<G::ScalarField>> {
     /// Called by a participant when it has received shares from all participants. Computes the final
     /// share of the distributed secret
-    pub fn finalize<'a>(
+    pub fn finalize(
         mut self,
         ck: &PedersenCommitmentKey<G>,
     ) -> Result<VerifiableShare<G::ScalarField>, SSError> {
@@ -387,7 +387,7 @@ impl<G: AffineRepr> SharesAccumulator<G, VerifiableShare<G::ScalarField>> {
 impl<G: AffineRepr> SharesAccumulator<G, Share<G::ScalarField>> {
     /// Called by a participant when it has received shares from all participants. Computes the final
     /// share of the distributed secret, own public key and the threshold public key
-    pub fn finalize<'a>(mut self, ck: &G) -> Result<(Share<G::ScalarField>, G, G), SSError> {
+    pub fn finalize(mut self, ck: &G) -> Result<(Share<G::ScalarField>, G, G), SSError> {
         let shares = core::mem::take(&mut self.shares);
         let comms = core::mem::take(&mut self.coeff_comms);
         Self::gen_final_share_and_public_key(self.participant_id, self.threshold, shares, comms, ck)
@@ -395,7 +395,7 @@ impl<G: AffineRepr> SharesAccumulator<G, Share<G::ScalarField>> {
 
     /// Compute the final share after receiving shares from all other participants. Also returns
     /// own public key and the threshold public key
-    pub fn gen_final_share_and_public_key<'a>(
+    pub fn gen_final_share_and_public_key(
         participant_id: ParticipantId,
         threshold: ShareId,
         shares: BTreeMap<ParticipantId, Share<G::ScalarField>>,

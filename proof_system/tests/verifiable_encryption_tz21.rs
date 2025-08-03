@@ -55,7 +55,7 @@ macro_rules! gen_tests {
             ));
             prover_statements.add(VerifiableEncryptionTZ21::$stmt_func_name(
                 ElgamalEncryptionParams {
-                    gen: enc_gen,
+                    g: enc_gen,
                     public_key: enc_key.0,
                 },
                 comm_key_for_ve.clone(),
@@ -114,7 +114,7 @@ macro_rules! gen_tests {
             ));
             verifier_statements.add(VerifiableEncryptionTZ21::$stmt_func_name(
                 ElgamalEncryptionParams {
-                    gen: enc_gen,
+                    g: enc_gen,
                     public_key: enc_key.0,
                 },
                 comm_key_for_ve.clone(),
@@ -273,7 +273,7 @@ macro_rules! gen_tests {
             ));
             prover_statements.add(VerifiableEncryptionTZ21::$stmt_func_name(
                 ElgamalEncryptionParams {
-                    gen: enc_gen,
+                    g: enc_gen,
                     public_key: enc_key.0,
                 },
                 comm_key_for_ve.clone(),
@@ -330,7 +330,7 @@ macro_rules! gen_tests {
             ));
             verifier_statements.add(VerifiableEncryptionTZ21::$stmt_func_name(
                 ElgamalEncryptionParams {
-                    gen: enc_gen,
+                    g: enc_gen,
                     public_key: enc_key.0,
                 },
                 comm_key_for_ve.clone(),

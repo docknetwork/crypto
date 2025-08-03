@@ -189,7 +189,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 
     fn get_ote_correlation(&self) -> Vec<(F, F)> {
         cfg_into_iter!(0..self.ote_params.num_extensions())
-            .map(|_| (self.alpha.clone(), self.alpha_hat.clone()))
+            .map(|_| (self.alpha, self.alpha_hat))
             .collect()
     }
 }

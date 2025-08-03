@@ -133,7 +133,7 @@ macro_rules! impl_common_funcs {
                 witnesses,
                 comm_key,
                 &self.enc_params.public_key,
-                &self.enc_params.gen,
+                &self.enc_params.g,
                 transcript,
             )?;
             // Don't generate response for all indices except for the last one since their response will come from proofs of one of the signatures.
@@ -163,7 +163,7 @@ macro_rules! impl_common_funcs {
                 &proof.commitment,
                 comm_key,
                 &self.enc_params.public_key,
-                &self.enc_params.gen,
+                &self.enc_params.g,
                 transcript,
             )
             .map_err(|e| ProofSystemError::VerifiableEncryptionFailed(self.id as u32, e))?;

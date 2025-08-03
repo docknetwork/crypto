@@ -1,6 +1,6 @@
 [package]
 name = "verifiable_encryption"
-version = "0.2.0"
+version = "0.3.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -15,12 +15,10 @@ ark-ec.workspace = true
 ark-std.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
-serde.workspace = true
-serde_with.workspace = true
 zeroize.workspace = true
 itertools.workspace = true
-dock_crypto_utils = { version = "0.22.0", default-features = false, path = "../utils" }
-secret_sharing_and_dkg = { version = "0.15.0", default-features = false, path = "../secret_sharing_and_dkg" }
+dock_crypto_utils = { version = "0.23.0", default-features = false, path = "../utils" }
+secret_sharing_and_dkg = { version = "0.16.0", default-features = false, path = "../secret_sharing_and_dkg" }
 
 [dev-dependencies]
 blake2.workspace = true
@@ -30,6 +28,6 @@ ark-secp256r1.workspace = true
 
 [features]
 default = [ "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "serde/std", "secret_sharing_and_dkg/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "secret_sharing_and_dkg/std"]
 print-trace = [ "ark-std/print-trace", "dock_crypto_utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "secret_sharing_and_dkg/parallel" ]

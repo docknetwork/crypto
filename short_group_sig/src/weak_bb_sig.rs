@@ -117,9 +117,9 @@ impl<E: Pairing> SignatureG1<E> {
     pub fn new(
         message: &E::ScalarField,
         sk: impl AsRef<E::ScalarField>,
-        gen: impl AsRef<E::G1Affine>,
+        g: impl AsRef<E::G1Affine>,
     ) -> Self {
-        Self(gen_sig::<E::G1Affine>(message, sk, gen.as_ref()))
+        Self(gen_sig::<E::G1Affine>(message, sk, g.as_ref()))
     }
 
     pub fn verify(
@@ -198,9 +198,9 @@ impl<E: Pairing> AsRef<E::G1Affine> for SignatureG1<E> {
 pub fn gen_sig<G: AffineRepr>(
     message: &G::ScalarField,
     sk: impl AsRef<G::ScalarField>,
-    gen: &G,
+    g: &G,
 ) -> G {
-    (*gen * ((*sk.as_ref() + message).inverse().unwrap())).into()
+    (*g * ((*sk.as_ref() + message).inverse().unwrap())).into()
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 [package]
 name = "equality_across_groups"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -16,10 +16,10 @@ ark-secp256r1.workspace = true
 zeroize.workspace = true
 rayon = {workspace = true, optional = true}
 crypto-bigint = { version = "0.6.0-rc.6", default-features = false, features = ["zeroize", "alloc", "rand_core"] }
-bulletproofs_plus_plus = { version = "0.8.0", default-features = false, path = "../bulletproofs_plus_plus" }
-dock_crypto_utils = { version = "0.22.0", default-features = false, path = "../utils" }
-schnorr_pok = { version = "0.22.0", default-features = false, path = "../schnorr_pok" }
-kvac = { version = "0.7.0", default-features = false, path = "../kvac" }
+bulletproofs_plus_plus = { version = "0.9.0", default-features = false, path = "../bulletproofs_plus_plus" }
+dock_crypto_utils = { version = "0.23.0", default-features = false, path = "../utils" }
+schnorr_pok = { version = "0.23.0", default-features = false, path = "../schnorr_pok" }
+kvac = { version = "0.8.0", default-features = false, path = "../kvac" }
 
 [dev-dependencies]
 blake2.workspace = true

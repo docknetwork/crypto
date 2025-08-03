@@ -167,7 +167,6 @@ impl<G: AffineRepr> MAC<G> {
             s: self.s + blinding,
             e: self.e,
         }
-        .into()
     }
 }
 

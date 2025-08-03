@@ -206,7 +206,7 @@ impl OTExtensionReceiverSetup {
                         F::zero()
                     };
                     let tau_i = (tau_i.0 * m, tau_i.1 * m);
-                    let mut t_B_i = hash_to_field(i as u32, &t, &hasher);
+                    let mut t_B_i = hash_to_field(i as u32, t, &hasher);
                     t_B_i = (tau_i.0 - t_B_i.0, tau_i.1 - t_B_i.1);
                     t_B_i
                 })
@@ -253,7 +253,7 @@ impl OTExtensionSenderSetup {
             ote_config.num_base_ot as u32,
             l_prime,
             &U,
-            row_byte_size as u32 * l_prime as u32,
+            row_byte_size as u32 * l_prime,
         );
         let setup = alsz_ote::OTExtensionSenderSetup::new(
             new_ote_config,

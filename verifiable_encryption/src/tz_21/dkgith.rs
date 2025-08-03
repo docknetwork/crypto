@@ -88,7 +88,7 @@ impl<
 
     /// Create verifiable encryption of vector `witnesses` that are also committed in a Pedersen commitment
     /// created with the commitment key `comm_key`. The encryption key is `enc_key` and group generator
-    /// used in that key is `gen`. Its assumed that the public values like commitment key, commitment, encryption key,
+    /// used in that key is `enc_gen`. Its assumed that the public values like commitment key, commitment, encryption key,
     /// encryption key generator are all included in the transcript.
     pub fn new<R: RngCore, D: FullDigest + Digest, X: Default + Update + ExtendableOutput>(
         rng: &mut R,
@@ -238,7 +238,7 @@ impl<
 
     /// Verify the proof of verifiable encryption of values that are also committed in a Pedersen commitment
     /// `commitment` created with the commitment key `comm_key`. The encryption key is `enc_key` and group
-    /// generator used in that key is `gen`. Its assumed that the public values like commitment key, commitment,
+    /// generator used in that key is `enc_gen`. Its assumed that the public values like commitment key, commitment,
     /// encryption key, encryption key generator are all included in the transcript.
     pub fn verify<D: FullDigest + Digest, X: Default + Update + ExtendableOutput>(
         &self,
@@ -539,8 +539,8 @@ mod tests {
         fn check<G: AffineRepr>(num_witnesses: usize) {
             let mut rng = StdRng::seed_from_u64(0u64);
 
-            let gen = G::rand(&mut rng);
-            let (sk, pk) = keygen::<_, G>(&mut rng, &gen);
+            let g = G::rand(&mut rng);
+            let (sk, pk) = keygen::<_, G>(&mut rng, &g);
 
             let witnesses = (0..num_witnesses)
                 .map(|_| G::ScalarField::rand(&mut rng))
@@ -571,7 +571,7 @@ mod tests {
                     let mut prover_transcript = new_merlin_transcript(b"test");
                     prover_transcript.append(b"comm_key", &comm_key);
                     prover_transcript.append(b"enc_key", &pk);
-                    prover_transcript.append(b"enc_gen", &gen);
+                    prover_transcript.append(b"enc_gen", &g);
                     prover_transcript.append(b"commitment", &commitment);
                     let proof = DkgithProof::<
                         _,
@@ -585,7 +585,7 @@ mod tests {
                         witnesses.clone(),
                         &comm_key,
                         &pk.0,
-                        &gen,
+                        &g,
                         &mut prover_transcript
                     ).unwrap();
                     println!("Proof generated in: {:?}", start.elapsed());
@@ -600,10 +600,10 @@ mod tests {
                     let mut verifier_transcript = new_merlin_transcript(b"test");
                     verifier_transcript.append(b"comm_key", &comm_key);
                     verifier_transcript.append(b"enc_key", &pk);
-                    verifier_transcript.append(b"enc_gen", &gen);
+                    verifier_transcript.append(b"enc_gen", &g);
                     verifier_transcript.append(b"commitment", &commitment);
                     proof
-                        .verify::<Blake2b512, Shake256>(&commitment, &comm_key, &pk.0, &gen, &mut verifier_transcript)
+                        .verify::<Blake2b512, Shake256>(&commitment, &comm_key, &pk.0, &g, &mut verifier_transcript)
                         .unwrap();
                     println!("Proof verified in: {:?}", start.elapsed());
                     println!("Proof size: {:?}", proof.compressed_size());
@@ -612,19 +612,19 @@ mod tests {
                     let mut verifier_transcript = new_merlin_transcript(b"test");
                     verifier_transcript.append(b"comm_key", &comm_key);
                     verifier_transcript.append(b"enc_key", &pk);
-                    verifier_transcript.append(b"enc_gen", &gen);
+                    verifier_transcript.append(b"enc_gen", &g);
                     verifier_transcript.append(b"commitment", &invalid_comm);
                     assert!(proof
-                        .verify::<Blake2b512, Shake256>(&invalid_comm, &comm_key, &pk.0, &gen, &mut verifier_transcript).is_err());
+                        .verify::<Blake2b512, Shake256>(&invalid_comm, &comm_key, &pk.0, &g, &mut verifier_transcript).is_err());
 
                     let invalid_pk = G::rand(&mut rng);
                     let mut verifier_transcript = new_merlin_transcript(b"test");
                     verifier_transcript.append(b"comm_key", &comm_key);
                     verifier_transcript.append(b"enc_key", &invalid_pk);
-                    verifier_transcript.append(b"enc_gen", &gen);
+                    verifier_transcript.append(b"enc_gen", &g);
                     verifier_transcript.append(b"commitment", &commitment);
                     assert!(proof
-                        .verify::<Blake2b512, Shake256>(&commitment, &comm_key, &invalid_pk, &gen, &mut verifier_transcript).is_err());
+                        .verify::<Blake2b512, Shake256>(&commitment, &comm_key, &invalid_pk, &g, &mut verifier_transcript).is_err());
 
                     let start = Instant::now();
                     let ct = proof.compress::<$subset_size, Blake2b512, Shake256>().unwrap();

@@ -38,7 +38,7 @@ pub trait BatchCiphertext<G: AffineRepr>:
         msgs: &[G::ScalarField],
         randomness: &Self::Randomness,
         public_key: &WindowTable<G::Group>,
-        gen: &WindowTable<G::Group>,
+        g: &WindowTable<G::Group>,
     ) -> Self;
 
     fn batch_size(&self) -> usize;
@@ -84,7 +84,7 @@ impl<G: AffineRepr> BatchCiphertext<G> for SimpleBatchElgamalCiphertext<G> {
         msgs: &[G::ScalarField],
         randomness: &Vec<G::ScalarField>,
         public_key: &WindowTable<G::Group>,
-        gen: &WindowTable<G::Group>,
+        g: &WindowTable<G::Group>,
     ) -> Self {
         assert_eq!(msgs.len(), randomness.len());
         Self(
@@ -92,7 +92,7 @@ impl<G: AffineRepr> BatchCiphertext<G> for SimpleBatchElgamalCiphertext<G> {
                 .zip(cfg_into_iter!(randomness))
                 .map(|(m, r)| {
                     HashedElgamalCiphertext::<G>::new_given_randomness_and_window_tables::<D>(
-                        m, r, public_key, gen,
+                        m, r, public_key, g,
                     )
                 })
                 .collect(),
@@ -177,10 +177,10 @@ impl<G: AffineRepr> BatchCiphertext<G> for BatchedHashedElgamalCiphertext<G> {
         msgs: &[G::ScalarField],
         randomness: &G::ScalarField,
         public_key: &WindowTable<G::Group>,
-        gen: &WindowTable<G::Group>,
+        g: &WindowTable<G::Group>,
     ) -> Self {
         BatchedHashedElgamalCiphertext::new_given_randomness_and_window_tables::<D>(
-            msgs, randomness, public_key, gen,
+            msgs, randomness, public_key, g,
         )
     }
 

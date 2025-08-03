@@ -177,7 +177,7 @@ impl<G: AffineRepr> ROTSenderSetup<G> {
     ) -> Result<(Self, SenderPubKey<G>, PokDiscreteLog<G>), OTError> {
         let (setup, S) = Self::new(rng, OTConfig::new_2_message(num_ot)?, B);
         let blinding = G::ScalarField::rand(rng);
-        let schnorr_protocol = PokDiscreteLogProtocol::init(setup.y.clone(), blinding, B);
+        let schnorr_protocol = PokDiscreteLogProtocol::init(setup.y, blinding, B);
         let mut challenge_bytes = vec![];
         schnorr_protocol
             .challenge_contribution(B, &S.0, &mut challenge_bytes)

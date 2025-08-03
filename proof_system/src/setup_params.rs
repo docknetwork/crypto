@@ -195,7 +195,7 @@ macro_rules! extract_param {
 pub struct ElgamalEncryptionParams<G: AffineRepr> {
     /// Generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
     #[serde_as(as = "ArkObjectBytes")]
-    pub gen: G,
+    pub g: G,
     #[serde_as(as = "ArkObjectBytes")]
     pub public_key: G,
 }

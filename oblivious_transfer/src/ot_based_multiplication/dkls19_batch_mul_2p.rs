@@ -241,7 +241,7 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
         cfg_into_iter!(0..self.batch_size as usize)
             .flat_map(|i| {
                 cfg_into_iter!(0..overhead)
-                    .map(|_| (self.a_tilde[i].clone(), self.a_hat[i].clone()))
+                    .map(|_| (self.a_tilde[i], self.a_hat[i]))
                     .collect::<Vec<_>>()
             })
             .collect()

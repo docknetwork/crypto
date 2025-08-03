@@ -162,15 +162,11 @@ impl<G: AffineRepr> PoKOfMACProtocol<G> {
         let msg_comm_iter = indexed_blindings
             .into_iter()
             .map(|(idx, blinding)| (params.g_vec[idx], blinding, messages[idx]));
-        let (bases, randomness, sc_wits_msgs): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(
-            msg_comm_iter.chain(
-                [
-                    (d_affine, G::ScalarField::rand(rng), -r3),
-                    (params.g, rand(rng), s_prime),
-                ]
-                .into_iter(),
-            ),
-        );
+        let (bases, randomness, sc_wits_msgs): (Vec<_>, Vec<_>, Vec<_>) =
+            multiunzip(msg_comm_iter.chain([
+                (d_affine, G::ScalarField::rand(rng), -r3),
+                (params.g, rand(rng), s_prime),
+            ]));
         let sc_comm_msgs = SchnorrCommitment::new(&bases, randomness);
         Ok(Self {
             B_0: B_0_affine,

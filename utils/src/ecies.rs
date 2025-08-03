@@ -43,11 +43,11 @@ impl<G: AffineRepr, const KEY_BYTE_SIZE: usize, const NONCE_BYTE_SIZE: usize>
         rng: &mut R,
         msg: &[u8],
         other_pk: &G,
-        gen: &G,
+        g: &G,
         salt: Option<&[u8]>,
         info: Option<&[u8]>,
     ) -> Self {
-        let (sk, pk) = keygen::<R, G>(rng, gen);
+        let (sk, pk) = keygen::<R, G>(rng, g);
         let shared_secret = *other_pk * sk.0;
         let mut shared_secret_bytes = vec![];
         shared_secret
@@ -115,13 +115,13 @@ pub mod tests {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         fn check<G: AffineRepr>(rng: &mut StdRng) {
-            let gen = G::Group::rand(rng).into_affine();
-            let (sk, pk) = keygen(rng, &gen);
+            let g = G::Group::rand(rng).into_affine();
+            let (sk, pk) = keygen(rng, &g);
             let mut msg = vec![];
             let r = G::ScalarField::rand(rng);
             r.serialize_compressed(&mut msg).unwrap();
             let enc = Encryption::<G, 32, 24>::encrypt::<_, XChaCha20Poly1305>(
-                rng, &msg, &pk.0, &gen, None, None,
+                rng, &msg, &pk.0, &g, None, None,
             );
             let decrypted = enc.decrypt::<XChaCha20Poly1305>(&sk.0, None, None);
             assert_eq!(msg, decrypted);

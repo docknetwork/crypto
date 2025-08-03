@@ -233,7 +233,7 @@ impl<P: SWPoint, C: SWPoint> PointAdditionProof<P, C> {
         if !self.tau_sqr.verify(
             self.comm_tau,
             (comm_a_plus_t.x + comm_b.x).into_affine(),
-            &challenge,
+            challenge,
             comm_key,
         ) {
             return Err(Error::TauSquareProofFailed);
@@ -243,7 +243,7 @@ impl<P: SWPoint, C: SWPoint> PointAdditionProof<P, C> {
             self.comm_tau,
             (comm_a.x + comm_t.x.into_group().neg()).into_affine(),
             comm_a_plus_t.y,
-            &challenge,
+            challenge,
             comm_key,
         ) {
             return Err(Error::TxProofFailed);
@@ -252,13 +252,13 @@ impl<P: SWPoint, C: SWPoint> PointAdditionProof<P, C> {
         self.bx_minus_ax.verify_for_inequality_with_public_value(
             &comm_b_minus_a.x,
             &C::ScalarField::zero(),
-            &challenge,
+            challenge,
             comm_key,
         )?;
 
         if !self
             .ay
-            .verify(&comm_a.y, &comm_key.g, &comm_key.h, &challenge)
+            .verify(&comm_a.y, &comm_key.g, &comm_key.h, challenge)
         {
             return Err(Error::TyProofFailed);
         }
@@ -297,7 +297,7 @@ impl<P: SWPoint, C: SWPoint> PointAdditionProof<P, C> {
             self.comm_tau,
             (comm_a.x + comm_t.x.into_group().neg()).into_affine(),
             comm_a_plus_t.y,
-            &challenge,
+            challenge,
             comm_key,
             rmc,
         );
@@ -305,13 +305,12 @@ impl<P: SWPoint, C: SWPoint> PointAdditionProof<P, C> {
             .verify_for_inequality_with_public_value_using_randomized_mult_checker(
                 comm_b_minus_a.x,
                 &C::ScalarField::zero(),
-                &challenge,
+                challenge,
                 comm_key,
                 rmc,
             )?;
-        self.ay.verify_using_randomized_mult_checker(
-            comm_a.y, comm_key.g, comm_key.h, &challenge, rmc,
-        );
+        self.ay
+            .verify_using_randomized_mult_checker(comm_a.y, comm_key.g, comm_key.h, challenge, rmc);
         Ok(())
     }
 

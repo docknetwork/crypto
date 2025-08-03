@@ -128,7 +128,7 @@ impl<G: AffineRepr> ComputationShare<G> {
             .iter()
             .map(|s| s.share)
             .collect::<Vec<_>>();
-        Ok(G::Group::msm_unchecked(&shares, &basis).into_affine())
+        Ok(G::Group::msm_unchecked(shares, &basis).into_affine())
     }
 }
 
@@ -150,7 +150,7 @@ impl<G: AffineRepr> ComputationShareProof<G> {
         base: &G,
     ) -> Result<(), SSError> {
         let share_comm_ck = share_comm_ck.into();
-        let challenge = Self::pre_verify::<D>(&self, share, share_commitment, share_comm_ck, base)?;
+        let challenge = Self::pre_verify::<D>(self, share, share_commitment, share_comm_ck, base)?;
         if !self.sc_share.verify(&share.share, base, &challenge) {
             return Err(SSError::InvalidComputationShareProof(self.id));
         }

@@ -2,14 +2,13 @@
 //! which does not use random oracle.
 //! Protocol is described in section 4.1. Allows to run `m` instances of 1-of-n chosen message OTs.
 
+use crate::{configs::OTConfig, error::OTError, util::multiples_of_g};
 use ark_ec::{AffineRepr, CurveGroup};
-
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, ops::Mul, rand::RngCore, vec::Vec, UniformRand};
+use dock_crypto_utils::msm::WindowTable;
 use itertools::Itertools;
 
-use crate::{configs::OTConfig, error::OTError, util::multiples_of_g};
-use dock_crypto_utils::msm::WindowTable;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 

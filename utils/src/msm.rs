@@ -1,21 +1,14 @@
-use crate::serde_utils::*;
 use ark_ec::{scalar_mul::fixed_base::FixedBase, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, ops::Mul, vec::Vec};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 
 /// Use when same elliptic curve point is to be multiplied by several scalars.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct WindowTable<G: CurveGroup> {
     scalar_size: usize,
     window_size: usize,
-    outerc: usize,
-    #[serde_as(as = "Vec<Vec<ArkObjectBytes>>")]
+    num_windows: usize,
     table: Vec<Vec<G::Affine>>,
 }
 
@@ -25,19 +18,20 @@ impl<G: CurveGroup> WindowTable<G> {
     pub fn new(num_multiplications: usize, group_elem: G) -> Self {
         let scalar_size = G::ScalarField::MODULUS_BIT_SIZE as usize;
         let window_size = FixedBase::get_mul_window_size(num_multiplications);
-        let outerc = (scalar_size + window_size - 1) / window_size;
+        // ceil(scalar_size/window_size)
+        let num_windows = (scalar_size + window_size - 1) / window_size;
         let table = FixedBase::get_window_table(scalar_size, window_size, group_elem);
         Self {
             scalar_size,
             window_size,
-            outerc,
+            num_windows,
             table,
         }
     }
 
     /// Multiply with a single scalar
     pub fn multiply(&self, element: &G::ScalarField) -> G {
-        FixedBase::windowed_mul(self.outerc, self.window_size, &self.table, element)
+        FixedBase::windowed_mul(self.num_windows, self.window_size, &self.table, element)
     }
 
     /// Multiply with a many scalars
@@ -54,7 +48,7 @@ impl<G: CurveGroup> Mul<&G::ScalarField> for &WindowTable<G> {
     type Output = G;
 
     fn mul(self, rhs: &G::ScalarField) -> Self::Output {
-        FixedBase::windowed_mul(self.outerc, self.window_size, &self.table, rhs)
+        FixedBase::windowed_mul(self.num_windows, self.window_size, &self.table, rhs)
     }
 }
 
@@ -260,7 +254,7 @@ pub mod tests {
         println!("d11={:?}", d11);
         println!("d12={:?}", d12);
 
-        // Pre-Prepared vs not prepared for pairing
+        // Prepared vs not prepared for pairing
         let mut d13 = Duration::default();
         let mut d14 = Duration::default();
 
@@ -291,10 +285,7 @@ pub mod tests {
         let count = 10;
 
         let start = Instant::now();
-        let scalar_size = Fr::MODULUS_BIT_SIZE as usize;
-        let window_size = FixedBase::get_mul_window_size(count);
-        let outerc = (scalar_size + window_size - 1) / window_size;
-        let table = FixedBase::get_window_table(scalar_size, window_size, g);
+        let table = WindowTable::new(count, g);
         d15 += start.elapsed();
 
         let g = g.into_affine();
@@ -302,7 +293,7 @@ pub mod tests {
             let e = Fr::rand(&mut rng);
 
             let start = Instant::now();
-            let temp = FixedBase::windowed_mul::<G1>(outerc, window_size, &table, &e);
+            let temp = table.multiply(&e);
             d15 += start.elapsed();
 
             let start = Instant::now();
