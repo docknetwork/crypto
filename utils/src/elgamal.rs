@@ -4,15 +4,16 @@
 //! 2. Hashed Elgamal where the message to be encrypted is a field element.
 //! 3. A more efficient, batched hashed Elgamal where multiple messages, each being a field element, are encrypted for the same public key.  
 
-use crate::{
-    aliases::FullDigest, hashing_utils::hash_to_field, msm::WindowTable,
-    serde_utils::ArkObjectBytes,
-};
+#[cfg(feature = "serde")]
+use crate::serde_utils::ArkObjectBytes;
+use crate::{aliases::FullDigest, hashing_utils::hash_to_field, msm::WindowTable};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -50,24 +51,15 @@ pub fn keygen<R: RngCore, G: AffineRepr>(
 }
 
 /// Elgamal encryption of a group element `m`
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Ciphertext<G: AffineRepr> {
     /// `m + r * pk`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub encrypted: G,
     /// Ephemeral public key `r * g`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub eph_pk: G,
 }
 
@@ -121,25 +113,15 @@ impl<G: AffineRepr> Ciphertext<G> {
 
 /// Hashed Elgamal. Encryption of a field element `m`. The shared secret is hashed to a field element
 /// and the result is added to the message to get the ciphertext.
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct HashedElgamalCiphertext<G: AffineRepr> {
     /// `m + Hash(r * pk)`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub encrypted: G::ScalarField,
     /// Ephemeral public key `r * g`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub eph_pk: G,
 }
 
@@ -210,24 +192,15 @@ impl<G: AffineRepr> HashedElgamalCiphertext<G> {
 /// message to get the ciphertext. This is an efficient mechanism of encrypting multiple messages to the same
 /// public key as there is only 1 shared secret created by a scalar multiplication and one randomness chosen
 /// by the encryptor
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BatchedHashedElgamalCiphertext<G: AffineRepr> {
     /// `m_i + Hash((r * pk) || i)`
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub encrypted: Vec<G::ScalarField>,
     /// Ephemeral public key `r * g`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub eph_pk: G,
 }
 

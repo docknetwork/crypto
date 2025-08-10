@@ -35,6 +35,7 @@ use saver::prelude::{
     PreparedEncryptionKey, PreparedVerifyingKey as SaverPreparedVerifyingKey,
     VerifyingKey as SaverVerifyingKey,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use smc_range_proof::prelude::MemberCommitmentKey;
 use vb_accumulator::{
@@ -61,10 +62,9 @@ pub enum SnarkpackSRS<E: Pairing> {
 /// Describes the relations that need to proven. This is created independently by the prover and verifier and must
 /// be agreed upon and be same before creating a `Proof`. Represented as collection of `Statement`s and `MetaStatement`s.
 /// Also contains other instructions like which proofs to aggregate.
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct ProofSpec<E: Pairing> {
     pub statements: Statements<E>,
     pub meta_statements: MetaStatements,
@@ -81,7 +81,7 @@ pub struct ProofSpec<E: Pairing> {
     /// Same as `aggregate_groth16` above but aggregates LegoGroth16 proof instead of Groth16.
     pub aggregate_legogroth16: Option<Vec<BTreeSet<usize>>>,
     // TODO: Remove this skip
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub snark_aggregation_srs: Option<SnarkpackSRS<E>>,
 }
 

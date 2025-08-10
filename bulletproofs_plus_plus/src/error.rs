@@ -1,7 +1,9 @@
 use ark_std::string::String;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum BulletproofsPlusPlusError {
     UnexpectedLengthOfVectors(String),
     WeightedNormLinearArgumentVerificationFailed,

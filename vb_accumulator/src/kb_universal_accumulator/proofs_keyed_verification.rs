@@ -7,21 +7,18 @@ use crate::{
         KBUniversalAccumulatorMembershipWitness, KBUniversalAccumulatorNonMembershipWitness,
     },
     prelude::SecretKey,
-    proofs_keyed_verification::{KeyedMembershipProof, MembershipProof, MembershipProofProtocol},
-};
-use ark_ec::AffineRepr;
-
-use crate::{
     proofs_keyed_verification::{
+        KeyedMembershipProof, MembershipProof, MembershipProofProtocol,
         ProofOfInvalidityOfKeyedMembershipProof, ProofOfValidityOfKeyedMembershipProof,
     },
     setup_keyed_verification::{PublicKey, SetupParams},
 };
+use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec};
 use digest::Digest;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
@@ -29,33 +26,29 @@ pub struct KBUniversalAccumulatorMembershipProofProtocol<G: AffineRepr>(
     pub MembershipProofProtocol<G>,
 );
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBUniversalAccumulatorMembershipProof<G: AffineRepr>(pub MembershipProof<G>);
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KBUniversalAccumulatorKeyedMembershipProof<G: AffineRepr>(pub KeyedMembershipProof<G>);
 
 /// A proof that the `KBUniversalAccumulatorKeyedMembershipProof` can be verified successfully.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KBUniversalAccumulatorProofOfValidityOfKeyedMembershipProof<G: AffineRepr>(
     pub ProofOfValidityOfKeyedMembershipProof<G>,
 );
 
 /// A proof that the `KBUniversalAccumulatorKeyedMembershipProof` cannot be verified successfully.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KBUniversalAccumulatorProofOfInvalidityOfKeyedMembershipProof<G: AffineRepr>(
     pub ProofOfInvalidityOfKeyedMembershipProof<G>,
 );
@@ -65,35 +58,31 @@ pub struct KBUniversalAccumulatorNonMembershipProofProtocol<G: AffineRepr>(
     pub MembershipProofProtocol<G>,
 );
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBUniversalAccumulatorNonMembershipProof<G: AffineRepr>(pub MembershipProof<G>);
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KBUniversalAccumulatorKeyedNonMembershipProof<G: AffineRepr>(
     pub KeyedMembershipProof<G>,
 );
 
 /// A proof that the `KBUniversalAccumulatorKeyedNonMembershipProof` can be verified successfully.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KBUniversalAccumulatorProofOfValidityOfKeyedNonMembershipProof<G: AffineRepr>(
     pub ProofOfValidityOfKeyedMembershipProof<G>,
 );
 
 /// A proof that the `KBUniversalAccumulatorKeyedNonMembershipProof` cannot be verified successfully.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KBUniversalAccumulatorProofOfInvalidityOfKeyedNonMembershipProof<G: AffineRepr>(
     pub ProofOfInvalidityOfKeyedMembershipProof<G>,
 );

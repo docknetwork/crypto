@@ -1,39 +1,40 @@
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 pub use legogroth16::{circom::R1CS, PreparedVerifyingKey, ProvingKey, VerifyingKey};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct R1CSCircomProver<E: Pairing> {
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub r1cs: Option<R1CS<E>>,
     pub r1cs_ref: Option<usize>,
     pub wasm_bytes: Option<Vec<u8>>,
     pub wasm_bytes_ref: Option<usize>,
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub snark_proving_key: Option<ProvingKey<E>>,
     pub snark_proving_key_ref: Option<usize>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct R1CSCircomVerifier<E: Pairing> {
-    #[serde_as(as = "Option<Vec<ArkObjectBytes>>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<Vec<ArkObjectBytes>>"))]
     pub public_inputs: Option<Vec<E::ScalarField>>,
     pub public_inputs_ref: Option<usize>,
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub snark_verifying_key: Option<VerifyingKey<E>>,
     pub snark_verifying_key_ref: Option<usize>,
 }

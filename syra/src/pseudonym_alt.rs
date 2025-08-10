@@ -51,8 +51,8 @@ use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
 use schnorr_pok::discrete_log_pairing::{
     PoKG1DiscreteLogInPairing, PoKG1DiscreteLogInPairingProtocol,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use short_group_sig::{
     weak_bb_sig::{PublicKeyG2, SignatureG1},
     weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol},
@@ -60,26 +60,17 @@ use short_group_sig::{
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Issuer's public key
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IssuerPublicKey<E: Pairing>(pub PublicKeyG2<E>);
 
 /// User's secret key
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UserSecretKey<E: Pairing>(pub SignatureG1<E>);
 
 impl<E: Pairing> IssuerPublicKey<E> {
@@ -145,7 +136,6 @@ pub struct PseudonymGenProtocol<E: Pairing> {
 }
 
 /// This contains the pseudonym as well its proof of correctness
-#[serde_as]
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PseudonymProof<E: Pairing> {
     pub pok_usk: PoKG1DiscreteLogInPairing<E>,

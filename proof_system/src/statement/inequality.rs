@@ -1,22 +1,25 @@
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
-use dock_crypto_utils::{commitment::PedersenCommitmentKey, serde_utils::*};
+use dock_crypto_utils::commitment::PedersenCommitmentKey;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 use crate::{error::ProofSystemError, setup_params::SetupParams, statement::Statement};
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PublicInequality<G: AffineRepr> {
     /// The public value with which the inequalty is being proven
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub inequal_to: G::ScalarField,
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub comm_key: Option<PedersenCommitmentKey<G>>,
     pub comm_key_ref: Option<usize>,
 }

@@ -57,3 +57,6 @@ pub use pok_generalized_pedersen::{
     compute_random_oracle_challenge, SchnorrChallengeContributor, SchnorrCommitment,
     SchnorrResponse,
 };
+
+#[cfg(feature = "serde")]
+extern crate cfg_eval;

@@ -28,10 +28,11 @@ use ark_std::{
     UniformRand,
 };
 use core::mem;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
 use dock_crypto_utils::{
     misc::rand,
     randomized_pairing_check::RandomizedPairingChecker,
-    serde_utils::*,
     signature::{
         msg_index_map_to_schnorr_response_map, msg_index_to_schnorr_response_index,
         schnorr_responses_to_msg_index_map, split_messages_and_blindings, MessageOrBlinding,
@@ -42,50 +43,43 @@ use itertools::multiunzip;
 use schnorr_pok::{
     error::SchnorrError, partial::PartialSchnorrResponse, SchnorrCommitment, SchnorrResponse,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Protocol to prove knowledge of BBS signature in group G1.
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfSignature23G1Protocol<E: Pairing> {
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_bar: E::G1Affine,
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub B_bar: E::G1Affine,
     /// For proving relation `\sum_{j \notin D}{h_j * m_j} - B_bar * 1/r - A_bar * e * 1/r = g + \sum_{i \in D}{h_i * m_i}`
     pub sc_comm: SchnorrCommitment<E::G1Affine>,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     sc_wits: Vec<E::ScalarField>,
 }
 
 /// Proof of knowledge of BBS signature in G1. It contains the randomized signature, commitment (Schnorr step 1)
 /// and response (Schnorr step 3) to both Schnorr protocols in `T` and `sc_resp`
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfSignature23G1Proof<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_bar: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub B_bar: E::G1Affine,
     /// Proof of relation `\sum_{j \notin D}{h_j * m_j} - B_bar * 1/r - A_bar * e * 1/r = g + \sum_{i \in D}{h_i * m_i}`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub T: E::G1Affine,
     /// The following could be achieved by using Either<SchnorrResponse, PartialSchnorrResponse> but serialization
     /// for Either is not supported out of the box and had to be implemented

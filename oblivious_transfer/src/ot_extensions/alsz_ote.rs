@@ -29,14 +29,15 @@ use ark_std::{
 use digest::{ExtendableOutput, Update};
 use dock_crypto_utils::join;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ConsistencyCheckHashes(pub BTreeMap<(u16, u16), (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)>);
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
@@ -48,9 +49,8 @@ pub struct OTExtensionReceiverSetup {
     pub T: BitMatrix,
 }
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OTExtensionSenderSetup {
     pub ote_config: OTEConfig,
     /// Choices used in base OT, packed

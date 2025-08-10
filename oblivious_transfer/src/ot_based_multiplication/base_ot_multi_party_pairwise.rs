@@ -19,14 +19,14 @@ use ark_std::{
 };
 use digest::{Digest, ExtendableOutput, Update};
 use schnorr_pok::discrete_log::PokDiscreteLog;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// The participant runs an independent base OT with each participant and stores each OT's state. If
 /// its id is less than other's then it acts as an OT sender else it acts as a receiver
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Participant<G: AffineRepr> {
     pub id: ParticipantId,
     /// Number of base OTs to perform
@@ -42,19 +42,17 @@ pub struct Participant<G: AffineRepr> {
 }
 
 /// Output of base OT run between each pair of participants of the multi-party multiplication protocol
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BaseOTOutput {
     pub id: ParticipantId,
     pub sender_keys: BTreeMap<ParticipantId, OneOfTwoROTSenderKeys>,
     pub receiver: BTreeMap<ParticipantId, (Vec<Bit>, ROTReceiverKeys)>,
 }
 
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct SenderPubKeyAndProof<G: AffineRepr>(pub SenderPubKey<G>, PokDiscreteLog<G>);
 
 impl<G: AffineRepr> Participant<G> {

@@ -12,39 +12,36 @@ use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec};
 use core::ops::Neg;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Secret key used by the signer to sign messages
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Zeroize,
-    ZeroizeOnDrop,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SecretKey<F: PrimeField>(pub F);
 
 /// Public key used to verify signatures
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct PublicKeyG2<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub <E as Pairing>::G2Affine);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PublicKeyG2<E: Pairing>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub <E as Pairing>::G2Affine,
+);
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct PublicKeyG1<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PublicKeyG1<G: AffineRepr>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub G,
+);
 
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PreparedPublicKeyG2<E: Pairing>(pub E::G2Prepared);
@@ -97,20 +94,14 @@ impl<G: AffineRepr> PublicKeyG1<G> {
     }
 }
 
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Zeroize,
-    ZeroizeOnDrop,
-    Serialize,
-    Deserialize,
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-pub struct SignatureG1<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub E::G1Affine);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SignatureG1<E: Pairing>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G1Affine,
+);
 
 impl<E: Pairing> SignatureG1<E> {
     /// Create a new signature

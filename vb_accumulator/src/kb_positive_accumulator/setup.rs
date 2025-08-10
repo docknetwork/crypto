@@ -3,39 +3,30 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec};
 use digest::Digest;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Zeroize,
-    ZeroizeOnDrop,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SecretKey<F: PrimeField> {
     pub sig: short_group_sig::bb_sig::SecretKey<F>,
     pub accum: crate::setup::SecretKey<F>,
 }
 
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PublicKey<E: Pairing> {
     pub sig: short_group_sig::bb_sig::PublicKeyG2<E>,
     pub accum: crate::setup::PublicKey<E>,
 }
 
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct SetupParams<E: Pairing> {
     pub sig: short_group_sig::common::SignatureParams<E>,
     pub accum: crate::setup::SetupParams<E>,

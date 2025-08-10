@@ -7,32 +7,34 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
-use dock_crypto_utils::{affine_group_element_from_byte_slices, serde_utils::*};
+use dock_crypto_utils::affine_group_element_from_byte_slices;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
 
 /// Create "G" and "H" from the paper.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EncryptionGens<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub G: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub H: E::G2Affine,
 }
 
 /// Create "G" and "H" from the paper.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PreparedEncryptionGens<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub G: E::G1Prepared,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub H: E::G2Prepared,
 }
 
@@ -60,14 +62,13 @@ impl<E: Pairing> From<EncryptionGens<E>> for PreparedEncryptionGens<E> {
 }
 
 /// Generators used to create commitment key of the chunked commitment
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ChunkedCommitmentGens<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub G: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub H: G,
 }
 

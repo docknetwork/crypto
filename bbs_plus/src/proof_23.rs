@@ -22,7 +22,7 @@
 
 use crate::{
     error::BBSPlusError,
-    setup::{PreparedPublicKeyG2, SignatureParams23G1},
+    setup::{PreparedPublicKeyG2, PreparedSignatureParams23G1, SignatureParams23G1},
     signature_23::Signature23G1,
 };
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
@@ -34,62 +34,54 @@ use ark_std::{
     rand::RngCore,
     vec::Vec,
 };
-use itertools::{multiunzip, MultiUnzip};
-
-use crate::setup::PreparedSignatureParams23G1;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use dock_crypto_utils::{
     expect_equality,
     extend_some::ExtendSome,
     misc::rand,
     randomized_pairing_check::RandomizedPairingChecker,
-    serde_utils::ArkObjectBytes,
     signature::{MessageOrBlinding, MultiMessageSignatureParams},
 };
+use itertools::{multiunzip, MultiUnzip};
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Protocol to prove knowledge of BBS signature in group G1.
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfSignature23G1Protocol<E: Pairing> {
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_bar: E::G1Affine,
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub B_bar: E::G1Affine,
     /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `sum_{j notin D}(h_j*m_j)`
     pub sc_comm: SchnorrCommitment<E::G1Affine>,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     sc_wits: Vec<E::ScalarField>,
 }
 
 /// Proof of knowledge of BBS signature in G1. It contains the randomized signature, commitment (Schnorr step 1)
 /// and response (Schnorr step 3) to the Schnorr protocol in `T` and `sc_resp`
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfSignature23G1Proof<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_bar: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub B_bar: E::G1Affine,
     /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub T: E::G1Affine,
     pub sc_resp: SchnorrResponse<E::G1Affine>,
 }

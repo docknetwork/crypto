@@ -4,6 +4,7 @@ use ark_std::{
     io::{Read, Write},
     vec::Vec,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 pub mod accumulator;
@@ -24,8 +25,9 @@ pub mod saver;
 pub mod verifiable_encryption_tz_21;
 
 /// Type of relation being proved and the public values for the relation
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub enum Statement<E: Pairing> {
     /// Statement used by prover for proof of knowledge of BBS+ signature
     PoKBBSSignatureG1Prover(bbs_plus::PoKBBSSignatureG1Prover<E>),
@@ -138,10 +140,9 @@ pub enum Statement<E: Pairing> {
 }
 
 /// A collection of statements
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Statements<E: Pairing>(pub Vec<Statement<E>>);
 
 impl<E: Pairing> Statements<E> {

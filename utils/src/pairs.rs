@@ -1,12 +1,11 @@
-use ark_ec::AffineRepr;
-
-use ark_ec::VariableBaseMSM;
+use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::PrimeField;
 use core::{iter::Zip, slice::Iter};
 
 /// Combines two slices together if they have equal length.
 /// Allows to iterate over the given pairs.
-#[derive(Debug, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Pairs<'left, 'right, Left, Right> {
     left: &'left [Left],
     right: &'right [Right],

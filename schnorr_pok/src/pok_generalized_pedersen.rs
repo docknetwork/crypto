@@ -56,11 +56,15 @@ use ark_std::{
 };
 use core::ops::Add;
 use digest::Digest;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use dock_crypto_utils::{
     expect_equality, hashing_utils::field_elem_from_try_and_incr,
-    randomized_mult_checker::RandomizedMultChecker, serde_utils::ArkObjectBytes,
+    randomized_mult_checker::RandomizedMultChecker,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -74,26 +78,15 @@ pub trait SchnorrChallengeContributor {
 }
 
 /// Commitment to randomness during step 1 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SchnorrCommitment<G: AffineRepr> {
-    /// Randomness. 1 per discrete log
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub blindings: Vec<G::ScalarField>,
-    /// The commitment to all the randomnesses, i.e. `bases[0] * blindings[0] + ... + bases[i] * blindings[i]`
-    #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t: G,
 }
 
@@ -135,12 +128,11 @@ impl<G: AffineRepr> SchnorrChallengeContributor for SchnorrCommitment<G> {
 }
 
 /// Response during step 3 of the Schnorr protocol to prove knowledge of 1 or more discrete logs
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SchnorrResponse<G: AffineRepr>(
-    #[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G::ScalarField>,
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] pub Vec<G::ScalarField>,
 );
 
 impl<G: AffineRepr> SchnorrResponse<G> {

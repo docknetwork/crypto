@@ -6,6 +6,7 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::*;
 use ark_std::rand::RngCore;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
@@ -33,10 +34,9 @@ use witnesses::*;
 pub type Result<T, E = SignaturePoKError> = core::result::Result<T, E>;
 
 /// Generates proof of knowledge for the given signature using supplied messages.
-#[derive(
-    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, CanonicalSerialize, CanonicalDeserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct SignaturePoKGenerator<E: Pairing> {
     witness: SignaturePoKWitnesses<E::ScalarField>,
     /// `k_{l} = \sum_{j}(beta_tilde_{j} * m_{l}{j} + g_tilde * r_{l})`

@@ -34,6 +34,8 @@ pub mod util;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 pub type Key = Vec<u8>;
@@ -42,9 +44,8 @@ pub type Message = Vec<u8>;
 
 /// A bit matrix stored in row-major order, i.e. the first byte has the first 8 bits, second byte has
 /// next 8 bits, and so on.
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BitMatrix(pub Vec<u8>);
 
 pub type ParticipantId = u16;

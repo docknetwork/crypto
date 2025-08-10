@@ -52,11 +52,8 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, fmt::Debug, rand::RngCore, vec::Vec, UniformRand};
-use digest::{Digest, DynDigest};
-
-use zeroize::{Zeroize, ZeroizeOnDrop};
-
 use core::iter::once;
+use digest::{Digest, DynDigest};
 use dock_crypto_utils::{
     affine_group_element_from_byte_slices,
     aliases::*,
@@ -65,33 +62,32 @@ use dock_crypto_utils::{
     iter::*,
     join,
     misc::{n_projective_group_elements, seq_pairs_satisfy},
-    serde_utils::*,
     signature::MultiMessageSignatureParams,
     try_iter::CheckLeft,
 };
 use itertools::process_results;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 /// Secret key used by the signer to sign messages
-#[serde_as]
+// For SecretKey
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SecretKey<F: PrimeField>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub F,
+);
 
 impl<F: PrimeField> SecretKey<F> {
     pub const DST: &'static [u8] = b"BBS-SIG-KEYGEN-SALT";
@@ -220,26 +216,18 @@ macro_rules! impl_sig_params {
         /// Every signer _can_ create his own params but several signers _can_ share the same parameters if
         /// signing messages of the same size and still have their own public keys.
         /// Size of parameters is proportional to the number of messages
-        #[serde_as]
-        #[derive(
-            Clone,
-            PartialEq,
-            Eq,
-            Debug,
-            CanonicalSerialize,
-            CanonicalDeserialize,
-            Serialize,
-            Deserialize,
-        )]
+        // For SignatureParamsG1/G2
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+        #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
         pub struct $name<E: Pairing> {
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub g1: E::$group_affine,
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub g2: E::$other_group_affine,
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub h_0: E::$group_affine,
-            /// Vector of size same as the size of multi-message that needs to be signed.
-            #[serde_as(as = "Vec<ArkObjectBytes>")]
+            #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
             pub h: Vec<E::$group_affine>,
         }
 
@@ -328,18 +316,14 @@ macro_rules! impl_public_key {
         /// Public key of the signer. The signer can use the same public key with different
         /// signature parameters to sign different multi-messages, provided that parameter
         /// `g2` is consistent with the 'g2' used to generate the public key.
-        #[serde_as]
-        #[derive(
-            Clone,
-            PartialEq,
-            Eq,
-            Debug,
-            CanonicalSerialize,
-            CanonicalDeserialize,
-            Serialize,
-            Deserialize,
-        )]
-        pub struct $name<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub <E as Pairing>::$group);
+        // For PublicKeyG1/G2
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+        #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+        pub struct $name<E: Pairing>(
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
+            pub  <E as Pairing>::$group,
+        );
 
         impl<E: Pairing> $name<E>
         where
@@ -390,12 +374,11 @@ macro_rules! impl_keypair {
             PartialEq,
             CanonicalSerialize,
             CanonicalDeserialize,
-            Serialize,
-            Deserialize,
             Zeroize,
             ZeroizeOnDrop,
         )]
-        #[serde(bound = "")]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+        #[cfg_attr(feature = "serde", serde(bound = ""))]
         pub struct $name<E: Pairing> {
             pub secret_key: SecretKey<E::ScalarField>,
             #[zeroize(skip)]
@@ -424,27 +407,27 @@ impl_public_key!(PublicKeyG1, G1Affine, SignatureParamsG2);
 impl_keypair!(KeypairG2, G2Projective, PublicKeyG2, SignatureParamsG1);
 impl_keypair!(KeypairG1, G1Projective, PublicKeyG1, SignatureParamsG2);
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+// For PreparedSignatureParamsG1
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PreparedSignatureParamsG1<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g1: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g2: E::G2Prepared,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub h_0: E::G1Affine,
-    /// Vector of size same as the size of multi-message that needs to be signed.
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub h: Vec<E::G1Affine>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct PreparedPublicKeyG2<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub E::G2Prepared);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PreparedPublicKeyG2<E: Pairing>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G2Prepared,
+);
 
 impl<E: Pairing> From<SignatureParamsG1<E>> for PreparedSignatureParamsG1<E> {
     fn from(params: SignatureParamsG1<E>) -> Self {
@@ -470,32 +453,30 @@ impl<E: Pairing> From<PublicKeyG2<E>> for PreparedPublicKeyG2<E> {
 }
 
 /// BBS signature params used for signing, verifying and proving knowledge of signature.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+// For SignatureParams23G1
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SignatureParams23G1<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g1: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g2: E::G2Affine,
-    /// Vector of size same as the size of multi-message that needs to be signed.
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub h: Vec<E::G1Affine>,
 }
 
 /// Signature params for BBS signatures with G2 element prepared for pairing
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+// For PreparedSignatureParams23G1
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PreparedSignatureParams23G1<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g1: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g2: E::G2Prepared,
-    /// Vector of size same as the size of multi-message that needs to be signed.
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub h: Vec<E::G1Affine>,
 }
 

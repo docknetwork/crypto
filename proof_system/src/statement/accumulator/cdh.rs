@@ -6,8 +6,11 @@ use crate::{error::ProofSystemError, setup_params::SetupParams, statement::State
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use short_group_sig::common::ProvingKey;
 use vb_accumulator::{
@@ -18,37 +21,21 @@ use vb_accumulator::{
 macro_rules! impl_cdh_struct_and_funcs {
     ($(#[$doc:meta])*
     $prover_name:ident, $verifier_name: ident, $prover_statement_type: ident, $verifier_statement_type: ident) => {
-        #[serde_as]
-        #[derive(
-            Clone,
-            Debug,
-            PartialEq,
-            Eq,
-            CanonicalSerialize,
-            CanonicalDeserialize,
-            Serialize,
-            Deserialize,
-        )]
-        #[serde(bound = "")]
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+        #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+        #[cfg_attr(feature = "serde", serde(bound = ""))]
         pub struct $prover_name<E: Pairing> {
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub accumulator_value: E::G1Affine,
         }
 
-        #[serde_as]
-        #[derive(
-            Clone,
-            Debug,
-            PartialEq,
-            Eq,
-            CanonicalSerialize,
-            CanonicalDeserialize,
-            Serialize,
-            Deserialize,
-        )]
-        #[serde(bound = "")]
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+        #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+        #[cfg_attr(feature = "serde", serde(bound = ""))]
         pub struct $verifier_name<E: Pairing> {
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub accumulator_value: E::G1Affine,
             pub params: Option<AccumParams<E>>,
             pub public_key: Option<PublicKey<E>>,
@@ -125,29 +112,27 @@ impl_cdh_struct_and_funcs!(
     KBUniversalAccumulatorNonMembershipCDHVerifier
 );
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct VBAccumulatorNonMembershipCDHProver<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub accumulator_value: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub Q: E::G1Affine,
     pub params: Option<AccumParams<E>>,
     pub params_ref: Option<usize>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct VBAccumulatorNonMembershipCDHVerifier<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub accumulator_value: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub Q: E::G1Affine,
     pub params: Option<AccumParams<E>>,
     pub public_key: Option<PublicKey<E>>,

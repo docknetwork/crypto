@@ -5,33 +5,28 @@ use crate::helpers::rand;
 use ark_ff::PrimeField;
 use ark_serialize::*;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
+#[cfg(feature = "serde")]
 use utils::serde_utils::*;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use ark_std::rand::RngCore;
 
 /// Witnesses for `SignaturesPoK`.
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    ZeroizeOnDrop,
-    Zeroize,
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, ZeroizeOnDrop, Zeroize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub(crate) struct SignaturePoKWitnesses<F: PrimeField> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r_bar: F,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub msgs: Vec<F>,
 }
 

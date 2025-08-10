@@ -1,12 +1,13 @@
 use ark_serialize::SerializationError;
-use dock_crypto_utils::{
-    serde_utils::ArkSerializationError,
-    try_iter::{IndexIsOutOfBounds, InvalidPair},
-};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkSerializationError;
+use dock_crypto_utils::try_iter::{IndexIsOutOfBounds, InvalidPair};
 use schnorr_pok::error::SchnorrError;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum KVACError {
     NoMessageGiven,
     MessageCountIncompatibleWithMACParams(usize, usize),
@@ -15,7 +16,7 @@ pub enum KVACError {
     CannotInvert0,
     InvalidMAC,
     InvalidMACProof,
-    #[serde(with = "ArkSerializationError")]
+    #[cfg_attr(feature = "serde", serde(with = "ArkSerializationError"))]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
     InvalidRandomizedMAC,

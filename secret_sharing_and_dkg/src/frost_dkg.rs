@@ -13,20 +13,22 @@ use crate::common::SharesAccumulator;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 /// State of a participant during Round 1
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Round1State<G: AffineRepr> {
     pub id: ParticipantId,
     pub threshold: ShareId,
@@ -34,15 +36,14 @@ pub struct Round1State<G: AffineRepr> {
     /// Stores the commitment to the coefficients of the polynomial by each participant
     pub coeff_comms: BTreeMap<ParticipantId, CommitmentToCoefficients<G>>,
     /// Secret chosen by the participant
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub secret: G::ScalarField,
 }
 
 /// Message sent by a participant during Round 1
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Round1Msg<G: AffineRepr> {
     pub sender_id: ParticipantId,
     pub comm_coeffs: CommitmentToCoefficients<G>,
@@ -51,10 +52,9 @@ pub struct Round1Msg<G: AffineRepr> {
 }
 
 /// State of a participant during Round 2
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Round2State<G: AffineRepr> {
     pub id: ParticipantId,
     pub threshold: ShareId,

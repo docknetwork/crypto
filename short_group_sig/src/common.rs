@@ -5,23 +5,26 @@ use ark_ec::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use dock_crypto_utils::{
     affine_group_element_from_byte_slices, concat_slices,
-    hashing_utils::affine_group_elem_from_try_and_incr, serde_utils::ArkObjectBytes,
+    hashing_utils::affine_group_elem_from_try_and_incr,
 };
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 /// Public parameters for creating and verifying BB signatures
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SignatureParams<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g1: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g2: E::G2Affine,
 }
 
@@ -82,19 +85,18 @@ impl<E: Pairing> AsRef<E::G1Affine> for SignatureParamsWithPairing<E> {
 
 /// The public parameters used during the proof of knowledge of signature are called `ProvingKey`. These are mutually
 /// agreed upon by the prover and verifier and can be same or different between different provers and verifiers
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProvingKey<G: AffineRepr> {
     /// Called `u` in the paper
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub X: G,
     /// Called `v` in the paper
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub Y: G,
     /// Called `h` in the paper
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub Z: G,
 }
 

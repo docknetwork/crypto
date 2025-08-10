@@ -9,28 +9,30 @@ use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Commitment to the share of the secret
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ShareCommitment<G: AffineRepr> {
     pub id: ShareId,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub commitment: G,
 }
 
 /// Share of the computation, i.e. scalar multiplication operation in the group
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
     Default,
     Clone,
@@ -41,23 +43,21 @@ pub struct ShareCommitment<G: AffineRepr> {
     ZeroizeOnDrop,
     CanonicalSerialize,
     CanonicalDeserialize,
-    Serialize,
-    Deserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ComputationShare<G: AffineRepr> {
     #[zeroize(skip)]
     pub id: ShareId,
     #[zeroize(skip)]
     pub threshold: ShareId,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub share: G,
 }
 
 /// Proof that the computation on the share was done correctly
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ComputationShareProof<G: AffineRepr> {
     pub id: ShareId,
     pub sc_share: PokDiscreteLog<G>,

@@ -17,41 +17,41 @@ use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::{Digest, DynDigest, ExtendableOutput, Update};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use dock_crypto_utils::{
-    concat_slices, hashing_utils::field_elem_from_try_and_incr, serde_utils::ArkObjectBytes,
-    transcript::Transcript,
+    concat_slices, hashing_utils::field_elem_from_try_and_incr, transcript::Transcript,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-#[derive(
-    Clone, Debug, PartialEq, Copy, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Copy, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MultiplicationOTEParams<const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {}
 
 /// A public vector of random values used by both multiplication participants. Its important that the
 /// values are random and not influenced by any participant
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GadgetVector<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>(
     pub MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
-    #[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<F>,
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] pub Vec<F>,
 );
 
 /// Random Linear Combination used for error checking
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RLC<F: PrimeField> {
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub r: Vec<F>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub u: F,
 }
 
@@ -96,28 +96,26 @@ impl<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16>
 }
 
 /// Acts as sender in OT extension
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Party1<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub alpha: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub alpha_hat: F,
     pub base_ot_choices: Vec<Bit>,
     pub base_ot_keys: ROTReceiverKeys,
 }
 
 /// Acts as receiver in OT extension
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Party2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PARAMETER: u16> {
     pub ote_params: MultiplicationOTEParams<KAPPA, STATISTICAL_SECURITY_PARAMETER>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub beta: F,
     pub encoded_beta: Vec<Bit>,
     pub ote_setup: OTExtensionReceiverSetup,

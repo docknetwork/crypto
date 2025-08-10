@@ -4,19 +4,22 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, rand::RngCore, vec::Vec};
 use core::iter::once;
 use digest::{Digest, DynDigest};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use dock_crypto_utils::{
     affine_group_element_from_byte_slices, concat_slices,
     hashing_utils::hash_to_field,
     iter::pair_valid_items_with_slice,
     join,
     misc::{n_projective_group_elements, seq_pairs_satisfy},
-    serde_utils::ArkObjectBytes,
     signature::MultiMessageSignatureParams,
     try_iter::CheckLeft,
 };
 
 use itertools::process_results;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -26,43 +29,37 @@ use crate::error::KVACError;
 use rayon::prelude::*;
 
 /// Public parameters used by the MAC creator and verifier
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MACParams<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g_0: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub h: G,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub g_vec: Vec<G>,
 }
 
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SecretKey<F: PrimeField>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub F,
+);
 
 /// An optional key that can be used to verify that the MAC is correctly constructed without verifying it or when the MAC
 /// is used as a signature
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct PublicKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PublicKey<G: AffineRepr>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub G,
+);
 
 impl<G: AffineRepr> MACParams<G> {
     pub fn new<D: Digest>(label: &[u8], message_count: u32) -> Self {

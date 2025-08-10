@@ -3,6 +3,7 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeSet, vec::Vec};
 use legogroth16::aggregation;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -12,15 +13,16 @@ pub struct AggregatedGroth16<E: Pairing> {
 }
 
 /// Created by the prover and verified by the verifier
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Proof<E: Pairing> {
     pub statement_proofs: Vec<StatementProof<E>>,
     // TODO: Remove this skip
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub aggregated_groth16: Option<Vec<AggregatedGroth16<E>>>,
     // TODO: Remove this skip
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub aggregated_legogroth16: Option<Vec<AggregatedGroth16<E>>>,
 }
 

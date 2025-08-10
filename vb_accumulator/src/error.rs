@@ -4,15 +4,18 @@
 
 use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkSerializationError;
 use kvac::error::KVACError;
 use oblivious_transfer_protocols::error::OTError;
 use schnorr_pok::error::SchnorrError;
 use secret_sharing_and_dkg::error::SSError;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 use short_group_sig::error::ShortGroupSigError;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum VBAccumulatorError {
     /// Element not allowed in the accumulator
     ProhibitedElement,
@@ -34,7 +37,7 @@ pub enum VBAccumulatorError {
     PairingResponseInvalid,
     E_d_ResponseInvalid,
     E_d_inv_ResponseInvalid,
-    #[serde(with = "ArkSerializationError")]
+    #[cfg_attr(feature = "serde", serde(with = "ArkSerializationError"))]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
     InvalidMembershipValidityProof,

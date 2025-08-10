@@ -8,44 +8,33 @@ use ark_ec::{
 use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{ops::Neg, vec::Vec};
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// PRF output
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-pub struct Output<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub PairingOutput<E>);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Output<E: Pairing>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub PairingOutput<E>,
+);
 
 /// Proof of correct PRF output
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Proof<E: Pairing>(
-    #[serde_as(as = "ArkObjectBytes")] pub E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")] pub E::G2Affine,
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G1Affine,
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G2Affine,
 );
 
 impl<E: Pairing> Output<E> {

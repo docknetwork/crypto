@@ -5,20 +5,16 @@
 //! 3. Dealer creates the `n` shares as `[f(1), f(2), ..., f(n)]` and gives `f(i)` to party `P_i`.
 //! 4. Each party `P_i` verifiers its share as `g*f(i) == c_0 + c_1*i + c_2*i^2 + ... + c_{t-1} * i^{t-1}`
 
-use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::PrimeField;
-use ark_poly::univariate::DensePolynomial;
-use ark_std::{rand::RngCore, vec::Vec, UniformRand};
-
-use dock_crypto_utils::ff::powers;
-
-use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
-
 use crate::{
     common::{CommitmentToCoefficients, Share, ShareId, Shares},
     error::SSError,
     shamir_ss,
 };
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ff::PrimeField;
+use ark_poly::univariate::DensePolynomial;
+use ark_std::{rand::RngCore, vec::Vec, UniformRand};
+use dock_crypto_utils::{ff::powers, msm::multiply_field_elems_with_same_group_elem};
 
 /// Generate a random secret with its shares according to Feldman's verifiable secret sharing.
 /// At least `threshold` number of shares are needed to reconstruct the secret.

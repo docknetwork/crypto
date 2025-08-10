@@ -11,12 +11,15 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
     discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
     partial::Partial1PokPedersenCommitment,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -33,16 +36,15 @@ pub struct PoKOfSignatureG1KVProtocol<G: AffineRepr> {
 }
 
 /// Proof of knowledge of weak-BB signature in the keyed-verification model
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PoKOfSignatureG1KV<G: AffineRepr> {
     /// The randomized signature
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_prime: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_bar: G,
     /// For proving relation `A_bar = g1 * r - A' * m`
     /// The following could be achieved by using Either<PokPedersenCommitment, Partial1PokPedersenCommitment> but serialization

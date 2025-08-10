@@ -1,25 +1,26 @@
-use ark_ec::pairing::Pairing;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{collections::BTreeMap, vec::Vec};
-use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, Same};
-
 use crate::{
     error::ProofSystemError, impl_bbs_prover_statement, impl_bbs_verifier_statement,
     setup_params::SetupParams, statement::Statement,
 };
+use ark_ec::pairing::Pairing;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{collections::BTreeMap, vec::Vec};
 use bbs_plus::prelude::{PublicKeyG2, SignatureParams23G1};
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::*;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde_with::{serde_as, Same};
 
-/// Public values like setup params, public key and revealed messages for proving knowledge of BBS signature.
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+/// Public values like setup params and revealed messages for proving knowledge of BBS signature.
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PoKBBSSignature23IETFG1Prover<E: Pairing> {
     /// Messages being revealed.
-    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "BTreeMap<Same, ArkObjectBytes>"))]
     pub revealed_messages: BTreeMap<usize, E::ScalarField>,
     /// If the statement was created by passing the signature params directly, then it will not be None
     pub signature_params: Option<SignatureParams23G1<E>>,
@@ -27,14 +28,14 @@ pub struct PoKBBSSignature23IETFG1Prover<E: Pairing> {
     pub signature_params_ref: Option<usize>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+/// Public values like setup params, public key and revealed messages for proving knowledge of BBS signature.
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PoKBBSSignature23IETFG1Verifier<E: Pairing> {
     /// Messages being revealed.
-    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "BTreeMap<Same, ArkObjectBytes>"))]
     pub revealed_messages: BTreeMap<usize, E::ScalarField>,
     /// If the statement was created by passing the signature params directly, then it will not be None
     pub signature_params: Option<SignatureParams23G1<E>>,

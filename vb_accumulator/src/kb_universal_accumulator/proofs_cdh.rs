@@ -12,6 +12,7 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec};
 use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -25,16 +26,14 @@ pub struct KBUniversalAccumulatorNonMembershipProofProtocol<E: Pairing>(
     pub MembershipProofProtocol<E>,
 );
 
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBUniversalAccumulatorMembershipProof<E: Pairing>(pub MembershipProof<E>);
 
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBUniversalAccumulatorNonMembershipProof<E: Pairing>(pub MembershipProof<E>);
 
 impl<E: Pairing> KBUniversalAccumulatorMembershipProofProtocol<E> {

@@ -20,22 +20,23 @@ use ark_std::{
     vec::Vec,
 };
 use digest::DynDigest;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
 use dock_crypto_utils::{
     cfg_iter_sum,
+    ff::inner_product,
     msm::multiply_field_elems_with_same_group_elem,
     poly::{inner_product_poly, multiply_many_polys, multiply_poly},
-    serde_utils::*,
 };
+use short_group_sig::bb_sig::prf;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
-
-use dock_crypto_utils::ff::inner_product;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-use short_group_sig::bb_sig::prf;
 
 /// Create a polynomial with given points in `updates` as:
 /// `(updates[0]-x) * (updates[1]-x) * (updates[2] - x)...(updates[last] - x)`
@@ -479,11 +480,12 @@ where
 /// Published by the accumulator manager to allow witness updates without secret info. This "represents" a polynomial which
 /// will be evaluated at the element whose witness needs to be updated. Its a binding but non-hiding commitment to the polynomial.
 /// Defined in section 4.1 of the paper
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct Omega<G: AffineRepr>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G>);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Omega<G: AffineRepr>(
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] pub Vec<G>,
+);
 
 impl<G> Omega<G>
 where
@@ -635,7 +637,7 @@ where
             ),
         ));
 
-        // non_mem_poly_v_AD = non_mem_poly_v_AD - non_mem_poly_v_AD*(removals[0] + alpha)*(removals[1] + alpha)*...(removals[n-1] + alpha)
+        // non_mem_poly_v_AD = non_mem_poly_v_A - non_mem_poly_v_AD*(removals[0] + alpha)*(removals[1] + alpha)*...(removals[n-1] + alpha)
         let mut non_mem_poly_v_AD = non_mem_poly_v_A;
         if !additions.is_empty() {
             non_mem_poly_v_AD = &non_mem_poly_v_AD

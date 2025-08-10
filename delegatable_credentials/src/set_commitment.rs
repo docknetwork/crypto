@@ -21,16 +21,20 @@ use ark_std::{
     UniformRand,
 };
 use digest::{Digest, DynDigest};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 use crate::{
     error::{DelegationError, DelegationError::UnequalSizeOfSequence},
     util::{generator_pair, generator_pair_deterministic},
 };
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
 use dock_crypto_utils::{
     ff::powers, hashing_utils::field_elem_from_try_and_incr, misc::le_bytes_iter, msm::WindowTable,
-    poly::poly_from_roots, serde_utils::*,
+    poly::poly_from_roots,
 };
 
 #[cfg(feature = "parallel")]
@@ -38,14 +42,13 @@ use rayon::prelude::*;
 
 // TODO: Makes sense to split this into P1 and P2 as prover does not need P2 vector and verifier does not need P1 vector
 /// KZG polynomial commitment SRS (Structured Reference String) used by the set commitment scheme
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SetCommitmentSRS<E: Pairing> {
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub P1: Vec<E::G1Affine>,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub P2: Vec<E::G2Affine>,
 }
 
@@ -146,16 +149,15 @@ impl<E: Pairing> SetCommitmentSRS<E> {
     impl_srs!();
 }
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PreparedSetCommitmentSRS<E: Pairing> {
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub P1: Vec<E::G1Affine>,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub P2: Vec<E::G2Affine>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub prepared_P2: E::G2Prepared,
 }
 

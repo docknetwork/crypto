@@ -6,10 +6,13 @@ use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{vec, vec::Vec};
+use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
-
-use dock_crypto_utils::{msm::multiply_field_elems_with_same_group_elem, serde_utils::*};
 
 /// Getting a commitment to the message as a single field element from commitment to its b-ary decomposition.
 ///
@@ -35,13 +38,12 @@ use dock_crypto_utils::{msm::multiply_field_elems_with_same_group_elem, serde_ut
 /// ```
 ///
 /// Since `b`, `n` and `G` are public, it can be ensured that `G_i`s are correctly created.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ChunkedCommitment<G: AffineRepr>(
-    #[serde_as(as = "ArkObjectBytes")] pub G,
-    #[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G>,
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub G,
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] pub Vec<G>,
 );
 
 impl<G: AffineRepr> ChunkedCommitment<G> {

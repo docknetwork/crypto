@@ -2,9 +2,13 @@ use alloc::vec::Vec;
 use ark_ec::AffineRepr;
 use ark_serialize::*;
 use core::{cmp::Ordering, ops::Range};
+#[cfg(feature = "serde")]
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
-use utils::{aliases::CanonicalSerDe, serde_utils::ArkObjectBytes};
+use utils::aliases::CanonicalSerDe;
+#[cfg(feature = "serde")]
+use utils::serde_utils::ArkObjectBytes;
 
 use schnorr_pok::{
     error::SchnorrError, SchnorrChallengeContributor, SchnorrCommitment, SchnorrResponse,
@@ -13,20 +17,20 @@ use schnorr_pok::{
 use super::WithSchnorrAndBlindings;
 
 /// Combines value with the `t` commitment from `SchnorrCommitment` **excluding blindings**.
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "V: Serialize + DeserializeOwned")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "V: Serialize + DeserializeOwned"))]
 pub struct WithSchnorrResponse<G: AffineRepr, V: CanonicalSerDe> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub commitment: G,
     pub response: SchnorrResponse<G>,
     pub committed_message_indices: IndiceRange,
     pub value: V,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IndiceRange(Range<usize>);
 utils::impl_deref! { IndiceRange(Range<usize>) }
 

@@ -6,9 +6,13 @@ use alloc::vec::Vec;
 use ark_serialize::*;
 use ark_std::cfg_into_iter;
 use itertools::{process_results, Itertools};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
-use utils::{join, serde_utils::ArkObjectBytes};
+use utils::join;
+#[cfg(feature = "serde")]
+use utils::serde_utils::ArkObjectBytes;
 
 use super::{error::BlindPSError, ps_signature::Signature};
 use crate::{
@@ -26,14 +30,15 @@ use rayon::prelude::*;
 type Result<T, E = BlindPSError> = core::result::Result<T, E>;
 
 /// Each message can be either revealed or blinded into the commitment.
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub enum CommitmentOrMessage<E: Pairing> {
     /// Message blinded into the commitment.
     BlindedMessage(MessageCommitment<E>),
     /// Revealed message.
-    RevealedMessage(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
+    RevealedMessage(#[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::ScalarField),
 }
 
 impl<E: Pairing> From<MessageCommitment<E>> for CommitmentOrMessage<E> {
@@ -50,10 +55,9 @@ impl<E: Pairing> From<&'_ MessageCommitment<E>> for CommitmentOrMessage<E> {
 
 /// Modified Pointcheval-Sanders signature created over commitments (blinded messages) and revealed messages.
 /// To verify this signature, you would have to unblind by providing blindings used to produce commitments.
-#[derive(
-    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, CanonicalSerialize, CanonicalDeserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BlindSignature<E: Pairing>(Signature<E>);
 
 type DoubleOwnedPairs<A, B, C, D> = (ExtendSome<OwnedPairs<A, B>>, ExtendSome<OwnedPairs<C, D>>);

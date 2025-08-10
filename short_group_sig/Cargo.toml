@@ -16,8 +16,9 @@ ark-std.workspace = true
 ark-poly.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
-serde.workspace = true
-serde_with.workspace = true
+serde = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_with = { workspace = true, optional = true }
+cfg_eval.workspace = true
 zeroize.workspace = true
 dock_crypto_utils = { version = "0.23.0", default-features = false, path = "../utils" }
 schnorr_pok = { version = "0.23.0", default-features = false, path = "../schnorr_pok" }
@@ -33,7 +34,15 @@ test_utils = { path = "../test_utils" }
 sha3.workspace = true
 
 [features]
-default = [ "parallel" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "schnorr_pok/std", "serde/std", "oblivious_transfer_protocols/std", "secret_sharing_and_dkg/std"]
+default = [ "parallel", "serde" ]
+std = [ "ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "schnorr_pok/std", "oblivious_transfer_protocols/std", "secret_sharing_and_dkg/std"]
 print-trace = [ "ark-std/print-trace", "dock_crypto_utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-poly/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "schnorr_pok/parallel", "oblivious_transfer_protocols/parallel", "secret_sharing_and_dkg/parallel" ]
+serde = [
+    "dep:serde",
+    "serde_with",
+    "dock_crypto_utils/serde",
+    "schnorr_pok/serde",
+    "oblivious_transfer_protocols/serde",
+    "secret_sharing_and_dkg/serde"
+]

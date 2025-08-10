@@ -1,3 +1,4 @@
+use crate::error::ProofSystemError;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cmp, collections::BTreeMap, fmt::Debug, string::String, vec::Vec};
@@ -5,42 +6,56 @@ use bbs_plus::{
     signature::SignatureG1 as BBSSignatureG1, signature_23::Signature23G1 as BBSSignature23G1,
 };
 use coconut_crypto::Signature;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::*;
 use kvac::bbdt_2016::mac::MAC;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::{serde_as, Same};
 use vb_accumulator::witness::{MembershipWitness, NonMembershipWitness};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::error::ProofSystemError;
-
 /// Secret data that the prover will prove knowledge of, this data is known only to the prover
-#[serde_as]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub enum Witness<E: Pairing> {
     PoKBBSSignatureG1(PoKBBSSignatureG1<E>),
     VBAccumulatorMembership(Membership<E::G1Affine>),
     VBAccumulatorNonMembership(NonMembership<E::G1Affine>),
-    PedersenCommitment(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
+    PedersenCommitment(
+        #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] Vec<E::ScalarField>,
+    ),
     /// Message being encrypted
-    Saver(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
+    Saver(#[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::ScalarField),
     /// Message whose bounds are checked
-    BoundCheckLegoGroth16(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
+    BoundCheckLegoGroth16(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::ScalarField,
+    ),
     R1CSLegoGroth16(R1CSCircomWitness<E>),
     PoKPSSignature(PoKPSSignature<E>),
     PoKBBSSignature23G1(PoKBBSSignature23G1<E>),
     /// For bound check using Bulletproofs++ protocol. Its the message whose bounds are checked
-    BoundCheckBpp(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
-    BoundCheckSmc(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
-    BoundCheckSmcWithKV(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
-    PublicInequality(#[serde_as(as = "ArkObjectBytes")] E::ScalarField),
+    BoundCheckBpp(#[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::ScalarField),
+    BoundCheckSmc(#[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::ScalarField),
+    BoundCheckSmcWithKV(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::ScalarField,
+    ),
+    PublicInequality(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::ScalarField,
+    ),
+    KBPosAccumulatorMembership(KBPosMembership<E>),
     KBUniAccumulatorMembership(KBUniMembership<E::G1Affine>),
     KBUniAccumulatorNonMembership(KBUniNonMembership<E::G1Affine>),
-    KBPosAccumulatorMembership(KBPosMembership<E>),
     PoKOfBBDT16MAC(PoKOfBBDT16MAC<E::G1Affine>),
-    VeTZ21(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
-    VeTZ21Robust(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
+    VeTZ21(
+        #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] Vec<E::ScalarField>,
+    ),
+    VeTZ21Robust(
+        #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] Vec<E::ScalarField>,
+    ),
 }
 
 macro_rules! delegate {
@@ -60,9 +75,9 @@ macro_rules! delegate {
                 BoundCheckSmc,
                 BoundCheckSmcWithKV,
                 PublicInequality,
+                KBPosAccumulatorMembership,
                 KBUniAccumulatorMembership,
                 KBUniAccumulatorNonMembership,
-                KBPosAccumulatorMembership,
                 PoKOfBBDT16MAC,
                 VeTZ21,
                 VeTZ21Robust
@@ -88,9 +103,9 @@ macro_rules! delegate_reverse {
                 BoundCheckSmc,
                 BoundCheckSmcWithKV,
                 PublicInequality,
+                KBPosAccumulatorMembership,
                 KBUniAccumulatorMembership,
                 KBUniAccumulatorNonMembership,
-                KBPosAccumulatorMembership,
                 PoKOfBBDT16MAC,
                 VeTZ21,
                 VeTZ21Robust
@@ -101,21 +116,19 @@ macro_rules! delegate_reverse {
     }}
 }
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Witnesses<E: Pairing>(pub Vec<Witness<E>>);
 
 /// Secret data when proving knowledge of PS sig
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PoKPSSignature<E: Pairing> {
     pub signature: Signature<E>,
-    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "BTreeMap<Same, ArkObjectBytes>"))]
     pub unrevealed_messages: BTreeMap<usize, E::ScalarField>,
 }
 
@@ -133,14 +146,13 @@ impl<E: Pairing> PoKPSSignature<E> {
 }
 
 /// Secret data when proving knowledge of BBS+ sig
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PoKBBSSignatureG1<E: Pairing> {
     pub signature: BBSSignatureG1<E>,
-    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "BTreeMap<Same, ArkObjectBytes>"))]
     pub unrevealed_messages: BTreeMap<usize, E::ScalarField>,
 }
 
@@ -160,14 +172,13 @@ impl<E: Pairing> Drop for PoKBBSSignatureG1<E> {
 }
 
 /// Secret data when proving knowledge of BBS sig
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PoKBBSSignature23G1<E: Pairing> {
     pub signature: BBSSignature23G1<E>,
-    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "BTreeMap<Same, ArkObjectBytes>"))]
     pub unrevealed_messages: BTreeMap<usize, E::ScalarField>,
 }
 
@@ -187,64 +198,40 @@ impl<E: Pairing> Drop for PoKBBSSignature23G1<E> {
 }
 
 /// Secret data when proving VB accumulator membership
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Membership<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub element: G::ScalarField,
     pub witness: MembershipWitness<G>,
 }
 
 /// Secret data when proving VB accumulator non-membership
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct NonMembership<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub element: G::ScalarField,
     pub witness: NonMembershipWitness<G>,
 }
 
 /// Secret data when proving KB universal accumulator membership
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBUniMembership<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub element: G::ScalarField,
     pub witness:
         vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorMembershipWitness<
@@ -253,62 +240,48 @@ pub struct KBUniMembership<G: AffineRepr> {
 }
 
 /// Secret data when proving KB universal accumulator non-membership
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBUniNonMembership<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub element: G::ScalarField,
     pub witness: vb_accumulator::kb_universal_accumulator::witness::KBUniversalAccumulatorNonMembershipWitness<G>,
 }
 
-/// Secret data when proving KB universal accumulator membership
-#[serde_as]
+/// Secret data when proving KB positive accumulator membership
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBPosMembership<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub element: E::ScalarField,
     pub witness: vb_accumulator::kb_positive_accumulator::witness::KBPositiveAccumulatorWitness<E>,
 }
 
 /// Witness for the Circom program. Only contains circuit wires that are explicitly set by the prover
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct R1CSCircomWitness<E: Pairing> {
     /// Map of name -> value(s) for all inputs including public and private
-    #[serde_as(as = "BTreeMap<Same, Vec<ArkObjectBytes>>")]
+    #[cfg_attr(
+        feature = "serde",
+        serde_as(as = "BTreeMap<Same, Vec<ArkObjectBytes>>")
+    )]
     pub inputs: BTreeMap<String, Vec<E::ScalarField>>,
     /// Names of the public inputs
-    #[serde_as(as = "Vec<Same>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<Same>"))]
     pub public: Vec<String>,
     /// Names of the private inputs
-    #[serde_as(as = "Vec<Same>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<Same>"))]
     pub private: Vec<String>,
     pub public_count: usize,
     pub private_count: usize,
@@ -413,7 +386,7 @@ impl<G: AffineRepr> KBUniNonMembership<G> {
 }
 
 impl<E: Pairing> KBPosMembership<E> {
-    /// Create a `Witness` variant for proving non-membership in KB universal accumulator
+    /// Create a `Witness` variant for proving membership in KB positive accumulator
     pub fn new_as_witness(
         element: E::ScalarField,
         witness: vb_accumulator::kb_positive_accumulator::witness::KBPositiveAccumulatorWitness<E>,
@@ -475,14 +448,13 @@ impl<E: Pairing> R1CSCircomWitness<E> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PoKOfBBDT16MAC<G: AffineRepr> {
     pub mac: MAC<G>,
-    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "BTreeMap<Same, ArkObjectBytes>"))]
     pub unrevealed_messages: BTreeMap<usize, G::ScalarField>,
 }
 

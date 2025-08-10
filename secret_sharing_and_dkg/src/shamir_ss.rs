@@ -1,14 +1,13 @@
 //! Shamir secret sharing
 
-use ark_ff::PrimeField;
-use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
-use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec};
-
 use crate::{
     common,
     common::{ShareId, Shares},
     error::SSError,
 };
+use ark_ff::PrimeField;
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
+use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

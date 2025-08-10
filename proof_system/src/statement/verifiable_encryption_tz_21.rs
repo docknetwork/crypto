@@ -6,19 +6,21 @@ use crate::{
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct VerifiableEncryptionTZ21<G: AffineRepr> {
     pub enc_params: Option<ElgamalEncryptionParams<G>>,
     pub enc_params_ref: Option<usize>,
-    #[serde_as(as = "Option<Vec<ArkObjectBytes>>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<Vec<ArkObjectBytes>>"))]
     pub comm_key: Option<Vec<G>>,
     pub comm_key_ref: Option<usize>,
 }

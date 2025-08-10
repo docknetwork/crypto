@@ -7,6 +7,7 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::*;
 use ark_std::{cfg_iter, rand::RngCore};
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use utils::join;
 
@@ -37,10 +38,9 @@ pub use proof::*;
 use witnesses::*;
 
 /// Generates proof of knowledge for the supplied messages.
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MessagesPoKGenerator<E: Pairing> {
     /// `com = g * o + \sum_{i}(h_{i} * m_{i})`
     com: WithSchnorrAndBlindings<E::G1Affine, MultiMessageCommitment<E>>,

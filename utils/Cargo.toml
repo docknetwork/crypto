@@ -19,8 +19,8 @@ ark-poly.workspace = true
 ark-serialize.workspace = true
 zeroize.workspace = true
 digest.workspace = true
-serde.workspace = true
-serde_with.workspace = true
+serde = { workspace = true, optional = true }
+serde_with = { workspace = true, optional = true }
 rayon = {workspace = true, optional = true}
 merlin = { package = "dock_merlin", version = "3.0.0", default-features = false, path = "../merlin" }
 itertools.workspace = true
@@ -28,6 +28,7 @@ num = { version = "0.4.1", default-features = false }
 hkdf = {version = "0.12.3", default-features = false}
 sha2 = {version = "0.10.8", default-features = false}
 aead = {version = "0.5.2", default-features = false, features = [ "alloc" ]}
+cfg_eval.workspace = true
 
 [dev-dependencies]
 blake2.workspace = true
@@ -37,8 +38,8 @@ ark-secp256r1.workspace = true
 ark-std = {workspace = true, features = ["getrandom"]}
 
 [features]
-default = ["parallel"]
+default = ["parallel", "serde"]
 std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "serde/std", "ark-poly/std", "merlin/std", "num/std", "hkdf/std", "sha2/std", "chacha20poly1305/std"]
 print-trace = ["ark-std/print-trace"]
 parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-poly/parallel", "ark-std/parallel", "rayon"]
-#with-serde = ["serde", "serde_with"]
+serde = ["dep:serde", "serde_with", "merlin/serde"]

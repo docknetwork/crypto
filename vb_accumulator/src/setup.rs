@@ -32,56 +32,46 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use zeroize::{Zeroize, ZeroizeOnDrop};
-
 use digest::{Digest, DynDigest};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
 use dock_crypto_utils::{
     affine_group_element_from_byte_slices, concat_slices,
     hashing_utils::{hash_to_field, projective_group_elem_from_try_and_incr},
     join,
-    serde_utils::*,
 };
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use short_group_sig::common::ProvingKey;
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde_with::serde_as;
 
 /// Secret key for accumulator manager
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
-pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SecretKey<F: PrimeField>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub F,
+);
 
 /// Public key for accumulator manager
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct PublicKey<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub E::G2Affine);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PublicKey<E: Pairing>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G2Affine,
+);
 
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Keypair<E: Pairing> {
     pub secret_key: SecretKey<E::ScalarField>,
     #[zeroize(skip)]
@@ -89,14 +79,13 @@ pub struct Keypair<E: Pairing> {
 }
 
 /// Setup parameters for accumulators
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SetupParams<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub P: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub P_tilde: E::G2Affine,
 }
 
@@ -213,22 +202,22 @@ impl<E: Pairing> PublicKey<E> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PreparedSetupParams<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub P: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub P_tilde: E::G2Prepared,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct PreparedPublicKey<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] pub E::G2Prepared);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PreparedPublicKey<E: Pairing>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G2Prepared,
+);
 
 impl<E: Pairing> From<SetupParams<E>> for PreparedSetupParams<E> {
     fn from(params: SetupParams<E>) -> Self {
@@ -247,25 +236,29 @@ impl<E: Pairing> From<PublicKey<E>> for PreparedPublicKey<E> {
 
 /// Used between prover and verifier only to prove knowledge of member and corresponding witness.
 /// `X`, `Y` and `Z` from the paper
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MembershipProvingKey<G: AffineRepr>(
-    #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
-    pub  ProvingKey<G>,
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")
+    )]
+    pub ProvingKey<G>,
 );
 
 /// Used between prover and verifier only to prove knowledge of non-member and corresponding witness
 /// `X`, `Y`, `Z` and `K` from the paper
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipProvingKey<G: AffineRepr> {
-    #[serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound = "ProvingKey<G>: Serialize, for<'a> ProvingKey<G>: Deserialize<'a>")
+    )]
     pub XYZ: ProvingKey<G>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub K: G,
 }
 

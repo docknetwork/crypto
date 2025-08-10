@@ -5,7 +5,9 @@ use ark_ec::{
 use ark_ff::{One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, rand::RngCore, vec::Vec, UniformRand};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -13,47 +15,42 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use rayon::prelude::*;
 
 use crate::{error::SaverError, saver_groth16, setup::EncryptionGens, utils::chunks_count};
-use dock_crypto_utils::{msm::multiply_field_elems_with_same_group_elem, serde_utils::*};
+use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
 
 /// Used to decrypt
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-pub struct SecretKey<F: PrimeField>(#[serde_as(as = "ArkObjectBytes")] pub F);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SecretKey<F: PrimeField>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub F,
+);
 
 /// Used to encrypt, rerandomize and verify the encryption. Called "PK" in the paper.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EncryptionKey<E: Pairing> {
     /// `G * delta`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub X_0: E::G1Affine,
     /// `G * delta*s_i`
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub X: Vec<E::G1Affine>,
     /// `G_i * t_{i+1}`
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub Y: Vec<E::G1Affine>,
     /// `H * t_i`
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub Z: Vec<E::G2Affine>,
     /// `(G*delta) * t_0 + (G*delta) * t_1*s_0 + (G*delta) * t_2*s_1 + .. (G*delta) * t_n*s_{n-1}`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub P_1: E::G1Affine,
     /// `(G*-gamma) * (1 + s_0 + s_1 + .. s_{n-1})`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub P_2: E::G1Affine,
 }
 
@@ -75,19 +72,18 @@ pub struct PreparedEncryptionKey<E: Pairing> {
 }
 
 /// Used to decrypt and verify decryption. Called "VK" in the paper.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct DecryptionKey<E: Pairing> {
     /// `H * rho`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub V_0: E::G2Affine,
     /// `H * s_i*v_i`
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub V_1: Vec<E::G2Affine>,
     /// `H * rho*v_i`
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub V_2: Vec<E::G2Affine>,
 }
 

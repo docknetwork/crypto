@@ -6,8 +6,11 @@ use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec};
 use digest::Digest;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use smc_range_proof::{
     ccs_set_membership::setup::SetMembershipCheckParamsKV,
@@ -15,25 +18,23 @@ use smc_range_proof::{
 };
 
 /// For ease of use, keeping setup params together, but they could be generated independently
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SmcParamsKVAndCommitmentKey<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub params: SetMembershipCheckParamsKV<G>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm_key: MemberCommitmentKey<G>,
 }
 
 /// Used by the verifier as it knows the secret key. Should not be shared with the prover
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SmcParamsKVAndCommitmentKeyAndSecretKey<G: AffineRepr> {
     pub params_and_comm_key: SmcParamsKVAndCommitmentKey<G>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub sk: SecretKey<G::ScalarField>,
 }
 
@@ -55,28 +56,26 @@ impl<G: AffineRepr> SmcParamsKVAndCommitmentKeyAndSecretKey<G> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckSmcWithKVProver<G: AffineRepr> {
     pub min: u64,
     pub max: u64,
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub params: Option<SmcParamsKVAndCommitmentKey<G>>,
     pub params_ref: Option<usize>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckSmcWithKVVerifier<G: AffineRepr> {
     pub min: u64,
     pub max: u64,
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub params: Option<SmcParamsKVAndCommitmentKeyAndSecretKey<G>>,
     pub params_ref: Option<usize>,
 }

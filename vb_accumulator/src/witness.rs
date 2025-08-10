@@ -102,10 +102,13 @@ use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{batch_inversion, fields::Field, One, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, fmt::Debug, vec::Vec};
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::*;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 use crate::{
@@ -439,39 +442,25 @@ pub trait Witness<G: AffineRepr> {
 }
 
 /// Witness to check membership
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-pub struct MembershipWitness<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MembershipWitness<G: AffineRepr>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub G,
+);
 
 /// Witness to check non-membership
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipWitness<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub d: G::ScalarField,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub C: G,
 }
 

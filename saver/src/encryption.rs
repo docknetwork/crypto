@@ -24,27 +24,30 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
 use dock_crypto_utils::{
-    ff::non_zero_random, randomized_pairing_check::RandomizedPairingChecker, serde_utils::*,
+    ff::non_zero_random, randomized_pairing_check::RandomizedPairingChecker,
     solve_discrete_log::solve_discrete_log_bsgs_alt,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Ciphertext used with Groth16
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Ciphertext<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub X_r: E::G1Affine,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub enc_chunks: Vec<E::G1Affine>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub commitment: E::G1Affine,
 }
 

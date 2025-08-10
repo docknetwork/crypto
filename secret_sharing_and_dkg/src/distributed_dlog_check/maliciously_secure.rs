@@ -17,7 +17,7 @@ use ark_std::{cfg_into_iter, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand
 use digest::Digest;
 use dock_crypto_utils::{
     expect_equality, ff::powers, msm::WindowTable, pair_g1_g2, pair_g2_g1,
-    randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
+    randomized_pairing_check::RandomizedPairingChecker,
 };
 use schnorr_pok::{
     compute_random_oracle_challenge,
@@ -26,12 +26,17 @@ use schnorr_pok::{
         PoKG2DiscreteLogInPairingProtocol,
     },
 };
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde_with::serde_as;
 
 macro_rules! impl_protocol {
     (
@@ -39,7 +44,7 @@ macro_rules! impl_protocol {
             $secret_share: ident, $secret_share_comm: ident, $computation_share: ident, $computation_share_proof: ident, $deal_secret: ident, $discrete_log_protocol: ident, $discrete_log_proof: ident, $secret_group: path, $other_group: path, $pairing: tt) => {
 
         $(#[$protocol_doc])*
-        #[serde_as]
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
         #[derive(
             Default,
             Clone,
@@ -50,20 +55,19 @@ macro_rules! impl_protocol {
             ZeroizeOnDrop,
             CanonicalSerialize,
             CanonicalDeserialize,
-            Serialize,
-            Deserialize,
         )]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
         pub struct $secret_share<E: Pairing> {
             #[zeroize(skip)]
             pub id: ShareId,
             #[zeroize(skip)]
             pub threshold: ShareId,
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub share: $secret_group,
         }
 
         /// Commitment to the share of the secret
-        #[serde_as]
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
         #[derive(
             Clone,
             Debug,
@@ -71,17 +75,16 @@ macro_rules! impl_protocol {
             Eq,
             CanonicalSerialize,
             CanonicalDeserialize,
-            Serialize,
-            Deserialize,
         )]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
         pub struct $secret_share_comm<E: Pairing> {
             pub id: ShareId,
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub commitment: PairingOutput<E>,
         }
 
         /// Share of the computation, i.e. result of the pairing
-        #[serde_as]
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
         #[derive(
             Default,
             Clone,
@@ -92,20 +95,19 @@ macro_rules! impl_protocol {
             ZeroizeOnDrop,
             CanonicalSerialize,
             CanonicalDeserialize,
-            Serialize,
-            Deserialize,
         )]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
         pub struct $computation_share<E: Pairing> {
             #[zeroize(skip)]
             pub id: ShareId,
             #[zeroize(skip)]
             pub threshold: ShareId,
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub share: PairingOutput<E>,
         }
 
         /// Proof that the computation on the share was done correctly
-        #[serde_as]
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
         #[derive(
             Default,
             Clone,
@@ -114,9 +116,8 @@ macro_rules! impl_protocol {
             Eq,
             CanonicalSerialize,
             CanonicalDeserialize,
-            Serialize,
-            Deserialize,
         )]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
         pub struct $computation_share_proof<E: Pairing> {
             pub id: ShareId,
             pub sc_share: $discrete_log_proof<E>,

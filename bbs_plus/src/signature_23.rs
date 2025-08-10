@@ -10,29 +10,26 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::BTreeMap, fmt::Debug, ops::Mul, rand::RngCore, vec::Vec, UniformRand, Zero,
 };
-use dock_crypto_utils::{expect_equality, serde_utils::*, signature::MultiMessageSignatureParams};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{expect_equality, signature::MultiMessageSignatureParams};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde_with::serde_as;
+
 /// BBS signature created by the signer after signing a multi-message
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Signature23G1<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub e: E::ScalarField,
 }
 
@@ -144,7 +141,7 @@ impl<E: Pairing> Signature23G1<E> {
     ) -> Result<(), BBSPlusError> {
         let params = params.into();
         // The pairing check is `e(A, pk + g2*e) == e(b, g2)` which can be written as `e(A, pk)*e(A, g2*e) == e(b, g2)`.
-        // Simplifying more `e(A, pk)*e(A*e, g2) == e(b, g2)` ==> `e(A, pk)*e(A*e, g2)*e(-b, g2) == 1` => `e(A, pk)*e(A*e - b, g2) == 1`.
+        // Simplifying more `e(A, pk)*e(A*e, g2) == e(b, g2)` ==> `e(A, pk)*e(A*e - b, g2) == 1` => `e(A, pk)*e(A*e - b, g2) == 1`.
         let b = self.pre_verify(messages, &params)?;
         // Aeb = A*e - b
         let Aeb = self.A.mul(self.e) - b;

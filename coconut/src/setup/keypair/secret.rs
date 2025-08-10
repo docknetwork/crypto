@@ -1,40 +1,34 @@
 use alloc::vec::Vec;
 
+use crate::helpers::{n_rand, rand, FullDigest};
 use ark_ff::{
     field_hashers::{DefaultFieldHasher, HashToField},
     PrimeField,
 };
 use ark_serialize::*;
 use ark_std::rand::RngCore;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
-use utils::{misc::le_bytes_iter, serde_utils::ArkObjectBytes};
+#[cfg(feature = "serde")]
+use utils::serde_utils::ArkObjectBytes;
+use utils::{aliases::SyncIfParallel, concat_slices, join, misc::le_bytes_iter};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::helpers::{n_rand, rand, FullDigest};
-use utils::{aliases::SyncIfParallel, concat_slices, join};
-
 /// `SecretKey` used in the modified Pointcheval-Sanders signature scheme.
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SecretKey<F: PrimeField> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub x: F,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub y: Vec<F>,
 }
 

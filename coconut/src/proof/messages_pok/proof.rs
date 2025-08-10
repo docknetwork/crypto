@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use ark_ec::pairing::Pairing;
 use ark_serialize::*;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use utils::try_iter::InvalidPair;
 
@@ -18,9 +19,8 @@ use rayon::prelude::*;
 use super::*;
 
 /// Proof of knowledge for the messages.
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MessagesPoK<E: Pairing> {
     /// `com = g * o + \sum_{i}(h_{i} * m_{i})`
     pub(super) com_resp: WithSchnorrResponse<E::G1Affine, MultiMessageCommitment<E>>,

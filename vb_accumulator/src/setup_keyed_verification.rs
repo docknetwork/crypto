@@ -4,24 +4,30 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use digest::Digest;
-use dock_crypto_utils::{affine_group_element_from_byte_slices, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::affine_group_element_from_byte_slices;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 /// Public key for accumulator manager
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct PublicKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PublicKey<G: AffineRepr>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub G,
+);
 
 /// Setup parameters for accumulators
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct SetupParams<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SetupParams<G: AffineRepr>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub G,
+);
 
 impl<G: AffineRepr> SetupParams<G> {
     /// Generate params by hashing a known string. The hash function is vulnerable to timing

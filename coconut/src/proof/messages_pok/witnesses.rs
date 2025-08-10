@@ -3,8 +3,11 @@ use alloc::vec::Vec;
 use ark_ff::PrimeField;
 use ark_serialize::*;
 use ark_std::rand::RngCore;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
+#[cfg(feature = "serde")]
 use utils::serde_utils::*;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -12,23 +15,18 @@ use crate::helpers::{n_rand, rand, OwnedPairs};
 use utils::owned_pairs;
 
 /// Witnesses for `MessagesPoK`.
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    ZeroizeOnDrop,
-    Zeroize,
+    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, ZeroizeOnDrop, Zeroize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub(super) struct MessagesPoKWitnesses<F: PrimeField> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub o: F,
-    #[serde_as(as = "OwnedPairs<ArkObjectBytes, ArkObjectBytes>")]
+    #[cfg_attr(
+        feature = "serde",
+        serde_as(as = "OwnedPairs<ArkObjectBytes, ArkObjectBytes>")
+    )]
     pub o_m_pairs: OwnedPairs<F, F>,
 }
 

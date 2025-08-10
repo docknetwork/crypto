@@ -7,26 +7,22 @@ use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_serialize::*;
 use ark_std::rand::RngCore;
 use schnorr_pok::{error::SchnorrError, SchnorrCommitment};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
+#[cfg(feature = "serde")]
 use utils::serde_utils::ArkObjectBytes;
 
 use crate::helpers::{rand, OwnedPairs, Pairs, WithSchnorrAndBlindings, WithSchnorrResponse};
 
 /// `g * o + \sum_{i}(h_{i} * m_{i})`
-#[serde_as]
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
-pub struct MultiMessageCommitment<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G1Affine);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MultiMessageCommitment<E: Pairing>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::G1Affine,
+);
 utils::impl_deref! { MultiMessageCommitment<E: Pairing>(E::G1Affine) }
 
 impl<E: Pairing> MultiMessageCommitment<E> {

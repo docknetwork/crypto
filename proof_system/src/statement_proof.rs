@@ -11,11 +11,15 @@ use ark_std::{
 use bbs_plus::prelude::{PoKOfSignature23G1Proof, PoKOfSignatureG1Proof};
 use bulletproofs_plus_plus::prelude::ProofArbitraryRange;
 use coconut_crypto::SignaturePoK as PSSignaturePoK;
-use dock_crypto_utils::{ecies, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::ecies;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use kvac::bbdt_2016::proof_cdh::PoKOfMAC;
 use saver::encryption::Ciphertext;
 use schnorr_pok::{partial::PartialSchnorrResponse, SchnorrResponse};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use vb_accumulator::{
     kb_positive_accumulator::{
@@ -29,9 +33,10 @@ use vb_accumulator::{
 };
 
 /// Proof corresponding to one `Statement`
-#[serde_as]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub enum StatementProof<E: Pairing> {
     PoKBBSSignatureG1(PoKOfSignatureG1Proof<E>),
     VBAccumulatorMembership(MembershipProof<E>),
@@ -57,8 +62,14 @@ pub enum StatementProof<E: Pairing> {
     VBAccumulatorNonMembershipCDH(vb_accumulator::proofs_cdh::NonMembershipProof<E>),
     KBUniversalAccumulatorMembershipCDH(vb_accumulator::kb_universal_accumulator::proofs_cdh::KBUniversalAccumulatorMembershipProof<E>),
     KBUniversalAccumulatorNonMembershipCDH(vb_accumulator::kb_universal_accumulator::proofs_cdh::KBUniversalAccumulatorNonMembershipProof<E>),
-    KBPositiveAccumulatorMembership(#[serde_as(as = "ArkObjectBytes")] KBPositiveAccumulatorMembershipProof<E>),
-    KBPositiveAccumulatorMembershipCDH(#[serde_as(as = "ArkObjectBytes")] KBPositiveAccumulatorMembershipProofCDH<E>),
+    KBPositiveAccumulatorMembership(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] 
+        KBPositiveAccumulatorMembershipProof<E>
+    ),
+    KBPositiveAccumulatorMembershipCDH(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] 
+        KBPositiveAccumulatorMembershipProofCDH<E>
+    ),
     PoKOfBBDT16MAC(PoKOfMAC<E::G1Affine>),
     PedersenCommitmentG2(PedersenCommitmentProof<E::G2Affine>),
     VBAccumulatorMembershipKV(vb_accumulator::proofs_keyed_verification::MembershipProof<E::G1Affine>),
@@ -163,13 +174,12 @@ macro_rules! delegate_reverse {
     }};
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PedersenCommitmentProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t: G,
     pub response: SchnorrResponse<G>,
 }
@@ -185,13 +195,12 @@ impl<G: AffineRepr> PedersenCommitmentProof<G> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PedersenCommitmentPartialProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t: G,
     pub response: PartialSchnorrResponse<G>,
 }
@@ -207,18 +216,17 @@ impl<G: AffineRepr> PedersenCommitmentPartialProof<G> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct SaverProof<E: Pairing> {
     pub ciphertext: Ciphertext<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub snark_proof: saver::saver_groth16::Proof<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm_chunks: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm_combined: E::G1Affine,
     pub sp_ciphertext: PedersenCommitmentProof<E::G1Affine>,
     pub sp_chunks: PedersenCommitmentPartialProof<E::G1Affine>,
@@ -238,29 +246,27 @@ impl<E: Pairing> SaverProof<E> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct SaverProofWhenAggregatingSnarks<E: Pairing> {
     pub ciphertext: Ciphertext<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm_chunks: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm_combined: E::G1Affine,
     pub sp_ciphertext: PedersenCommitmentProof<E::G1Affine>,
     pub sp_chunks: PedersenCommitmentPartialProof<E::G1Affine>,
     pub sp_combined: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckLegoGroth16Proof<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub snark_proof: legogroth16::Proof<E>,
     pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
 }
@@ -274,24 +280,22 @@ impl<E: Pairing> BoundCheckLegoGroth16Proof<E> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub commitment: E::G1Affine,
     pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct R1CSLegoGroth16Proof<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub snark_proof: legogroth16::Proof<E>,
     pub sp: PedersenCommitmentProof<E::G1Affine>,
 }
@@ -312,13 +316,12 @@ impl<E: Pairing> R1CSLegoGroth16Proof<E> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct R1CSLegoGroth16ProofWhenAggregatingSnarks<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub commitment: E::G1Affine,
     pub sp: PedersenCommitmentProof<E::G1Affine>,
 }
@@ -332,13 +335,12 @@ impl<E: Pairing> R1CSLegoGroth16ProofWhenAggregatingSnarks<E> {
     }
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckBppProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub bpp_proof: ProofArbitraryRange<G>,
     pub sp1: PedersenCommitmentPartialProof<G>,
     pub sp2: PedersenCommitmentPartialProof<G>,
@@ -356,105 +358,98 @@ pub enum BoundCheckSmcWithKVInnerProof<G: AffineRepr> {
     CLS(smc_range_proof::prelude::CLSRangeProofWithKV<G>),
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckSmcProof<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub proof: BoundCheckSmcInnerProof<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm: E::G1Affine,
     pub sp: PedersenCommitmentPartialProof<E::G1Affine>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckSmcWithKVProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub proof: BoundCheckSmcWithKVInnerProof<G>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm: G,
     pub sp: PedersenCommitmentPartialProof<G>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct InequalityProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub proof: schnorr_pok::inequality::InequalityProof<G>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm: G,
     pub sp: PedersenCommitmentPartialProof<G>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct DetachedAccumulatorMembershipProof<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub accumulator: E::G1Affine,
     pub accum_proof: MembershipProof<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub challenge: E::ScalarField,
     /// Encrypted opening
     // TODO: Make constants as generic
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub encrypted: ecies::Encryption<E::G2Affine, 32, 24>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct DetachedAccumulatorNonMembershipProof<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub accumulator: E::G1Affine,
     pub accum_proof: NonMembershipProof<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub challenge: E::ScalarField,
     /// Encrypted opening
     // TODO: Make constants as generic
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub encrypted: ecies::Encryption<E::G2Affine, 32, 24>,
 }
 
 /// Verifiable Encryption using DKGith protocol in the scheme TZ21
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct VeTZ21Proof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub ve_proof: dkgith_decls::Proof<G>,
     /// The commitment to the encrypted messages
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub commitment: G,
     pub sp: PedersenCommitmentPartialProof<G>,
 }
 
 /// Verifiable Encryption using Robust DKGith protocol in the scheme TZ21
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct VeTZ21RobustProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub ve_proof: rdkgith_decls::Proof<G>,
     /// The commitment to the encrypted messages
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub commitment: G,
     pub sp: PedersenCommitmentPartialProof<G>,
 }

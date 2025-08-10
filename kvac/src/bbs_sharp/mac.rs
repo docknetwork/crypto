@@ -9,34 +9,28 @@ use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{
-    expect_equality, serde_utils::ArkObjectBytes, signature::MultiMessageSignatureParams,
-};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use dock_crypto_utils::{expect_equality, signature::MultiMessageSignatureParams};
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MAC<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub e: G::ScalarField,
 }
 
@@ -44,10 +38,9 @@ pub struct MAC<G: AffineRepr> {
 /// the secret key. Verifying the proof does not require the secret key.
 /// Consists of 2 protocols for discrete log relations, and both have the same discrete log
 ///
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProofOfValidityOfMAC<G: AffineRepr> {
     /// For proving `B = A * sk` where `sk` is the secret key and `B = g_0 + user_pk + g_1 * m_1 + g_2 * m_2 + ... g_n * m_n`
     pub sc_B: PokDiscreteLog<G>,

@@ -19,7 +19,9 @@ use bbs_plus::prelude::{
     SignatureParamsG1 as BBSSignatureParamsG1,
 };
 use bulletproofs_plus_plus::setup::SetupParams as BppSetupParams;
-use dock_crypto_utils::{commitment::PedersenCommitmentKey, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::commitment::PedersenCommitmentKey;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use kvac::bbdt_2016::setup::MACParams;
 use legogroth16::{
     circom::R1CS,
@@ -29,7 +31,9 @@ use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey as SaverSnarkProvingKey,
     VerifyingKey as SaverSnarkVerifyingKey,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use short_group_sig::common::ProvingKey;
 use vb_accumulator::{
@@ -41,9 +45,10 @@ use vb_accumulator::{
 };
 
 /// Holds (public) setup parameters of different protocols.
-#[serde_as]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub enum SetupParams<E: Pairing> {
     BBSPlusSignatureParams(BBSSignatureParamsG1<E>),
     BBSPlusPublicKey(BBSPublicKeyG2<E>),
@@ -51,34 +56,59 @@ pub enum SetupParams<E: Pairing> {
     VbAccumulatorPublicKey(AccumPublicKey<E>),
     VbAccumulatorMemProvingKey(MembershipProvingKey<E::G1Affine>),
     VbAccumulatorNonMemProvingKey(NonMembershipProvingKey<E::G1Affine>),
-    PedersenCommitmentKey(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::G1Affine>),
+    PedersenCommitmentKey(
+        #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] Vec<E::G1Affine>,
+    ),
     SaverEncryptionGens(EncryptionGens<E>),
     SaverCommitmentGens(ChunkedCommitmentGens<E::G1Affine>),
     SaverEncryptionKey(EncryptionKey<E>),
     SaverProvingKey(SaverSnarkProvingKey<E>),
-    SaverVerifyingKey(#[serde_as(as = "ArkObjectBytes")] SaverSnarkVerifyingKey<E>),
-    LegoSnarkProvingKey(#[serde_as(as = "ArkObjectBytes")] LegoSnarkProvingKey<E>),
-    LegoSnarkVerifyingKey(#[serde_as(as = "ArkObjectBytes")] LegoSnarkVerifyingKey<E>),
-    R1CS(#[serde_as(as = "ArkObjectBytes")] R1CS<E>),
+    SaverVerifyingKey(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] SaverSnarkVerifyingKey<E>,
+    ),
+    LegoSnarkProvingKey(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] LegoSnarkProvingKey<E>,
+    ),
+    LegoSnarkVerifyingKey(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] LegoSnarkVerifyingKey<E>,
+    ),
+    R1CS(#[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] R1CS<E>),
     Bytes(Vec<u8>),
-    FieldElemVec(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::ScalarField>),
+    FieldElemVec(
+        #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] Vec<E::ScalarField>,
+    ),
     PSSignatureParams(coconut_crypto::setup::SignatureParams<E>),
     PSSignaturePublicKey(coconut_crypto::setup::PublicKey<E>),
     BBSSignatureParams23(BBSSignatureParams23G1<E>),
-    BppSetupParams(#[serde_as(as = "ArkObjectBytes")] BppSetupParams<E::G1Affine>),
-    SmcParamsAndCommKey(#[serde_as(as = "ArkObjectBytes")] SmcParamsAndCommitmentKey<E>),
-    SmcParamsAndCommKeyAndSk(
-        #[serde_as(as = "ArkObjectBytes")] SmcParamsKVAndCommitmentKeyAndSecretKey<E::G1Affine>,
+    BppSetupParams(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] BppSetupParams<E::G1Affine>,
     ),
-    CommitmentKey(#[serde_as(as = "ArkObjectBytes")] PedersenCommitmentKey<E::G1Affine>),
+    SmcParamsAndCommKey(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
+        SmcParamsAndCommitmentKey<E>,
+    ),
+    SmcParamsAndCommKeyAndSk(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
+        SmcParamsKVAndCommitmentKeyAndSecretKey<E::G1Affine>,
+    ),
+    CommitmentKey(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
+        PedersenCommitmentKey<E::G1Affine>,
+    ),
     BBSigProvingKey(ProvingKey<E::G1Affine>),
     KBPositiveAccumulatorParams(KBAccumParams<E>),
     KBPositiveAccumulatorPublicKey(KBAccumPublicKey<E>),
     BBDT16MACParams(MACParams<E::G1Affine>),
-    PedersenCommitmentKeyG2(#[serde_as(as = "Vec<ArkObjectBytes>")] Vec<E::G2Affine>),
-    CommitmentKeyG2(#[serde_as(as = "ArkObjectBytes")] PedersenCommitmentKey<E::G2Affine>),
+    PedersenCommitmentKeyG2(
+        #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] Vec<E::G2Affine>,
+    ),
+    CommitmentKeyG2(
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
+        PedersenCommitmentKey<E::G2Affine>,
+    ),
     SmcParamsKVAndCommKey(
-        #[serde_as(as = "ArkObjectBytes")] SmcParamsKVAndCommitmentKey<E::G1Affine>,
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
+        SmcParamsKVAndCommitmentKey<E::G1Affine>,
     ),
     ElgamalEncryption(ElgamalEncryptionParams<E::G1Affine>),
 }
@@ -188,15 +218,14 @@ macro_rules! extract_param {
 }
 
 /// Elgamal encryption parameters generated by the decryptor
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ElgamalEncryptionParams<G: AffineRepr> {
     /// Generator used in the scheme to generate public key and ephemeral public key by sender/encryptor
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub g: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub public_key: G,
 }
 

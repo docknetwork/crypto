@@ -2,16 +2,17 @@
 
 use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
-use dock_crypto_utils::{
-    serde_utils::ArkSerializationError,
-    try_iter::{IndexIsOutOfBounds, InvalidPair},
-};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkSerializationError;
+use dock_crypto_utils::try_iter::{IndexIsOutOfBounds, InvalidPair};
 use oblivious_transfer_protocols::{error::OTError, ParticipantId};
 use schnorr_pok::error::SchnorrError;
 use secret_sharing_and_dkg::error::SSError;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum BBSPlusError {
     CannotInvert0,
     NoMessageToSign,
@@ -26,7 +27,7 @@ pub enum BBSPlusError {
     /// 2nd schnorr proof failed during verification of proof of knowledge of signature
     SecondSchnorrVerificationFailed,
     InvalidMsgIdxForResponse(usize),
-    #[serde(with = "ArkSerializationError")]
+    #[cfg_attr(feature = "serde", serde(with = "ArkSerializationError"))]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
     MessageIndicesMustBeUniqueAndSorted(InvalidPair<usize>),

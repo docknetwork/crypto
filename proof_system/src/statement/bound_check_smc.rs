@@ -1,35 +1,40 @@
-use crate::{error::ProofSystemError, statement::Statement, sub_protocols::validate_bounds};
+use crate::{
+    error::ProofSystemError, setup_params::SetupParams, statement::Statement,
+    sub_protocols::validate_bounds,
+};
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand::RngCore, vec::Vec};
 use digest::Digest;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use schnorr_pok::discrete_log::PokDiscreteLog;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use smc_range_proof::prelude::{
     MemberCommitmentKey, SecretKey, SetMembershipCheckParams, SetMembershipCheckParamsWithPairing,
 };
 
-use crate::setup_params::SetupParams;
-use dock_crypto_utils::serde_utils::ArkObjectBytes;
-
 /// For ease of use, keeping setup params together, but they could be generated independently
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SmcParamsAndCommitmentKey<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub params: SetMembershipCheckParams<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm_key: MemberCommitmentKey<E::G1Affine>,
 }
 
-#[serde_as]
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SmcParamsWithPairingAndCommitmentKey<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub params: SetMembershipCheckParamsWithPairing<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub comm_key: MemberCommitmentKey<E::G1Affine>,
 }
 
@@ -59,15 +64,14 @@ impl<E: Pairing> From<SmcParamsAndCommitmentKey<E>> for SmcParamsWithPairingAndC
 }
 
 /// Proving knowledge of message that satisfies given bounds, i.e. `min <= message < max` using set-membership based check.
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckSmc<E: Pairing> {
     pub min: u64,
     pub max: u64,
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub params_and_comm_key: Option<SmcParamsAndCommitmentKey<E>>,
     pub params_and_comm_key_ref: Option<usize>,
 }
@@ -124,4 +128,20 @@ impl<E: Pairing> BoundCheckSmc<E> {
     ) -> Result<&'a MemberCommitmentKey<E::G1Affine>, ProofSystemError> {
         Ok(&self.get_params_and_comm_key(setup_params, st_idx)?.comm_key)
     }
+}
+
+/// Public values for proving knowledge of bound check using Set Membership Check.
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
+pub struct BoundCheckSmcStatement<E: Pairing> {
+    /// The commitment to the message whose bounds are being checked
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
+    pub commitment: E::G1Affine,
+    /// The commitment key used to create the commitment
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
+    pub commitment_key: E::G1Affine,
+    /// The proof of knowledge of discrete log of commitment wrt commitment key
+    pub pok_commitment: PokDiscreteLog<E::G1Affine>,
 }

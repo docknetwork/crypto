@@ -16,13 +16,17 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::{Digest, ExtendableOutput, Update};
-use dock_crypto_utils::{msm::WindowTable, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::msm::WindowTable;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use itertools::Itertools;
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
@@ -30,90 +34,61 @@ use zeroize::Zeroize;
 use rayon::prelude::*;
 
 /// Public key created by base OT sender and sent to the receiver
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct SenderPubKey<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SenderPubKey<G: AffineRepr>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub G,
+);
 
 /// Public key created by the base OT receiver and sent to the sender
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct ReceiverPubKeys<G: AffineRepr>(#[serde_as(as = "Vec<ArkObjectBytes>")] pub Vec<G>);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ReceiverPubKeys<G: AffineRepr>(
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))] pub Vec<G>,
+);
 
 /// Setup for running multiple 1-of-n OTs
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ROTSenderSetup<G: AffineRepr> {
     pub ot_config: OTConfig,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub y: G::ScalarField,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub S: G,
 }
 
 // TODO: Make it use const generic for key size and replace byte vector with slice
 /// Sender's keys for multiple 1-of-n ROTs
-#[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Zeroize,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ROTSenderKeys(pub Vec<Vec<Key>>);
 
 // TODO: Make it use const generic for key size and replace byte vector with slice
 /// Receiver's keys for multiple 1-of-n ROTs
-#[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Zeroize,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ROTReceiverKeys(pub Vec<Key>);
 
 /// Sender's keys for multiple 1-of-2 ROTs
-#[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Zeroize,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OneOfTwoROTSenderKeys(pub Vec<(Key, Key)>);
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct HashedKey(pub Vec<u8>);
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct DoubleHashedKey(pub Vec<u8>);
 
 /// The OT sender acts as a challenger and creates the challenges. Used in Verified Simplest OT
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct VSROTChallenger {
     pub double_hashed_keys_0: Vec<DoubleHashedKey>,
     pub hashed_keys: Vec<(HashedKey, HashedKey)>,
@@ -121,9 +96,8 @@ pub struct VSROTChallenger {
 
 /// The OT receiver receives challenges from the OT sender and verifies the challenges and sends
 /// responses. Used in Verified Simplest OT
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct VSROTResponder {
     pub choices: Vec<Bit>,
     pub hashed_keys: Vec<HashedKey>,
@@ -131,15 +105,13 @@ pub struct VSROTResponder {
 }
 
 /// Sent by the OT sender
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Challenges(pub Vec<Vec<u8>>);
 
 /// Sent by the OT receiver as response to `Challenges`
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Responses(pub Vec<Vec<u8>>);
 
 impl<G: AffineRepr> ReceiverPubKeys<G> {

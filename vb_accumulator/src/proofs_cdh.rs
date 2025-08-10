@@ -24,15 +24,17 @@ use ark_std::{
     collections::BTreeMap, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand,
 };
 use core::mem;
-use dock_crypto_utils::{
-    randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
-};
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
     partial::PartialSchnorrResponse,
     SchnorrCommitment,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -43,10 +45,9 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 pub struct MembershipProofProtocol<E: Pairing>(pub PoKOfSignatureG1Protocol<E>);
 
 /// A wrapper over the proof of knowledge of weak-BB signature
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MembershipProof<E: Pairing>(pub PoKOfSignatureG1<E>);
 
 /// An extension over the protocol for proof of knowledge of weak-BB signature.
@@ -69,22 +70,21 @@ pub struct NonMembershipProofProtocol<E: Pairing> {
     pub sc_comm_2: PokDiscreteLogProtocol<E::G1Affine>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipProof<E: Pairing> {
     /// The randomized witness `C'`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub C_prime: E::G1Affine,
     /// `V * r - C' * y - P * d'`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub C_bar: E::G1Affine,
     /// The commitment to the randomized witness `Q * d'`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub J: E::G1Affine,
     /// For relation `C_bar = V * r - C' * y - P * d'`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t_1: E::G1Affine,
     pub sc_resp_1: PartialSchnorrResponse<E::G1Affine>,
     /// For relation `J = Q * d'`

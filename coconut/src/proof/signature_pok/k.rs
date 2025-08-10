@@ -2,8 +2,11 @@ use alloc::vec::Vec;
 use ark_serialize::*;
 use core::{borrow::Borrow, iter::once};
 use itertools::Itertools;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
+#[cfg(feature = "serde")]
 use utils::serde_utils::ArkObjectBytes;
 
 use ark_ec::{pairing::Pairing, CurveGroup};
@@ -19,19 +22,12 @@ use crate::{
 };
 
 /// `\sum_{j}(beta_tilde_{j} * m_{l}{j} + g_tilde * r_{l})`
-#[serde_as]
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
-pub struct K<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G2Affine);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct K<E: Pairing>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::G2Affine,
+);
 utils::impl_deref! { K<E: Pairing>(E::G2Affine) }
 
 impl<E: Pairing> K<E> {

@@ -1,33 +1,25 @@
 use crate::{
+    batch_utils::Omega,
     error::VBAccumulatorError,
+    kb_positive_accumulator::setup::SecretKey,
     witness::{MembershipWitness, Witness},
 };
 use ark_ec::pairing::Pairing;
-
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, vec::Vec};
-use short_group_sig::bb_sig::SignatureG1 as BBSig;
-
-use crate::{batch_utils::Omega, kb_positive_accumulator::setup::SecretKey};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use short_group_sig::bb_sig::SignatureG1 as BBSig;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Membership witness in for the positive accumulator
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBPositiveAccumulatorWitness<E: Pairing> {
     /// The BB signature on the member
     pub signature: BBSig<E>,

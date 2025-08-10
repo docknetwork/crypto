@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use ark_ff::PrimeField;
 use itertools::{process_results, Itertools};
 use secret_sharing_and_dkg::common::ParticipantId;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use ark_ec::pairing::Pairing;
@@ -21,10 +22,9 @@ type Result<T, E = AggregatedPSError> = core::result::Result<T, E>;
 
 /// Signature produced by combining several Pointcheval-Sanders signatures together.
 /// This signature can be verified using the verification key.
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct AggregatedSignature<E: Pairing>(Signature<E>);
 utils::impl_deref! { AggregatedSignature<E: Pairing>(Signature<E>) }
 

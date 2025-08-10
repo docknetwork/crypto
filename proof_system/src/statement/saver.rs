@@ -1,23 +1,24 @@
-use ark_ec::pairing::Pairing;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::vec::Vec;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-
 use crate::{
     error::ProofSystemError, setup_params::SetupParams, statement::Statement,
     sub_protocols::saver::SaverProtocol,
 };
+use ark_ec::pairing::Pairing;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::vec::Vec;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use saver::prelude::{
     ChunkedCommitmentGens, EncryptionGens, EncryptionKey, ProvingKey, VerifyingKey,
 };
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde_with::serde_as;
 
 /// Proving knowledge of correctly encrypted message
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct SaverProver<E: Pairing> {
     pub chunk_bit_size: u8,
     pub encryption_gens: Option<EncryptionGens<E>>,
@@ -31,17 +32,16 @@ pub struct SaverProver<E: Pairing> {
 }
 
 /// Verifying knowledge of correctly encrypted message
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct SaverVerifier<E: Pairing> {
     pub chunk_bit_size: u8,
     pub encryption_gens: Option<EncryptionGens<E>>,
     pub chunked_commitment_gens: Option<ChunkedCommitmentGens<E::G1Affine>>,
     pub encryption_key: Option<EncryptionKey<E>>,
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub snark_verifying_key: Option<VerifyingKey<E>>,
     pub encryption_gens_ref: Option<usize>,
     pub chunked_commitment_gens_ref: Option<usize>,

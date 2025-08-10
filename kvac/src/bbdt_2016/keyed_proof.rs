@@ -4,14 +4,18 @@ use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{affine_group_element_from_byte_slices, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::affine_group_element_from_byte_slices;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
     compute_random_oracle_challenge,
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
     inequality::{UnknownDiscreteLogInequalityProof, UnknownDiscreteLogInequalityProtocol},
     partial::PartialPokDiscreteLog,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 /// The part of the proof requiring secret key to verify.
@@ -20,48 +24,44 @@ use serde_with::serde_as;
 /// secret key. This lets us build for use-cases where the signer, acting as the credential issuer, would not want the credential to be used without
 /// its permission, like when he wants to be paid by the verifier who acts as the "untrusted helper" which verifies the Schnorr proofs
 /// and learns the revealed messages (credential attributes) but these are not learnt by the signer thus maintaining the user's privacy.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KeyedProof<G: AffineRepr> {
     /// The randomized MAC
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub B_0: G,
     /// `C = B_0 * y` where `y` is the secret key
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub C: G,
 }
 
 /// A public key to verify a `KeyedProof`. The secret key can be used to create any number of such public
 /// keys. It's a tuple of the form `(P, Q=P*y)` where `P` and `Q` are elements in group G2 and `y`
 /// is the secret key.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PublicVerificationKey<E: Pairing>(
-    #[serde_as(as = "ArkObjectBytes")] pub E::G2Affine,
-    #[serde_as(as = "ArkObjectBytes")] pub E::G2Affine,
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G2Affine,
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G2Affine,
 );
 
-#[serde_as]
-#[derive(
-    Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PreparedPublicVerificationKey<E: Pairing>(
-    #[serde_as(as = "ArkObjectBytes")] pub E::G2Prepared,
-    #[serde_as(as = "ArkObjectBytes")] pub E::G2Prepared,
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G2Prepared,
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub E::G2Prepared,
 );
 
 /// A proof that the `KeyedProof` can be verified successfully. It proves that secret key `y` is same in the
 /// `KeyedProof` and the `PublicKey`, i.e. `C = B_0 * y, Pk = g_0 * y`. This can be given
 /// by the signer to the verifier after verifying the keyed proof to convince the verifier that the
 /// proof was in fact valid.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProofOfValidityOfKeyedProof<G: AffineRepr> {
     /// Proof of knowledge of opening of `PublicKey`
     pub sc_pk: PokDiscreteLog<G>,
@@ -73,10 +73,9 @@ pub struct ProofOfValidityOfKeyedProof<G: AffineRepr> {
 /// is not the secret key `y` where (`B_0`, `C`) and `Pk` are the `KeyedProof` and the `PublicKey` respectively,
 /// i.e. `C = B_0 * k, Pk = g_0 * y`. This can be given by the signer to the verifier after verifying the keyed
 /// proof to convince the verifier that the proof was in fact invalid.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProofOfInvalidityOfKeyedProof<G: AffineRepr>(UnknownDiscreteLogInequalityProof<G>);
 
 impl<E: Pairing> PublicVerificationKey<E> {

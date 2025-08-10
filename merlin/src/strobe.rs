@@ -14,6 +14,7 @@ use ark_std::{
 use core::ops::{Deref, DerefMut};
 
 use keccak;
+#[cfg(feature = "serde")]
 use serde::{
     de::{Error, SeqAccess, Visitor},
     ser::SerializeTuple,
@@ -46,7 +47,8 @@ pub struct AlignedKeccakState(pub [u8; 200]);
 /// A Strobe context for the 128-bit security level.
 ///
 /// Only `meta-AD`, `AD`, `KEY`, and `PRF` operations are supported.
-#[derive(Clone, Zeroize, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[derive(Clone, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Strobe128 {
     pub state: AlignedKeccakState,
     pub pos: u8,
@@ -225,10 +227,11 @@ impl CanonicalDeserialize for AlignedKeccakState {
     }
 }
 
-impl Serialize for AlignedKeccakState {
+#[cfg(feature = "serde")]
+impl serde::Serialize for AlignedKeccakState {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: Serializer,
+        S: serde::Serializer,
     {
         let mut seq = serializer.serialize_tuple(200)?;
         for element in &self.0 {
@@ -238,10 +241,11 @@ impl Serialize for AlignedKeccakState {
     }
 }
 
-impl<'de> Deserialize<'de> for AlignedKeccakState {
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for AlignedKeccakState {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: Deserializer<'de>,
+        D: serde::Deserializer<'de>,
     {
         let s = deserializer.deserialize_seq(ArrayVisitor {
             _phantom: PhantomData,
@@ -250,11 +254,13 @@ impl<'de> Deserialize<'de> for AlignedKeccakState {
     }
 }
 
+#[cfg(feature = "serde")]
 struct ArrayVisitor<'de> {
     _phantom: PhantomData<&'de [u8; 200]>,
 }
 
-impl<'de> Visitor<'de> for ArrayVisitor<'de> {
+#[cfg(feature = "serde")]
+impl<'de> serde::de::Visitor<'de> for ArrayVisitor<'de> {
     type Value = [u8; 200];
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -263,43 +269,31 @@ impl<'de> Visitor<'de> for ArrayVisitor<'de> {
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
     where
-        A: SeqAccess<'de>,
+        A: serde::de::SeqAccess<'de>,
     {
         let mut array: MaybeUninit<[u8; 200]> = MaybeUninit::uninit();
 
         for index in 0..200 {
-            // Get next item as Result<Option<T>, A::Error>. Since we know
-            // exactly how many elements we should receive, we can flatten
-            // this to a Result<T, A::Error>.
             let next = seq
                 .next_element::<u8>()
-                .and_then(|x| x.ok_or_else(|| Error::invalid_length(200, &self)));
+                .and_then(|x| x.ok_or_else(|| serde::de::Error::invalid_length(200, &self)));
 
             match next {
                 Ok(x) => unsafe {
-                    // Safety: We write into the array without reading any
-                    // uninitialized memory and writes only occur within the
-                    // array bounds at multiples of the array stride.
                     let array_base_ptr = array.as_mut_ptr() as *mut u8;
                     ptr::write(array_base_ptr.add(index), x);
                 },
                 Err(err) => {
-                    // Safety: We need to manually drop the parts we
-                    // initialized before we can return.
                     unsafe {
                         let array_base_ptr = array.as_mut_ptr() as *mut u8;
-
                         for offset in 0..index {
                             ptr::drop_in_place(array_base_ptr.add(offset));
                         }
                     }
-
                     return Err(err);
                 }
             }
         }
-
-        // Safety: We have completely initialized every element
         unsafe { Ok(array.assume_init()) }
     }
 }

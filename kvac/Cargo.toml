@@ -16,8 +16,9 @@ ark-serialize.workspace = true
 digest.workspace = true
 zeroize.workspace = true
 rayon = {workspace = true, optional = true}
-serde.workspace = true
-serde_with.workspace = true
+serde = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_with = { workspace = true, optional = true }
+cfg_eval.workspace = true
 itertools.workspace = true
 dock_crypto_utils = { version = "0.23.0", default-features = false, path = "../utils" }
 schnorr_pok = { version = "0.23.0", default-features = false, path = "../schnorr_pok" }
@@ -32,6 +33,12 @@ ark-secp256k1 = { version = "^0.4.0", default-features = false }
 sha2 = {version = "0.10.8", default-features = false}
 
 [features]
-default = [ "parallel"]
+default = [ "parallel", "serde"]
 std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "schnorr_pok/std"]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel", "schnorr_pok/parallel"]
+serde = [
+    "dep:serde",
+    "serde_with",
+    "dock_crypto_utils/serde",
+    "schnorr_pok/serde",
+]

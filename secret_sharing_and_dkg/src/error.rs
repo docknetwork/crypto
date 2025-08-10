@@ -1,10 +1,13 @@
 use crate::common::{ParticipantId, ShareId};
 use ark_serialize::SerializationError;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkSerializationError;
 use schnorr_pok::error::SchnorrError;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum SSError {
     InvalidThresholdOrTotal(ShareId, ShareId),
     BelowThreshold(ShareId, ShareId),
@@ -27,7 +30,7 @@ pub enum SSError {
     UnequalNoOfProofsAndCommitments(usize, usize),
     XCordCantBeZero,
     InvalidProof,
-    #[serde(with = "ArkSerializationError")]
+    #[cfg_attr(feature = "serde", serde(with = "ArkSerializationError"))]
     Serialization(SerializationError),
     UnequalNoOfSharesAndPublicKeys(usize, usize),
     UnexpectedNumberOfResponses(usize, usize),

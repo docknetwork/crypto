@@ -21,7 +21,7 @@ features = ["nightly"]
 ark-serialize.workspace = true
 ark-std.workspace = true
 zeroize.workspace = true
-serde.workspace = true
+serde = { workspace = true, optional = true }
 keccak = { version = "0.1.0", default-features = false }
 byteorder = { version = "1.2.4", default-features = false }
 rand_core = { version = "0.6", default-features = false }
@@ -37,3 +37,4 @@ default = ["std"]
 nightly = []
 debug-transcript = ["hex"]
 std = ["rand_core/std", "byteorder/std"]
+serde = ["dep:serde"]

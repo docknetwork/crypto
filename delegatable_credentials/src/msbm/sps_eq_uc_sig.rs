@@ -15,10 +15,13 @@ use ark_std::{
 };
 use digest::Digest;
 
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 
 use schnorr_pok::discrete_log::PokDiscreteLog;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
@@ -36,23 +39,14 @@ use crate::{
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-#[serde_as]
-#[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Signature<E: Pairing> {
     /// Signature on the set-commitments
     pub comm_sig: MercurialSig<E>,
     /// Tag that has the user's public key which can switched with another user's
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub T: E::G1Affine,
 }
 

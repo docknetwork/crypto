@@ -8,14 +8,16 @@ use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
-use dock_crypto_utils::{
-    randomized_pairing_check::RandomizedPairingChecker, serde_utils::ArkObjectBytes,
-};
+use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
     discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
     partial::Partial1PokPedersenCommitment,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -31,22 +33,13 @@ pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     pub sc: PokPedersenCommitmentProtocol<E::G1Affine>,
 }
 
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfSignatureG1<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_prime: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_bar: E::G1Affine,
     /// The following could be achieved by using Either<PokPedersenCommitment, Partial1PokPedersenCommitment> but serialization
     /// for Either is not supported out of the box and had to be implemented

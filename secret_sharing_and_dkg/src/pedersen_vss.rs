@@ -8,21 +8,19 @@
 //! - Dealer sends `(F(i), G(i))` to participant `i`
 //! - Each participant verifies `C(F(i), G(i)) = C_0 * C_1*i * C_2*{i^2} * ... C_{k-1}*{k-1}`
 
-use ark_ec::{AffineRepr, VariableBaseMSM};
-use ark_ff::PrimeField;
-use ark_poly::univariate::DensePolynomial;
-
-use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec, UniformRand};
-
-use dock_crypto_utils::{commitment::PedersenCommitmentKey, ff::powers};
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
 use crate::{
     common::{CommitmentToCoefficients, Share, ShareId, Shares, VerifiableShare, VerifiableShares},
     error::SSError,
     shamir_ss,
 };
+use ark_ec::{AffineRepr, VariableBaseMSM};
+use ark_ff::PrimeField;
+use ark_poly::univariate::DensePolynomial;
+use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec, UniformRand};
+use dock_crypto_utils::{commitment::PedersenCommitmentKey, ff::powers};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Generate a random secret with its shares according to Pedersen's verifiable secret sharing.
 /// At least `threshold` number of shares are needed to reconstruct the secret.

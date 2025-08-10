@@ -16,37 +16,22 @@ use dock_crypto_utils::msm::WindowTable;
 use dock_crypto_utils::{cfg_iter_sum, ff::inner_product};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBUniversalAccumulatorMembershipWitness<G: AffineRepr>(pub MembershipWitness<G>);
 
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct KBUniversalAccumulatorNonMembershipWitness<G: AffineRepr>(pub MembershipWitness<G>);
 
 impl<G: AffineRepr> From<MembershipWitness<G>> for KBUniversalAccumulatorMembershipWitness<G> {

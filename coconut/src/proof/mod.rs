@@ -10,8 +10,11 @@ use ark_ff::PrimeField;
 use ark_std::rand::RngCore;
 
 use itertools::process_results;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
+#[cfg(feature = "serde")]
 use utils::serde_utils::ArkObjectBytes;
 
 pub use messages_pok::*;
@@ -21,19 +24,20 @@ use crate::helpers::{pair_with_slice, rand, IndexIsOutOfBounds};
 
 /// Each message can be either randomly blinded, unblinded, or blinded using supplied blinding.
 /// By default, a message is blinded with random blinding.
-#[serde_as]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub enum CommitMessage<F: PrimeField> {
     /// Message will be randomly blinded into the commitment.
-    BlindMessageRandomly(#[serde_as(as = "ArkObjectBytes")] F),
+    BlindMessageRandomly(#[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] F),
     /// Message will be revealed, and thus won't be included in PoK.
     RevealMessage,
     /// Message will be blinded into the commitment with the supplied blinding.
     BlindMessageWithConcreteBlinding {
-        #[serde_as(as = "ArkObjectBytes")]
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
         message: F,
-        #[serde_as(as = "ArkObjectBytes")]
+        #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
         blinding: F,
     },
 }

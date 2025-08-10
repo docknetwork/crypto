@@ -5,8 +5,11 @@ use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::*;
 use ark_std::{cfg_into_iter, rand::RngCore, UniformRand, Zero};
 use digest::Digest;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
+#[cfg(feature = "serde")]
 use utils::serde_utils::ArkObjectBytes;
 
 #[cfg(feature = "parallel")]
@@ -27,14 +30,13 @@ type Result<T, E = PSError> = core::result::Result<T, E>;
 ///
 /// - Secret key's owner signs messages
 /// - `BlindSignature` gets unblinded
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Signature<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub(crate) sigma_1: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub(crate) sigma_2: E::G1Affine,
 }
 

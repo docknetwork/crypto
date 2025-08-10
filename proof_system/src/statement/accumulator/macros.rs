@@ -59,20 +59,12 @@ macro_rules! impl_getters {
 macro_rules! impl_struct_and_funcs {
     ($(#[$doc:meta])*
     $name:ident, $param_type: ident, $param_variant: ident, $pk_type: ident, $pk_variant: ident, $statement_variant:ident, $prk_type:ident, $prk_variant:ident) => {
-        #[serde_as]
-        #[derive(
-            Clone,
-            Debug,
-            PartialEq,
-            Eq,
-            CanonicalSerialize,
-            CanonicalDeserialize,
-            Serialize,
-            Deserialize,
-        )]
-        #[serde(bound = "")]
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+        #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+        #[cfg_attr(feature = "serde", serde(bound = ""))]
         pub struct $name<E: Pairing> {
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub accumulator_value: E::G1Affine,
             pub params: Option<$param_type<E>>,
             pub public_key: Option<$pk_type<E>>,

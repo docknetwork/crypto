@@ -106,170 +106,134 @@ use ark_ec::{
 use ark_ff::{Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::{
-    msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker, serde_utils::*,
-};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker};
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use short_group_sig::common::ProvingKey;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Common elements of the randomized witness between membership and non-membership witness
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RandomizedWitness<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub E_C: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub T_sigma: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub T_rho: G,
 }
 
 /// Common elements of the blindings (Schnorr protocol) between membership and non-membership witness
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct Blindings<F: PrimeField> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub sigma: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub rho: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub delta_sigma: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub delta_rho: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r_y: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r_sigma: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r_rho: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r_delta_sigma: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r_delta_rho: F,
 }
 
 /// Common elements of the commitment (Schnorr protocol, step 1) between membership and non-membership witness
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct SchnorrCommit<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub R_E: PairingOutput<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub R_sigma: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub R_rho: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub R_delta_sigma: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub R_delta_rho: E::G1Affine,
 }
 
 /// Common elements of the response (Schnorr protocol, step 3) between membership and non-membership witness
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct SchnorrResponse<F: PrimeField> {
     /// This is the response for the accumulator member/non-member. If its missing, it means that the response is generated by
     /// some other protocol and will be provided during verification.
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub s_y: Option<F>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub s_sigma: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub s_rho: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub s_delta_sigma: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub s_delta_rho: F,
 }
 /// Randomized membership witness
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MembershipRandomizedWitness<G: AffineRepr>(pub RandomizedWitness<G>);
 
 /// Blindings used during membership proof protocol
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MembershipBlindings<F: PrimeField>(pub Blindings<F>);
 
 /// Commitments from various Schnorr protocols used during membership proof protocol
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MembershipSchnorrCommit<E: Pairing>(pub SchnorrCommit<E>);
 
 /// Responses from various Schnorr protocols used during membership proof protocol
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MembershipSchnorrResponse<F: PrimeField>(pub SchnorrResponse<F>);
 
 /// Proof of knowledge of the member and the membership witness
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MembershipProof<E: Pairing> {
     pub randomized_witness: MembershipRandomizedWitness<E::G1Affine>,
     pub schnorr_commit: MembershipSchnorrCommit<E>,
@@ -277,165 +241,162 @@ pub struct MembershipProof<E: Pairing> {
 }
 
 /// Protocol for proving knowledge of the member and the membership witness
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MembershipProofProtocol<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub element: E::ScalarField,
-    #[serde(bound = "")]
+    #[cfg_attr(feature = "serde", serde(bound = ""))]
     pub randomized_witness: MembershipRandomizedWitness<E::G1Affine>,
     #[zeroize(skip)]
-    #[serde(bound = "")]
+    #[cfg_attr(feature = "serde", serde(bound = ""))]
     pub schnorr_commit: MembershipSchnorrCommit<E>,
-    #[serde(bound = "")]
+    #[cfg_attr(feature = "serde", serde(bound = ""))]
     pub schnorr_blindings: MembershipBlindings<E::ScalarField>,
 }
 
 /// Randomized non-membership witness
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipRandomizedWitness<G: AffineRepr> {
-    #[serde(
-        bound = "RandomizedWitness<G>: Serialize, for<'a> RandomizedWitness<G>: Deserialize<'a>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            bound = "RandomizedWitness<G>: Serialize, for<'a> RandomizedWitness<G>: Deserialize<'a>"
+        )
     )]
     pub C: RandomizedWitness<G>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub E_d: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub E_d_inv: G,
 }
 
 /// Blindings used during non-membership proof protocol
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipBlindings<F: PrimeField> {
-    #[serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound = "Blindings<F>: Serialize, for<'a> Blindings<F>: Deserialize<'a>")
+    )]
     pub C: Blindings<F>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub tau: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub pi: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r_u: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r_v: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub r_w: F,
 }
 
 /// Commitments from various Schnorr protocols used during non-membership proof protocol
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipSchnorrCommit<E: Pairing> {
-    #[serde(bound = "SchnorrCommit<E>: Serialize, for<'a> SchnorrCommit<E>: Deserialize<'a>")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound = "SchnorrCommit<E>: Serialize, for<'a> SchnorrCommit<E>: Deserialize<'a>")
+    )]
     pub C: SchnorrCommit<E>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub R_A: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub R_B: E::G1Affine,
 }
 
 /// Responses from various Schnorr protocols used during non-membership proof protocol
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipSchnorrResponse<F: PrimeField> {
-    #[serde(bound = "SchnorrResponse<F>: Serialize, for<'a> SchnorrResponse<F>: Deserialize<'a>")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            bound = "SchnorrResponse<F>: Serialize, for<'a> SchnorrResponse<F>: Deserialize<'a>"
+        )
+    )]
     pub C: SchnorrResponse<F>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub s_u: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub s_v: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub s_w: F,
 }
 
 /// Proof of knowledge of the non-member and the non-membership witness
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipProof<E: Pairing> {
-    #[serde(
-        bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
+        )
     )]
     pub randomized_witness: NonMembershipRandomizedWitness<E::G1Affine>,
-    #[serde(
-        bound = "NonMembershipSchnorrCommit<E>: Serialize, for<'a> NonMembershipSchnorrCommit<E>: Deserialize<'a>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            bound = "NonMembershipSchnorrCommit<E>: Serialize, for<'a> NonMembershipSchnorrCommit<E>: Deserialize<'a>"
+        )
     )]
     pub schnorr_commit: NonMembershipSchnorrCommit<E>,
-    #[serde(
-        bound = "NonMembershipBlindings<E::ScalarField>: Serialize, for<'a> NonMembershipBlindings<E::ScalarField>: Deserialize<'a>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            bound = "NonMembershipBlindings<E::ScalarField>: Serialize, for<'a> NonMembershipBlindings<E::ScalarField>: Deserialize<'a>"
+        )
     )]
     pub schnorr_response: NonMembershipSchnorrResponse<E::ScalarField>,
 }
 
 /// Protocol for proving knowledge of the non-member and the non-membership witness
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipProofProtocol<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub element: E::ScalarField,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub d: E::ScalarField,
-    #[serde(
-        bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            bound = "NonMembershipRandomizedWitness<E::G1Affine>: Serialize, for<'a> NonMembershipRandomizedWitness<E::G1Affine>: Deserialize<'a>"
+        )
     )]
     pub randomized_witness: NonMembershipRandomizedWitness<E::G1Affine>,
     #[zeroize(skip)]
-    #[serde(
-        bound = "NonMembershipSchnorrCommit<E>: Serialize, for<'a> NonMembershipSchnorrCommit<E>: Deserialize<'a>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            bound = "NonMembershipSchnorrCommit<E>: Serialize, for<'a> NonMembershipSchnorrCommit<E>: Deserialize<'a>"
+        )
     )]
     pub schnorr_commit: NonMembershipSchnorrCommit<E>,
-    #[serde(
-        bound = "NonMembershipBlindings<E::ScalarField>: Serialize, for<'a> NonMembershipBlindings<E::ScalarField>: Deserialize<'a>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            bound = "NonMembershipBlindings<E::ScalarField>: Serialize, for<'a> NonMembershipBlindings<E::ScalarField>: Deserialize<'a>"
+        )
     )]
     pub schnorr_blindings: NonMembershipBlindings<E::ScalarField>,
 }

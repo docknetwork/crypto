@@ -1,16 +1,19 @@
 use ark_serialize::SerializationError;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkSerializationError;
 use oblivious_transfer_protocols::error::OTError;
 use schnorr_pok::error::SchnorrError;
 use secret_sharing_and_dkg::error::SSError;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum ShortGroupSigError {
     ZeroSignature,
     InvalidSignature,
     SchnorrError(SchnorrError),
-    #[serde(with = "ArkSerializationError")]
+    #[cfg_attr(feature = "serde", serde(with = "ArkSerializationError"))]
     Serialization(SerializationError),
     InvalidProof,
     InvalidMembershipValidityProof,

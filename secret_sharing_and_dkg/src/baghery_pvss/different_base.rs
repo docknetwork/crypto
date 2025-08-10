@@ -5,9 +5,13 @@ use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{expect_equality, msm::WindowTable, serde_utils::ArkObjectBytes};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use dock_crypto_utils::{expect_equality, msm::WindowTable};
 use schnorr_pok::compute_random_oracle_challenge;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -15,7 +19,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use rayon::prelude::*;
 
 /// Share encrypted for the party
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
     Default,
     Clone,
@@ -26,39 +30,29 @@ use rayon::prelude::*;
     ZeroizeOnDrop,
     CanonicalSerialize,
     CanonicalDeserialize,
-    Serialize,
-    Deserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EncryptedShare<G: AffineRepr> {
     #[zeroize(skip)]
     pub id: ShareId,
     #[zeroize(skip)]
     pub threshold: ShareId,
     /// Masked share `y'_i = j * k_i + g * k_i = (j + g) * k_i`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub masked_share: G,
     /// Mask `y_i = h_i * k_i`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub mask: G,
 }
 
 /// Proof that the correct shares are correctly encrypted for each party
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Proof<F: PrimeField> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub challenge: F,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub resp: DensePolynomial<F>,
 }
 

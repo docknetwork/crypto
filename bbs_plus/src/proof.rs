@@ -73,10 +73,11 @@ use ark_std::{
     UniformRand,
 };
 use core::mem;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
 use dock_crypto_utils::{
     misc::rand,
     randomized_pairing_check::RandomizedPairingChecker,
-    serde_utils::*,
     signature::{
         msg_index_map_to_schnorr_response_map, msg_index_to_schnorr_response_index,
         schnorr_responses_to_msg_index_map, split_messages_and_blindings, MessageOrBlinding,
@@ -90,7 +91,9 @@ use schnorr_pok::{
     partial::PartialSchnorrResponse,
     SchnorrCommitment, SchnorrResponse,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -103,54 +106,45 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 /// pre-challenge (`init`) which is used to create the challenge and post-challenge (`gen_proof`). Thus, several instances of
 /// the protocol can be used together where the pre-challenge phase of all protocols is used to create a combined challenge
 /// and then that challenge is used in post-challenge phase of all protocols.
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfSignatureG1Protocol<E: Pairing> {
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_prime: E::G1Affine,
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_bar: E::G1Affine,
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub d: E::G1Affine,
     /// For proving relation `A_bar - d = A_prime * -e + h_0 * r2`
     pub sc_comm_1: PokPedersenCommitmentProtocol<E::G1Affine>,
     /// For proving relation `g1 + \sum_{i in D}(h_i*m_i)` = `d*r3 + {h_0}*{-s'} + sum_{j notin D}(h_j*m_j)`
     pub sc_comm_2: SchnorrCommitment<E::G1Affine>,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     sc_wits_2: Vec<E::ScalarField>,
 }
 
 /// Proof of knowledge of BBS+ signature in G1. It contains the randomized signature, commitment (Schnorr step 1)
 /// and response (Schnorr step 3) to both Schnorr protocols in `T_` and `sc_resp_`
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfSignatureG1Proof<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_prime: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_bar: E::G1Affine,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub d: E::G1Affine,
     /// Proof of relation `A_bar - d = A_prime * -e + h_0 * r2`
     pub sc_resp_1: PokPedersenCommitment<E::G1Affine>,
     /// Proof of relation `g1 + h1*m1 + h2*m2 +.... + h_i*m_i` = `d*r3 + {h_0}*{-s'} + h1*{-m1} + h2*{-m2} + .... + h_j*{-m_j}` for all disclosed messages `m_i` and for all undisclosed messages `m_j`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub T2: E::G1Affine,
     /// The following could be achieved by using Either<SchnorrResponse, PartialSchnorrResponse> but serialization
     /// for Either is not supported out of the box and had to be implemented

@@ -7,20 +7,21 @@ use ark_std::{
     vec,
     vec::Vec,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Reference to a witness described as the tuple (`statement_id`, `witness_id`)
 pub type WitnessRef = (usize, usize);
 
 /// Statement describing relation between statements
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum MetaStatement {
     WitnessEquality(EqualWitnesses),
 }
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MetaStatements(pub Vec<MetaStatement>);
 
 /// Describes equality between one or more witnesses across statements. Eg. if witness 3 of statement
@@ -54,9 +55,8 @@ pub struct MetaStatements(pub Vec<MetaStatement>);
 /// meta_statements.add_witness_equality(eq_2_w);
 /// ```
 ///
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EqualWitnesses(pub BTreeSet<WitnessRef>);
 
 impl EqualWitnesses {

@@ -20,9 +20,10 @@ ark-std.workspace = true
 rayon = {workspace = true, optional = true}
 digest.workspace = true
 dock_crypto_utils = { version = "0.23.0", default-features = false, path = "../utils" }
-serde.workspace = true
-serde_with.workspace = true
+serde = { workspace = true, optional = true }
+serde_with = { workspace = true, optional = true }
 zeroize.workspace = true
+cfg_eval.workspace = true
 
 [dev-dependencies]
 blake2.workspace = true
@@ -32,8 +33,8 @@ rmp-serde = "1.0"
 rand_core = "0.6.4"
 
 [features]
-default = [ "parallel" ]
+default = [ "parallel", "serde" ]
 std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "serde/std"]
 print-trace = [ "ark-std/print-trace", "dock_crypto_utils/print-trace" ]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel" ]
-#with-serde = ["serde", "serde_with", "dock_crypto_utils/with-serde"]
+serde = ["dep:serde", "serde_with", "dock_crypto_utils/serde"]

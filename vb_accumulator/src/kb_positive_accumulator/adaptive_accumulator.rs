@@ -12,8 +12,11 @@ use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, rand::RngCore, vec::Vec};
 use digest::DynDigest;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use short_group_sig::bb_sig::SignatureG1 as BBSig;
 
@@ -26,12 +29,12 @@ use rayon::prelude::*;
 use crate::kb_positive_accumulator::witness::KBPositiveAccumulatorWitness;
 
 /// A dynamic positive accumulator
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KBPositiveAccumulator<G: AffineRepr>(
-    #[serde_as(as = "ArkObjectBytes")] pub NonAdaptivePositiveAccumulator<G>,
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
+    pub  NonAdaptivePositiveAccumulator<G>,
 );
 
 impl<G: AffineRepr> KBPositiveAccumulator<G> {

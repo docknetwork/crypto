@@ -3,12 +3,14 @@ use alloc::vec::Vec;
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_ff::PrimeField;
 
-use utils::serde_utils::ArkObjectBytes;
-
 use ark_serialize::*;
 use core::iter::once;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
+#[cfg(feature = "serde")]
+use utils::serde_utils::ArkObjectBytes;
 
 use crate::{helpers::points, setup::SignatureParams};
 use utils::join;
@@ -16,16 +18,15 @@ use utils::join;
 use super::SecretKey;
 
 /// `PublicKey` used in the modified Pointcheval-Sanders signature scheme and PoKs.
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PublicKey<E: Pairing> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub alpha_tilde: E::G2Affine,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub beta: Vec<E::G1Affine>,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     pub beta_tilde: Vec<E::G2Affine>,
 }
 

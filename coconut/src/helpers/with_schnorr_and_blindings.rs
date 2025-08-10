@@ -3,23 +3,16 @@ use ark_ec::AffineRepr;
 
 use ark_serialize::*;
 
+#[cfg(feature = "serde")]
 use serde::{de::DeserializeOwned, Serialize};
 use utils::aliases::CanonicalSerDe;
 
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor, SchnorrCommitment};
 
 /// Combines value with the `SchnorrCommitment` **including blindings**.
-#[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-)]
-#[serde(bound = "V: Serialize + DeserializeOwned")]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "V: Serialize + DeserializeOwned"))]
 pub struct WithSchnorrAndBlindings<G: AffineRepr, V: CanonicalSerDe> {
     pub schnorr: SchnorrCommitment<G>,
     pub value: V,

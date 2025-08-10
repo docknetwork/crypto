@@ -5,17 +5,23 @@ use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{expect_equality, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::expect_equality;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::compute_random_oracle_challenge;
+#[cfg(feature = "serde")]
+extern crate cfg_eval;
+#[cfg(feature = "serde")]
+extern crate serde_with;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Share encrypted for the party
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
     Default,
     Clone,
@@ -26,37 +32,27 @@ use rayon::prelude::*;
     ZeroizeOnDrop,
     CanonicalSerialize,
     CanonicalDeserialize,
-    Serialize,
-    Deserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EncryptedShare<G: AffineRepr> {
     #[zeroize(skip)]
     pub id: ShareId,
     #[zeroize(skip)]
     pub threshold: ShareId,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub share: G,
 }
 
 /// Proof that the correct shares are correctly encrypted for each party
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Proof<F: PrimeField> {
     /// Called `d` in the paper
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub challenge: F,
     /// Called `z` in the paper
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub resp: DensePolynomial<F>,
 }
 

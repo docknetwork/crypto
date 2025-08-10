@@ -77,9 +77,12 @@ use ark_std::{
 };
 use dock_crypto_utils::msm::multiply_field_elems_with_same_group_elem;
 
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::*;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
@@ -91,17 +94,16 @@ use zeroize::Zeroize;
 /// For more docs, check [`Accumulator`]
 ///
 /// [`Accumulator`]: crate::positive::Accumulator
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UniversalAccumulator<G: AffineRepr> {
     /// This is the accumulated value. It is considered a digest of state of the accumulator.
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub V: G,
     /// This is f_V(alpha) and is the discrete log of `V` wrt. P from setup parameters. Accumulator
     /// manager persists it for efficient computation of non-membership witnesses
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub f_V: G::ScalarField,
     /// The maximum elements the accumulator can store
     pub max_size: u64,

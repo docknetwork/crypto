@@ -51,6 +51,7 @@ ark-bls12-381 = { version = "^0.4.0", default-features = false, features = [ "cu
 ark-secp256r1 = { version = "^0.4.0", default-features = false }
 itertools = "0.14.0"
 sha3 = { version = "0.10.6", default-features = false }
+cfg_eval = { version = "0.1"}
 
 [profile.release]
 lto = true

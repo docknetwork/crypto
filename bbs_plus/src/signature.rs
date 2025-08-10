@@ -82,27 +82,29 @@
 //! sig_g2.verify(&messages, &keypair_g1.public_key, &params_g2).unwrap();
 //! ```
 
-use crate::error::BBSPlusError;
+use crate::{
+    error::BBSPlusError,
+    prelude::PreparedSignatureParamsG1,
+    setup::{PreparedPublicKeyG2, PublicKeyG1, SecretKey, SignatureParamsG1, SignatureParamsG2},
+};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::{fields::Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     collections::BTreeMap, fmt::Debug, ops::Mul, rand::RngCore, vec::Vec, UniformRand, Zero,
 };
-
-use crate::{
-    prelude::PreparedSignatureParamsG1,
-    setup::{PreparedPublicKeyG2, PublicKeyG1, SecretKey, SignatureParamsG1, SignatureParamsG2},
-};
-use dock_crypto_utils::{expect_equality, serde_utils::*, signature::MultiMessageSignatureParams};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
+use dock_crypto_utils::{expect_equality, signature::MultiMessageSignatureParams};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 macro_rules! impl_signature_struct {
     ( $name:ident, $group:ident ) => {
-        /// BBS+ signature created by the signer after signing a multi-message
-        #[serde_as]
+        #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
         #[derive(
             Clone,
             Debug,
@@ -110,17 +112,16 @@ macro_rules! impl_signature_struct {
             Eq,
             CanonicalSerialize,
             CanonicalDeserialize,
-            Serialize,
-            Deserialize,
             Zeroize,
             ZeroizeOnDrop,
         )]
+        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
         pub struct $name<E: Pairing> {
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub A: E::$group,
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub e: E::ScalarField,
-            #[serde_as(as = "ArkObjectBytes")]
+            #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
             pub s: E::ScalarField,
         }
     };
@@ -276,7 +277,7 @@ impl<E: Pairing> SignatureG1<E> {
     ) -> Result<(), BBSPlusError> {
         let params = params.into();
         // The pairing check is `e(A, pk + g2*e) == e(b, g2)` which can be written as `e(A, pk)*e(A, g2*e) == e(b, g2)`.
-        // Simplifying more `e(A, pk)*e(A*e, g2) == e(b, g2)` ==> `e(A, pk)*e(A*e, g2)*e(-b, g2) == 1` => `e(A, pk)*e(A*e - b, g2) == 1`.
+        // Simplifying more `e(A, pk)*e(A*e, g2) == e(b, g2)` ==> `e(A, pk)*e(A*e - b, g2) == 1` => `e(A, pk)*e(A*e - b, g2) == 1`.
         let b = self.pre_verify(messages, &params)?;
         // Aeb = A*e - b
         let Aeb = self.A.mul(self.e) - b;

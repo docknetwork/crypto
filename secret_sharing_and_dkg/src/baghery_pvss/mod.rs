@@ -25,8 +25,11 @@ use crate::common::ShareId;
 use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -35,7 +38,7 @@ pub mod same_base;
 
 /// A commitment to the share of the secret. The commitment is of the form `g * share_i` where `g` is the public
 /// commitment key and `share_i` is the i-th share.
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
     Default,
     Clone,
@@ -46,14 +49,13 @@ pub mod same_base;
     ZeroizeOnDrop,
     CanonicalSerialize,
     CanonicalDeserialize,
-    Serialize,
-    Deserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Share<G: AffineRepr> {
     #[zeroize(skip)]
     pub id: ShareId,
     #[zeroize(skip)]
     pub threshold: ShareId,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub share: G,
 }

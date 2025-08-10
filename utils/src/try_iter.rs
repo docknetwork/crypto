@@ -1,7 +1,9 @@
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Provided index is out of bounds.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IndexIsOutOfBounds {
     pub index: usize,
     pub length: usize,
@@ -112,7 +114,8 @@ impl_validator!(A = 0 B = 1 C = 2 D = 3 E = 4);
 impl_validator!(A = 0 B = 1 C = 2 D = 3 E = 4 F = 5);
 
 /// This pair or item was invalid according to the supplied predicate.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum InvalidPairOrSingle<I> {
     Pair(InvalidPair<I>),
     Single(I),
@@ -133,7 +136,8 @@ impl<I> InvalidPairOrSingle<I> {
 }
 
 /// This pair was invalid according to the supplied predicate.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InvalidPair<I>(pub I, pub I);
 
 impl<I> From<InvalidPair<I>> for (I, I) {

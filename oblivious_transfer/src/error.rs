@@ -1,8 +1,11 @@
 use crate::ParticipantId;
 use schnorr_pok::error::SchnorrError;
+
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum OTError {
     NeedNonZeroNumberOfOTs,
     OTShouldHaveAtLeast2Messages(u16),

@@ -18,8 +18,9 @@ ark-ec.workspace = true
 ark-std.workspace = true
 digest.workspace = true
 rayon = {workspace = true, optional = true}
-serde.workspace = true
-serde_with.workspace = true
+serde = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_with = { workspace = true, optional = true }
+cfg_eval.workspace = true
 ark-groth16.workspace = true
 ark-r1cs-std.workspace = true
 ark-relations.workspace = true
@@ -49,9 +50,10 @@ rmp-serde = "1.0"
 test_utils = { default-features = false, path = "../test_utils" }
 
 [features]
-default = ["parallel"]
-std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "serde/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "merlin/std", "bbs_plus/std", "vb_accumulator/std", "coconut-crypto/std", "bulletproofs_plus_plus/std", "smc_range_proof/std", "short_group_sig/std", "kvac/std", "verifiable_encryption/std"]
+default = ["parallel", "serde"]
+std = ["ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "schnorr_pok/std", "dock_crypto_utils/std", "saver/std", "ark-groth16/std", "legogroth16/std", "ark-r1cs-std/std", "ark-relations/std", "merlin/std", "bbs_plus/std", "vb_accumulator/std", "coconut-crypto/std", "bulletproofs_plus_plus/std", "smc_range_proof/std", "short_group_sig/std", "kvac/std", "verifiable_encryption/std"]
 print-trace = ["ark-std/print-trace", "schnorr_pok/print-trace", "bbs_plus/print-trace", "vb_accumulator/print-trace", "dock_crypto_utils/print-trace"]
 parallel = ["std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "schnorr_pok/parallel", "bbs_plus/parallel", "vb_accumulator/parallel", "saver/parallel", "ark-groth16/parallel", "legogroth16/parallel", "ark-r1cs-std/parallel", "dock_crypto_utils/parallel", "coconut-crypto/parallel", "bulletproofs_plus_plus/parallel", "smc_range_proof/parallel", "short_group_sig/parallel", "kvac/parallel", "verifiable_encryption/parallel"]
+serde = ["dep:serde", "serde_with", "dock_crypto_utils/serde", "schnorr_pok/serde", "bbs_plus/serde", "vb_accumulator/serde", "coconut-crypto/serde", "bulletproofs_plus_plus/serde", "short_group_sig/serde", "kvac/serde", "saver/serde"]
 wasmer-js = ["legogroth16/wasmer-js"]
 wasmer-sys = ["legogroth16/wasmer-sys"]

@@ -17,26 +17,28 @@ use ark_ff::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, rand::RngCore, vec, vec::Vec, UniformRand};
 use digest::{DynDigest, ExtendableOutput, Update};
-use dock_crypto_utils::{join, serde_utils::ArkObjectBytes};
+use dock_crypto_utils::join;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use itertools::MultiUnzip;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Random Linear Combination used for error checking
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RLC {
     pub x: Vec<u8>,
     pub t: Vec<u8>,
 }
 
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OTExtensionReceiverSetup {
     pub ote_config: OTEConfig,
     /// Choices used in OT extension
@@ -45,9 +47,8 @@ pub struct OTExtensionReceiverSetup {
     pub T: BitMatrix,
 }
 
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OTExtensionSenderSetup {
     pub ote_config: OTEConfig,
     /// Choices used in base OT, packed
@@ -56,28 +57,37 @@ pub struct OTExtensionSenderSetup {
     pub Q: BitMatrix,
 }
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CorrelationTag<F: PrimeField>(
-    #[serde_as(as = "Vec<(ArkObjectBytes, ArkObjectBytes)>")] pub Vec<(F, F)>,
+    #[cfg_attr(
+        feature = "serde",
+        serde_as(as = "Vec<(ArkObjectBytes, ArkObjectBytes)>")
+    )]
+    pub Vec<(F, F)>,
 );
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SenderOutput<F: PrimeField>(
-    #[serde_as(as = "Vec<(ArkObjectBytes, ArkObjectBytes)>")] pub Vec<(F, F)>,
+    #[cfg_attr(
+        feature = "serde",
+        serde_as(as = "Vec<(ArkObjectBytes, ArkObjectBytes)>")
+    )]
+    pub Vec<(F, F)>,
 );
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ReceiverOutput<F: PrimeField>(
-    #[serde_as(as = "Vec<(ArkObjectBytes, ArkObjectBytes)>")] pub Vec<(F, F)>,
+    #[cfg_attr(
+        feature = "serde",
+        serde_as(as = "Vec<(ArkObjectBytes, ArkObjectBytes)>")
+    )]
+    pub Vec<(F, F)>,
 );
 
 impl OTExtensionReceiverSetup {

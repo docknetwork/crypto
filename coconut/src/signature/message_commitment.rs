@@ -1,13 +1,17 @@
 use alloc::vec::Vec;
 use core::borrow::Borrow;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 use ark_ec::{pairing::Pairing, CurveGroup};
 
 use ark_serialize::*;
 use ark_std::{cfg_into_iter, rand::RngCore};
-use utils::{aliases::SyncIfParallel, serde_utils::ArkObjectBytes};
+use utils::aliases::SyncIfParallel;
+#[cfg(feature = "serde")]
+use utils::serde_utils::ArkObjectBytes;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -22,19 +26,12 @@ use crate::{
 use utils::pairs;
 
 /// `g * o + h * m`
-#[serde_as]
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
-pub struct MessageCommitment<E: Pairing>(#[serde_as(as = "ArkObjectBytes")] E::G1Affine);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MessageCommitment<E: Pairing>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] E::G1Affine,
+);
 utils::impl_deref! { MessageCommitment<E: Pairing>(E::G1Affine) }
 
 impl<E: Pairing> MessageCommitment<E> {

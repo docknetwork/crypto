@@ -22,9 +22,10 @@ use ark_std::{
 };
 use core::mem;
 use digest::Digest;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use dock_crypto_utils::{
     schnorr_signature::Signature as SchnorrSignature,
-    serde_utils::ArkObjectBytes,
     signature::{
         msg_index_to_schnorr_response_index, split_messages_and_blindings, MessageOrBlinding,
         MultiMessageSignatureParams,
@@ -35,64 +36,62 @@ use schnorr_pok::{
     discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
     SchnorrCommitment, SchnorrResponse,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Type of the signature produced by the user's secure hardware. The implementation of the proof of
 /// knowledge protocol changes slightly based on the signature type.
-#[derive(Default, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum HardwareSignatureType {
     #[default]
     Schnorr,
     Ecdsa,
 }
 
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfMACProtocol<G: AffineRepr> {
     /// Randomized MAC `A_hat = A * r1 * r2`
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_hat: G,
     /// `D = B * r2`
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub D: G,
     /// `B_bar = D * r1 - A_hat * e`
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub B_bar: G,
     /// The randomized public key
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub blinded_pk: G,
     /// The blinding used to randomize the public key
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub blinding_pk: G::ScalarField,
     /// For proving relation `B_bar = A_hat * -e + D * r1`
     pub sc_B_bar: PokPedersenCommitmentProtocol<G>,
     /// For proving relation `g_0 + user_pk + \sum_{i in D}(g_vec_i*m_i)` = `d*r3 + sum_{j notin D}(g_vec_j * -m_j) + g * blinding_pk`
     pub sc_comm_msgs: SchnorrCommitment<G>,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     sc_wits_msgs: Vec<G::ScalarField>,
     #[zeroize(skip)]
     pub hw_sig_type: HardwareSignatureType,
     /// Part of the token received from issuer during HOL mode. This won't be set when the user didn't
     /// use the token to create the proof.
     #[zeroize(skip)]
-    #[serde_as(as = "Option<(ArkObjectBytes, ArkObjectBytes)>")]
+    #[cfg_attr(
+        feature = "serde",
+        serde_as(as = "Option<(ArkObjectBytes, ArkObjectBytes)>")
+    )]
     proof_of_validity: Option<(G::ScalarField, G::ScalarField)>,
     /// This is only set if the prover is creating a designated verifier proof
     #[zeroize(skip)]
@@ -100,31 +99,33 @@ pub struct PoKOfMACProtocol<G: AffineRepr> {
 }
 
 /// Proof of knowledge of a MAC.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct PoKOfMAC<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub A_hat: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub B_bar: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub D: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub blinded_pk: G,
     /// For proving relation `B_bar = A_hat * -e + D * r1`
     pub sc_B_bar: PokPedersenCommitment<G>,
     /// For proving relation `g_0 + user_pk + \sum_{i in D}(g_vec_i*m_i)` = `d*r3 + sum_{j notin D}(g_vec_j * -m_j) + g * blinding_pk`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t_msgs: G,
     pub sc_resp_msgs: SchnorrResponse<G>,
     pub hw_sig_type: HardwareSignatureType,
     /// Part of the token received from issuer during HOL mode. This won't be set when the user didn't
     /// use the token to create the proof. If this is set, then verifier does not need to interact
     /// with the issuer to verify the proof.
-    #[serde_as(as = "Option<(ArkObjectBytes, ArkObjectBytes)>")]
+    #[cfg_attr(
+        feature = "serde",
+        serde_as(as = "Option<(ArkObjectBytes, ArkObjectBytes)>")
+    )]
     pub proof_of_validity: Option<(G::ScalarField, G::ScalarField)>,
     /// This is only set if the prover is creating a designated verifier proof
     pub designated_verifier_pk_proof: Option<DesignatedVerifierPoKOfPublicKey<G>>,

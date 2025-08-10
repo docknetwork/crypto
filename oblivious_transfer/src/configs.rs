@@ -4,20 +4,13 @@ use crate::{
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Config of a base OT
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalDeserialize,
-    CanonicalSerialize,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, CanonicalDeserialize, CanonicalSerialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OTConfig {
     /// Number of OTs
     pub num_ot: u16,
@@ -84,17 +77,8 @@ impl OTConfig {
 }
 
 /// Config of an OT extension where the base OT is a 1-of-2 OT
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    CanonicalDeserialize,
-    CanonicalSerialize,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, CanonicalDeserialize, CanonicalSerialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OTEConfig {
     /// Number of base OTs
     pub num_base_ot: u16,

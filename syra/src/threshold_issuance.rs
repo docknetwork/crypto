@@ -35,8 +35,11 @@ use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{collections::BTreeMap, ops::Mul, rand::RngCore, vec::Vec};
 use digest::{DynDigest, ExtendableOutput, Update};
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use short_group_sig::threshold_weak_bb_sig::{
     BaseOTOutput, GadgetVector, Message1, Message2, MultiplicationOTEParams, ParticipantId,
@@ -56,29 +59,21 @@ pub struct Phase2<F: PrimeField, const KAPPA: u16, const STATISTICAL_SECURITY_PA
 
 /// Share of the user secret key given by a single signer at the end of phase 2. The user collects these shares
 /// and aggregates to form a complete user secret key that can be verified using the threshold public key
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-    Zeroize,
-    ZeroizeOnDrop,
+    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UserSecretKeyShare<E: Pairing> {
     pub signer_id: ParticipantId,
     /// `g^r_i`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub R: E::G1Affine,
     /// `g_hat^r_i`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub R_hat: E::G2Affine,
     /// Share of `r*(sk+s)` where `s` is user-id
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub u: E::ScalarField,
 }
 

@@ -29,6 +29,7 @@ use ark_std::{
 };
 use core::mem;
 use digest::Digest;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use kvac::bbdt_2016::keyed_proof::{
     KeyedProof, ProofOfInvalidityOfKeyedProof, ProofOfValidityOfKeyedProof,
@@ -39,7 +40,9 @@ use schnorr_pok::{
     partial::{PartialPokDiscreteLog, PartialSchnorrResponse},
     SchnorrCommitment,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use short_group_sig::weak_bb_sig_pok_kv::{PoKOfSignatureG1KV, PoKOfSignatureG1KVProtocol};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -47,32 +50,28 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 #[derive(Default, Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct MembershipProofProtocol<G: AffineRepr>(pub PoKOfSignatureG1KVProtocol<G>);
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MembershipProof<G: AffineRepr>(pub PoKOfSignatureG1KV<G>);
 
 /// The part of membership proof whose verification requires knowledge of secret key.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KeyedMembershipProof<G: AffineRepr>(pub KeyedProof<G>);
 
 /// A proof that the `KeyedMembershipProof` can be verified successfully.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProofOfValidityOfKeyedMembershipProof<G: AffineRepr>(pub ProofOfValidityOfKeyedProof<G>);
 
 /// A proof that the `KeyedMembershipProof` cannot be verified successfully.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProofOfInvalidityOfKeyedMembershipProof<G: AffineRepr>(
     pub ProofOfInvalidityOfKeyedProof<G>,
 );
@@ -90,61 +89,55 @@ pub struct NonMembershipProofProtocol<G: AffineRepr> {
     pub sc_comm_2: PokDiscreteLogProtocol<G>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipProof<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub C_prime: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub C_hat: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub C_bar: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t: G,
     pub sc_resp: PartialSchnorrResponse<G>,
     pub sc_resp_2: PokDiscreteLog<G>,
 }
 
 /// The part of non-membership proof whose verification requires knowledge of secret key.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KeyedNonMembershipProof<G: AffineRepr>(pub KeyedProof<G>);
 
 /// A proof that the `KeyedNonMembershipProof` can be verified successfully.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProofOfValidityOfKeyedNonMembershipProof<G: AffineRepr>(
     pub ProofOfValidityOfKeyedProof<G>,
 );
 
 /// A proof that the `KeyedNonMembershipProof` cannot be verified successfully.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProofOfInvalidityOfKeyedNonMembershipProof<G: AffineRepr>(
     pub ProofOfInvalidityOfKeyedProof<G>,
 );
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MembershipWitnessValidityProof<G: AffineRepr> {
     pub wit_proof: PokDiscreteLog<G>,
     pub sk_proof: PartialPokDiscreteLog<G>,
 }
 
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NonMembershipWitnessValidityProof<G: AffineRepr> {
     pub wit_proof: PokDiscreteLog<G>,
     pub sk_proof: PartialPokDiscreteLog<G>,

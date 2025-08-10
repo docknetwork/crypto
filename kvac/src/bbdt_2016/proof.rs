@@ -19,9 +19,10 @@ use ark_std::{
     UniformRand,
 };
 use core::mem;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use dock_crypto_utils::{
     misc::rand,
-    serde_utils::ArkObjectBytes,
     signature::{split_messages_and_blindings, MessageOrBlinding, MultiMessageSignatureParams},
 };
 use itertools::multiunzip;
@@ -30,36 +31,30 @@ use schnorr_pok::{
     partial::Partial1PokPedersenCommitment,
     SchnorrCommitment, SchnorrResponse,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Protocol to prove knowledge of a MAC.
-#[serde_as]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[derive(
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    Zeroize,
-    ZeroizeOnDrop,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
+    Clone, PartialEq, Eq, Debug, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfMACProtocol<G: AffineRepr> {
     /// Randomized MAC `B_0 = A * l`
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub B_0: G,
     /// `C = b * l - B_0 * e`, here `b = A * (e + y)`
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub C: G,
     /// `E = C * 1/l + f * t`
     #[zeroize(skip)]
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub E: G,
     /// Protocol to prove knowledge of `1/l, t` in `E`
     pub sc_E: PokPedersenCommitmentProtocol<G>,
@@ -67,25 +62,24 @@ pub struct PoKOfMACProtocol<G: AffineRepr> {
     pub sc_C: PokPedersenCommitmentProtocol<G>,
     /// For proving relation `E - h - \sum_{i in D}(g_vec_i*m_i)` = `sum_{j notin D}(g_vec_j*m_j) + B_0*{-r/l} + f*t`
     pub sc_comm_msgs: SchnorrCommitment<G>,
-    #[serde_as(as = "Vec<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<ArkObjectBytes>"))]
     sc_wits_msgs: Vec<G::ScalarField>,
 }
 
 /// Proof of knowledge of a MAC.
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PoKOfMAC<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub B_0: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub E: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub C: G,
     pub sc_E: Partial1PokPedersenCommitment<G>,
     pub sc_C: PokPedersenCommitment<G>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t_msgs: G,
     pub sc_resp_msgs: SchnorrResponse<G>,
 }

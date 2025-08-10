@@ -17,7 +17,7 @@ extern crate core;
 
 pub mod aliases;
 pub mod extend_some;
-// TODO: Feature gate this
+#[cfg(feature = "serde")]
 #[macro_use]
 pub mod serde_utils;
 pub mod ecies;

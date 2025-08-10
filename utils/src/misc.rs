@@ -1,5 +1,3 @@
-use core::ops::Range;
-
 use crate::{
     aliases::{DoubleEndedExactSizeIterator, SendIfParallel},
     concat_slices,
@@ -11,7 +9,7 @@ use crate::{
 use alloc::vec::Vec;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_std::{cfg_into_iter, rand::RngCore, UniformRand};
-
+use core::ops::Range;
 use digest::Digest;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

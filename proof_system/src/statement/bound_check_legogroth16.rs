@@ -1,43 +1,42 @@
-use ark_ec::pairing::Pairing;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::vec::Vec;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-
-pub use legogroth16::{PreparedVerifyingKey, ProvingKey, VerifyingKey};
-
 use crate::{
     error::ProofSystemError,
     setup_params::SetupParams,
     statement::Statement,
     sub_protocols::{bound_check_legogroth16::BoundCheckLegoGrothProtocol, validate_bounds},
 };
+use ark_ec::pairing::Pairing;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::vec::Vec;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+pub use legogroth16::{PreparedVerifyingKey, ProvingKey, VerifyingKey};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde_with::serde_as;
 
 /// Proving knowledge of message that satisfies given bounds [min, max), i.e. `min <= message < max` using LegoGroth16.
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckLegoGroth16Prover<E: Pairing> {
     pub min: u64,
     pub max: u64,
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub snark_proving_key: Option<ProvingKey<E>>,
     pub snark_proving_key_ref: Option<usize>,
 }
 
 /// Proving knowledge of message that satisfies given bounds [min, max), i.e. `min <= message < max` using LegoGroth16
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct BoundCheckLegoGroth16Verifier<E: Pairing> {
     pub min: u64,
     pub max: u64,
-    #[serde_as(as = "Option<ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Option<ArkObjectBytes>"))]
     pub snark_verifying_key: Option<VerifyingKey<E>>,
     pub snark_verifying_key_ref: Option<usize>,
 }

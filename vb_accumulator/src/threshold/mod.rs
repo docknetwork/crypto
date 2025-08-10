@@ -13,30 +13,32 @@
 
 #[cfg(test)]
 pub mod tests {
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
-    use ark_ff::{PrimeField, Zero};
-    use ark_std::{collections::BTreeSet, rand::RngCore, vec::Vec};
-    use oblivious_transfer_protocols::ParticipantId;
-    use std::time::Instant;
-
     use crate::{
         persistence::test::InMemoryState,
         positive::{Accumulator, PositiveAccumulator},
         prelude::SetupParams,
         setup::{PublicKey, SecretKey},
     };
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use ark_ff::{PrimeField, Zero};
     use ark_std::{
-        rand::{rngs::StdRng, SeedableRng},
+        collections::BTreeSet,
+        rand::{rngs::StdRng, RngCore, SeedableRng},
+        vec::Vec,
         UniformRand,
     };
     use blake2::Blake2b512;
-    use oblivious_transfer_protocols::ot_based_multiplication::{
-        base_ot_multi_party_pairwise::BaseOTOutput, dkls18_mul_2p::MultiplicationOTEParams,
-        dkls19_batch_mul_2p::GadgetVector,
+    use oblivious_transfer_protocols::{
+        ot_based_multiplication::{
+            base_ot_multi_party_pairwise::BaseOTOutput, dkls18_mul_2p::MultiplicationOTEParams,
+            dkls19_batch_mul_2p::GadgetVector,
+        },
+        ParticipantId,
     };
     use secret_sharing_and_dkg::shamir_ss::{deal_random_secret, deal_secret};
     use sha3::Shake256;
     use short_group_sig::threshold_weak_bb_sig::{Phase2, SigShare};
+    use std::time::Instant;
     use test_utils::ot::do_pairwise_base_ot;
 
     const BASE_OT_KEY_SIZE: u16 = 128;

@@ -92,9 +92,12 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::{batch_inversion, fields::Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, cfg_iter_mut, fmt::Debug, vec::Vec};
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::*;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::Zeroize;
 
@@ -113,11 +116,12 @@ use rayon::prelude::*;
 /// Accumulator supporting only membership proofs. For more docs, check [`Accumulator`]
 ///
 /// [`Accumulator`]: crate::positive::Accumulator
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-pub struct PositiveAccumulator<G: AffineRepr>(#[serde_as(as = "ArkObjectBytes")] pub G);
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Zeroize, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PositiveAccumulator<G: AffineRepr>(
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))] pub G,
+);
 
 /// Trait to hold common functionality among both positive and universal accumulator
 /// Methods changing or reading accumulator state take a mutable or immutable reference to `State` which

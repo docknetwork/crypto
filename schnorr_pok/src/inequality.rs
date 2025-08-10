@@ -31,11 +31,14 @@ use ark_ff::Zero;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use dock_crypto_utils::{
     commitment::PedersenCommitmentKey, randomized_mult_checker::RandomizedMultChecker,
-    serde_utils::ArkObjectBytes,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -56,19 +59,14 @@ pub struct DiscreteLogInequalityProtocol<G: AffineRepr> {
 }
 
 /// Proof created using `DiscreteLogInequalityProtocol`
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InequalityProof<G: AffineRepr> {
-    /// `B = G * (m - v) * a`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub b: G,
-    /// For proving knowledge of `m` and `r` in `C = G * m + H * r`
     pub sc_c: PokPedersenCommitment<G>,
-    /// For proving knowledge of `(m - v) * a` in `B = G * (m - v) * a`.
     pub sc_b: PokDiscreteLog<G>,
-    /// For proving knowledge of `a` and `k` in `B = (C  - G * v) * a + H * k`
     pub sc_b_ped: PokPedersenCommitment<G>,
 }
 
@@ -383,13 +381,12 @@ pub struct UnknownDiscreteLogInequalityProtocol<G: AffineRepr> {
 }
 
 /// Proof created using `UnknownDiscreteLogInequalityProtocol`
-#[serde_as]
-#[derive(
-    Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UnknownDiscreteLogInequalityProof<G: AffineRepr> {
     /// `c = (H * x - Z) * r`
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub c: G,
     /// For proving knowledge of `alpha` and `beta` in `c = H * alpha - Z * beta`
     pub sc_c: PokPedersenCommitment<G>,

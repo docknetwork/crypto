@@ -12,9 +12,12 @@ use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, rand::RngCore, vec, vec::Vec};
 use digest::Digest;
+#[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::compute_random_oracle_challenge;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
 #[cfg(feature = "parallel")]
@@ -24,17 +27,15 @@ pub const DEFAULT_DIGEST_SIZE: usize = 64;
 pub const DOMAIN_SEPARATOR: &[u8] = b"PI_LA";
 
 /// Proof that the dealer shared the secret correctly.
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Proof<F: PrimeField, const DIGEST_SIZE: usize = DEFAULT_DIGEST_SIZE> {
-    #[serde_as(as = "Vec<[_; DIGEST_SIZE]>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<[_; DIGEST_SIZE]>"))]
     pub commitments: Vec<[u8; DIGEST_SIZE]>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub resp: DensePolynomial<F>,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub challenge: F,
 }
 

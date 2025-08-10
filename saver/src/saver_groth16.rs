@@ -18,26 +18,28 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::*;
 use dock_crypto_utils::{
     ff::{non_zero_random, powers, sum_of_powers},
     randomized_pairing_check::RandomizedPairingChecker,
-    serde_utils::*,
     transcript::Transcript,
 };
 use legogroth16::aggregation::{groth16::AggregateProof, srs::VerifierSRS};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::serde_as;
 
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProvingKey<E: Pairing> {
     /// Groth16's proving key
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub pk: Groth16ProvingKey<E>,
     /// The element `-gamma * G` in `E::G1`.
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub gamma_g1: E::G1Affine,
 }
 

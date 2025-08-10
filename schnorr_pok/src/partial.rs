@@ -14,10 +14,12 @@ use ark_std::{
     vec,
     vec::Vec,
 };
-use dock_crypto_utils::{
-    expect_equality, randomized_mult_checker::RandomizedMultChecker, serde_utils::ArkObjectBytes,
-};
+#[cfg(feature = "serde")]
+use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use dock_crypto_utils::{expect_equality, randomized_mult_checker::RandomizedMultChecker};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_with::{serde_as, Same};
 
 /// Response during step 3 of the Schnorr protocol to prove knowledge of 1 or more discrete logs.
@@ -27,97 +29,60 @@ use serde_with::{serde_as, Same};
 /// Eg. when proving knowledge of witnesses `m1`, `m2`, `m3`, `m4` in `C = G1 * m1 + G2 * m2 + G3 * m3 + G4 * m4`,
 /// if `m1` and `m3` are also witnesses of another Schnorr protocol then this will contain only the responses
 /// for `m2` and `m4`. During verification, the responses for `m1` and `m3` will be given to it.
-#[serde_as]
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PartialSchnorrResponse<G: AffineRepr> {
     /// Key of the map is the witness index and value is the response for that witnesses.
-    #[serde_as(as = "BTreeMap<Same, ArkObjectBytes>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "BTreeMap<Same, ArkObjectBytes>"))]
     pub responses: BTreeMap<usize, G::ScalarField>,
     pub total_responses: usize,
 }
 
 /// Proof of knowledge of discrete log but does not contain the response as the response comes from another protocol
 /// running with it which has the same witness (discrete log)
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PartialPokDiscreteLog<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t: G,
 }
 
 /// Proof of knowledge of 2 discrete logs but contains the response of only 1, i.e. when proving knowledge of witnesses
 /// `a` and `b` in `C = G * a + H * b`, contains the response only for witness `a`. This is because response for `b` will
 /// come from another Schnorr protocol which also has `b` as one of the witnesses
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Partial1PokPedersenCommitment<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub response1: G::ScalarField,
 }
 
 /// Proof of knowledge of 2 discrete logs but contains the response of only 1, i.e. when proving knowledge of witnesses
 /// `a` and `b` in `C = G * a + H * b`, contains the response only for witness `b`. This is because response for `a` will
 /// come from another Schnorr protocol which also has `a` as one of the witnesses
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Partial2PokPedersenCommitment<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t: G,
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub response2: G::ScalarField,
 }
 
 /// Proof of knowledge of 2 discrete logs but contains the response for neither, i.e. when proving knowledge of witnesses
 /// `a` and `b` in `C = G * a + H * b`, contains no response. This is because response for `a` and `b` will come from
 /// another Schnorr protocol which also has `a` and `b` as their witnesses
-#[serde_as]
-#[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    CanonicalSerialize,
-    CanonicalDeserialize,
-    Serialize,
-    Deserialize,
-)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
+#[derive(Default, Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PartialPokPedersenCommitment<G: AffineRepr> {
-    #[serde_as(as = "ArkObjectBytes")]
+    #[cfg_attr(feature = "serde", serde_as(as = "ArkObjectBytes"))]
     pub t: G,
 }
 

@@ -24,6 +24,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -34,36 +44,51 @@ jobs:
       - name: Build
         run: cargo build
 
-  build-no-std:
+  build-matrix:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - ""
+          - "--no-default-features --features=wasmer-sys"
+          - "--no-default-features --features=wasmer-js --target wasm32-unknown-unknown"
+          - "--no-default-features --features=serde,wasmer-js --target wasm32-unknown-unknown"
     steps:
       - uses: actions/checkout@v2
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-      - name: Build without default features
-        run: cargo build --no-default-features --features=wasmer-sys
-
-  build-wasm:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-      - name: Install WASM
-        run: rustup target add wasm32-unknown-unknown
-      - name: Build for WASM target
-        run: cargo build --no-default-features --features=wasmer-js --target wasm32-unknown-unknown
+      - name: Install WASM (if needed)
+        run: rustup target add wasm32-unknown-unknown || true
+      - name: Build (matrix)
+        run: cargo build ${{ matrix.target }}
 
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
         with:

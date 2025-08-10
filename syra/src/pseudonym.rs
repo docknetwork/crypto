@@ -58,7 +58,6 @@ use ark_ec::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, mem, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::elgamal::Ciphertext as ElgamalCiphertext;
-use serde_with::serde_as;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Protocol to generate a pseudonym and its proof of correctness.
@@ -102,7 +101,6 @@ pub struct PseudonymGenProtocol<E: Pairing> {
 }
 
 /// This contains the pseudonym as well its proof of correctness
-#[serde_as]
 #[derive(Clone, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PseudonymProof<E: Pairing> {
     /// Pseudonym

@@ -6,6 +6,7 @@ use ark_ec::{pairing::Pairing, AffineRepr, Group};
 use ark_ff::PrimeField;
 use ark_serialize::*;
 use itertools::Itertools;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use utils::join;
 
@@ -20,10 +21,9 @@ type Result<T, E = PSError> = core::result::Result<T, E>;
 
 /// Randomized Pointcheval-Sanders signature used in `SignaturePoK` verification.
 /// This signature can be verified without revealing the actual signed data.
-#[derive(
-    Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize,
-)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct RandomizedSignature<E: Pairing>(Signature<E>);
 
 impl<E: Pairing> RandomizedSignature<E> {
