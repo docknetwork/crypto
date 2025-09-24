@@ -48,7 +48,7 @@ impl<G: CurveGroup> Mul<&G::ScalarField> for &WindowTable<G> {
     type Output = G;
 
     fn mul(self, rhs: &G::ScalarField) -> Self::Output {
-        FixedBase::windowed_mul(self.num_windows, self.window_size, &self.table, rhs)
+        self.multiply(rhs)
     }
 }
 

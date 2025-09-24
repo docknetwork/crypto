@@ -5,6 +5,7 @@ use ark_std::{
     rand::Rng,
     vec::Vec,
     UniformRand,
+    collections::BTreeMap,
 };
 
 /// Represents a scalar multiplication check of the form `G1 * a1 + G2 * a2 + G3 * a3 + ... = T`.
@@ -18,10 +19,10 @@ use ark_std::{
 /// The single check above is simplified by combining terms of `G1`, `H1`, etc to reduce the size of the multi-scalar multiplication
 #[derive(Debug, Clone)]
 pub struct RandomizedMultChecker<G: AffineRepr> {
-    // map is more expensive than a vector (checked with a test)
-    // args: BTreeMap<SortableAffine<G>, G::ScalarField>,
-    /// Verification will expect the multi-scalar multiplication of first and second vector to be one.
-    args: (Vec<G>, Vec<G::ScalarField>),
+    /// Verification will expect the multi-scalar multiplication of key-value pairs to be one.
+    /// x-coordinate -> (scalar, point)
+    // This trick is taken from halo2 code (MSM) but keeping the point rather than y coordinate in value since there is no way to convert back from x, y coordinates for AffineRepr
+    args: BTreeMap<G::BaseField, (G::ScalarField, G)>,
     /// The random value chosen during creation
     random: G::ScalarField,
     /// The random value to be used for current check. After each check, set `current_random = current_random * random`
@@ -31,8 +32,7 @@ pub struct RandomizedMultChecker<G: AffineRepr> {
 impl<G: AffineRepr> RandomizedMultChecker<G> {
     pub fn new(random: G::ScalarField) -> Self {
         Self {
-            // args: BTreeMap::new(),
-            args: (Vec::new(), Vec::new()),
+            args: BTreeMap::new(),
             random,
             current_random: G::ScalarField::one(),
         }
@@ -91,59 +91,39 @@ impl<G: AffineRepr> RandomizedMultChecker<G> {
 
     /// Combine all the checks into a multi-scalar multiplication and return true if the result is 0.
     pub fn verify(&self) -> bool {
-        debug_assert_eq!(self.args.0.len(), self.args.1.len());
-        G::Group::msm_unchecked(&self.args.0, &self.args.1).is_zero()
+        let mut points = Vec::with_capacity(self.len());
+        let mut scalars = Vec::with_capacity(self.len());
+        for (_, (s, point)) in self.args.iter() {
+            points.push(*point);
+            scalars.push(*s);
+        }
+        G::Group::msm_unchecked(&points, &scalars).is_zero()
     }
 
     pub fn len(&self) -> usize {
-        self.args.0.len()
+        self.args.len()
     }
 
     fn add(&mut self, p: G, s: G::ScalarField) {
-        // If the point already exists, update the scalar corresponding to the point
-        if let Some(i) = self.args.0.iter().position(|&p_i| p_i == p) {
-            self.args.1[i] = self.args.1[i] + s;
+        if let Some(x) = p.x() {
+            self.args
+                .entry(*x)
+                .and_modify(|(old_scalar, point)| {
+                    // If the point or its negative already exists, update the scalar accordingly
+                    if *point == p {
+                        *old_scalar += s;
+                    } else {
+                        *old_scalar -= s;
+                        debug_assert_eq!(point.into_group(), -p.into_group());
+                    }
+                })
+                .or_insert((s, p));
         } else {
-            self.args.0.push(p);
-            self.args.1.push(s);
+            // If p is a point at infinity, then it doesn't impact the result
+            debug_assert!(p.is_zero());
         }
     }
-
-    // fn add(&mut self, p: G, s: G::ScalarField) {
-    //     let sortable_p = SortableAffine(p);
-    //     let val = self.args.remove(&sortable_p);
-    //     if let Some(v) = val {
-    //         self.args.insert(sortable_p, v + s);
-    //     } else {
-    //         self.args.insert(sortable_p, s);
-    //     }
-    // }
-    //
-    // pub fn verify(self) -> bool {
-    //     let mut b = vec![];
-    //     let mut s = vec![];
-    //     for (k, v) in self.args.into_iter() {
-    //         b.push(k.0);
-    //         s.push(v);
-    //     }
-    //     G::Group::msm_unchecked(&b, &s).is_zero()
-    // }
 }
-
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// pub struct SortableAffine<G: AffineRepr>(G);
-//
-// impl<G: AffineRepr> Ord for SortableAffine<G> {
-//     fn cmp(&self, other: &Self) -> Ordering {
-//         self.0.x().cmp(&other.0.x())
-//     }
-// }
-//
-// impl<G: AffineRepr> PartialOrd for SortableAffine<G> {
-//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
 
 #[cfg(test)]
 mod test {
@@ -277,6 +257,20 @@ mod test {
         let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
         checker.add_many([g3, h3], [&a3, &a6], c8);
         checker.add_many([g1, g2, g3], [&a1, &a2, &a3], c9);
+        assert!(checker.verify());
+
+        let minus_g1 = -g1;
+        let minus_g2 = -g2;
+        let c1 = (g1 * a1).into_affine();
+        let c2 = (minus_g1 * a2).into_affine();
+        let c3 = (g2 * a3).into_affine();
+        let c4 = (minus_g2 * a4).into_affine();
+
+        let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+        checker.add_1(g1, &a1, c1);
+        checker.add_1(minus_g1, &a2, c2);
+        checker.add_1(g2, &a3, c3);
+        checker.add_1(minus_g2, &a4, c4);
         assert!(checker.verify());
     }
 
