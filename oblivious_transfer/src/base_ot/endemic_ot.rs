@@ -89,7 +89,7 @@ pub fn indexed_hash<'a, I: Iterator<Item = &'a G>, G: AffineRepr, D: Digest>(
     index: u16,
     r: I,
 ) -> G::Group {
-    let mut bytes = index.to_be_bytes().to_vec();
+    let mut bytes = Vec::from(index.to_be_bytes());
     for r in r {
         r.serialize_compressed(&mut bytes).unwrap();
     }
@@ -99,7 +99,7 @@ pub fn indexed_hash<'a, I: Iterator<Item = &'a G>, G: AffineRepr, D: Digest>(
 
 // TODO: Make it use const generic for key size and generic digest
 pub fn hash_to_key<G: CanonicalSerialize, D: Digest>(index: u16, item: &G) -> Vec<u8> {
-    let mut bytes = index.to_be_bytes().to_vec();
+    let mut bytes = Vec::from(index.to_be_bytes());
     item.serialize_compressed(&mut bytes).unwrap();
     let mut hasher = D::new();
     hasher.update(&bytes);

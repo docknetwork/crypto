@@ -366,17 +366,17 @@ pub trait Witness<G: AffineRepr> {
             // consumption and more complex code
 
             // `d_{D_{i->t-1}}`
-            let d_D = removals
+            let d_D: G::ScalarField = removals
                 .iter()
                 .take(t)
                 .map(|r| Poly_d::eval_direct(r, element))
-                .fold(G::ScalarField::one(), |a, b| a * b);
+                .product();
             // `d_{A_{t->j}}`
-            let d_A = additions
+            let d_A: G::ScalarField = additions
                 .iter()
                 .skip(t + 1)
                 .map(|a| Poly_d::eval_direct(a, element))
-                .fold(G::ScalarField::one(), |a, b| a * b);
+                .product();
 
             let d_A_times_d_D = d_A * d_D;
             // Store d_A_times_d_D to scale vector `omega[t]` later using multi-scalar multiplication

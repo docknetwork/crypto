@@ -231,15 +231,12 @@ macro_rules! impl_protocol {
             ) -> Result<(), SSError> {
                 let challenge =
                     Self::pre_verify::<D>(&self, share, share_commitment, share_comm_ck, base)?;
-                if !self.sc_share.verify(&share.share, base, &challenge) {
-                    return Err(SSError::InvalidComputationShareProof(self.id));
-                }
-                if !self
-                    .sc_comm
+                self.sc_share
+                    .verify(&share.share, base, &challenge)
+                    .map_err(|_| SSError::InvalidComputationShareProof(self.id))?;
+                self.sc_comm
                     .verify(&share_commitment.commitment, share_comm_ck, &challenge)
-                {
-                    return Err(SSError::InvalidComputationShareProof(self.id));
-                }
+                    .map_err(|_| SSError::InvalidComputationShareProof(self.id))?;
                 Ok(())
             }
 
@@ -269,17 +266,19 @@ macro_rules! impl_protocol {
                     let share_commitment = &share_commitments[i];
                     let challenge =
                         Self::pre_verify::<D>(proof, share, share_commitment, share_comm_ck, base)?;
-                    proof.sc_share.verify_with_randomized_pairing_checker(
+                    proof.sc_share.verify_with_randomized_pairing_and_mult_checker(
                         &share.share,
                         base,
                         &challenge,
-                        pairing_checker,
+                        Some(pairing_checker),
+                        None,
                     );
-                    proof.sc_comm.verify_with_randomized_pairing_checker(
+                    proof.sc_comm.verify_with_randomized_pairing_and_mult_checker(
                         &share_commitment.commitment,
                         share_comm_ck,
                         &challenge,
-                        pairing_checker,
+                        Some(pairing_checker),
+                        None,
                     );
                 }
                 Ok(())
@@ -578,7 +577,7 @@ pub mod tests {
                         )
                         .unwrap();
                         println!("Time to verify {} proofs using randomized pairing checker with lazy={}: {:?}", proofs.len(), lazy, start.elapsed());
-                        assert!(checker.verify());
+                        checker.verify().unwrap();
                     }
 
                     checked_serialization = true;

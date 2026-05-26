@@ -12,13 +12,17 @@ use ark_ec::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use schnorr_pok::{
     discrete_log::{
         PokDiscreteLog, PokDiscreteLogProtocol, PokPedersenCommitment,
         PokPedersenCommitmentProtocol,
     },
     partial::Partial2PokPedersenCommitment,
+    verify_or_rmc_2, verify_or_rmc_3,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -213,99 +217,128 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         g2: impl Into<E::G2Prepared>,
         proving_key: &ProvingKey<E::G1Affine>,
     ) -> Result<(), ShortGroupSigError> {
-        self.verify_except_pairings(challenge, proving_key)?;
-        let s_message = self.sc_T1_x.response1;
-        let g2_prepared = g2.into();
-        let pk_prepared = pk.into();
-        // Following is the pairing check equation from the paper converted to a single multi-pairing
-        if self.R_3
-            != E::multi_pairing(
-                [
-                    E::G1Prepared::from(self.T3 * s_message),
-                    E::G1Prepared::from(
-                        proving_key.Z * (self.sc_T1.response.neg() + self.sc_T2.response.neg()),
-                    ),
-                    E::G1Prepared::from(
-                        proving_key.Z * (self.sc_T1_x.response2 + self.sc_T2_x.response2),
-                    ),
-                    E::G1Prepared::from(self.T3 * challenge),
-                    E::G1Prepared::from(g1.into() * challenge.neg()),
-                ],
-                [
-                    g2_prepared.clone(),
-                    pk_prepared.clone(),
-                    g2_prepared.clone(),
-                    pk_prepared,
-                    g2_prepared,
-                ],
-            )
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-        Ok(())
+        self._verify_internal(challenge, pk, g1, g2, proving_key, None, None)
     }
 
-    pub fn verify_with_randomized_pairing_checker(
+    pub fn verify_with_randomized_pairing_and_mult_checker(
         &self,
         challenge: &E::ScalarField,
         pk: impl Into<E::G2Prepared>,
         g1: impl Into<E::G1Affine>,
         g2: impl Into<E::G2Prepared>,
         proving_key: &ProvingKey<E::G1Affine>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), ShortGroupSigError> {
-        self.verify_except_pairings(challenge, proving_key)?;
+        self._verify_internal(challenge, pk, g1, g2, proving_key, pairing_checker, rmc)
+    }
+
+    fn _verify_internal(
+        &self,
+        challenge: &E::ScalarField,
+        pk: impl Into<E::G2Prepared>,
+        g1: impl Into<E::G1Affine>,
+        g2: impl Into<E::G2Prepared>,
+        proving_key: &ProvingKey<E::G1Affine>,
+        mut pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mut rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
+    ) -> Result<(), ShortGroupSigError> {
+        self.verify_except_pairings(challenge, proving_key, rmc.as_deref_mut())?;
         let s_message = self.sc_T1_x.response1;
         let g2_prepared = g2.into();
         let pk_prepared = pk.into();
-        pairing_checker.add_multiple_sources_and_target(
-            &[
-                (self.T3 * s_message).into(),
-                (proving_key.Z * (self.sc_T1.response.neg() + self.sc_T2.response.neg())).into(),
-                (proving_key.Z * (self.sc_T1_x.response2 + self.sc_T2_x.response2)).into(),
-                (self.T3 * challenge).into(),
-                (g1.into() * challenge.neg()).into(),
-            ],
-            [
-                g2_prepared.clone(),
-                pk_prepared.clone(),
-                g2_prepared.clone(),
-                pk_prepared,
-                g2_prepared,
-            ],
-            &self.R_3,
-        );
-        Ok(())
+        // Following is the pairing check equation from the paper converted to a single multi-pairing
+        match pairing_checker.as_mut() {
+            Some(pc) => {
+                pc.add_multiple_sources_and_target(
+                    &[
+                        (self.T3 * s_message).into(),
+                        (proving_key.Z * (self.sc_T1.response.neg() + self.sc_T2.response.neg()))
+                            .into(),
+                        (proving_key.Z * (self.sc_T1_x.response2 + self.sc_T2_x.response2)).into(),
+                        (self.T3 * challenge).into(),
+                        (g1.into() * challenge.neg()).into(),
+                    ],
+                    [
+                        g2_prepared.clone(),
+                        pk_prepared.clone(),
+                        g2_prepared.clone(),
+                        pk_prepared,
+                        g2_prepared,
+                    ],
+                    &self.R_3,
+                );
+                Ok(())
+            }
+            None => {
+                if self.R_3
+                    != E::multi_pairing(
+                        [
+                            E::G1Prepared::from(self.T3 * s_message),
+                            E::G1Prepared::from(
+                                proving_key.Z
+                                    * (self.sc_T1.response.neg() + self.sc_T2.response.neg()),
+                            ),
+                            E::G1Prepared::from(
+                                proving_key.Z * (self.sc_T1_x.response2 + self.sc_T2_x.response2),
+                            ),
+                            E::G1Prepared::from(self.T3 * challenge),
+                            E::G1Prepared::from(g1.into() * challenge.neg()),
+                        ],
+                        [
+                            g2_prepared.clone(),
+                            pk_prepared.clone(),
+                            g2_prepared.clone(),
+                            pk_prepared,
+                            g2_prepared,
+                        ],
+                    )
+                {
+                    return Err(ShortGroupSigError::InvalidProof);
+                }
+                Ok(())
+            }
+        }
     }
 
     pub fn verify_except_pairings(
         &self,
         challenge: &E::ScalarField,
         proving_key: &ProvingKey<E::G1Affine>,
+        mut rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), ShortGroupSigError> {
-        if !self.sc_T1.verify(&self.T1, &proving_key.X, challenge) {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
-        if !self.sc_T2.verify(&self.T2, &proving_key.Y, challenge) {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
         let zero = E::G1Affine::zero();
-        if !self
-            .sc_T1_x
-            .verify(&zero, &self.T1, &proving_key.X, challenge)
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        };
-        if !self.sc_T2_x.verify(
-            &zero,
-            &self.T2,
-            &proving_key.Y,
-            challenge,
-            &self.sc_T1_x.response1,
-        ) {
-            return Err(ShortGroupSigError::InvalidProof);
+        verify_or_rmc_2!(rmc, self.sc_T1, self.T1, proving_key.X, challenge)
+            .map_err(|_| ShortGroupSigError::InvalidProof)?;
+        verify_or_rmc_2!(rmc, self.sc_T2, self.T2, proving_key.Y, challenge)
+            .map_err(|_| ShortGroupSigError::InvalidProof)?;
+        verify_or_rmc_3!(rmc, self.sc_T1_x, zero, self.T1, proving_key.X, challenge)
+            .map_err(|_| ShortGroupSigError::InvalidProof)?;
+
+        // Partial2PokPedersenCommitment needs special handling due to arg order
+        match rmc.as_mut() {
+            Some(__rmc) => {
+                self.sc_T2_x.verify_using_randomized_mult_checker(
+                    zero,
+                    self.T2,
+                    proving_key.Y,
+                    challenge,
+                    &self.sc_T1_x.response1,
+                    __rmc,
+                );
+                Ok(())
+            }
+            None => self
+                .sc_T2_x
+                .verify(
+                    &zero,
+                    &self.T2,
+                    &proving_key.Y,
+                    challenge,
+                    &self.sc_T1_x.response1,
+                )
+                .map_err(|_| ShortGroupSigError::InvalidProof),
         }
-        Ok(())
     }
 
     pub fn challenge_contribution<W: Write>(
@@ -385,15 +418,16 @@ mod tests {
 
         let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
         proof
-            .verify_with_randomized_pairing_checker(
+            .verify_with_randomized_pairing_and_mult_checker(
                 &challenge_verifier,
                 prepared_pk.0,
                 params.g1,
                 params_with_pairing.g2_prepared,
                 &prk,
-                &mut pairing_checker,
+                Some(&mut pairing_checker),
+                None,
             )
             .unwrap();
-        assert!(pairing_checker.verify());
+        pairing_checker.verify().unwrap();
     }
 }

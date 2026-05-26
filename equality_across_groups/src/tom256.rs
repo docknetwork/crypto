@@ -8,6 +8,7 @@ use ark_ff::{
     fields::{Fp256, MontBackend, MontConfig},
     Field, MontFp,
 };
+pub use ark_secp256r1::{Fq as Fr, FqConfig as FrConfig};
 
 #[derive(MontConfig)]
 #[modulus = "115792089210356248762697446949407573530594504085698471288169790229257723883799"]
@@ -16,14 +17,6 @@ use ark_ff::{
 // #[small_subgroup_power = "1"]
 pub struct FqConfig;
 pub type Fq = Fp256<MontBackend<FqConfig, 4>>;
-
-#[derive(MontConfig)]
-#[modulus = "115792089210356248762697446949407573530086143415290314195533631308867097853951"]
-#[generator = "6"]
-// #[small_subgroup_base = "3"]
-// #[small_subgroup_power = "1"]
-pub struct FrConfig;
-pub type Fr = Fp256<MontBackend<FrConfig, 4>>;
 
 pub type Affine = sw::Affine<Config>;
 pub type Projective = sw::Projective<Config>;

@@ -23,7 +23,10 @@ use bulletproofs_plus_plus::prelude::{
     Proof as BppRangeProof, Prover as BppProver, SetupParams as BppSetupParams,
 };
 use crypto_bigint::{BoxedUint, RandomBits};
-use dock_crypto_utils::{commitment::PedersenCommitmentKey, ff::powers, transcript::Transcript};
+use dock_crypto_utils::{
+    commitment::PedersenCommitmentKey, ff::powers, randomized_mult_checker::RandomizedMultChecker,
+    transcript::Transcript,
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -226,6 +229,8 @@ impl<
         comm_key_g1: &PedersenCommitmentKey<G1>,
         comm_key_g2: &PedersenCommitmentKey<G2>,
         transcript: &mut impl Transcript,
+        mult_checker_g1: Option<&mut RandomizedMultChecker<G1>>,
+        mult_checker_g2: Option<&mut RandomizedMultChecker<G2>>,
     ) -> Result<(), Error> {
         Self::verify_equality_proof_only(
             &self.eq,
@@ -234,6 +239,8 @@ impl<
             comm_key_g1,
             comm_key_g2,
             transcript,
+            mult_checker_g1,
+            mult_checker_g2,
         )
     }
 
@@ -250,10 +257,20 @@ impl<
         comm_key_g2: &PedersenCommitmentKey<G2>,
         bpp_setup_params: &BppSetupParams<G1>,
         transcript: &mut impl Transcript,
+        mut mult_checker_g1: Option<&mut RandomizedMultChecker<G1>>,
+        mult_checker_g2: Option<&mut RandomizedMultChecker<G2>>,
     ) -> Result<(), Error> {
         const { assert!(WITNESS_BIT_SIZE <= 64) };
         Self::ensure_bpp_gens_consistent_with_comm_key(bpp_setup_params, comm_key_g1)?;
-        self.verify(comm_g1, comm_g2, comm_key_g1, comm_key_g2, transcript)?;
+        self.verify(
+            comm_g1,
+            comm_g2,
+            comm_key_g1,
+            comm_key_g2,
+            transcript,
+            mult_checker_g1.as_mut().map(|x| &mut **x),
+            mult_checker_g2,
+        )?;
         if let Some(rp) = self.rp.as_ref() {
             let r = match rp {
                 RangeProof::Bpp(bpp) => bpp.verify(
@@ -261,6 +278,7 @@ impl<
                     &[*comm_g1],
                     bpp_setup_params,
                     transcript,
+                    mult_checker_g1,
                 )?,
             };
             Ok(r)
@@ -380,6 +398,8 @@ impl<
         comm_key_g1: &PedersenCommitmentKey<G1>,
         comm_key_g2: &PedersenCommitmentKey<G2>,
         transcript: &mut impl Transcript,
+        mut mult_checker_g1: Option<&mut RandomizedMultChecker<G1>>,
+        mut mult_checker_g2: Option<&mut RandomizedMultChecker<G2>>,
     ) -> Result<(), Error> {
         Self::static_asserts();
         let (min_resp, max_resp) = Self::max_min_resp();
@@ -396,11 +416,33 @@ impl<
             let c1 = G1::ScalarField::from_le_bytes_mod_order(&c_bytes);
             let c2 = G2::ScalarField::from_le_bytes_mod_order(&c_bytes);
 
-            if comm_key_g1.commit_as_projective(&z1, &eq[i].s1) != (eq[i].k1_com + comm_g1.mul(&c1))
+            if let Some(ref mut mc) = mult_checker_g1 {
+                mc.add_3(
+                    comm_key_g1.g,
+                    &z1,
+                    comm_key_g1.h,
+                    &eq[i].s1,
+                    *comm_g1,
+                    &-c1,
+                    eq[i].k1_com,
+                );
+            } else if comm_key_g1.commit_as_projective(&z1, &eq[i].s1)
+                != (eq[i].k1_com + comm_g1.mul(&c1))
             {
                 return Err(Error::SchnorrCheckFailedForRep(i));
             }
-            if comm_key_g2.commit_as_projective(&z2, &eq[i].s2) != (eq[i].k2_com + comm_g2.mul(&c2))
+            if let Some(ref mut mc) = mult_checker_g2 {
+                mc.add_3(
+                    comm_key_g2.g,
+                    &z2,
+                    comm_key_g2.h,
+                    &eq[i].s2,
+                    *comm_g2,
+                    &-c2,
+                    eq[i].k2_com,
+                );
+            } else if comm_key_g2.commit_as_projective(&z2, &eq[i].s2)
+                != (eq[i].k2_com + comm_g2.mul(&c2))
             {
                 return Err(Error::SchnorrCheckFailedForRep(i));
             }
@@ -618,6 +660,8 @@ impl<
         comm_key_g2: &PedersenCommitmentKey<G2>,
         bpp_setup_params: &BppSetupParams<G1>,
         transcript: &mut impl Transcript,
+        mut mult_checker_g1: Option<&mut RandomizedMultChecker<G1>>,
+        mut mult_checker_g2: Option<&mut RandomizedMultChecker<G2>>,
     ) -> Result<(), Error> {
         Self::static_asserts();
 
@@ -638,6 +682,8 @@ impl<
                 comm_key_g1,
                 comm_key_g2,
                 transcript,
+                mult_checker_g1.as_mut().map(|x| &mut **x),
+                mult_checker_g2.as_mut().map(|x| &mut **x),
             )?
         }
 
@@ -659,6 +705,7 @@ impl<
                 &self.comms_g1,
                 bpp_setup_params,
                 transcript,
+                mult_checker_g1,
             )?,
         };
         Ok(r)
@@ -810,7 +857,10 @@ mod tests {
     use ark_secp256r1::Affine as secp256r1Aff;
     use ark_serialize::CanonicalSerialize;
     use blake2::Blake2b512;
-    use dock_crypto_utils::{ff::inner_product, transcript::new_merlin_transcript};
+    use dock_crypto_utils::{
+        ff::inner_product, randomized_mult_checker::RandomizedMultChecker,
+        transcript::new_merlin_transcript,
+    };
     use rand_core::OsRng;
 
     #[test]
@@ -929,8 +979,32 @@ mod tests {
                             &comm_key1,
                             &comm_key2,
                             &mut verifier_transcript,
+                            None,
+                            None,
                         )
                         .unwrap();
+
+                    let mut verifier_transcript = new_merlin_transcript(b"test");
+                    verifier_transcript.append_message_without_static_label(b"nonce", nonce);
+                    verifier_transcript.append(b"comm_key1", &comm_key1);
+                    verifier_transcript.append(b"comm_key2", &comm_key2);
+                    verifier_transcript.append(b"comm_g1", &comm_g1);
+                    verifier_transcript.append(b"comm_g2", &comm_g2);
+                    let mut mult_checker_g1 = RandomizedMultChecker::new_using_rng(&mut rng);
+                    let mut mult_checker_g2 = RandomizedMultChecker::new_using_rng(&mut rng);
+                    proof
+                        .verify(
+                            &comm_g1,
+                            &comm_g2,
+                            &comm_key1,
+                            &comm_key2,
+                            &mut verifier_transcript,
+                            Some(&mut mult_checker_g1),
+                            Some(&mut mult_checker_g2),
+                        )
+                        .unwrap();
+                    mult_checker_g1.verify().unwrap();
+                    mult_checker_g2.verify().unwrap();
                 }
                 $fn_name();
             };
@@ -1042,8 +1116,33 @@ mod tests {
                             &comm_key2,
                             &bpp_setup_params,
                             &mut verifier_transcript,
+                            None,
+                            None,
                         )
                         .unwrap();
+
+                    let mut verifier_transcript = new_merlin_transcript(b"test");
+                    verifier_transcript.append(b"comm_key1", &comm_key1);
+                    verifier_transcript.append(b"comm_key2", &comm_key2);
+                    verifier_transcript.append(b"comm_g1", &comm_g1);
+                    verifier_transcript.append(b"comm_g2", &comm_g2);
+                    verifier_transcript.append(b"bpp_setup_params", &bpp_setup_params);
+                    let mut mult_checker_g1 = RandomizedMultChecker::new_using_rng(&mut rng);
+                    let mut mult_checker_g2 = RandomizedMultChecker::new_using_rng(&mut rng);
+                    proof
+                        .verify_with_range_proof(
+                            &comm_g1,
+                            &comm_g2,
+                            &comm_key1,
+                            &comm_key2,
+                            &bpp_setup_params,
+                            &mut verifier_transcript,
+                            Some(&mut mult_checker_g1),
+                            Some(&mut mult_checker_g2),
+                        )
+                        .unwrap();
+                    mult_checker_g1.verify().unwrap();
+                    mult_checker_g2.verify().unwrap();
                 }
                 $fn_name();
             };
@@ -1150,8 +1249,33 @@ mod tests {
                             &comm_key2,
                             &bpp_setup_params,
                             &mut verifier_transcript,
+                            None,
+                            None,
                         )
                         .unwrap();
+
+                    let mut verifier_transcript = new_merlin_transcript(b"test");
+                    verifier_transcript.append(b"comm_key1", &comm_key1);
+                    verifier_transcript.append(b"comm_key2", &comm_key2);
+                    verifier_transcript.append(b"comm_g1", &comm_g1);
+                    verifier_transcript.append(b"comm_g2", &comm_g2);
+                    verifier_transcript.append(b"bpp_setup_params", &bpp_setup_params);
+                    let mut mult_checker_g1 = RandomizedMultChecker::new_using_rng(&mut rng);
+                    let mut mult_checker_g2 = RandomizedMultChecker::new_using_rng(&mut rng);
+                    proof
+                        .verify(
+                            &comm_g1,
+                            &comm_g2,
+                            &comm_key1,
+                            &comm_key2,
+                            &bpp_setup_params,
+                            &mut verifier_transcript,
+                            Some(&mut mult_checker_g1),
+                            Some(&mut mult_checker_g2),
+                        )
+                        .unwrap();
+                    mult_checker_g1.verify().unwrap();
+                    mult_checker_g2.verify().unwrap();
                 }
                 $fn_name();
             };

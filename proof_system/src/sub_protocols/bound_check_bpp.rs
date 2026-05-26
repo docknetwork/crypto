@@ -18,7 +18,7 @@ use bulletproofs_plus_plus::{
     prelude::{ProofArbitraryRange, Prover},
     setup::SetupParams,
 };
-use dock_crypto_utils::transcript::Transcript;
+use dock_crypto_utils::{randomized_mult_checker::RandomizedMultChecker, transcript::Transcript};
 
 /// Runs the Bulletproofs++ protocol for proving bounds of a witness and a Schnorr protocol for proving
 /// knowledge of the witness committed in the commitments accompanying the proof.
@@ -185,11 +185,17 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         proof: &BoundCheckBppProof<G>,
         comm_key: &[G],
         transcript: &mut impl Transcript,
+        mult_checker: &mut Option<RandomizedMultChecker<G>>,
         resp_for_message: G::ScalarField,
     ) -> Result<(), ProofSystemError> {
         proof
             .bpp_proof
-            .verify(Self::get_num_bits(self.max), &self.setup_params, transcript)
+            .verify(
+                Self::get_num_bits(self.max),
+                &self.setup_params,
+                transcript,
+                mult_checker.as_mut().map(|x| &mut *x),
+            )
             .map_err(|e| {
                 ProofSystemError::BulletproofsPlusPlusProofContributionFailed(self.id as u32, e)
             })?;
@@ -200,9 +206,14 @@ impl<'a, G: AffineRepr> BoundCheckBppProtocol<'a, G> {
         let sp2 = SchnorrProtocol::new(10000, comm_key, comm_2);
 
         let missing_resp = BTreeMap::from([(0, resp_for_message)]);
-        sp1.verify_partial_proof_contribution(challenge, &proof.sp1, missing_resp.clone())
-            .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
-        sp2.verify_partial_proof_contribution(challenge, &proof.sp2, missing_resp)
+        sp1.verify_partial_proof_contribution(
+            challenge,
+            &proof.sp1,
+            missing_resp.clone(),
+            mult_checker,
+        )
+        .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
+        sp2.verify_partial_proof_contribution(challenge, &proof.sp2, missing_resp, mult_checker)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

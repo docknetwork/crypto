@@ -32,6 +32,7 @@ pub enum KVACError {
     IncompatibleWithHardwareSignatureTypeProvidedDuringInitialization,
     MissingVerifierPubKeyForDesignatedVerifierProof,
     InvalidPoKOfPublicKey,
+    InvalidEcdsaSignature,
 }
 
 impl From<InvalidPair<usize>> for KVACError {

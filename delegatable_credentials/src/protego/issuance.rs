@@ -299,9 +299,9 @@ impl<E: Pairing> SignatureRequest<E> {
         }
 
         // Check if `upk == P1*usk`
-        if !self.usk_proof.verify(upk, set_comm_srs.get_P1(), challenge) {
-            return Err(DelegationError::InvalidSignatureRequest);
-        }
+        self.usk_proof
+            .verify(upk, set_comm_srs.get_P1(), challenge)
+            .map_err(|_| DelegationError::InvalidSignatureRequest)?;
 
         // For revocation
         if self.supports_revocation() {
@@ -326,17 +326,14 @@ impl<E: Pairing> SignatureRequest<E> {
             }
 
             // Check if `upk2 == P1*usk`
-            if !rev
-                .usk_rev_proof
+            rev.usk_rev_proof
                 .verify(&upk2, set_comm_srs.get_P1(), challenge)
-            {
-                return Err(DelegationError::InvalidRevocationRequest);
-            }
+                .map_err(|_| DelegationError::InvalidRevocationRequest)?;
 
             // Check if `C5 == Q*usk`
-            if !rev.usk_rev_proof_Q.verify(&rev.C5, Q, challenge) {
-                return Err(DelegationError::InvalidRevocationRequest);
-            }
+            rev.usk_rev_proof_Q
+                .verify(&rev.C5, Q, challenge)
+                .map_err(|_| DelegationError::InvalidRevocationRequest)?;
 
             // Check if response is same in both Schnorr proofs to ensure same witness (secret key)
             if rev.usk_rev_proof.response != rev.usk_rev_proof_Q.response {

@@ -8,7 +8,10 @@ use crate::{
 use ark_ec::pairing::Pairing;
 use ark_serialize::CanonicalSerialize;
 use ark_std::{collections::BTreeMap, io::Write, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use legogroth16::{
     calculate_d,
     circom::{CircomCircuit, WitnessCalculator, R1CS},
@@ -169,6 +172,7 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
         comm_key: &[E::G1Affine],
         pvk: &PreparedVerifyingKey<E>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), ProofSystemError> {
         let snark_proof = &proof.snark_proof;
         match pairing_checker {
@@ -192,7 +196,7 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.snark_proof.d);
 
-        sp.verify_proof_contribution(challenge, &proof.sp)
+        sp.verify_proof_contribution(challenge, &proof.sp, mult_checker)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
@@ -201,10 +205,11 @@ impl<'a, E: Pairing> R1CSLegogroth16Protocol<'a, E> {
         challenge: &E::ScalarField,
         proof: &R1CSLegoGroth16ProofWhenAggregatingSnarks<E>,
         comm_key: &[E::G1Affine],
+        mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), ProofSystemError> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
-        sp.verify_proof_contribution(challenge, &proof.sp)
+        sp.verify_proof_contribution(challenge, &proof.sp, mult_checker)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

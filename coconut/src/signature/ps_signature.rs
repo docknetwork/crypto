@@ -217,11 +217,11 @@ mod tests {
 
         let sig = Signature::new(&mut rng, &msgs, &sk1, &params).unwrap();
         assert!(sig.verify(&msgs, &pk2, &params).is_err());
-        assert!(sig.verify(&msgs, &pk1, &params).is_ok());
+        sig.verify(&msgs, &pk1, &params).unwrap();
 
         let sig = Signature::new_deterministic::<Blake2b512>(&msgs, &sk1).unwrap();
         assert!(sig.verify(&msgs, &pk2, &params).is_err());
-        assert!(sig.verify(&msgs, &pk1, &params).is_ok());
+        sig.verify(&msgs, &pk1, &params).unwrap();
     }
 
     #[test]

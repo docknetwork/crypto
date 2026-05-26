@@ -18,6 +18,7 @@ use dock_crypto_utils::{
     expect_equality,
     iter::take_while_satisfy,
     misc::seq_inc_by_n_from,
+    randomized_mult_checker::RandomizedMultChecker,
     randomized_pairing_check::RandomizedPairingChecker,
     signature::{MessageOrBlinding, MultiMessageSignatureParams},
     try_iter::CheckLeft,
@@ -173,16 +174,19 @@ macro_rules! impl_bbs_subprotocol {
             pk: impl Into<PreparedPublicKeyG2<E>>,
             params: impl Into<$prepared_params<E>>,
             pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+            mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
         ) -> Result<(), BBSPlusError> {
-            match pairing_checker {
-                Some(c) => proof.verify_with_randomized_pairing_checker(
+            if pairing_checker.is_some() || mult_checker.is_some() {
+                proof.verify_with_randomized_pairing_and_mult_checker(
                     self.revealed_messages,
                     challenge,
                     pk,
                     params,
-                    c,
-                ),
-                None => proof.verify(self.revealed_messages, challenge, pk, params),
+                    pairing_checker.as_mut().map(|x| &mut *x),
+                    mult_checker.as_mut().map(|x| &mut *x),
+                )
+            } else {
+                proof.verify(self.revealed_messages, challenge, pk, params)
             }
         }
 
@@ -193,24 +197,27 @@ macro_rules! impl_bbs_subprotocol {
             pk: impl Into<PreparedPublicKeyG2<E>>,
             params: impl Into<$prepared_params<E>>,
             pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+            mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
             missing_responses: BTreeMap<usize, E::ScalarField>,
         ) -> Result<(), BBSPlusError> {
-            match pairing_checker {
-                Some(c) => proof.verify_partial_with_randomized_pairing_checker(
+            if pairing_checker.is_some() || mult_checker.is_some() {
+                proof.verify_partial_with_randomized_pairing_and_mult_checker(
                     self.revealed_messages,
                     challenge,
                     pk,
                     params,
-                    c,
+                    pairing_checker.as_mut().map(|x| &mut *x),
+                    mult_checker.as_mut().map(|x| &mut *x),
                     missing_responses,
-                ),
-                None => proof.verify_partial(
+                )
+            } else {
+                proof.verify_partial(
                     self.revealed_messages,
                     challenge,
                     pk,
                     params,
                     missing_responses,
-                ),
+                )
             }
         }
     };

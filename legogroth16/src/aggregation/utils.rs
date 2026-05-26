@@ -208,11 +208,12 @@ pub(crate) fn final_verification_check<E: Pairing>(
     delta_g2: E::G2Affine,
     gamma_abc_g1: &[E::G1Affine],
     checker: &mut RandomizedPairingChecker<E>,
-) -> Result<(), AggregationError> {
+) {
     let public_inputs_len = public_inputs
         .len()
         .try_into()
-        .map_err(|_| AggregationError::PublicInputsTooLarge(public_inputs.len()))?;
+        .map_err(|_| AggregationError::PublicInputsTooLarge(public_inputs.len()))
+        .unwrap();
     let r_powers = powers(r, public_inputs_len);
     let r_sum = sum_of_powers::<E::ScalarField>(r, public_inputs_len);
 
@@ -234,11 +235,4 @@ pub(crate) fn final_verification_check<E: Pairing>(
     source2.push(delta_g2);
 
     checker.add_multiple_sources_and_target(&source1, source2, &z_ab);
-
-    match checker.verify() {
-        true => Ok(()),
-        false => Err(AggregationError::InvalidProof(
-            "Proof Verification Failed due to pairing checks".to_string(),
-        )),
-    }
 }

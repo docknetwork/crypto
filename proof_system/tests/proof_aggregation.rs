@@ -205,6 +205,7 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -222,6 +223,7 @@ fn pok_of_bbs_plus_sigs_and_verifiable_encryption_with_saver_aggregation() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(true),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -402,6 +404,7 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -419,6 +422,7 @@ fn pok_of_bbs_plus_sigs_and_bound_check_with_aggregation() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(true),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();

@@ -1,7 +1,7 @@
 use crate::{
     bbdt_2016::keyed_proof::KeyedProof,
     bbs_sharp::{
-        ecdsa::Signature as EcdsaSignature,
+        ecdsa,
         hol::{ProofOfValidity, TokenPrivateData},
         mac::MAC,
         setup::{
@@ -10,7 +10,10 @@ use crate::{
     },
     error::KVACError,
 };
-use ark_ec::{AffineRepr, VariableBaseMSM};
+use ark_ec::{short_weierstrass::SWCurveConfig, AffineRepr, VariableBaseMSM};
+use ark_secp256r1::Config as Secp256r1Config;
+
+type EcdsaSignature = ecdsa::Signature<Secp256r1Config>;
 use ark_ff::{BigInteger, Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
@@ -297,7 +300,10 @@ impl<G: AffineRepr> PoKOfMACProtocol<G> {
 
     /// Transform the ECDSA signature received from user (likely from the secure hardware) to be verifiable
     /// by the blinded public key.
-    pub fn transform_ecdsa_sig(&self, sig: EcdsaSignature) -> Result<EcdsaSignature, KVACError> {
+    pub fn transform_ecdsa_sig(
+        &self,
+        sig: ecdsa::Signature<Secp256r1Config>,
+    ) -> Result<ecdsa::Signature<Secp256r1Config>, KVACError> {
         match &self.hw_sig_type {
             HardwareSignatureType::Ecdsa => {
                 let blinding = ark_secp256r1::Fr::from_le_bytes_mod_order(
@@ -562,12 +568,9 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         } else {
             *challenge
         };
-        if !self
-            .sc_B_bar
+        self.sc_B_bar
             .verify(&self.B_bar, &self.A_hat, &self.D, &chal)
-        {
-            return Err(KVACError::InvalidSchnorrProof);
-        }
+            .map_err(|_| KVACError::InvalidSchnorrProof)?;
         let mut bases = Vec::with_capacity(2 + params.g_vec.len() - revealed_msgs.len());
         let mut bases_revealed = Vec::with_capacity(revealed_msgs.len());
         let mut exponents = Vec::with_capacity(revealed_msgs.len());
@@ -1204,7 +1207,9 @@ mod tests {
         // ECDSA works. Assumes that the user has hashed its message
         let user_auth_message = Fr::rand(&mut rng);
         let ecdsa_signature = EcdsaSignature::new_prehashed(&mut rng, user_auth_message, user_sk.0);
-        assert!(ecdsa_signature.verify_prehashed(user_auth_message, user_pk.0));
+        ecdsa_signature
+            .verify_prehashed(user_auth_message, user_pk.0)
+            .unwrap();
 
         let mut revealed_indices = BTreeSet::new();
         revealed_indices.insert(0);
@@ -1242,8 +1247,12 @@ mod tests {
         // Signature is on transformed message is correct
         let ecdsa_signature =
             EcdsaSignature::new_prehashed(&mut rng, transformed_user_auth_message, user_sk.0);
-        assert!(ecdsa_signature.verify_prehashed(transformed_user_auth_message, user_pk.0));
-        assert!(!ecdsa_signature.verify_prehashed(transformed_user_auth_message, pok.blinded_pk));
+        ecdsa_signature
+            .verify_prehashed(transformed_user_auth_message, user_pk.0)
+            .unwrap();
+        assert!(ecdsa_signature
+            .verify_prehashed(transformed_user_auth_message, pok.blinded_pk)
+            .is_err());
 
         let start = Instant::now();
         let mut chal_bytes_prover = vec![];
@@ -1267,7 +1276,9 @@ mod tests {
         assert_eq!(challenge_prover, challenge_verifier);
 
         // The verifier needs to check that the ECDSA signature is valid
-        assert!(transformed_ecdsa_sig.verify_prehashed(user_auth_message, proof.blinded_pk));
+        transformed_ecdsa_sig
+            .verify_prehashed(user_auth_message, proof.blinded_pk)
+            .unwrap();
 
         // This is an example where the verifier has the secret key
         proof

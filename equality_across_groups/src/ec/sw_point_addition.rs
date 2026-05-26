@@ -220,34 +220,34 @@ impl<P: SWPoint, C: SWPoint> PointAdditionProof<P, C> {
         let comm_b_minus_a = comm_b - comm_a;
         let comm_a_plus_t = comm_a + comm_t;
 
-        if !self.tau.verify(
-            comm_b_minus_a.x,
-            self.comm_tau,
-            comm_b_minus_a.y,
-            challenge,
-            comm_key,
-        ) {
-            return Err(Error::TauProofFailed);
-        }
+        self.tau
+            .verify(
+                comm_b_minus_a.x,
+                self.comm_tau,
+                comm_b_minus_a.y,
+                challenge,
+                comm_key,
+            )
+            .map_err(|_| Error::TauProofFailed)?;
 
-        if !self.tau_sqr.verify(
-            self.comm_tau,
-            (comm_a_plus_t.x + comm_b.x).into_affine(),
-            challenge,
-            comm_key,
-        ) {
-            return Err(Error::TauSquareProofFailed);
-        }
+        self.tau_sqr
+            .verify(
+                self.comm_tau,
+                (comm_a_plus_t.x + comm_b.x).into_affine(),
+                challenge,
+                comm_key,
+            )
+            .map_err(|_| Error::TauSquareProofFailed)?;
 
-        if !self.tau_ax_minus_tx.verify(
-            self.comm_tau,
-            (comm_a.x + comm_t.x.into_group().neg()).into_affine(),
-            comm_a_plus_t.y,
-            challenge,
-            comm_key,
-        ) {
-            return Err(Error::TxProofFailed);
-        }
+        self.tau_ax_minus_tx
+            .verify(
+                self.comm_tau,
+                (comm_a.x + comm_t.x.into_group().neg()).into_affine(),
+                comm_a_plus_t.y,
+                challenge,
+                comm_key,
+            )
+            .map_err(|_| Error::TxProofFailed)?;
 
         self.bx_minus_ax.verify_for_inequality_with_public_value(
             &comm_b_minus_a.x,
@@ -256,12 +256,9 @@ impl<P: SWPoint, C: SWPoint> PointAdditionProof<P, C> {
             comm_key,
         )?;
 
-        if !self
-            .ay
+        self.ay
             .verify(&comm_a.y, &comm_key.g, &comm_key.h, challenge)
-        {
-            return Err(Error::TyProofFailed);
-        }
+            .map_err(|_| Error::TyProofFailed)?;
 
         Ok(())
     }
@@ -452,7 +449,7 @@ mod tests {
                     &mut checker,
                 )
                 .unwrap();
-            assert!(checker.verify());
+            checker.verify().unwrap();
             ver_rmc_time.push(start.elapsed());
 
             if i == 0 {

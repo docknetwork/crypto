@@ -517,20 +517,14 @@ impl<E: Pairing> CredentialShow<E> {
         let P1 = set_comm_srs.get_P1();
         let prep_P2 = set_comm_srs.prepared_P2.clone();
 
-        if !self
-            .core
+        self.core
             .attrib_comm_proof
             .verify(&self.core.C2, &self.core.C1, challenge)
-        {
-            return Err(DelegationError::InvalidCredentialShow);
-        }
-        if !self
-            .core
+            .map_err(|_| DelegationError::InvalidCredentialShow)?;
+        self.core
             .attrib_comm_rand_proof
             .verify(&self.core.C3, P1, challenge)
-        {
-            return Err(DelegationError::InvalidCredentialShow);
-        }
+            .map_err(|_| DelegationError::InvalidCredentialShow)?;
 
         if !disclosed_attributes.is_empty() {
             let ss = disclosed_attributes.into_iter().collect();
@@ -567,23 +561,17 @@ impl<E: Pairing> CredentialShow<E> {
                     .into();
                 let accumulated = accumulated.ok_or(DelegationError::AccumulatorNotProvided)?;
 
-                if !rev
-                    .accum_rand_proof
+                rev.accum_rand_proof
                     .verify(&rev.randomized_accum, accumulated, challenge)
-                {
-                    return Err(DelegationError::InvalidRevocationShow);
-                }
+                    .map_err(|_| DelegationError::InvalidRevocationShow)?;
 
-                if !rev.user_rev_secret_proof.verify(&rev.C5, Q, challenge) {
-                    return Err(DelegationError::InvalidRevocationShow);
-                }
+                rev.user_rev_secret_proof
+                    .verify(&rev.C5, Q, challenge)
+                    .map_err(|_| DelegationError::InvalidRevocationShow)?;
 
-                if !rev
-                    .witness_rand_proof
+                rev.witness_rand_proof
                     .verify(&rev.randomized_witness.1, P1, challenge)
-                {
-                    return Err(DelegationError::InvalidRevocationShow);
-                }
+                    .map_err(|_| DelegationError::InvalidRevocationShow)?;
 
                 if !rev.randomized_witness.verify(
                     &rev.randomized_accum,
@@ -610,12 +598,10 @@ impl<E: Pairing> CredentialShow<E> {
                     return Err(DelegationError::InvalidAuditShow);
                 }
 
-                if !ct_proof
+                ct_proof
                     .ciphertext_rand_proof
                     .verify(&ct.eph_pk, P1, challenge)
-                {
-                    return Err(DelegationError::InvalidAuditShow);
-                }
+                    .map_err(|_| DelegationError::InvalidAuditShow)?;
 
                 let t1_prep = E::G2Prepared::from(ct_proof.t1);
                 let t2_prep = E::G2Prepared::from(ct_proof.t2);

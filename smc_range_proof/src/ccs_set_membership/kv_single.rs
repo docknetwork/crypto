@@ -85,15 +85,15 @@ impl<G: AffineRepr> SetMembershipCheckWithKVProof<G> {
         // Check commitment * challenge + g * z_sigma + h * z_r == D
         self.pok_sig
             .verify(challenge, secret_key, &params.bb_sig_params)?;
-        if !self.sc.verify(
-            commitment,
-            &comm_key.g,
-            &comm_key.h,
-            challenge,
-            self.pok_sig.get_resp_for_message().unwrap(),
-        ) {
-            return Err(SmcRangeProofError::InvalidSetMembershipProof);
-        }
+        self.sc
+            .verify(
+                commitment,
+                &comm_key.g,
+                &comm_key.h,
+                challenge,
+                self.pok_sig.get_resp_for_message().unwrap(),
+            )
+            .map_err(|_| SmcRangeProofError::InvalidSetMembershipProof)?;
         Ok(())
     }
 

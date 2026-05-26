@@ -201,21 +201,21 @@ impl<G: AffineRepr> ProductProof<G> {
         c: G,
         challenge: &G::ScalarField,
         comm_key: &PedersenCommitmentKey<G>,
-    ) -> bool {
+    ) -> Result<(), SchnorrError> {
         if comm_key.commit_as_projective(&self.s_a, &self.s_r_a)
             != (self.t_a.into_group() + a * challenge)
         {
-            return false;
+            return Err(SchnorrError::NotAProduct);
         }
         if comm_key.commit_as_projective(&self.s_b, &self.s_r_b)
             != (self.t_b.into_group() + b * challenge)
         {
-            return false;
+            return Err(SchnorrError::NotAProduct);
         }
         if (a * self.s_b + comm_key.h * self.s_r_c) != (self.t_c.into_group() + c * challenge) {
-            return false;
+            return Err(SchnorrError::NotAProduct);
         }
-        true
+        Ok(())
     }
 
     pub fn verify_using_randomized_mult_checker(
@@ -325,18 +325,18 @@ impl<G: AffineRepr> SquareProof<G> {
         a_sqr: G,
         challenge: &G::ScalarField,
         comm_key: &PedersenCommitmentKey<G>,
-    ) -> bool {
+    ) -> Result<(), SchnorrError> {
         if comm_key.commit_as_projective(&self.s_a, &self.s_r_a)
             != (self.t_a.into_group() + a * challenge)
         {
-            return false;
+            return Err(SchnorrError::NotASquare);
         }
         if (a * self.s_a + comm_key.h * self.s_r_a_sqr)
             != (self.t_a_sqr.into_group() + a_sqr * challenge)
         {
-            return false;
+            return Err(SchnorrError::NotASquare);
         }
-        true
+        Ok(())
     }
 
     pub fn verify_using_randomized_mult_checker(
@@ -447,23 +447,23 @@ impl<G: AffineRepr> InverseProof<G> {
         a_inv: G,
         challenge: &G::ScalarField,
         comm_key: &PedersenCommitmentKey<G>,
-    ) -> bool {
+    ) -> Result<(), SchnorrError> {
         if comm_key.commit_as_projective(&self.s_a, &self.s_r_a)
             != (self.t_a.into_group() + a * challenge)
         {
-            return false;
+            return Err(SchnorrError::NotAnInverse);
         }
         if comm_key.commit_as_projective(&self.s_a_inv, &self.s_r_a_inv)
             != (self.t_a_inv.into_group() + a_inv * challenge)
         {
-            return false;
+            return Err(SchnorrError::NotAnInverse);
         }
         if (a * self.s_a_inv + comm_key.h * self.s_r_one)
             != (self.t_one.into_group() + comm_key.g * challenge)
         {
-            return false;
+            return Err(SchnorrError::NotAnInverse);
         }
-        true
+        Ok(())
     }
 
     pub fn verify_using_randomized_mult_checker(
@@ -566,12 +566,12 @@ mod tests {
                 .challenge_contribution(&mut verifier_transcript)
                 .unwrap();
             let challenge = verifier_transcript.challenge_scalar(b"challenge");
-            assert!(proof.verify(a, b, c, &challenge, &comm_key));
+            proof.verify(a, b, c, &challenge, &comm_key).unwrap();
 
             proof.verify_using_randomized_mult_checker(a, b, c, &challenge, comm_key, &mut checker);
         }
 
-        assert!(checker.verify())
+        checker.verify().unwrap()
     }
 
     #[test]
@@ -613,7 +613,7 @@ mod tests {
                 .challenge_contribution(&mut verifier_transcript)
                 .unwrap();
             let challenge = verifier_transcript.challenge_scalar(b"challenge");
-            assert!(proof.verify(a, a, a_sqr, &challenge, &comm_key));
+            proof.verify(a, a, a_sqr, &challenge, &comm_key).unwrap();
         }
     }
 
@@ -667,7 +667,7 @@ mod tests {
                 .challenge_contribution(&mut verifier_transcript)
                 .unwrap();
             let challenge = verifier_transcript.challenge_scalar(b"challenge");
-            assert!(proof.verify(a, a_inv, one, &challenge, &comm_key));
+            proof.verify(a, a_inv, one, &challenge, &comm_key).unwrap();
         }
     }
 
@@ -708,7 +708,7 @@ mod tests {
                 .challenge_contribution(&mut verifier_transcript)
                 .unwrap();
             let challenge = verifier_transcript.challenge_scalar(b"challenge");
-            assert!(proof.verify(a, a_sqr, &challenge, &comm_key));
+            proof.verify(a, a_sqr, &challenge, &comm_key).unwrap();
 
             proof.verify_using_randomized_mult_checker(
                 a,
@@ -719,7 +719,7 @@ mod tests {
             );
         }
 
-        assert!(checker.verify())
+        checker.verify().unwrap()
     }
 
     #[test]
@@ -760,7 +760,7 @@ mod tests {
                 .challenge_contribution(&mut verifier_transcript)
                 .unwrap();
             let challenge = verifier_transcript.challenge_scalar(b"challenge");
-            assert!(proof.verify(a, a_inv, &challenge, &comm_key));
+            proof.verify(a, a_inv, &challenge, &comm_key).unwrap();
 
             proof.verify_using_randomized_mult_checker(
                 a,
@@ -771,6 +771,6 @@ mod tests {
             );
         }
 
-        assert!(checker.verify())
+        checker.verify().unwrap()
     }
 }

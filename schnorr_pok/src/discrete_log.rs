@@ -158,10 +158,13 @@ impl<G: AffineRepr> PokDiscreteLog<G> {
     }
 
     /// `base*response - y*challenge == t`
-    pub fn verify(&self, y: &G, base: &G, challenge: &G::ScalarField) -> bool {
+    pub fn verify(&self, y: &G, base: &G, challenge: &G::ScalarField) -> Result<(), SchnorrError> {
         let mut expected = base.mul_bigint(self.response.into_bigint());
         expected -= y.mul_bigint(challenge.into_bigint());
-        expected.into_affine() == self.t
+        if expected.into_affine() != self.t {
+            return Err(SchnorrError::InvalidResponse);
+        }
+        Ok(())
     }
 
     pub fn verify_using_randomized_mult_checker(
@@ -245,11 +248,20 @@ impl<G: AffineRepr> PokPedersenCommitment<G> {
     }
 
     /// `base1*response1 + base2*response2 - y*challenge == t`
-    pub fn verify(&self, y: &G, base1: &G, base2: &G, challenge: &G::ScalarField) -> bool {
+    pub fn verify(
+        &self,
+        y: &G,
+        base1: &G,
+        base2: &G,
+        challenge: &G::ScalarField,
+    ) -> Result<(), SchnorrError> {
         let mut expected = base1.mul_bigint(self.response1.into_bigint());
         expected += base2.mul_bigint(self.response2.into_bigint());
         expected -= y.mul_bigint(challenge.into_bigint());
-        expected.into_affine() == self.t
+        if expected.into_affine() != self.t {
+            return Err(SchnorrError::InvalidResponse);
+        }
+        Ok(())
     }
 
     /// Same as `Self::verify` except it uses `RandomizedMultChecker` to combine the scalar multiplication checks into a single
@@ -320,7 +332,7 @@ mod tests {
 
                 let challenge_verifier =
                     compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib_verifier);
-                assert!(proof.verify(&y, &base, &challenge_verifier));
+                proof.verify(&y, &base, &challenge_verifier).unwrap();
                 assert_eq!(chal_contrib_prover, chal_contrib_verifier);
                 assert_eq!(challenge_prover, challenge_verifier);
 
@@ -333,7 +345,7 @@ mod tests {
                     &challenge_verifier,
                     &mut checker,
                 );
-                assert!(checker.verify());
+                checker.verify().unwrap();
 
                 // Incorrect should fail
                 let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
@@ -343,7 +355,7 @@ mod tests {
                     &challenge_verifier,
                     &mut checker,
                 );
-                assert!(!checker.verify());
+                assert!(checker.verify().is_err());
             };
         }
 
@@ -389,7 +401,9 @@ mod tests {
 
                 let challenge_verifier =
                     compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib_verifier);
-                assert!(proof.verify(&y, &base1, &base2, &challenge_verifier));
+                proof
+                    .verify(&y, &base1, &base2, &challenge_verifier)
+                    .unwrap();
                 assert_eq!(chal_contrib_prover, chal_contrib_verifier);
                 assert_eq!(challenge_prover, challenge_verifier);
 
@@ -406,7 +420,7 @@ mod tests {
                     &challenge_verifier,
                     &mut checker,
                 );
-                assert!(checker.verify());
+                checker.verify().unwrap();
 
                 let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
                 proof.verify_using_randomized_mult_checker(
@@ -416,7 +430,7 @@ mod tests {
                     &challenge_verifier,
                     &mut checker,
                 );
-                assert!(!checker.verify());
+                assert!(checker.verify().is_err());
             };
         }
 

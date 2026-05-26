@@ -166,12 +166,9 @@ impl<G: AffineRepr> Round1State<G> {
             .map_err(SSError::SchnorrError)?;
         challenge_bytes.extend_from_slice(schnorr_proof_ctx);
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
-        if !msg
-            .schnorr_proof
+        msg.schnorr_proof
             .verify(msg.comm_coeffs.commitment_to_secret(), pk_gen, &challenge)
-        {
-            return Err(SSError::InvalidProofOfSecretKeyKnowledge);
-        }
+            .map_err(|_| SSError::InvalidProofOfSecretKeyKnowledge)?;
 
         // Store commitments
         self.coeff_comms.insert(msg.sender_id, msg.comm_coeffs);

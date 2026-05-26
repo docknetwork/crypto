@@ -584,6 +584,7 @@ impl<G: AffineRepr> UniversalAccumulator<G> {
 
     /// Check if element is absent in accumulator. Described in section 2 of the paper
     /// This takes `self` as an argument, but the secret `f_V` isn't used; thus it can be passed as 0.
+    #[must_use]
     pub fn verify_non_membership_given_accumulated<
         E: Pairing<G1Affine = G, ScalarField = G::ScalarField>,
     >(
@@ -622,6 +623,7 @@ impl<G: AffineRepr> UniversalAccumulator<G> {
 
     /// Check if element is absent in accumulator. Described in section 2 of the paper
     /// This takes `self` as an argument, but the secret `f_V` isn't used; thus it can be passed as 0.
+    #[must_use]
     pub fn verify_non_membership<E: Pairing<G1Affine = G, ScalarField = G::ScalarField>>(
         &self,
         non_member: &G::ScalarField,

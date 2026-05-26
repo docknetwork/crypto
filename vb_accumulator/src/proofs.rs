@@ -103,12 +103,15 @@ use ark_ec::{
     scalar_mul::wnaf::WnafContext,
     AffineRepr, CurveGroup, Group,
 };
-use ark_ff::{Field, PrimeField};
+use ark_ff::{Field, PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, io::Write, rand::RngCore, vec::Vec, UniformRand};
 #[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::*;
-use dock_crypto_utils::{msm::WindowTable, randomized_pairing_check::RandomizedPairingChecker};
+use dock_crypto_utils::{
+    msm::WindowTable, randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use schnorr_pok::{error::SchnorrError, SchnorrChallengeContributor};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -694,6 +697,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
     /// Verifies the (non)membership relation of the randomized witness and (non)member.
     /// `pairing_extra` is used when verifying non-membership proofs and is included in this function
     /// only because its efficient to do a multi-pairing.
+    #[must_use]
     fn verify_proof(
         randomized_witness: &RandomizedWitness<E::G1Affine>,
         schnorr_commit: &SchnorrCommit<E>,
@@ -714,6 +718,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
             accumulator_value,
             challenge,
             prk,
+            None,
         )?;
         let R_E = E::multi_pairing([p, q], [params.into().P_tilde, pk.into().0]);
         if R_E != schnorr_commit.R_E {
@@ -723,6 +728,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         Ok(())
     }
 
+    #[must_use]
     fn verify_partial_proof(
         resp_for_element: &E::ScalarField,
         randomized_witness: &RandomizedWitness<E::G1Affine>,
@@ -744,6 +750,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
             accumulator_value,
             challenge,
             prk,
+            None,
         )?;
         let R_E = E::multi_pairing([p, q], [params.into().P_tilde, pk.into().0]);
         if R_E != schnorr_commit.R_E {
@@ -753,7 +760,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         Ok(())
     }
 
-    fn verify_proof_with_randomized_pairing_checker(
+    fn verify_proof_with_randomized_pairing_and_mult_checker(
         randomized_witness: &RandomizedWitness<E::G1Affine>,
         schnorr_commit: &SchnorrCommit<E>,
         schnorr_response: &SchnorrResponse<E::ScalarField>,
@@ -763,7 +770,8 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         prk: &ProvingKey<E::G1Affine>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         let (p, q) = Self::verify_proof_except_pairings(
             None,
@@ -774,16 +782,23 @@ pub(crate) trait ProofProtocol<E: Pairing> {
             accumulator_value,
             challenge,
             prk,
+            mult_checker,
         )?;
-        pairing_checker.add_multiple_sources_and_target(
-            &[p, q],
-            [params.into().P_tilde, pk.into().0],
-            &schnorr_commit.R_E,
-        );
+        if let Some(pc) = pairing_checker {
+            pc.add_multiple_sources_and_target(
+                &[p, q],
+                [params.into().P_tilde, pk.into().0],
+                &schnorr_commit.R_E,
+            );
+        } else if E::multi_pairing([p, q], [params.into().P_tilde, pk.into().0])
+            != schnorr_commit.R_E
+        {
+            return Err(VBAccumulatorError::PairingResponseInvalid);
+        }
         Ok(())
     }
 
-    fn verify_partial_proof_with_randomized_pairing_checker(
+    fn verify_partial_proof_with_randomized_pairing_and_mult_checker(
         resp_for_element: &E::ScalarField,
         randomized_witness: &RandomizedWitness<E::G1Affine>,
         schnorr_commit: &SchnorrCommit<E>,
@@ -794,7 +809,8 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         prk: &ProvingKey<E::G1Affine>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         let (p, q) = Self::verify_proof_except_pairings(
             Some(resp_for_element),
@@ -805,17 +821,25 @@ pub(crate) trait ProofProtocol<E: Pairing> {
             accumulator_value,
             challenge,
             prk,
+            mult_checker,
         )?;
-        pairing_checker.add_multiple_sources_and_target(
-            &[p, q],
-            [params.into().P_tilde, pk.into().0],
-            &schnorr_commit.R_E,
-        );
+        if let Some(pc) = pairing_checker {
+            pc.add_multiple_sources_and_target(
+                &[p, q],
+                [params.into().P_tilde, pk.into().0],
+                &schnorr_commit.R_E,
+            );
+        } else if E::multi_pairing([p, q], [params.into().P_tilde, pk.into().0])
+            != schnorr_commit.R_E
+        {
+            return Err(VBAccumulatorError::PairingResponseInvalid);
+        }
         Ok(())
     }
 
     /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this
     /// protocol or others) and the pairing equations are combined in a randomized pairing check.
+    #[must_use]
     fn verify_proof_except_pairings(
         resp_for_element: Option<&E::ScalarField>,
         randomized_witness: &RandomizedWitness<E::G1Affine>,
@@ -825,6 +849,7 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         prk: &ProvingKey<E::G1Affine>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(E::G1Affine, E::G1Affine), VBAccumulatorError> {
         let (context, X_table, Y_table, Z_table, T_sigma_table, T_rho_table, E_C_table) =
             Self::get_tables(prk, randomized_witness);
@@ -833,11 +858,14 @@ pub(crate) trait ProofProtocol<E: Pairing> {
             schnorr_commit,
             schnorr_response,
             challenge,
+            prk,
+            randomized_witness,
             &context,
             &X_table,
             &Y_table,
             &T_sigma_table,
             &T_rho_table,
+            mult_checker,
         )?;
 
         Self::get_g1_for_pairing_checks(
@@ -887,16 +915,20 @@ pub(crate) trait ProofProtocol<E: Pairing> {
 
     /// The verifier recomputes various `R_`s values given the responses from the proof and the challenge
     /// and compares them with the `R_`s from the proof for equality
+    #[must_use]
     fn verify_schnorr_proofs(
         resp_for_element: Option<&E::ScalarField>,
         schnorr_commit: &SchnorrCommit<E>,
         schnorr_response: &SchnorrResponse<E::ScalarField>,
         challenge: &E::ScalarField,
+        prk: &ProvingKey<E::G1Affine>,
+        randomized_witness: &RandomizedWitness<E::G1Affine>,
         context: &WnafContext,
         X_table: &[E::G1],
         Y_table: &[E::G1],
         T_sigma_table: &[E::G1],
         T_rho_table: &[E::G1],
+        mut mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         let s_y = if let Some(r) = resp_for_element {
             r
@@ -905,6 +937,43 @@ pub(crate) trait ProofProtocol<E: Pairing> {
         } else {
             return Err(VBAccumulatorError::MissingSchnorrResponseForElement);
         };
+
+        if let Some(rmc) = mult_checker.as_mut() {
+            let minus_challenge = -*challenge;
+            let minus_s_delta_sigma = -schnorr_response.s_delta_sigma;
+            let minus_s_delta_rho = -schnorr_response.s_delta_rho;
+
+            rmc.add_2(
+                prk.X,
+                &schnorr_response.s_sigma,
+                randomized_witness.T_sigma,
+                &minus_challenge,
+                schnorr_commit.R_sigma,
+            );
+            rmc.add_2(
+                prk.Y,
+                &schnorr_response.s_rho,
+                randomized_witness.T_rho,
+                &minus_challenge,
+                schnorr_commit.R_rho,
+            );
+            rmc.add_2(
+                randomized_witness.T_sigma,
+                s_y,
+                prk.X,
+                &minus_s_delta_sigma,
+                schnorr_commit.R_delta_sigma,
+            );
+            rmc.add_2(
+                randomized_witness.T_rho,
+                s_y,
+                prk.Y,
+                &minus_s_delta_rho,
+                schnorr_commit.R_delta_rho,
+            );
+            return Ok(());
+        }
+
         // R_sigma = schnorr_response.s_sigma * prk.X - challenge * randomized_witness.T_sigma
         let mut R_sigma = context
             .mul_with_table(X_table, &schnorr_response.s_sigma)
@@ -1266,6 +1335,7 @@ impl<E: Pairing> MembershipProof<E> {
     /// Verify this proof. Delegates to [`verify_proof`]
     ///
     /// [`verify_proof`]: ProofProtocol::verify_proof
+    #[must_use]
     pub fn verify(
         &self,
         accumulator_value: &E::G1Affine,
@@ -1287,6 +1357,7 @@ impl<E: Pairing> MembershipProof<E> {
         )
     }
 
+    #[must_use]
     pub fn verify_partial(
         &self,
         resp_for_element: &E::ScalarField,
@@ -1310,16 +1381,18 @@ impl<E: Pairing> MembershipProof<E> {
         )
     }
 
-    pub fn verify_with_randomized_pairing_checker(
+    #[must_use]
+    pub fn verify_with_randomized_pairing_and_mult_checker(
         &self,
         accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         prk: impl AsRef<ProvingKey<E::G1Affine>>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
-        <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof_with_randomized_pairing_checker(
+        <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof_with_randomized_pairing_and_mult_checker(
             &self.randomized_witness.0,
             &self.schnorr_commit.0,
             &self.schnorr_response.0,
@@ -1329,11 +1402,12 @@ impl<E: Pairing> MembershipProof<E> {
             pk,
             params,
             prk.as_ref(),
-            pairing_checker
+            pairing_checker,
+            mult_checker
         )
     }
 
-    pub fn verify_partial_with_randomized_pairing_checker(
+    pub fn verify_partial_with_randomized_pairing_and_mult_checker(
         &self,
         resp_for_element: &E::ScalarField,
         accumulator_value: &E::G1Affine,
@@ -1341,9 +1415,10 @@ impl<E: Pairing> MembershipProof<E> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         prk: impl AsRef<ProvingKey<E::G1Affine>>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
-        <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_partial_proof_with_randomized_pairing_checker(
+        <MembershipProofProtocol<E> as ProofProtocol<E>>::verify_partial_proof_with_randomized_pairing_and_mult_checker(
             resp_for_element,
             &self.randomized_witness.0,
             &self.schnorr_commit.0,
@@ -1354,7 +1429,8 @@ impl<E: Pairing> MembershipProof<E> {
             pk,
             params,
             prk.as_ref(),
-            pairing_checker
+            pairing_checker,
+            mult_checker
         )
     }
 
@@ -1390,6 +1466,7 @@ impl<E: Pairing> NonMembershipProof<E> {
     /// to [`verify_proof`]
     ///
     /// [`verify_proof`]: ProofProtocol::verify_proof
+    #[must_use]
     pub fn verify(
         &self,
         accumulator_value: &E::G1Affine,
@@ -1399,7 +1476,7 @@ impl<E: Pairing> NonMembershipProof<E> {
         prk: &NonMembershipProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk)?;
+        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk, None)?;
 
         <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof(
             &self.randomized_witness.C,
@@ -1414,6 +1491,7 @@ impl<E: Pairing> NonMembershipProof<E> {
         )
     }
 
+    #[must_use]
     pub fn verify_partial(
         &self,
         resp_for_element: &E::ScalarField,
@@ -1424,7 +1502,7 @@ impl<E: Pairing> NonMembershipProof<E> {
         prk: &NonMembershipProvingKey<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk)?;
+        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk, None)?;
 
         <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_partial_proof(
             resp_for_element,
@@ -1440,19 +1518,26 @@ impl<E: Pairing> NonMembershipProof<E> {
         )
     }
 
-    pub fn verify_with_randomized_pairing_checker(
+    #[must_use]
+    pub fn verify_with_randomized_pairing_and_mult_checker(
         &self,
         accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        mut pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mut mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk)?;
+        let pairing_extra = self.verify_except_pairings(
+            challenge,
+            &params.P,
+            prk,
+            mult_checker.as_mut().map(|x| &mut **x),
+        )?;
 
-        <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof_with_randomized_pairing_checker(
+        <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_proof_with_randomized_pairing_and_mult_checker(
             &self.randomized_witness.C,
             &self.schnorr_commit.C,
             &self.schnorr_response.C,
@@ -1462,11 +1547,12 @@ impl<E: Pairing> NonMembershipProof<E> {
             pk,
             params,
             &prk.XYZ,
-            pairing_checker
+            pairing_checker.as_mut().map(|x| &mut **x),
+            mult_checker.as_mut().map(|x| &mut **x),
         )
     }
 
-    pub fn verify_partial_with_randomized_pairing_checker(
+    pub fn verify_partial_with_randomized_pairing_and_mult_checker(
         &self,
         resp_for_element: &E::ScalarField,
         accumulator_value: &E::G1Affine,
@@ -1474,12 +1560,18 @@ impl<E: Pairing> NonMembershipProof<E> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         prk: &NonMembershipProvingKey<E::G1Affine>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        mut pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mut mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        let pairing_extra = self.verify_except_pairings(challenge, &params.P, prk)?;
+        let pairing_extra = self.verify_except_pairings(
+            challenge,
+            &params.P,
+            prk,
+            mult_checker.as_mut().map(|x| &mut **x),
+        )?;
 
-        <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_partial_proof_with_randomized_pairing_checker(
+        <NonMembershipProofProtocol<E> as ProofProtocol<E>>::verify_partial_proof_with_randomized_pairing_and_mult_checker(
             resp_for_element,
             &self.randomized_witness.C,
             &self.schnorr_commit.C,
@@ -1490,7 +1582,8 @@ impl<E: Pairing> NonMembershipProof<E> {
             pk,
             params,
             &prk.XYZ,
-            pairing_checker
+            pairing_checker.as_mut().map(|x| &mut **x),
+            mult_checker.as_mut().map(|x| &mut **x),
         )
     }
 
@@ -1513,14 +1606,41 @@ impl<E: Pairing> NonMembershipProof<E> {
         (context, K_table, P_table, E_d_table)
     }
 
+    #[must_use]
     pub fn verify_schnorr_proofs(
         &self,
         challenge: &E::ScalarField,
+        K: &E::G1Affine,
+        P: &E::G1Affine,
         context: &WnafContext,
         K_table: &[E::G1],
         P_table: &[E::G1],
         E_d_table: &[E::G1],
+        mut mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
+        if let Some(rmc) = mult_checker.as_mut() {
+            let minus_challenge = -*challenge;
+            rmc.add_3(
+                *P,
+                &self.schnorr_response.s_u,
+                *K,
+                &self.schnorr_response.s_v,
+                self.randomized_witness.E_d,
+                &minus_challenge,
+                self.schnorr_commit.R_A,
+            );
+            rmc.add_3(
+                *K,
+                &self.schnorr_response.s_w,
+                self.randomized_witness.E_d_inv,
+                &self.schnorr_response.s_u,
+                *P,
+                &minus_challenge,
+                self.schnorr_commit.R_B,
+            );
+            return Ok(());
+        }
+
         // R_A = schnorr_response.s_u * params.P + schnorr_response.s_v * prk.K - challenge * randomized_witness.E_d;
         let mut R_A = context
             .mul_with_table(P_table, &self.schnorr_response.s_u)
@@ -1566,16 +1686,27 @@ impl<E: Pairing> NonMembershipProof<E> {
 
     /// Verify the proof except the pairing equations. This is useful when doing several verifications (of this
     /// protocol or others) and the pairing equations are combined in a randomized pairing check.
+    #[must_use]
     fn verify_except_pairings(
         &self,
         challenge: &E::ScalarField,
         P: &E::G1Affine,
         prk: &NonMembershipProvingKey<E::G1Affine>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<E::G1, VBAccumulatorError> {
         let (context, K_table, P_table, E_d_table) =
             Self::get_tables(prk, P, &self.randomized_witness.E_d);
 
-        self.verify_schnorr_proofs(challenge, &context, &K_table, &P_table, &E_d_table)?;
+        self.verify_schnorr_proofs(
+            challenge,
+            &prk.K,
+            P,
+            &context,
+            &K_table,
+            &P_table,
+            &E_d_table,
+            mult_checker,
+        )?;
         Ok(self.get_pairing_contribution(challenge, &context, &K_table, &E_d_table))
     }
 }
@@ -1640,6 +1771,7 @@ mod tests {
         let mut proof_verif_with_prepared_and_rand_pair_check_duration = Duration::default();
 
         let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
+        let mut mult_checker = RandomizedMultChecker::new_using_rng(&mut rng);
 
         for i in 0..count {
             let start = Instant::now();
@@ -1717,26 +1849,28 @@ mod tests {
 
             let start = Instant::now();
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     accumulator.value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
                     &prk,
-                    &mut pairing_checker,
+                    Some(&mut pairing_checker),
+                    Some(&mut mult_checker),
                 )
                 .unwrap();
             proof_verif_with_rand_pair_check_duration += start.elapsed();
 
             let start = Instant::now();
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
                     &prk,
-                    &mut pairing_checker,
+                    Some(&mut pairing_checker),
+                    Some(&mut mult_checker),
                 )
                 .unwrap();
             proof_verif_with_prepared_and_rand_pair_check_duration += start.elapsed();
@@ -1768,8 +1902,10 @@ mod tests {
         }
 
         let start = Instant::now();
-        assert!(pairing_checker.verify());
+        pairing_checker.verify().unwrap();
         proof_verif_with_rand_pair_check_duration += start.elapsed();
+
+        mult_checker.verify().unwrap();
 
         println!(
             "Time to create {} membership proofs is {:?}",
@@ -1843,6 +1979,7 @@ mod tests {
         let mut proof_verif_with_prepared_and_rand_pair_check_duration = Duration::default();
 
         let mut pairing_checker = RandomizedPairingChecker::new_using_rng(&mut rng, true);
+        let mut mult_checker = RandomizedMultChecker::new_using_rng(&mut rng);
 
         for i in 0..count {
             let start = Instant::now();
@@ -1919,26 +2056,28 @@ mod tests {
 
             let start = Instant::now();
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     accumulator.value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
                     &prk,
-                    &mut pairing_checker,
+                    Some(&mut pairing_checker),
+                    Some(&mut mult_checker),
                 )
                 .unwrap();
             proof_verif_with_rand_pair_check_duration += start.elapsed();
 
             let start = Instant::now();
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
                     &prk,
-                    &mut pairing_checker,
+                    Some(&mut pairing_checker),
+                    Some(&mut mult_checker),
                 )
                 .unwrap();
             proof_verif_with_prepared_and_rand_pair_check_duration += start.elapsed();
@@ -1973,8 +2112,10 @@ mod tests {
         }
 
         let start = Instant::now();
-        assert!(pairing_checker.verify());
+        pairing_checker.verify().unwrap();
         proof_verif_with_rand_pair_check_duration += start.elapsed();
+
+        mult_checker.verify().unwrap();
 
         println!(
             "Time to create {} non-membership proofs is {:?}",

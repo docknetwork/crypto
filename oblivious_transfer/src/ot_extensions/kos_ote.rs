@@ -394,7 +394,7 @@ pub fn hash_to_field<F: PrimeField, D: Default + DynDigest + Clone>(
     q: &[u8],
     hasher: &DefaultFieldHasher<D>,
 ) -> (F, F) {
-    let mut seed = index.to_be_bytes().to_vec();
+    let mut seed = Vec::from(index.to_be_bytes());
     seed.extend_from_slice(q);
     let mut out = hasher.hash_to_field(&seed, 2);
     let out_0 = out.pop().unwrap();

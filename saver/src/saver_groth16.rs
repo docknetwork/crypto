@@ -214,57 +214,85 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng, T: Transcript>(
 
     let r = transcript.challenge_scalar::<E::ScalarField>(b"r-random-fiatshamir");
 
-    let mut c = RandomizedPairingChecker::new_using_rng(rng, true);
-    let checker = pairing_check.unwrap_or(&mut c);
+    let mut own_checker = if pairing_check.is_none() {
+        Some(RandomizedPairingChecker::new_using_rng(rng, true))
+    } else {
+        None
+    };
 
-    let ver_srs_proj = ip_verifier_srs.to_projective();
-    verify_tipp_mipp::<E, T>(
-        &ver_srs_proj,
-        proof,
-        &r, // we give the extra r as it's not part of the proof itself - it is simply used on top for the groth16 aggregation
-        transcript,
-        checker,
-    )
-    .map_err(|e| SaverError::LegoGroth16Error(e.into()))?;
+    let result = (|| {
+        let checker = match pairing_check {
+            Some(pc) => pc,
+            None => own_checker.as_mut().ok_or_else(|| {
+                SaverError::LegoGroth16Error(
+                    AggregationError::InvalidProof(
+                        "missing internal randomized pairing checker".to_string(),
+                    )
+                    .into(),
+                )
+            })?,
+        };
 
-    let r_powers = powers(&r, n);
-    let r_sum = sum_of_powers::<E::ScalarField>(&r, n);
+        let ver_srs_proj = ip_verifier_srs.to_projective();
+        verify_tipp_mipp::<E, T>(
+            &ver_srs_proj,
+            proof,
+            &r, // we give the extra r as it's not part of the proof itself - it is simply used on top for the groth16 aggregation
+            transcript,
+            checker,
+        )
+        .map_err(|e| SaverError::LegoGroth16Error(e.into()))?;
 
-    let mut source1 = Vec::with_capacity(3);
-    let mut source2 = Vec::with_capacity(3);
+        let r_powers = powers(&r, n);
+        let r_sum = sum_of_powers::<E::ScalarField>(&r, n);
 
-    let alpha_g1_r_sum = &pvk.vk.alpha_g1.mul(r_sum);
-    source1.push(alpha_g1_r_sum.into_affine());
-    source2.push(pvk.vk.beta_g2);
+        let mut source1 = Vec::with_capacity(3);
+        let mut source2 = Vec::with_capacity(3);
 
-    source1.push(proof.z_c);
-    source2.push(pvk.vk.delta_g2);
+        let alpha_g1_r_sum = &pvk.vk.alpha_g1.mul(r_sum);
+        source1.push(alpha_g1_r_sum.into_affine());
+        source2.push(pvk.vk.beta_g2);
 
-    let mut bases = vec![pvk.vk.gamma_abc_g1[0]];
-    let mut scalars = vec![r_sum.into_bigint()];
-    for (i, p) in r_powers.into_iter().enumerate() {
-        let mut d = ciphertexts[i].X_r.into_group();
-        for c in ciphertexts[i].enc_chunks.iter() {
-            d.add_assign(c.into_group())
+        source1.push(proof.z_c);
+        source2.push(pvk.vk.delta_g2);
+
+        let mut bases = vec![pvk.vk.gamma_abc_g1[0]];
+        let mut scalars = vec![r_sum.into_bigint()];
+        for (i, p) in r_powers.into_iter().enumerate() {
+            let mut d = ciphertexts[i].X_r.into_group();
+            for c in ciphertexts[i].enc_chunks.iter() {
+                d.add_assign(c.into_group())
+            }
+            bases.push(d.into_affine());
+            scalars.push(p.into_bigint());
         }
-        bases.push(d.into_affine());
-        scalars.push(p.into_bigint());
+
+        source1.push(E::G1::msm_bigint(&bases, &scalars).into_affine());
+        source2.push(pvk.vk.gamma_g2);
+
+        checker.add_multiple_sources_and_target(&source1, &source2, &proof.z_ab);
+
+        if let Some(c) = own_checker.take() {
+            c.verify().map_err(|_| {
+                SaverError::LegoGroth16Error(
+                    AggregationError::InvalidProof(
+                        "Proof Verification Failed due to pairing checks".to_string(),
+                    )
+                    .into(),
+                )
+            })
+        } else {
+            Ok(())
+        }
+    })();
+
+    if result.is_err() {
+        if let Some(c) = own_checker.as_mut() {
+            c.cancel();
+        }
     }
 
-    source1.push(E::G1::msm_bigint(&bases, &scalars).into_affine());
-    source2.push(pvk.vk.gamma_g2);
-
-    checker.add_multiple_sources_and_target(&source1, &source2, &proof.z_ab);
-
-    match checker.verify() {
-        true => Ok(()),
-        false => Err(SaverError::LegoGroth16Error(
-            AggregationError::InvalidProof(
-                "Proof Verification Failed due to pairing checks".to_string(),
-            )
-            .into(),
-        ))?,
-    }
+    result
 }
 
 #[cfg(test)]

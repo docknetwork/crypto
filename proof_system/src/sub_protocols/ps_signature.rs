@@ -3,6 +3,7 @@ use ark_std::{collections::BTreeMap, io::Write, rand::RngCore};
 
 use dock_crypto_utils::{
     iter::take_while_satisfy, misc::seq_inc_by_n_from,
+    randomized_mult_checker::RandomizedMultChecker,
     randomized_pairing_check::RandomizedPairingChecker, try_iter::CheckLeft,
 };
 
@@ -128,14 +129,16 @@ impl<'a, E: Pairing> PSSignaturePoK<'a, E> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSignatureParams<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        _mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), SignaturePoKError> {
         match pairing_checker {
-            Some(c) => proof.verify_with_randomized_pairing_checker(
+            Some(c) => proof.verify_with_randomized_pairing_and_mult_checker(
                 challenge,
                 self.revealed_messages.iter().map(|(idx, msg)| (*idx, msg)),
                 &pk.into(),
                 &params.into(),
-                c,
+                Some(c),
+                None,
             ),
             None => proof.verify(
                 challenge,

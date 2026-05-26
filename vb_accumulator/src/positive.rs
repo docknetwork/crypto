@@ -398,6 +398,7 @@ pub trait Accumulator<G: AffineRepr> {
     }
 
     /// Check if element present in accumulator given the accumulated value. Described in section 2 of the paper
+    #[must_use]
     fn verify_membership_given_accumulated<
         E: Pairing<G1Affine = G, ScalarField = G::ScalarField>,
     >(
@@ -425,6 +426,7 @@ pub trait Accumulator<G: AffineRepr> {
     }
 
     /// Check if element present in accumulator. Described in section 2 of the paper
+    #[must_use]
     fn verify_membership<E: Pairing<G1Affine = G, ScalarField = G::ScalarField>>(
         &self,
         member: &G::ScalarField,

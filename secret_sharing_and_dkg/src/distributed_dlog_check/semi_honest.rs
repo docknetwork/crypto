@@ -151,15 +151,12 @@ impl<G: AffineRepr> ComputationShareProof<G> {
     ) -> Result<(), SSError> {
         let share_comm_ck = share_comm_ck.into();
         let challenge = Self::pre_verify::<D>(self, share, share_commitment, share_comm_ck, base)?;
-        if !self.sc_share.verify(&share.share, base, &challenge) {
-            return Err(SSError::InvalidComputationShareProof(self.id));
-        }
-        if !self
-            .sc_comm
+        self.sc_share
+            .verify(&share.share, base, &challenge)
+            .map_err(|_| SSError::InvalidComputationShareProof(self.id))?;
+        self.sc_comm
             .verify(&share_commitment.commitment, share_comm_ck, &challenge)
-        {
-            return Err(SSError::InvalidComputationShareProof(self.id));
-        }
+            .map_err(|_| SSError::InvalidComputationShareProof(self.id))?;
         Ok(())
     }
 

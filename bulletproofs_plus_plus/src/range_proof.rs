@@ -20,6 +20,7 @@ use ark_std::{
 use dock_crypto_utils::{
     ff::{add_vecs, hadamard_product, inner_product, powers, powers_starting_from, scale},
     join,
+    randomized_mult_checker::RandomizedMultChecker,
     transcript::Transcript,
 };
 
@@ -422,7 +423,7 @@ impl<G: AffineRepr> Prover<G> {
     ) {
         // compute r_i = (1/ (e + d_i))
         let mut r = cfg_iter!(self.r1_sec.as_ref().unwrap().d_vec)
-            .map(|x| (e + x))
+            .map(|x| e + x)
             .collect::<Vec<_>>();
         batch_inversion(&mut r);
 
@@ -776,6 +777,7 @@ impl<G: AffineRepr> Proof<G> {
         V: &[G],
         setup_params: &SetupParams<G>,
         transcript: &mut impl Transcript,
+        mult_checker: Option<&mut RandomizedMultChecker<G>>,
     ) -> Result<(), BulletproofsPlusPlusError> {
         let base_bits = util::base_bits(self.base);
         if num_bits < base_bits {
@@ -869,6 +871,7 @@ impl<G: AffineRepr> Proof<G> {
             scalars,
             setup_params,
             transcript,
+            mult_checker,
         )
     }
 }
@@ -965,7 +968,7 @@ fn alpha_r<F: PrimeField>(n: usize, x: F, delta: F) -> Vec<F> {
 
 /// Compute a vector of [e, e, e, e]
 fn alpha_r2<F: PrimeField>(n: usize, e: F) -> Vec<F> {
-    ark_std::iter::repeat(e).map(|e| e).take(n).collect()
+    ark_std::iter::repeat(e).take(n).collect()
 }
 
 /// obtain the c poly
@@ -1110,7 +1113,9 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use dock_crypto_utils::transcript::new_merlin_transcript;
+    use dock_crypto_utils::{
+        randomized_mult_checker::RandomizedMultChecker, transcript::new_merlin_transcript,
+    };
 
     // Test prove and verify
     fn test_rangeproof_for_perfect_range<G: AffineRepr>(
@@ -1143,7 +1148,20 @@ mod tests {
 
         let mut transcript = new_merlin_transcript(b"BPP/tests");
         transcript.append(b"setup", &setup_params);
-        prf.verify(num_bits, &V, &setup_params, &mut transcript)?;
+        prf.verify(num_bits, &V, &setup_params, &mut transcript, None)?;
+
+        let mut transcript = new_merlin_transcript(b"BPP/tests");
+        transcript.append(b"setup", &setup_params);
+        let mut mult_checker = RandomizedMultChecker::new_using_rng(&mut rng);
+        prf.verify(
+            num_bits,
+            &V,
+            &setup_params,
+            &mut transcript,
+            Some(&mut mult_checker),
+        )?;
+        mult_checker.verify()?;
+
         Ok(())
     }
 

@@ -75,35 +75,68 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng, T: Transcript>(
 
     let r = transcript.challenge_scalar::<E::ScalarField>(b"r-random-fiatshamir");
 
-    let mut c = RandomizedPairingChecker::new_using_rng(&mut rng, true);
-    let mut checker = pairing_check.unwrap_or_else(|| &mut c);
+    let mut own_checker = if pairing_check.is_none() {
+        Some(RandomizedPairingChecker::new_using_rng(&mut rng, true))
+    } else {
+        None
+    };
 
-    let ver_srs_proj = ip_verifier_srs.to_projective();
-    verify_tipp_mipp::<E, T>(
-        &ver_srs_proj,
-        proof,
-        &r, // we give the extra r as it's not part of the proof itself - it is simply used on top for the groth16 aggregation
-        &mut transcript,
-        &mut checker,
-    )?;
+    let result = (|| {
+        let checker = match pairing_check {
+            Some(pc) => pc,
+            None => own_checker.as_mut().ok_or_else(|| {
+                AggregationError::InvalidProof(
+                    "missing internal randomized pairing checker".to_string(),
+                )
+            })?,
+        };
 
-    let source1 = Vec::with_capacity(3);
-    let source2 = Vec::with_capacity(3);
+        let ver_srs_proj = ip_verifier_srs.to_projective();
+        verify_tipp_mipp::<E, T>(
+            &ver_srs_proj,
+            proof,
+            &r, // we give the extra r as it's not part of the proof itself - it is simply used on top for the groth16 aggregation
+            &mut transcript,
+            checker,
+        )?;
 
-    final_verification_check(
-        source1,
-        source2,
-        proof.z_c.clone(),
-        &proof.z_ab,
-        &r,
-        public_inputs,
-        &pvk.vk.alpha_g1,
-        pvk.vk.beta_g2,
-        pvk.vk.gamma_g2,
-        pvk.vk.delta_g2,
-        &pvk.vk.gamma_abc_g1,
-        &mut checker,
-    )
+        let source1 = Vec::with_capacity(3);
+        let source2 = Vec::with_capacity(3);
+
+        final_verification_check(
+            source1,
+            source2,
+            proof.z_c.clone(),
+            &proof.z_ab,
+            &r,
+            public_inputs,
+            &pvk.vk.alpha_g1,
+            pvk.vk.beta_g2,
+            pvk.vk.gamma_g2,
+            pvk.vk.delta_g2,
+            &pvk.vk.gamma_abc_g1,
+            checker,
+        );
+
+        // If we created our own checker, verify it. Otherwise the caller will verify.
+        if let Some(c) = own_checker.take() {
+            c.verify().map_err(|_| {
+                AggregationError::InvalidProof(
+                    "Proof Verification Failed due to pairing checks".to_string(),
+                )
+            })
+        } else {
+            Ok(())
+        }
+    })();
+
+    if result.is_err() {
+        if let Some(c) = own_checker.as_mut() {
+            c.cancel();
+        }
+    }
+
+    result
 }
 
 /// verify_tipp_mipp returns a pairing equation to check the tipp proof.  $r$ is
@@ -205,6 +238,7 @@ pub fn verify_tipp_mipp<E: Pairing, T: Transcript>(
 /// * There are T,U,Z vectors as well for the MIPP relationship. Both TIPP and
 /// MIPP share the same challenges however, enabling to re-use common operations
 /// between them, such as the KZG proof for commitment keys.
+#[must_use]
 pub fn gipa_verify_tipp_mipp<E: Pairing, T: Transcript>(
     proof: &AggregateProof<E>,
     r_shift: &E::ScalarField,

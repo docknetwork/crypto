@@ -34,6 +34,7 @@ use core::mem;
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use dock_crypto_utils::{
     misc::rand,
+    randomized_mult_checker::RandomizedMultChecker,
     signature::{
         msg_index_map_to_schnorr_response_map, msg_index_to_schnorr_response_index,
         schnorr_responses_to_msg_index_map, split_messages_and_blindings, MessageOrBlinding,
@@ -45,6 +46,7 @@ use schnorr_pok::{
     discrete_log::{PokPedersenCommitment, PokPedersenCommitmentProtocol},
     error::SchnorrError,
     partial::PartialSchnorrResponse,
+    verify_or_rmc_3, verify_partial_schnorr_resp_or_rmc, verify_schnorr_resp_or_rmc,
     SchnorrCommitment, SchnorrResponse,
 };
 #[cfg(feature = "serde")]
@@ -271,7 +273,7 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         secret_key: &SecretKey<G::ScalarField>,
         params: &MACParams<G>,
     ) -> Result<(), KVACError> {
-        self._verify(revealed_msgs, challenge, secret_key, params, None)
+        self._verify(revealed_msgs, challenge, secret_key, params, None, None)
     }
 
     /// Similar to `Self::verify` but responses for some messages (witnesses) are provided in `missing_responses`.
@@ -290,6 +292,44 @@ impl<G: AffineRepr> PoKOfMAC<G> {
             secret_key,
             params,
             Some(missing_responses),
+            None,
+        )
+    }
+
+    pub fn verify_using_randomized_mult_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, G::ScalarField>,
+        challenge: &G::ScalarField,
+        secret_key: &SecretKey<G::ScalarField>,
+        params: &MACParams<G>,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) -> Result<(), KVACError> {
+        self._verify(
+            revealed_msgs,
+            challenge,
+            secret_key,
+            params,
+            None,
+            Some(rmc),
+        )
+    }
+
+    pub fn verify_partial_using_randomized_mult_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, G::ScalarField>,
+        challenge: &G::ScalarField,
+        secret_key: &SecretKey<G::ScalarField>,
+        params: &MACParams<G>,
+        missing_responses: BTreeMap<usize, G::ScalarField>,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) -> Result<(), KVACError> {
+        self._verify(
+            revealed_msgs,
+            challenge,
+            secret_key,
+            params,
+            Some(missing_responses),
+            Some(rmc),
         )
     }
 
@@ -299,7 +339,7 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         challenge: &G::ScalarField,
         params: &MACParams<G>,
     ) -> Result<(), KVACError> {
-        self._verify_schnorr_proof(revealed_msgs, challenge, params, None)
+        self._verify_schnorr_proof(revealed_msgs, challenge, params, None, None)
     }
 
     /// Similar to `Self::verify_schnorr_proof` but responses for some messages (witnesses) are provided in `missing_responses`.
@@ -311,7 +351,40 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         params: &MACParams<G>,
         missing_responses: BTreeMap<usize, G::ScalarField>,
     ) -> Result<(), KVACError> {
-        self._verify_schnorr_proof(revealed_msgs, challenge, params, Some(missing_responses))
+        self._verify_schnorr_proof(
+            revealed_msgs,
+            challenge,
+            params,
+            Some(missing_responses),
+            None,
+        )
+    }
+
+    pub fn verify_schnorr_proof_using_randomized_mult_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, G::ScalarField>,
+        challenge: &G::ScalarField,
+        params: &MACParams<G>,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) -> Result<(), KVACError> {
+        self._verify_schnorr_proof(revealed_msgs, challenge, params, None, Some(rmc))
+    }
+
+    pub fn verify_partial_schnorr_proof_using_randomized_mult_checker(
+        &self,
+        revealed_msgs: &BTreeMap<usize, G::ScalarField>,
+        challenge: &G::ScalarField,
+        params: &MACParams<G>,
+        missing_responses: BTreeMap<usize, G::ScalarField>,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) -> Result<(), KVACError> {
+        self._verify_schnorr_proof(
+            revealed_msgs,
+            challenge,
+            params,
+            Some(missing_responses),
+            Some(rmc),
+        )
     }
 
     /// Get the response from post-challenge phase of the Schnorr protocol for the given message index
@@ -380,11 +453,12 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         secret_key: &SecretKey<G::ScalarField>,
         params: &MACParams<G>,
         missing_responses: Option<BTreeMap<usize, G::ScalarField>>,
+        rmc: Option<&mut RandomizedMultChecker<G>>,
     ) -> Result<(), KVACError> {
         if self.C != (self.B_0 * secret_key.0).into() {
             return Err(KVACError::InvalidRandomizedMAC);
         }
-        self._verify_schnorr_proof(revealed_msgs, challenge, params, missing_responses)?;
+        self._verify_schnorr_proof(revealed_msgs, challenge, params, missing_responses, rmc)?;
         Ok(())
     }
 
@@ -394,15 +468,17 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         challenge: &G::ScalarField,
         params: &MACParams<G>,
         missing_responses: Option<BTreeMap<usize, G::ScalarField>>,
+        mut rmc: Option<&mut RandomizedMultChecker<G>>,
     ) -> Result<(), KVACError> {
-        if !self.sc_C.verify(
-            &(self.C.into_group() - self.d).into(),
-            &self.B_0,
-            &params.g,
+        verify_or_rmc_3!(
+            rmc,
+            self.sc_C,
+            (self.C.into_group() - self.d).into(),
+            self.B_0,
+            params.g,
             challenge,
-        ) {
-            return Err(KVACError::InvalidSchnorrProof);
-        }
+        )
+        .map_err(|_| KVACError::InvalidSchnorrProof)?;
         let mut bases =
             Vec::with_capacity(2 + params.supported_message_count() - revealed_msgs.len());
         let mut bases_revealed = Vec::with_capacity(revealed_msgs.len());
@@ -423,7 +499,14 @@ impl<G: AffineRepr> PoKOfMAC<G> {
             if missing_responses.is_some() {
                 return Err(KVACError::MissingResponsesProvidedForFullSchnorrProofVerification);
             }
-            return match resp.is_valid(&bases, &y.into(), &self.t_msgs, challenge) {
+            return match verify_schnorr_resp_or_rmc!(
+                rmc,
+                resp,
+                bases,
+                y.into(),
+                self.t_msgs,
+                challenge,
+            ) {
                 Ok(()) => Ok(()),
                 Err(SchnorrError::InvalidResponse) => Err(KVACError::InvalidSchnorrProof),
                 Err(other) => Err(KVACError::SchnorrError(other)),
@@ -436,8 +519,15 @@ impl<G: AffineRepr> PoKOfMAC<G> {
                 missing_responses.unwrap(),
                 revealed_msgs.keys(),
             );
-            return match resp.is_valid(&bases, &y.into(), &self.t_msgs, challenge, adjusted_missing)
-            {
+            return match verify_partial_schnorr_resp_or_rmc!(
+                rmc,
+                resp,
+                bases,
+                y.into(),
+                self.t_msgs,
+                challenge,
+                adjusted_missing,
+            ) {
                 Ok(()) => Ok(()),
                 Err(SchnorrError::InvalidResponse) => Err(KVACError::InvalidSchnorrProof),
                 Err(other) => Err(KVACError::SchnorrError(other)),
@@ -454,6 +544,7 @@ mod tests {
     use ark_bls12_381::{Fr, G1Affine};
     use ark_std::rand::{prelude::StdRng, SeedableRng};
     use blake2::Blake2b512;
+    use dock_crypto_utils::randomized_mult_checker::RandomizedMultChecker;
     use schnorr_pok::compute_random_oracle_challenge;
     use std::{
         collections::BTreeSet,
@@ -539,6 +630,29 @@ mod tests {
         proof
             .verify_schnorr_proof(&revealed_msgs, &challenge_verifier, &params)
             .unwrap();
+
+        let mut rmc = RandomizedMultChecker::new_using_rng(&mut rng);
+        proof
+            .verify_schnorr_proof_using_randomized_mult_checker(
+                &revealed_msgs,
+                &challenge_verifier,
+                &params,
+                &mut rmc,
+            )
+            .unwrap();
+        rmc.verify().unwrap();
+
+        let mut rmc = RandomizedMultChecker::new_using_rng(&mut rng);
+        proof
+            .verify_using_randomized_mult_checker(
+                &revealed_msgs,
+                &challenge_verifier,
+                &sk,
+                &params,
+                &mut rmc,
+            )
+            .unwrap();
+        rmc.verify().unwrap();
     }
 
     #[test]
@@ -699,6 +813,21 @@ mod tests {
                 missing_resps,
             )
             .unwrap();
+
+        let mut rmc = RandomizedMultChecker::new_using_rng(&mut rng);
+        proof_3
+            .verify_partial_using_randomized_mult_checker(
+                &revealed_msgs_3,
+                &challenge,
+                &sk_3,
+                &params_3,
+                proof_1
+                    .get_responses(&same_msg_idx, &revealed_indices)
+                    .unwrap(),
+                &mut rmc,
+            )
+            .unwrap();
+        rmc.verify().unwrap();
 
         assert!(proof_3
             .get_responses(&same_msg_idx, &revealed_indices)

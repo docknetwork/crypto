@@ -383,7 +383,7 @@ mod tests {
 
             let mut proof = pok.clone().gen_proof(&challenge).unwrap();
 
-            assert!(proof.verify(&challenge, empty(), &pk, &params).is_ok());
+            proof.verify(&challenge, empty(), &pk, &params).unwrap();
             assert!(proof.verify(&challenge, empty(), &pk1, &params).is_err());
             *proof.k.value = G2Projective::rand(&mut rng).into_affine();
             assert!(proof.verify(&challenge, empty(), &pk, &params).is_err())

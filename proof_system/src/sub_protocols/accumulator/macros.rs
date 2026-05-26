@@ -1,3 +1,6 @@
+#[allow(unused_imports)]
+use dock_crypto_utils::randomized_mult_checker::RandomizedMultChecker;
+
 macro_rules! impl_common_funcs {
     ( $prepared_params_type: ident, $prepared_pk_type: ident, $wit_type: ident, $wit_group: path, $wit_protocol:ident, $proof_enum_variant: ident, $proof_typ: ident, $error_typ: ident) => {
         pub fn init<R: RngCore>(
@@ -59,26 +62,29 @@ macro_rules! impl_common_funcs {
             pk: impl Into<$prepared_pk_type<E>>,
             params: impl Into<$prepared_params_type<E>>,
             pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+            mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
             resp_for_element: E::ScalarField,
         ) -> Result<(), ProofSystemError> {
-            match pairing_checker {
-                Some(c) => proof.verify_partial_with_randomized_pairing_checker(
+            if pairing_checker.is_some() || mult_checker.is_some() {
+                proof.verify_partial_with_randomized_pairing_and_mult_checker(
                     &resp_for_element,
                     &self.accumulator_value,
                     challenge,
                     pk,
                     params,
                     self.proving_key,
-                    c,
-                ),
-                None => proof.verify_partial(
+                    pairing_checker.as_mut().map(|x| &mut *x),
+                    mult_checker.as_mut().map(|x| &mut *x),
+                )
+            } else {
+                proof.verify_partial(
                     &resp_for_element,
                     &self.accumulator_value,
                     challenge,
                     pk,
                     params,
                     self.proving_key,
-                ),
+                )
             }
             .map_err(|e| ProofSystemError::$error_typ(self.id as u32, e))
         }

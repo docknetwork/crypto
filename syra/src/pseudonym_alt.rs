@@ -217,9 +217,9 @@ impl<E: Pairing> PseudonymProof<E> {
         issuer_pk: &IssuerPublicKey<E>,
         params: impl Into<PreparedSetupParams<E>>,
     ) -> Result<(), SyraError> {
-        if !self.pok_usk.verify(&self.T, Z, challenge) {
-            return Err(SyraError::InvalidProof);
-        }
+        self.pok_usk
+            .verify(&self.T, Z, challenge)
+            .map_err(|_| SyraError::InvalidProof)?;
         let T_prime = E::pairing(self.pok_usk_bb_sig.A_prime, Z);
         if (T_prime * challenge) + self.J
             != self.T * self.pok_usk_bb_sig.sc.as_ref().unwrap().response1

@@ -17,7 +17,10 @@ use ark_std::{io::Write, rand::RngCore, vec::Vec};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use short_group_sig::common::ProvingKey;
 
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
@@ -116,25 +119,6 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProof<E> {
         self.0.verify(accumulator_value, challenge, pk, params, prk)
     }
 
-    pub fn verify_with_randomized_pairing_checker(
-        &self,
-        accumulator_value: &E::G1Affine,
-        challenge: &E::ScalarField,
-        pk: impl Into<PreparedPublicKey<E>>,
-        params: impl Into<PreparedSetupParams<E>>,
-        prk: impl AsRef<ProvingKey<E::G1Affine>>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
-    ) -> Result<(), VBAccumulatorError> {
-        self.0.verify_with_randomized_pairing_checker(
-            accumulator_value,
-            challenge,
-            pk,
-            params,
-            prk,
-            pairing_checker,
-        )
-    }
-
     pub fn verify_partial(
         &self,
         resp_for_element: &E::ScalarField,
@@ -154,7 +138,28 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProof<E> {
         )
     }
 
-    pub fn verify_partial_with_randomized_pairing_checker(
+    pub fn verify_with_randomized_pairing_and_mult_checker(
+        &self,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        prk: impl AsRef<ProvingKey<E::G1Affine>>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify_with_randomized_pairing_and_mult_checker(
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            prk,
+            pairing_checker,
+            mult_checker,
+        )
+    }
+
+    pub fn verify_partial_with_randomized_pairing_and_mult_checker(
         &self,
         resp_for_element: &E::ScalarField,
         accumulator_value: &E::G1Affine,
@@ -162,17 +167,20 @@ impl<E: Pairing> KBUniversalAccumulatorMembershipProof<E> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         prk: impl AsRef<ProvingKey<E::G1Affine>>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
-        self.0.verify_partial_with_randomized_pairing_checker(
-            resp_for_element,
-            accumulator_value,
-            challenge,
-            pk,
-            params,
-            prk,
-            pairing_checker,
-        )
+        self.0
+            .verify_partial_with_randomized_pairing_and_mult_checker(
+                resp_for_element,
+                accumulator_value,
+                challenge,
+                pk,
+                params,
+                prk,
+                pairing_checker,
+                mult_checker,
+            )
     }
 
     pub fn get_schnorr_response_for_element(&self) -> Option<&E::ScalarField> {
@@ -256,25 +264,6 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProof<E> {
         self.0.verify(accumulator_value, challenge, pk, params, prk)
     }
 
-    pub fn verify_with_randomized_pairing_checker(
-        &self,
-        accumulator_value: &E::G1Affine,
-        challenge: &E::ScalarField,
-        pk: impl Into<PreparedPublicKey<E>>,
-        params: impl Into<PreparedSetupParams<E>>,
-        prk: impl AsRef<ProvingKey<E::G1Affine>>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
-    ) -> Result<(), VBAccumulatorError> {
-        self.0.verify_with_randomized_pairing_checker(
-            accumulator_value,
-            challenge,
-            pk,
-            params,
-            prk,
-            pairing_checker,
-        )
-    }
-
     pub fn verify_partial(
         &self,
         resp_for_element: &E::ScalarField,
@@ -294,7 +283,28 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProof<E> {
         )
     }
 
-    pub fn verify_partial_with_randomized_pairing_checker(
+    pub fn verify_with_randomized_pairing_and_mult_checker(
+        &self,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        prk: impl AsRef<ProvingKey<E::G1Affine>>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify_with_randomized_pairing_and_mult_checker(
+            accumulator_value,
+            challenge,
+            pk,
+            params,
+            prk,
+            pairing_checker,
+            mult_checker,
+        )
+    }
+
+    pub fn verify_partial_with_randomized_pairing_and_mult_checker(
         &self,
         resp_for_element: &E::ScalarField,
         accumulator_value: &E::G1Affine,
@@ -302,17 +312,20 @@ impl<E: Pairing> KBUniversalAccumulatorNonMembershipProof<E> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         prk: impl AsRef<ProvingKey<E::G1Affine>>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
-        self.0.verify_partial_with_randomized_pairing_checker(
-            resp_for_element,
-            accumulator_value,
-            challenge,
-            pk,
-            params,
-            prk,
-            pairing_checker,
-        )
+        self.0
+            .verify_partial_with_randomized_pairing_and_mult_checker(
+                resp_for_element,
+                accumulator_value,
+                challenge,
+                pk,
+                params,
+                prk,
+                pairing_checker,
+                mult_checker,
+            )
     }
 
     pub fn get_schnorr_response_for_element(&self) -> Option<&E::ScalarField> {
@@ -470,26 +483,28 @@ mod tests {
 
             let start = Instant::now();
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     accumulator.mem_value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
                     &prk,
-                    &mut mem_pairing_checker,
+                    Some(&mut mem_pairing_checker),
+                    None,
                 )
                 .unwrap();
             mem_proof_verif_with_rand_pair_check_duration += start.elapsed();
 
             let start = Instant::now();
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     accumulator.mem_value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
                     &prk,
-                    &mut mem_pairing_checker,
+                    Some(&mut mem_pairing_checker),
+                    None,
                 )
                 .unwrap();
             mem_proof_verif_with_prepared_and_rand_pair_check_duration += start.elapsed();
@@ -564,37 +579,39 @@ mod tests {
 
             let start = Instant::now();
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     accumulator.non_mem_value(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
                     &prk,
-                    &mut non_mem_pairing_checker,
+                    Some(&mut non_mem_pairing_checker),
+                    None,
                 )
                 .unwrap();
             non_mem_proof_verif_with_rand_pair_check_duration += start.elapsed();
 
             let start = Instant::now();
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     accumulator.non_mem_value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
                     &prk,
-                    &mut non_mem_pairing_checker,
+                    Some(&mut non_mem_pairing_checker),
+                    None,
                 )
                 .unwrap();
             non_mem_proof_verif_with_prepared_and_rand_pair_check_duration += start.elapsed();
         }
 
         let start = Instant::now();
-        assert!(mem_pairing_checker.verify());
+        mem_pairing_checker.verify().unwrap();
         mem_proof_verif_with_rand_pair_check_duration += start.elapsed();
 
         let start = Instant::now();
-        assert!(non_mem_pairing_checker.verify());
+        non_mem_pairing_checker.verify().unwrap();
         non_mem_proof_verif_with_rand_pair_check_duration += start.elapsed();
 
         println!(

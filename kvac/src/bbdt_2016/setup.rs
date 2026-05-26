@@ -126,6 +126,7 @@ impl<G: AffineRepr> MACParams<G> {
         Ok(commitment + self.h)
     }
 
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         !(self.g_0.is_zero()
             || self.g.is_zero()

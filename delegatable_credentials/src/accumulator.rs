@@ -168,6 +168,7 @@ impl<E: Pairing> NonMembershipWitness<E> {
         Self::from_poly(non_member, poly, trapdoor, P2)
     }
 
+    #[must_use]
     pub fn verify(
         &self,
         non_member: &E::ScalarField,
@@ -216,6 +217,7 @@ impl<E: Pairing> NonMembershipWitness<E> {
 }
 
 impl<E: Pairing> RandomizedNonMembershipWitness<E> {
+    #[must_use]
     pub fn verify(
         &self,
         randomized_accumulated: &E::G1Affine,

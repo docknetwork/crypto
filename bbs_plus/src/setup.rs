@@ -287,6 +287,7 @@ macro_rules! impl_sig_params {
             /// Check that all group elements are non-zero (returns false if any element is zero).
             /// A verifier on receiving these parameters must first check that they are valid and only
             /// then use them for any signature or proof of knowledge of signature verification.
+            #[must_use]
             pub fn is_valid(&self) -> bool {
                 !(self.g1.is_zero()
                     || self.g2.is_zero()
@@ -333,6 +334,7 @@ macro_rules! impl_public_key {
 
             /// Public key shouldn't be 0. A verifier on receiving this must first check that its
             /// valid and only then use it for any signature or proof of knowledge of signature verification.
+            #[must_use]
             pub fn is_valid(&self) -> bool {
                 !self.0.is_zero()
             }
@@ -522,6 +524,7 @@ impl<E: Pairing> SignatureParams23G1<E> {
     /// Check that all group elements are non-zero (returns false if any element is zero).
     /// A verifier on receiving these parameters must first check that they are valid and only
     /// then use them for any signature or proof of knowledge of signature verification.
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         !(self.g1.is_zero() || self.g2.is_zero() || cfg_iter!(self.h).any(|v| v.is_zero()))
     }
@@ -739,7 +742,7 @@ mod tests {
 
                 let challenge_verifier =
                     compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib_verifier);
-                assert!(proof.verify(&pk.0, base, &challenge_verifier));
+                proof.verify(&pk.0, base, &challenge_verifier).unwrap();
                 assert_eq!(chal_contrib_prover, chal_contrib_verifier);
                 assert_eq!(challenge_prover, challenge_verifier);
 

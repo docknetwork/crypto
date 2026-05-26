@@ -213,6 +213,7 @@ fn pok_of_3_ps_sig_and_message_equality() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .is_err());
@@ -235,6 +236,7 @@ fn pok_of_3_ps_sig_and_message_equality() {
             Some(b"random...".to_vec()),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .is_err());
@@ -265,6 +267,7 @@ fn pok_of_3_ps_sig_and_message_equality() {
             nonce,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -392,6 +395,7 @@ fn pok_of_ps_sig_and_accumulator() {
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -436,6 +440,7 @@ fn pok_of_ps_sig_and_accumulator() {
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .is_err());
@@ -486,6 +491,7 @@ fn pok_of_ps_sig_and_accumulator() {
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .is_err());
@@ -591,6 +597,7 @@ fn pok_of_ps_sig_and_accumulator() {
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -688,6 +695,7 @@ fn pok_of_ps_sig_and_accumulator() {
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -812,6 +820,7 @@ fn pok_of_ps_sig_and_accumulator() {
             nonce,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -1598,6 +1607,7 @@ fn pok_of_ps_sig_with_reusing_setup_params() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();

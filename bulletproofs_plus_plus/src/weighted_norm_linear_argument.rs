@@ -7,6 +7,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut, format, ops::Neg, vec, vec::Vec};
 use dock_crypto_utils::{
     ff::{inner_product, scale, weighted_inner_product, weighted_norm},
+    randomized_mult_checker::RandomizedMultChecker,
     transcript::Transcript,
 };
 
@@ -195,13 +196,23 @@ impl<G: AffineRepr> WeightedNormLinearArgument<G> {
         commitment: &G,
         setup_params: &SetupParams<G>,
         transcript: &mut impl Transcript,
+        mult_checker: Option<&mut RandomizedMultChecker<G>>,
     ) -> Result<(), BulletproofsPlusPlusError> {
         // Check if given commitment C == g * v + <h_vec, h_multiples> * l + <g_vec, g_multiples> * n - <self.X, gamma> - <self.R, gamma_sq_minus_1>
         let (bases, scalars) =
             self.get_bases_and_scalars_for_reduced_commitment(c, rho, setup_params, transcript)?;
 
-        if commitment.into_group() != G::Group::msm_unchecked(&bases, &scalars) {
-            return Err(BulletproofsPlusPlusError::WeightedNormLinearArgumentVerificationFailed);
+        match mult_checker {
+            Some(mc) => {
+                mc.add_many(bases, &scalars, *commitment);
+            }
+            None => {
+                if commitment.into_group() != G::Group::msm_unchecked(&bases, &scalars) {
+                    return Err(
+                        BulletproofsPlusPlusError::WeightedNormLinearArgumentVerificationFailed,
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -218,6 +229,7 @@ impl<G: AffineRepr> WeightedNormLinearArgument<G> {
         mut commitment_scalars: Vec<G::ScalarField>,
         setup_params: &SetupParams<G>,
         transcript: &mut impl Transcript,
+        mult_checker: Option<&mut RandomizedMultChecker<G>>,
     ) -> Result<(), BulletproofsPlusPlusError> {
         let (mut bases, mut scalars) =
             self.get_bases_and_scalars_for_reduced_commitment(c, rho, setup_params, transcript)?;
@@ -230,8 +242,17 @@ impl<G: AffineRepr> WeightedNormLinearArgument<G> {
         cfg_iter_mut!(commitment_scalars).for_each(|elem| *elem = elem.neg());
         scalars.append(&mut commitment_scalars);
 
-        if !G::Group::msm_unchecked(&bases, &scalars).is_zero() {
-            return Err(BulletproofsPlusPlusError::WeightedNormLinearArgumentVerificationFailed);
+        match mult_checker {
+            Some(mc) => {
+                mc.add_many(bases, &scalars, G::zero());
+            }
+            None => {
+                if !G::Group::msm_unchecked(&bases, &scalars).is_zero() {
+                    return Err(
+                        BulletproofsPlusPlusError::WeightedNormLinearArgumentVerificationFailed,
+                    );
+                }
+            }
         }
 
         Ok(())
@@ -503,9 +524,25 @@ mod test {
                 &commitment,
                 &setup_params,
                 &mut verifier_transcript,
+                None,
             )
             .unwrap();
             let verifying_non_recursively_time = start.elapsed();
+
+            let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
+            let start = Instant::now();
+            let mut verifier_transcript = new_merlin_transcript(b"test");
+            arg.verify(
+                c.clone(),
+                rho.clone(),
+                &commitment,
+                &setup_params,
+                &mut verifier_transcript,
+                Some(&mut checker),
+            )
+            .unwrap();
+            checker.verify().unwrap();
+            let verifying_rmc_time = start.elapsed();
 
             let start = Instant::now();
             let mut verifier_transcript = new_merlin_transcript(b"test");
@@ -514,8 +551,8 @@ mod test {
             let verifying_time = start.elapsed();
 
             println!(
-                "For {} elements, proving time is {:?}, recursively verifying time is {:?} and non-recursively verifying time is {:?}",
-                count, prover_time, verifying_time, verifying_non_recursively_time
+                "For {} elements, proving time is {:?}, recursively verifying time is {:?} and non-recursively verifying time is {:?} and rmc verifying time is {:?}",
+                count, prover_time, verifying_time, verifying_non_recursively_time, verifying_rmc_time
             );
         }
     }

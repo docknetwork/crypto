@@ -15,6 +15,8 @@ ark-std.workspace = true
 ark-secp256r1.workspace = true
 zeroize.workspace = true
 rayon = {workspace = true, optional = true}
+ark-secp256k1.workspace = true
+ark-secq256k1.workspace = true
 crypto-bigint = { version = "0.6.0-rc.6", default-features = false, features = ["zeroize", "alloc", "rand_core"] }
 bulletproofs_plus_plus = { version = "0.9.0", default-features = false, path = "../bulletproofs_plus_plus" }
 dock_crypto_utils = { version = "0.23.0", default-features = false, path = "../utils" }

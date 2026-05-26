@@ -453,7 +453,7 @@ mod tests {
         let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let mut proof = pok.clone().gen_proof(&challenge).unwrap();
-        assert!(proof.verify(&challenge, empty(), &params, &h).is_ok());
+        proof.verify(&challenge, empty(), &params, &h).unwrap();
 
         proof.com_resp.response.0[0] = rand(&mut rng);
 
@@ -486,7 +486,7 @@ mod tests {
         let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_bytes);
 
         let mut proof = pok.clone().gen_proof(&challenge).unwrap();
-        assert!(proof.verify(&challenge, empty(), &params, &h).is_ok());
+        proof.verify(&challenge, empty(), &params, &h).unwrap();
 
         *proof.com_resp.value = G1::rand(&mut rng).into_affine();
 
@@ -520,7 +520,7 @@ mod tests {
 
         let mut proof = pok.clone().gen_proof(&challenge).unwrap();
 
-        assert!(proof.verify(&challenge, empty(), &params, &h).is_ok());
+        proof.verify(&challenge, empty(), &params, &h).unwrap();
 
         *proof.com_j_resp.first_mut().unwrap().value = G1::rand(&mut rng).into_affine();
 

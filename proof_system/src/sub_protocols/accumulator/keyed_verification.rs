@@ -3,6 +3,7 @@
 use crate::{error::ProofSystemError, statement_proof::StatementProof};
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_std::{io::Write, rand::RngCore};
+use dock_crypto_utils::randomized_mult_checker::RandomizedMultChecker;
 use vb_accumulator::{
     kb_universal_accumulator::proofs_keyed_verification::{
         KBUniversalAccumulatorMembershipProof, KBUniversalAccumulatorMembershipProofProtocol,
@@ -84,15 +85,27 @@ macro_rules! impl_struct_and_funcs {
                 &self,
                 challenge: &G::ScalarField,
                 proof: &$proof<G>,
+                mult_checker: &mut Option<RandomizedMultChecker<G>>,
                 resp_for_element: G::ScalarField,
             ) -> Result<(), ProofSystemError> {
-                proof
-                    .verify_partial_schnorr_proof(
-                        &resp_for_element,
-                        &self.accumulator_value,
-                        challenge,
-                    )
-                    .map_err(|e| ProofSystemError::$error_variant(self.id as u32, e))
+                match mult_checker {
+                    Some(mc) => {
+                        proof.verify_partial_schnorr_proof_using_randomized_mult_checker(
+                            &resp_for_element,
+                            self.accumulator_value,
+                            challenge,
+                            mc,
+                        );
+                        Ok(())
+                    }
+                    None => proof
+                        .verify_partial_schnorr_proof(
+                            &resp_for_element,
+                            &self.accumulator_value,
+                            challenge,
+                        )
+                        .map_err(|e| ProofSystemError::$error_variant(self.id as u32, e)),
+                }
             }
 
             pub fn verify_full_proof_contribution(
@@ -100,16 +113,28 @@ macro_rules! impl_struct_and_funcs {
                 challenge: &G::ScalarField,
                 proof: &$proof<G>,
                 secret_key: &SecretKey<G::ScalarField>,
+                mult_checker: &mut Option<RandomizedMultChecker<G>>,
                 resp_for_element: G::ScalarField,
             ) -> Result<(), ProofSystemError> {
-                proof
-                    .verify_partial(
-                        &resp_for_element,
-                        &self.accumulator_value,
-                        secret_key,
-                        challenge,
-                    )
-                    .map_err(|e| ProofSystemError::$error_variant(self.id as u32, e))
+                match mult_checker {
+                    Some(mc) => proof
+                        .verify_partial_using_randomized_mult_checker(
+                            &resp_for_element,
+                            self.accumulator_value,
+                            secret_key,
+                            challenge,
+                            mc,
+                        )
+                        .map_err(|e| ProofSystemError::$error_variant(self.id as u32, e)),
+                    None => proof
+                        .verify_partial(
+                            &resp_for_element,
+                            &self.accumulator_value,
+                            secret_key,
+                            challenge,
+                        )
+                        .map_err(|e| ProofSystemError::$error_variant(self.id as u32, e)),
+                }
             }
         }
     };

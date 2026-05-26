@@ -23,6 +23,7 @@ use proof_system::{
         ped_comm::PedersenCommitment as PedersenCommitmentStmt,
         Statements,
     },
+    verifier::VerifierConfig,
     witness::{
         KBUniMembership, KBUniNonMembership, Membership as MembershipWit, PoKOfBBDT16MAC, Witnesses,
     },
@@ -535,6 +536,19 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
         .unwrap();
     println!("Time to verify proof with 3 MACs: {:?}", start.elapsed());
 
+    proof
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            VerifierConfig {
+                use_lazy_randomized_pairing_checks: None,
+                use_lazy_randomized_mult_checks: Some(false),
+            },
+        )
+        .unwrap();
+
     let mut statements = Statements::new();
     statements.add(PoKOfMACFullVerifier::new_statement_from_params(
         sk_1,
@@ -567,6 +581,19 @@ fn proof_of_knowledge_of_macs_and_equality_of_messages_and_kv_accumulator() {
     proof_spec.validate().unwrap();
 
     // Verifier verifies the full proof
+    proof
+        .clone()
+        .verify::<StdRng, Blake2b512>(
+            &mut rng,
+            proof_spec.clone(),
+            nonce.clone(),
+            VerifierConfig {
+                use_lazy_randomized_pairing_checks: None,
+                use_lazy_randomized_mult_checks: Some(false),
+            },
+        )
+        .unwrap();
+
     let start = Instant::now();
     proof
         .verify::<StdRng, Blake2b512>(&mut rng, proof_spec, nonce, Default::default())

@@ -50,6 +50,7 @@ pub fn gen_params<E: Pairing>(
     (params_link, params)
 }
 
+#[must_use]
 pub fn prove_and_verify_circuit<E: Pairing>(
     circuit: CircomCircuit<E>,
     params: &ProvingKey<E>,
@@ -91,6 +92,7 @@ pub fn prove_and_verify_circuit<E: Pairing>(
     public_inputs
 }
 
+#[must_use]
 pub fn generate_params_prove_and_verify<
     E: Pairing,
     I: IntoIterator<Item = (String, Vec<E::ScalarField>)>,

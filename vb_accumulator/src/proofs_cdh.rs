@@ -24,9 +24,12 @@ use ark_std::{
     collections::BTreeMap, io::Write, ops::Neg, rand::RngCore, vec, vec::Vec, UniformRand,
 };
 use core::mem;
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
 #[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use schnorr_pok::{
     discrete_log::{PokDiscreteLog, PokDiscreteLogProtocol},
     partial::PartialSchnorrResponse,
@@ -167,43 +170,48 @@ impl<E: Pairing> MembershipProof<E> {
         Ok(())
     }
 
-    pub fn verify_with_randomized_pairing_checker(
+    pub fn verify_with_randomized_pairing_and_mult_checker(
         &self,
         accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        self.0.verify_with_randomized_pairing_checker(
+        self.0.verify_with_randomized_pairing_and_mult_checker(
             challenge,
             pk.into().0,
             accumulator_value,
             params.P_tilde,
             pairing_checker,
+            rmc,
         )?;
         Ok(())
     }
 
-    pub fn verify_partial_with_randomized_pairing_checker(
+    pub fn verify_partial_with_randomized_pairing_and_mult_checker(
         &self,
         resp_for_element: &E::ScalarField,
         accumulator_value: &E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        self.0.verify_partial_with_randomized_pairing_checker(
-            resp_for_element,
-            challenge,
-            pk.into().0,
-            accumulator_value,
-            params.P_tilde,
-            pairing_checker,
-        )?;
+        self.0
+            .verify_partial_with_randomized_pairing_and_mult_checker(
+                resp_for_element,
+                challenge,
+                pk.into().0,
+                accumulator_value,
+                params.P_tilde,
+                pairing_checker,
+                rmc,
+            )?;
         Ok(())
     }
 
@@ -371,7 +379,7 @@ impl<E: Pairing> NonMembershipProof<E> {
         Q: impl Into<E::G1Affine>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        self.verify_except_pairing(None, accumulator_value, challenge, &params, Q)?;
+        self.verify_except_pairing(None, accumulator_value, challenge, &params, Q, None)?;
         if !E::multi_pairing(
             [
                 E::G1Prepared::from(self.C_bar),
@@ -386,18 +394,67 @@ impl<E: Pairing> NonMembershipProof<E> {
         Ok(())
     }
 
-    pub fn verify_with_randomized_pairing_checker(
+    pub fn verify_with_randomized_pairing_and_mult_checker(
         &self,
         accumulator_value: E::G1Affine,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         Q: impl Into<E::G1Affine>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mut rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         let params = params.into();
-        self.verify_except_pairing(None, accumulator_value, challenge, &params, Q)?;
-        pairing_checker.add_sources(&self.C_prime, pk.into().0, &self.C_bar, params.P_tilde);
+        self.verify_except_pairing(None, accumulator_value, challenge, &params, Q, rmc)?;
+        if let Some(pc) = pairing_checker {
+            pc.add_sources(&self.C_prime, pk.into().0, &self.C_bar, params.P_tilde);
+        } else if !E::multi_pairing(
+            [
+                E::G1Prepared::from(self.C_bar),
+                E::G1Prepared::from(-(self.C_prime.into_group())),
+            ],
+            [params.P_tilde, pk.into().0],
+        )
+        .is_zero()
+        {
+            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
+        }
+        Ok(())
+    }
+
+    pub fn verify_partial_with_randomized_pairing_and_mult_checker(
+        &self,
+        resp_for_element: &E::ScalarField,
+        accumulator_value: E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        Q: impl Into<E::G1Affine>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mut rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
+    ) -> Result<(), VBAccumulatorError> {
+        let params = params.into();
+        self.verify_except_pairing(
+            Some(resp_for_element),
+            accumulator_value,
+            challenge,
+            &params,
+            Q,
+            rmc,
+        )?;
+        if let Some(pc) = pairing_checker {
+            pc.add_sources(&self.C_prime, pk.into().0, &self.C_bar, params.P_tilde);
+        } else if !E::multi_pairing(
+            [
+                E::G1Prepared::from(self.C_bar),
+                E::G1Prepared::from(-(self.C_prime.into_group())),
+            ],
+            [params.P_tilde, pk.into().0],
+        )
+        .is_zero()
+        {
+            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
+        }
         Ok(())
     }
 
@@ -417,6 +474,7 @@ impl<E: Pairing> NonMembershipProof<E> {
             challenge,
             &params,
             Q,
+            None,
         )?;
         if !E::multi_pairing(
             [
@@ -429,28 +487,6 @@ impl<E: Pairing> NonMembershipProof<E> {
         {
             return Err(VBAccumulatorError::IncorrectRandomizedWitness);
         }
-        Ok(())
-    }
-
-    pub fn verify_partial_with_randomized_pairing_checker(
-        &self,
-        resp_for_element: &E::ScalarField,
-        accumulator_value: E::G1Affine,
-        challenge: &E::ScalarField,
-        pk: impl Into<PreparedPublicKey<E>>,
-        params: impl Into<PreparedSetupParams<E>>,
-        Q: impl Into<E::G1Affine>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
-    ) -> Result<(), VBAccumulatorError> {
-        let params = params.into();
-        self.verify_except_pairing(
-            Some(resp_for_element),
-            accumulator_value,
-            challenge,
-            &params,
-            Q,
-        )?;
-        pairing_checker.add_sources(&self.C_prime, pk.into().0, &self.C_bar, params.P_tilde);
         Ok(())
     }
 
@@ -485,6 +521,7 @@ impl<E: Pairing> NonMembershipProof<E> {
         challenge: &E::ScalarField,
         params: &PreparedSetupParams<E>,
         Q: impl Into<E::G1Affine>,
+        mut rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
         if self.C_prime.is_zero() {
             return Err(VBAccumulatorError::CannotBeZero);
@@ -492,8 +529,16 @@ impl<E: Pairing> NonMembershipProof<E> {
         if self.J.is_zero() {
             return Err(VBAccumulatorError::CannotBeZero);
         }
-        if !self.sc_2.verify(&self.J, &Q.into(), challenge) {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
+        match rmc.as_mut() {
+            Some(__rmc) => {
+                self.sc_2
+                    .verify_using_randomized_mult_checker(self.J, Q.into(), challenge, __rmc);
+            }
+            None => {
+                self.sc_2
+                    .verify(&self.J, &Q.into(), challenge)
+                    .map_err(|_| VBAccumulatorError::IncorrectRandomizedWitness)?;
+            }
         }
 
         // d'(=d*r) is same in both relations
@@ -506,17 +551,37 @@ impl<E: Pairing> NonMembershipProof<E> {
                 _ => return Err(VBAccumulatorError::MissingSchnorrResponseForElement),
             }
         }
-        self.sc_resp_1.is_valid(
-            &[
-                accumulator_value,
-                self.C_prime.into_group().neg().into(),
-                params.P.into_group().neg().into(),
-            ],
-            &self.C_bar,
-            &self.t_1,
-            challenge,
-            missing_responses,
-        )?;
+        match rmc.as_mut() {
+            Some(__rmc) => {
+                self.sc_resp_1
+                    .verify_using_randomized_mult_checker(
+                        vec![
+                            accumulator_value,
+                            self.C_prime.into_group().neg().into(),
+                            params.P.into_group().neg().into(),
+                        ],
+                        self.C_bar,
+                        self.t_1,
+                        challenge,
+                        missing_responses,
+                        __rmc,
+                    )
+                    .map_err(|_| VBAccumulatorError::IncorrectRandomizedWitness)?;
+            }
+            None => {
+                self.sc_resp_1.is_valid(
+                    &[
+                        accumulator_value,
+                        self.C_prime.into_group().neg().into(),
+                        params.P.into_group().neg().into(),
+                    ],
+                    &self.C_bar,
+                    &self.t_1,
+                    challenge,
+                    missing_responses,
+                )?;
+            }
+        }
 
         Ok(())
     }

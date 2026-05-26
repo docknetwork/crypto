@@ -37,6 +37,7 @@ impl<G: AffineRepr> Signature<G> {
         }
     }
 
+    #[must_use]
     pub fn verify<D: Digest>(&self, message: &[u8], public_key: &G, g: &G) -> bool {
         let t = (*g * self.response - *public_key * self.challenge).into_affine();
         let challenge = Self::compute_challenge::<D>(&t, message);

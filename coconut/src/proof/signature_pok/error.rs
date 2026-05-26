@@ -13,6 +13,7 @@ pub enum SignaturePoKError {
     RevealedIndicesMustBeUniqueAndSorted { previous: usize, current: usize },
     SchnorrError(SchnorrError),
     SignatureError(PSError),
+    PairingCheckFailed,
 }
 
 impl From<MessageUnpackingError> for SignaturePoKError {

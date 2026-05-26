@@ -327,7 +327,7 @@ pub mod multiple {
             if witness_sizes.len() != n {
                 return Err(CompSigmaError::VectorLenMismatch);
             }
-            if g.len() < *witness_sizes.iter().reduce(|a, b| a.max(b)).unwrap() {
+            if g.len() < *witness_sizes.iter().max().unwrap() {
                 return Err(CompSigmaError::VectorTooShort);
             }
             let size = n - k;
@@ -564,7 +564,7 @@ mod tests {
             let mut rng = StdRng::seed_from_u64(0u64);
             let k = known_indices.len();
 
-            let g = (0..*witness_sizes.iter().reduce(|a, b| a.max(b)).unwrap())
+            let g = (0..*witness_sizes.iter().max().unwrap())
                 .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())
                 .collect::<Vec<_>>();
             let gs = (0..(witness_sizes.iter().sum::<usize>() + n - k))
@@ -708,7 +708,7 @@ mod tests {
 
         let total_witness_size = witness_sizes.iter().sum::<usize>() + n - k;
 
-        let max_witness_size = *witness_sizes.iter().reduce(|a, b| a.max(b)).unwrap();
+        let max_witness_size = *witness_sizes.iter().max().unwrap();
 
         let g = (0..max_witness_size)
             .map(|_| <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine())

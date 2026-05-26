@@ -270,9 +270,9 @@ impl ROTReceiverKeys {
             .challenge_contribution(B, &S.0, &mut challenge_bytes)
             .map_err(|e| OTError::SchnorrError(e))?;
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
-        if !schnorr_proof.verify(&S.0, B, &challenge) {
-            return Err(OTError::InvalidSchnorrProof);
-        }
+        schnorr_proof
+            .verify(&S.0, B, &challenge)
+            .map_err(|e| OTError::SchnorrError(e))?;
         Self::new::<_, _, X, KEY_SIZE>(
             rng,
             OTConfig::new_2_message(num_ot)?,
@@ -288,7 +288,7 @@ impl VSROTChallenger {
     pub fn new<D: Digest>(
         derived_keys: &OneOfTwoROTSenderKeys,
     ) -> Result<(Self, Challenges), OTError> {
-        if derived_keys.len() == 0 {
+        if derived_keys.0.is_empty() {
             return Err(OTError::NeedNonZeroNumberOfDerivedKeys);
         }
         let (challenges, double_hashed_keys_0, hashed_keys) = cfg_iter!(derived_keys.0)

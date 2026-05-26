@@ -195,15 +195,12 @@ impl<G: AffineRepr> ProofOfValidityOfKeyedProof<G> {
             .challenge_contribution(B_0, C, &mut challenge_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
-        if !self.sc_pk.verify(pk, g_0, &challenge) {
-            return Err(KVACError::InvalidProofOfValidity);
-        }
-        if !self
-            .sc_proof
+        self.sc_pk
+            .verify(pk, g_0, &challenge)
+            .map_err(|_| KVACError::InvalidProofOfValidity)?;
+        self.sc_proof
             .verify(C, B_0, &challenge, &self.sc_pk.response)
-        {
-            return Err(KVACError::InvalidProofOfValidity);
-        }
+            .map_err(|_| KVACError::InvalidProofOfValidity)?;
         Ok(())
     }
 }

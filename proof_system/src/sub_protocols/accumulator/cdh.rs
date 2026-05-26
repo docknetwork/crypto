@@ -4,7 +4,10 @@
 use crate::{error::ProofSystemError, statement_proof::StatementProof};
 use ark_ec::pairing::Pairing;
 use ark_std::{io::Write, rand::RngCore};
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use short_group_sig::common::ProvingKey;
 use vb_accumulator::{
     kb_positive_accumulator::{
@@ -125,18 +128,41 @@ macro_rules! impl_cdh_protocol_struct_and_funcs {
                 pk: impl Into<PreparedPublicKey<E>>,
                 params: impl Into<PreparedSetupParams<E>>,
                 pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+                mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
                 resp_for_element: E::ScalarField,
             ) -> Result<(), ProofSystemError> {
-                match pairing_checker {
-                    Some(c) => proof.verify_partial_with_randomized_pairing_checker(
-                        &resp_for_element,
-                        &self.accumulator_value,
-                        challenge,
-                        pk,
-                        params,
-                        c,
-                    ),
-                    None => proof.verify_partial(
+                match (pairing_checker, mult_checker) {
+                    (Some(c), Some(mc)) => proof
+                        .verify_partial_with_randomized_pairing_and_mult_checker(
+                            &resp_for_element,
+                            &self.accumulator_value,
+                            challenge,
+                            pk,
+                            params,
+                            Some(c),
+                            Some(mc),
+                        ),
+                    (Some(c), None) => proof
+                        .verify_partial_with_randomized_pairing_and_mult_checker(
+                            &resp_for_element,
+                            &self.accumulator_value,
+                            challenge,
+                            pk,
+                            params,
+                            Some(c),
+                            None,
+                        ),
+                    (None, Some(mc)) => proof
+                        .verify_partial_with_randomized_pairing_and_mult_checker(
+                            &resp_for_element,
+                            &self.accumulator_value,
+                            challenge,
+                            pk,
+                            params,
+                            None,
+                            Some(mc),
+                        ),
+                    (None, None) => proof.verify_partial(
                         &resp_for_element,
                         &self.accumulator_value,
                         challenge,
@@ -281,26 +307,29 @@ impl<'a, E: Pairing> VBAccumulatorNonMembershipCDHSubProtocol<'a, E> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
         resp_for_element: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
-        match pairing_checker {
-            Some(c) => proof.verify_partial_with_randomized_pairing_checker(
+        if pairing_checker.is_some() || mult_checker.is_some() {
+            proof.verify_partial_with_randomized_pairing_and_mult_checker(
                 &resp_for_element,
                 self.accumulator_value,
                 challenge,
                 pk,
                 params,
                 self.Q,
-                c,
-            ),
-            None => proof.verify_partial(
+                pairing_checker.as_mut().map(|x| &mut *x),
+                mult_checker.as_mut().map(|x| &mut *x),
+            )
+        } else {
+            proof.verify_partial(
                 &resp_for_element,
                 self.accumulator_value,
                 challenge,
                 pk,
                 params,
                 self.Q,
-            ),
+            )
         }
         .map_err(|e| ProofSystemError::VBAccumProofContributionFailed(self.id as u32, e))
     }
@@ -394,26 +423,29 @@ impl<'a, E: Pairing> KBPositiveAccumulatorMembershipCDHSubProtocol<'a, E> {
         pk: impl Into<KBAccumPreparedPk<E>>,
         params: impl Into<KBAccumPreparedParams<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
         resp_for_element: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
-        match pairing_checker {
-            Some(c) => proof.verify_partial_with_randomized_pairing_checker(
+        if pairing_checker.is_some() || mult_checker.is_some() {
+            proof.verify_partial_with_randomized_pairing_and_mult_checker(
                 &resp_for_element,
                 &self.accumulator_value,
                 challenge,
                 pk,
                 params,
                 self.proving_key,
-                c,
-            ),
-            None => proof.verify_partial(
+                pairing_checker.as_mut().map(|x| &mut *x),
+                mult_checker.as_mut().map(|x| &mut *x),
+            )
+        } else {
+            proof.verify_partial(
                 &resp_for_element,
                 &self.accumulator_value,
                 challenge,
                 pk,
                 params,
                 self.proving_key,
-            ),
+            )
         }
         .map_err(|e| ProofSystemError::KBAccumProofContributionFailed(self.id as u32, e))
     }

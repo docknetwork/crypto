@@ -171,18 +171,18 @@ impl<E: Pairing> PoKOfSignatureG1<E> {
         if self.w2_prime.is_zero() {
             return Err(ShortGroupSigError::InvalidProof);
         }
-        if !self.sc_1.verify(
-            &self.A_bar,
-            &g1.into(),
-            &self.A_prime.into_group().neg().into(),
-            challenge,
-        ) {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
+        self.sc_1
+            .verify(
+                &self.A_bar,
+                &g1.into(),
+                &self.A_prime.into_group().neg().into(),
+                challenge,
+            )
+            .map_err(|_| ShortGroupSigError::InvalidProof)?;
         let pk = pk.into();
-        if !self.sc_2.verify(&self.w2_prime, &pk.2, challenge) {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
+        self.sc_2
+            .verify(&self.w2_prime, &pk.2, challenge)
+            .map_err(|_| ShortGroupSigError::InvalidProof)?;
         if !E::multi_pairing(
             [
                 E::G1Prepared::from(-(self.A_bar.into_group())),

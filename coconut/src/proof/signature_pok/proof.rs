@@ -1,11 +1,12 @@
 use alloc::vec::Vec;
 use ark_ec::pairing::Pairing;
+use ark_ff::Zero;
 use ark_serialize::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use utils::{
-    join, misc::seq_pairs_satisfy, randomized_pairing_check::RandomizedPairingChecker,
-    try_iter::InvalidPair,
+    join, misc::seq_pairs_satisfy, randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker, try_iter::InvalidPair,
 };
 
 use crate::{
@@ -102,13 +103,14 @@ impl<E: Pairing> SignaturePoK<E> {
     }
 
     /// Verifies `self` using provided `RandomizedPairingChecker`.
-    pub fn verify_with_randomized_pairing_checker<'a, MI>(
+    pub fn verify_with_randomized_pairing_and_mult_checker<'a, MI>(
         &self,
         challenge: &E::ScalarField,
         indexed_revealed_messages_sorted_by_index: MI,
         pk: &PreparedPublicKey<E>,
         params: &PreparedSignatureParams<E>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<()>
     where
         MI: IntoIterator<Item = (usize, &'a E::ScalarField)>,
@@ -131,7 +133,16 @@ impl<E: Pairing> SignaturePoK<E> {
         let (p1, p2) = resp_res.and(pairing_res)?;
         let (sigma_1, sigma_2) = self.randomized_sig.split();
 
-        pairing_checker.add_sources(&sigma_1, p1, &sigma_2, p2);
+        if let Some(pc) = pairing_checker {
+            pc.add_sources(&sigma_1, p1, &sigma_2, p2);
+        } else {
+            // Do the pairing check directly
+            if !(E::pairing(sigma_1, p1) + E::pairing(sigma_2, p2)).is_zero() {
+                return Err(SignaturePoKError::PairingCheckFailed.into());
+            }
+        }
+
+        let _rmc = rmc; // RMC doesn't apply to G2 signatures
 
         Ok(())
     }

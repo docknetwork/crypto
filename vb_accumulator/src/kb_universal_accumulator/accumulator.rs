@@ -224,6 +224,7 @@ impl<G: AffineRepr> KBUniversalAccumulator<G> {
             .map(|ws| ws.into_iter().map(|w| w.into()).collect())
     }
 
+    #[must_use]
     pub fn verify_membership<E: Pairing<G1Affine = G, ScalarField = G::ScalarField>>(
         &self,
         member: &G::ScalarField,
@@ -234,6 +235,7 @@ impl<G: AffineRepr> KBUniversalAccumulator<G> {
         self.mem.verify_membership(member, &witness.0, pk, params)
     }
 
+    #[must_use]
     pub fn verify_non_membership<E: Pairing<G1Affine = G, ScalarField = G::ScalarField>>(
         &self,
         non_member: &G::ScalarField,

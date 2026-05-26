@@ -6,7 +6,9 @@ use crate::{
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{format, rand::RngCore, vec::Vec};
-use dock_crypto_utils::{msm::WindowTable, transcript::Transcript};
+use dock_crypto_utils::{
+    msm::WindowTable, randomized_mult_checker::RandomizedMultChecker, transcript::Transcript,
+};
 
 /// Range proof for values in arbitrary ranges where each value `v_i` belongs to interval `[min_i, max_i)`
 /// Uses the range proof for perfect ranges of form `[0, base^l)` where upper bound is a power of the base.
@@ -64,9 +66,10 @@ impl<G: AffineRepr> ProofArbitraryRange<G> {
         num_bits: u16,
         setup_params: &SetupParams<G>,
         transcript: &mut impl Transcript,
+        mult_checker: Option<&mut RandomizedMultChecker<G>>,
     ) -> Result<(), BulletproofsPlusPlusError> {
         self.proof
-            .verify(num_bits, &self.V, setup_params, transcript)
+            .verify(num_bits, &self.V, setup_params, transcript, mult_checker)
     }
 
     pub fn compute_commitments_and_values(
@@ -180,7 +183,9 @@ mod tests {
         UniformRand,
     };
     use blake2::Blake2b512;
-    use dock_crypto_utils::transcript::new_merlin_transcript;
+    use dock_crypto_utils::{
+        randomized_mult_checker::RandomizedMultChecker, transcript::new_merlin_transcript,
+    };
     use std::time::{Duration, Instant};
 
     fn check<G: AffineRepr>(
@@ -190,7 +195,8 @@ mod tests {
         values_and_bounds: Vec<(u64, u64, u64)>,
         gamma: Vec<G::ScalarField>,
         setup_params: SetupParams<G>,
-    ) -> Result<(ProofArbitraryRange<G>, Duration, Duration), BulletproofsPlusPlusError> {
+    ) -> Result<(ProofArbitraryRange<G>, Duration, Duration, Duration), BulletproofsPlusPlusError>
+    {
         let start = Instant::now();
         let mut transcript = new_merlin_transcript(b"BPP/tests");
         transcript.append(b"setup", &setup_params);
@@ -208,16 +214,30 @@ mod tests {
         let start = Instant::now();
         let mut transcript = new_merlin_transcript(b"BPP/tests");
         transcript.append(b"setup", &setup_params);
-        proof.verify(num_bits, &setup_params, &mut transcript)?;
+        proof.verify(num_bits, &setup_params, &mut transcript, None)?;
         let verifying_time = start.elapsed();
-        Ok((proof, proving_time, verifying_time))
+
+        let start = Instant::now();
+        let mut transcript = new_merlin_transcript(b"BPP/tests");
+        transcript.append(b"setup", &setup_params);
+        let mut mult_checker = RandomizedMultChecker::new_using_rng(rng);
+        proof.verify(
+            num_bits,
+            &setup_params,
+            &mut transcript,
+            Some(&mut mult_checker),
+        )?;
+        mult_checker.verify();
+        let verifying_mc_time = start.elapsed();
+
+        Ok((proof, proving_time, verifying_time, verifying_mc_time))
     }
 
     fn test_rangeproof_for_arbitrary_range<G: AffineRepr>(
         base: u16,
         num_bits: u16,
         values_and_bounds: Vec<(u64, u64, u64)>,
-    ) -> (Duration, Duration) {
+    ) -> (Duration, Duration, Duration) {
         let mut rng = StdRng::seed_from_u64(0u64);
 
         let mut gamma = vec![];
@@ -232,7 +252,7 @@ mod tests {
             values_and_bounds.len() as u32,
         );
 
-        let (proof, proving_time, verifying_time) = check(
+        let (proof, proving_time, verifying_time, verifying_mc_time) = check(
             &mut rng,
             base,
             num_bits,
@@ -275,7 +295,7 @@ mod tests {
             );
         }
 
-        (proving_time, verifying_time)
+        (proving_time, verifying_time, verifying_mc_time)
     }
 
     fn test_rangeproof_failure_for_arbitrary_range<G: AffineRepr>(
@@ -316,8 +336,8 @@ mod tests {
             (16, 8, vec![(100, 50, 150)]),
         ] {
             let size = val_bounds.len();
-            let (p, v) = test_rangeproof_for_arbitrary_range::<G>(base, num_bits, val_bounds);
-            println!("For base={}, max value bits={} for {} checks, proving time = {:?} and verifying time = {:?}", base, num_bits, size, p, v);
+            let (p, v, v_) = test_rangeproof_for_arbitrary_range::<G>(base, num_bits, val_bounds);
+            println!("For base={}, max value bits={} for {} checks, proving time = {:?} and verifying time = {:?} and rmc verifying time = {:?}", base, num_bits, size, p, v, v_);
         }
 
         test_rangeproof_failure_for_arbitrary_range::<G>(4, 8, vec![(500, 600, 1500)]);

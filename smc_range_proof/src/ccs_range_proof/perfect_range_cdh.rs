@@ -12,7 +12,8 @@ use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, io::Write, rand::RngCore, vec::Vec, UniformRand};
 use dock_crypto_utils::{
-    expect_equality, misc::n_rand, randomized_pairing_check::RandomizedPairingChecker,
+    expect_equality, misc::n_rand, randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
 };
 use short_group_sig::weak_bb_sig_pok_cdh::{PoKOfSignatureG1, PoKOfSignatureG1Protocol};
 
@@ -182,6 +183,7 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         comm_key: &MemberCommitmentKey<E::G1Affine>,
         params: impl Into<SetMembershipCheckParamsWithPairing<E>>,
         pairing_checker: &mut RandomizedPairingChecker<E>,
+        rmc: &mut Option<RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), SmcRangeProofError> {
         let params = params.into();
 
@@ -190,17 +192,26 @@ impl<E: Pairing> CCSPerfectRangeProof<E> {
         let pk = E::G2Prepared::from(params.bb_pk.0);
         let g2 = params.bb_sig_params.g2_prepared;
 
-        let results = cfg_iter!(self.pok_sigs)
-            .map(|p| {
-                let r = p.verify_except_pairings(challenge, &params.bb_sig_params.g1);
-                if let Err(e) = r {
-                    return Err(SmcRangeProofError::ShortGroupSig(e));
-                }
-                Ok(())
-            })
-            .collect::<Vec<_>>();
-        for r in results {
-            r?;
+        if let Some(mc) = rmc.as_mut() {
+            // Use sequential verification when batching scalar multiplications via RMC.
+            for p in &self.pok_sigs {
+                p.verify_except_pairings(challenge, &params.bb_sig_params.g1, Some(&mut *mc))
+                    .map_err(SmcRangeProofError::ShortGroupSig)?;
+            }
+        } else {
+            // Verify schnorr proofs directly in parallel when no RMC is provided.
+            let results = cfg_iter!(self.pok_sigs)
+                .map(|p| {
+                    let r = p.verify_except_pairings(challenge, &params.bb_sig_params.g1, None);
+                    if let Err(e) = r {
+                        return Err(SmcRangeProofError::ShortGroupSig(e));
+                    }
+                    Ok(())
+                })
+                .collect::<Vec<_>>();
+            for r in results {
+                r?;
+            }
         }
 
         for p in &self.pok_sigs {
@@ -373,10 +384,30 @@ mod tests {
                             &comm_key,
                             params_with_pairing.clone(),
                             &mut pairing_checker,
+                            &mut None,
                         )
                         .unwrap();
-                    assert!(pairing_checker.verify());
+                    pairing_checker.verify().unwrap();
                     verifying_with_rpc_time += start.elapsed();
+
+                    let mut pairing_checker =
+                        RandomizedPairingChecker::new_using_rng(&mut rng, true);
+                    let mut mult_checker = Some(RandomizedMultChecker::new_using_rng(&mut rng));
+                    proof
+                        .verify_given_randomized_pairing_checker(
+                            &commitment,
+                            &challenge_verifier,
+                            max,
+                            &comm_key,
+                            params_with_pairing.clone(),
+                            &mut pairing_checker,
+                            &mut mult_checker,
+                        )
+                        .unwrap();
+                    pairing_checker.verify().unwrap();
+                    if let Some(mult_checker) = mult_checker {
+                        mult_checker.verify().unwrap();
+                    }
 
                     let mut bytes = vec![];
                     proof.serialize_compressed(&mut bytes).unwrap();

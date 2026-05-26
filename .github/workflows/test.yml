@@ -34,6 +34,11 @@ jobs:
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -65,6 +70,11 @@ jobs:
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-matrix-${{ hashFiles('**/Cargo.lock') }}
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -89,10 +99,17 @@ jobs:
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
       - name: Run tests
-        run: cargo test --release --all --no-fail-fast
+        run: cargo nextest run --release --all

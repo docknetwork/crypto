@@ -191,6 +191,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: None,
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -203,6 +204,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(true),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -214,6 +216,7 @@ fn pok_of_bbs_plus_sig_and_multiple_set_membership_proofs_aggregated() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();

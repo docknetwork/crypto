@@ -11,6 +11,7 @@ use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, ops::Neg, rand::RngCore, vec::Vec, UniformRand};
 use core::mem;
+use dock_crypto_utils::randomized_mult_checker::RandomizedMultChecker;
 #[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use schnorr_pok::{
@@ -178,8 +179,7 @@ impl<G: AffineRepr> PoKOfSignatureG1KV<G> {
         g1: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), ShortGroupSigError> {
-        if !self
-            .sc
+        self.sc
             .as_ref()
             .ok_or_else(|| ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse)?
             .verify(
@@ -188,9 +188,7 @@ impl<G: AffineRepr> PoKOfSignatureG1KV<G> {
                 &self.A_prime.into_group().neg().into(),
                 challenge,
             )
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
+            .map_err(|_| ShortGroupSigError::InvalidProof)?;
         Ok(())
     }
 
@@ -200,8 +198,7 @@ impl<G: AffineRepr> PoKOfSignatureG1KV<G> {
         g1: &G,
         challenge: &G::ScalarField,
     ) -> Result<(), ShortGroupSigError> {
-        if !self
-            .sc_partial
+        self.sc_partial
             .as_ref()
             .ok_or_else(|| ShortGroupSigError::NeedEitherPartialOrCompleteSchnorrResponse)?
             .verify(
@@ -211,10 +208,46 @@ impl<G: AffineRepr> PoKOfSignatureG1KV<G> {
                 challenge,
                 resp_for_message,
             )
-        {
-            return Err(ShortGroupSigError::InvalidProof);
-        }
+            .map_err(|_| ShortGroupSigError::InvalidProof)?;
         Ok(())
+    }
+
+    pub fn verify_partial_schnorr_proof_using_randomized_mult_checker(
+        &self,
+        resp_for_message: &G::ScalarField,
+        g1: G,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        self.sc_partial
+            .as_ref()
+            .unwrap()
+            .verify_using_randomized_mult_checker(
+                self.A_bar,
+                g1,
+                self.A_prime.into_group().neg().into(),
+                challenge,
+                resp_for_message,
+                rmc,
+            )
+    }
+
+    pub fn verify_schnorr_proof_using_randomized_mult_checker(
+        &self,
+        g1: G,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        self.sc
+            .as_ref()
+            .unwrap()
+            .verify_using_randomized_mult_checker(
+                self.A_bar,
+                g1,
+                self.A_prime.into_group().neg().into(),
+                challenge,
+                rmc,
+            )
     }
 
     pub fn challenge_contribution<W: Write>(

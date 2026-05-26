@@ -12,6 +12,7 @@ use dock_crypto_utils::{
     expect_equality,
     iter::take_while_satisfy,
     misc::seq_inc_by_n_from,
+    randomized_mult_checker::RandomizedMultChecker,
     randomized_pairing_check::RandomizedPairingChecker,
     signature::{MessageOrBlinding, MultiMessageSignatureParams},
     try_iter::CheckLeft,

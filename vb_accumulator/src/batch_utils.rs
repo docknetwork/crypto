@@ -100,7 +100,7 @@ where
     /// Evaluation of polynomial without creating the polynomial as the variable is already known.
     /// Returns `(updates[0]-x)*(updates[1]-x)*(updates[2]-x)*...(updates[n]-x)`
     pub fn eval_direct(updates: &[F], x: &F) -> F {
-        updates.iter().fold(F::one(), |a, y| (*y - *x) * a)
+        updates.iter().map(|y| *y - *x).product()
         // TODO: Figure out the why the following line is about 5 times slower than the sequential one above
         // cfg_iter!(updates).map(|y| *y - *x).product()
     }
@@ -151,7 +151,7 @@ where
             .map(|s| {
                 let factor = Self::compute_factor(s, additions, alpha);
                 let poly = if s < n - 1 {
-                    let roots: Vec<F> = cfg_iter!(additions).skip(s + 1).map(|a| *a).collect();
+                    let roots: Vec<F> = cfg_iter!(additions).skip(s + 1).copied().collect();
                     poly_from_given_updates(&roots)
                 } else {
                     DensePolynomial::from_coefficients_vec(vec![F::one()])
@@ -189,7 +189,7 @@ where
             .into_iter()
             .zip(polys.into_iter())
             .map(|(f, p)| p * f)
-            .fold(F::zero(), |a, b| a + b)
+            .sum()
 
         // TODO: Following is slower by factor of 2 from above but why?
         /*cfg_into_iter!(factors)
@@ -308,7 +308,7 @@ where
             .map(|s| {
                 let factor = Self::compute_factor(s, removals, alpha);
                 let poly = if s > 0 {
-                    let roots: Vec<F> = cfg_iter!(removals).take(s).map(|a| *a).collect();
+                    let roots: Vec<F> = cfg_iter!(removals).take(s).copied().collect();
                     poly_from_given_updates(&roots)
                 } else {
                     DensePolynomial::from_coefficients_vec(vec![F::one()])

@@ -13,6 +13,7 @@ use ark_std::{
     rand::RngCore,
     vec, UniformRand,
 };
+use dock_crypto_utils::randomized_mult_checker::RandomizedMultChecker;
 use smc_range_proof::{
     ccs_range_proof::kv_arbitrary_range::CCSArbitraryRangeProofWithKVProtocol,
     prelude::CLSRangeProofWithKVProtocol,
@@ -199,11 +200,13 @@ impl<'a, G: AffineRepr> BoundCheckSmcWithKVProtocol<'a, G> {
         ))
     }
 
+    #[must_use]
     pub fn verify_proof_contribution(
         &self,
         challenge: &G::ScalarField,
         proof: &BoundCheckSmcWithKVProof<G>,
         comm_key_as_slice: &[G],
+        mult_checker: &mut Option<RandomizedMultChecker<G>>,
         resp_for_message: G::ScalarField,
     ) -> Result<(), ProofSystemError> {
         let params = self
@@ -240,7 +243,7 @@ impl<'a, G: AffineRepr> BoundCheckSmcWithKVProtocol<'a, G> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key_as_slice, proof.comm);
         let missing_resp = BTreeMap::from([(0, resp_for_message)]);
-        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp)
+        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp, mult_checker)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

@@ -3,7 +3,9 @@
 
 use crate::error::VerifiableEncryptionError;
 use ark_ff::PrimeField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_serialize::{
+    CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Valid, Validate,
+};
 use ark_std::{rand::RngCore, vec, vec::Vec};
 use digest::{ExtendableOutput, Update, XofReader};
 use dock_crypto_utils::{aliases::FullDigest, hashing_utils::hash_to_field};
@@ -26,14 +28,15 @@ pub type TreeOpening<const SEED_SIZE: usize = DEFAULT_SEED_SIZE> = Vec<Seed<SEED
 /// The tree is represented as an array of nodes where the 0th index of array is the root node,
 /// next `NUM_LEAVES` - 2 indices are for internal nodes and last `NUM_LEAVES` indices are for leaf nodes.
 /// The tree has `2*NUM_LEAVES - 1` nodes in total and its depth is `log_2(NUM_LEAVES)`
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Zeroize)]
+#[derive(Clone, Debug, Zeroize)]
 pub struct SeedTree<const NUM_LEAVES: usize, const SEED_SIZE: usize = DEFAULT_SEED_SIZE>(
     pub Vec<Seed<SEED_SIZE>>,
 );
 
 impl<const NUM_LEAVES: usize, const SEED_SIZE: usize> Default for SeedTree<NUM_LEAVES, SEED_SIZE> {
     fn default() -> Self {
-        let nodes = vec![[0; SEED_SIZE]; NUM_LEAVES];
+        // Create vector with proper size (total nodes, not just leaves)
+        let nodes = vec![Self::zero_seed(); Self::num_total_nodes() as usize];
         Self(nodes)
     }
 }
@@ -226,6 +229,53 @@ impl<const NUM_LEAVES: usize, const SEED_SIZE: usize> SeedTree<NUM_LEAVES, SEED_
         let mut seed = [0u8; SEED_SIZE];
         rng.fill_bytes(&mut seed);
         seed
+    }
+}
+
+// Serialization implementations for SeedTree
+impl<const NUM_LEAVES: usize, const SEED_SIZE: usize> CanonicalSerialize
+    for SeedTree<NUM_LEAVES, SEED_SIZE>
+{
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        mut writer: W,
+        compress: Compress,
+    ) -> Result<(), SerializationError> {
+        self.0.serialize_with_mode(&mut writer, compress)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self, compress: Compress) -> usize {
+        self.0.serialized_size(compress)
+    }
+}
+
+impl<const NUM_LEAVES: usize, const SEED_SIZE: usize> CanonicalDeserialize
+    for SeedTree<NUM_LEAVES, SEED_SIZE>
+{
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+    ) -> Result<Self, SerializationError> {
+        let vec = Vec::<Seed<SEED_SIZE>>::deserialize_with_mode(&mut reader, compress, validate)?;
+
+        // Runtime validation of expected size
+        let expected_size = Self::num_total_nodes() as usize;
+        if vec.len() != expected_size {
+            return Err(SerializationError::InvalidData);
+        }
+
+        Ok(Self(vec))
+    }
+}
+
+impl<const NUM_LEAVES: usize, const SEED_SIZE: usize> Valid for SeedTree<NUM_LEAVES, SEED_SIZE> {
+    fn check(&self) -> Result<(), SerializationError> {
+        for seed in self.0.iter() {
+            seed.check()?;
+        }
+        Ok(())
     }
 }
 

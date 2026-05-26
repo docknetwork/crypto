@@ -85,6 +85,7 @@ pub fn multiples_with_n_powers_of_i<G: AffineRepr>(
 /// where `g_l` and `g_r` are left and right halves respectively and `c_i` is the challenge for that round.
 /// This is done until `g` is of size 2. This means that all elements of the original `g` that are
 /// on the left side in that round would be multiplied by the challenge of that round
+#[must_use]
 pub fn get_g_multiples_for_verifying_compression<F: PrimeField>(
     g_len: usize,
     challenges: &[F],

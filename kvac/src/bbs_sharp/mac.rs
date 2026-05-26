@@ -172,15 +172,12 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
             dvp.verify(&user_public_key.0, &params.g)?;
             challenge = challenge - dvp.challenge
         }
-        if !self.sc_B.verify(&B, &mac.A, &challenge) {
-            return Err(KVACError::InvalidMACProof);
-        }
-        if !self
-            .sc_pk
+        self.sc_B
+            .verify(&B, &mac.A, &challenge)
+            .map_err(|_| KVACError::InvalidMACProof)?;
+        self.sc_pk
             .verify(&signer_public_key.0, &params.g_tilde, &challenge)
-        {
-            return Err(KVACError::InvalidMACProof);
-        }
+            .map_err(|_| KVACError::InvalidMACProof)?;
         Ok(())
     }
 }

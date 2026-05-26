@@ -32,8 +32,10 @@ use crate::{
 };
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::Zero;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut, rand::RngCore, vec, vec::Vec};
+use ark_serialize::{
+    CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Valid, Validate,
+};
+use ark_std::{boxed::Box, cfg_into_iter, cfg_iter, cfg_iter_mut, rand::RngCore, vec, vec::Vec};
 use core::marker::PhantomData;
 use digest::{Digest, ExtendableOutput, Update};
 use dock_crypto_utils::{aliases::FullDigest, msm::WindowTable, transcript::Transcript};
@@ -49,7 +51,7 @@ const CHALLENGE_LABEL: &'static [u8; 9] = b"challenge";
 /// Ciphertext and the proof of encryption. `CT` is the variant of Elgamal encryption used. See test for usage
 /// Some of the struct fields like, `ciphertexts`, `tree_openings` etc. could be created as arrays rather than vectors
 /// as their length depends on the generic constants but as the constants are large, it causes stack-overflow.
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DkgithProof<
     G: AffineRepr,
     CT: BatchCiphertext<G>,
@@ -60,19 +62,176 @@ pub struct DkgithProof<
 > {
     pub challenge: Vec<u8>,
     /// Ciphertext of the unopened shares of each witness in each repetition
-    pub ciphertexts: Vec<CT>,
+    pub ciphertexts: Box<[CT; NUM_REPETITIONS]>,
     /// Openings required to reconstruct tree in each iteration to reveal the shares except one
-    pub tree_openings: Vec<TreeOpening<SEED_SIZE>>,
+    pub tree_openings: Box<[TreeOpening<SEED_SIZE>; NUM_REPETITIONS]>,
     /// Delta for each witness in each repetition
-    pub deltas: Vec<Vec<G::ScalarField>>,
+    pub deltas: Box<[Vec<G::ScalarField>; NUM_REPETITIONS]>,
     pub salt: [u8; SALT_SIZE],
 }
 
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug)]
 pub struct CompressedCiphertext<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>(
-    Vec<CT>,
+    Box<[CT; SUBSET_SIZE]>,
     PhantomData<G>,
 );
+
+// Serialization implementations for DkgithProof
+impl<
+        G: AffineRepr,
+        CT: BatchCiphertext<G> + CanonicalSerialize,
+        const NUM_PARTIES: usize,
+        const NUM_REPETITIONS: usize,
+        const SEED_SIZE: usize,
+        const SALT_SIZE: usize,
+    > CanonicalSerialize
+    for DkgithProof<G, CT, NUM_PARTIES, NUM_REPETITIONS, SEED_SIZE, SALT_SIZE>
+{
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        mut writer: W,
+        compress: Compress,
+    ) -> Result<(), SerializationError> {
+        self.challenge.serialize_with_mode(&mut writer, compress)?;
+        // Use slice (&[T]) rather than array (&[T; N]) so a length prefix is written,
+        // matching the Vec-based deserialization.
+        (&self.ciphertexts[..]).serialize_with_mode(&mut writer, compress)?;
+        (&self.tree_openings[..]).serialize_with_mode(&mut writer, compress)?;
+        (&self.deltas[..]).serialize_with_mode(&mut writer, compress)?;
+        self.salt.serialize_with_mode(&mut writer, compress)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self, compress: Compress) -> usize {
+        self.challenge.serialized_size(compress)
+            + (&self.ciphertexts[..]).serialized_size(compress)
+            + (&self.tree_openings[..]).serialized_size(compress)
+            + (&self.deltas[..]).serialized_size(compress)
+            + self.salt.serialized_size(compress)
+    }
+}
+
+impl<
+        G: AffineRepr,
+        CT: BatchCiphertext<G> + CanonicalDeserialize,
+        const NUM_PARTIES: usize,
+        const NUM_REPETITIONS: usize,
+        const SEED_SIZE: usize,
+        const SALT_SIZE: usize,
+    > CanonicalDeserialize
+    for DkgithProof<G, CT, NUM_PARTIES, NUM_REPETITIONS, SEED_SIZE, SALT_SIZE>
+{
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+    ) -> Result<Self, SerializationError> {
+        let challenge = Vec::<u8>::deserialize_with_mode(&mut reader, compress, validate)?;
+        let ciphertexts_vec = Vec::<CT>::deserialize_with_mode(&mut reader, compress, validate)?;
+        let tree_openings_vec =
+            Vec::<TreeOpening<SEED_SIZE>>::deserialize_with_mode(&mut reader, compress, validate)?;
+        let deltas_vec =
+            Vec::<Vec<G::ScalarField>>::deserialize_with_mode(&mut reader, compress, validate)?;
+        let salt = <[u8; SALT_SIZE]>::deserialize_with_mode(&mut reader, compress, validate)?;
+
+        // Convert Vec to Box<[T; N]> with compile-time size guarantee
+        let ciphertexts: Box<[CT; NUM_REPETITIONS]> = ciphertexts_vec
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| SerializationError::InvalidData)?;
+        let tree_openings: Box<[TreeOpening<SEED_SIZE>; NUM_REPETITIONS]> = tree_openings_vec
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| SerializationError::InvalidData)?;
+        let deltas: Box<[Vec<G::ScalarField>; NUM_REPETITIONS]> = deltas_vec
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| SerializationError::InvalidData)?;
+
+        Ok(Self {
+            challenge,
+            ciphertexts,
+            tree_openings,
+            deltas,
+            salt,
+        })
+    }
+}
+
+impl<
+        G: AffineRepr,
+        CT: BatchCiphertext<G> + Valid,
+        const NUM_PARTIES: usize,
+        const NUM_REPETITIONS: usize,
+        const SEED_SIZE: usize,
+        const SALT_SIZE: usize,
+    > Valid for DkgithProof<G, CT, NUM_PARTIES, NUM_REPETITIONS, SEED_SIZE, SALT_SIZE>
+{
+    fn check(&self) -> Result<(), SerializationError> {
+        self.challenge.check()?;
+        for ct in self.ciphertexts.iter() {
+            ct.check()?;
+        }
+        for to in self.tree_openings.iter() {
+            to.check()?;
+        }
+        for d in self.deltas.iter() {
+            d.check()?;
+        }
+        self.salt.check()?;
+        Ok(())
+    }
+}
+
+// Serialization implementations for CompressedCiphertext
+impl<G: AffineRepr, CT: BatchCiphertext<G> + CanonicalSerialize, const SUBSET_SIZE: usize>
+    CanonicalSerialize for CompressedCiphertext<G, CT, SUBSET_SIZE>
+{
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        mut writer: W,
+        compress: Compress,
+    ) -> Result<(), SerializationError> {
+        // Use slice (&[T]) to write a length prefix, matching Vec-based deserialization.
+        (&self.0[..]).serialize_with_mode(&mut writer, compress)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self, compress: Compress) -> usize {
+        (&self.0[..]).serialized_size(compress)
+    }
+}
+
+impl<G: AffineRepr, CT: BatchCiphertext<G> + CanonicalDeserialize, const SUBSET_SIZE: usize>
+    CanonicalDeserialize for CompressedCiphertext<G, CT, SUBSET_SIZE>
+{
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+    ) -> Result<Self, SerializationError> {
+        let vec = Vec::<CT>::deserialize_with_mode(&mut reader, compress, validate)?;
+
+        // Convert Vec to Box<[T; N]> with compile-time size guarantee
+        let boxed_array: Box<[CT; SUBSET_SIZE]> = vec
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| SerializationError::InvalidData)?;
+
+        Ok(Self(boxed_array, PhantomData))
+    }
+}
+
+impl<G: AffineRepr, CT: BatchCiphertext<G> + Valid, const SUBSET_SIZE: usize> Valid
+    for CompressedCiphertext<G, CT, SUBSET_SIZE>
+{
+    fn check(&self) -> Result<(), SerializationError> {
+        for ct in self.0.iter() {
+            ct.check()?;
+        }
+        Ok(())
+    }
+}
 
 impl<
         G: AffineRepr,
@@ -113,9 +272,13 @@ impl<
         transcript.append_message(SALT_LABEL, &salt);
 
         // Populate the trees for each repetition
-        let root_seeds =
-            vec![SeedTree::<NUM_PARTIES, SEED_SIZE>::random_seed(rng); NUM_REPETITIONS];
-        let mut seed_trees = vec![SeedTree::<NUM_PARTIES, SEED_SIZE>::default(); NUM_REPETITIONS];
+        let root_seeds: Box<[_; NUM_REPETITIONS]> = Box::new(core::array::from_fn(|_| {
+            SeedTree::<NUM_PARTIES, SEED_SIZE>::random_seed(rng)
+        }));
+        let mut seed_trees: Box<[SeedTree<NUM_PARTIES, SEED_SIZE>; NUM_REPETITIONS]> =
+            Box::new(core::array::from_fn(|_| {
+                SeedTree::<NUM_PARTIES, SEED_SIZE>::default()
+            }));
         cfg_iter_mut!(seed_trees)
             .zip(cfg_into_iter!(root_seeds))
             .enumerate()
@@ -126,13 +289,17 @@ impl<
             });
 
         let zero_ff = G::ScalarField::zero();
-        let mut cts: Vec<Vec<CT>> = (0..NUM_REPETITIONS)
-            .map(|_| (0..NUM_PARTIES).map(|_| CT::default()).collect::<Vec<_>>())
-            .collect();
-        let mut deltas: Vec<Vec<G::ScalarField>> = (0..NUM_REPETITIONS)
-            .map(|_| vec![zero_ff; witness_count])
-            .collect();
-        let mut share_commitments = vec![vec![G::zero(); NUM_PARTIES]; NUM_REPETITIONS];
+        // Using nested boxed arrays for maximum performance and consistency
+        let mut cts: Box<[Box<[CT; NUM_PARTIES]>; NUM_REPETITIONS]> =
+            Box::new(core::array::from_fn(|_| {
+                Box::new(core::array::from_fn(|_| CT::default()))
+            }));
+        let mut deltas: Box<[Vec<G::ScalarField>; NUM_REPETITIONS]> =
+            Box::new(core::array::from_fn(|_| vec![zero_ff; witness_count]));
+        let mut share_commitments: Box<[Box<[G; NUM_PARTIES]>; NUM_REPETITIONS]> =
+            Box::new(core::array::from_fn(|_| {
+                Box::new(core::array::from_fn(|_| G::zero()))
+            }));
 
         let enc_key_table = WindowTable::new(
             NUM_REPETITIONS * NUM_PARTIES * witness_count,
@@ -171,25 +338,30 @@ impl<
                     })
                     .collect::<Vec<_>>();
 
-                let c = cfg_iter_mut!(ct)
-                    .enumerate()
-                    .map(|(j, ct_j)| {
-                        // Encrypt each party's share and use the tree to get the randomness for the encryption
-                        let shares_j = cfg_into_iter!(0..witness_count)
-                            .map(|k| shares_rep[k][j])
-                            .collect::<Vec<_>>();
-                        let enc_rands =
-                            CT::get_randomness_from_seed_tree::<NUM_PARTIES, SEED_SIZE, D>(
-                                &seed_trees[rep_index],
-                                j as u16,
-                                witness_count,
-                            );
-                        *ct_j = CT::new::<D>(&shares_j, &enc_rands, &enc_key_table, &enc_gen_table);
-                        // Each party commits to its share of the witnesses
-                        G::Group::msm_unchecked(comm_key, &shares_j)
-                    })
-                    .collect::<Vec<_>>();
-                *cm = G::Group::normalize_batch(&c).try_into().unwrap();
+                let c: Box<[G::Group; NUM_PARTIES]> = {
+                    let mut temp_c = [G::Group::zero(); NUM_PARTIES];
+                    cfg_iter_mut!(ct)
+                        .zip(cfg_iter_mut!(temp_c))
+                        .enumerate()
+                        .for_each(|(j, (ct_j, c_j))| {
+                            // Encrypt each party's share and use the tree to get the randomness for the encryption
+                            let shares_j = cfg_into_iter!(0..witness_count)
+                                .map(|k| shares_rep[k][j])
+                                .collect::<Vec<_>>();
+                            let enc_rands =
+                                CT::get_randomness_from_seed_tree::<NUM_PARTIES, SEED_SIZE, D>(
+                                    &seed_trees[rep_index],
+                                    j as u16,
+                                    witness_count,
+                                );
+                            *ct_j =
+                                CT::new::<D>(&shares_j, &enc_rands, &enc_key_table, &enc_gen_table);
+                            // Each party commits to its share of the witnesses
+                            *c_j = G::Group::msm_unchecked(comm_key, &shares_j);
+                        });
+                    Box::new(temp_c)
+                };
+                *cm = G::Group::normalize_batch(c.as_ref()).try_into().unwrap();
             });
 
         for i in 0..NUM_REPETITIONS {
@@ -206,16 +378,16 @@ impl<
         let indices_to_hide =
             get_indices_to_hide::<D>(&challenge, NUM_REPETITIONS as u16, NUM_PARTIES as u16);
         // Ciphertexts for hidden shares
-        let mut ciphertexts: Vec<CT> = (0..NUM_REPETITIONS).map(|_| CT::default()).collect();
+        let mut ciphertexts: Box<[CT; NUM_REPETITIONS]> =
+            Box::new(core::array::from_fn(|_| CT::default()));
         // Openings to let the verifier learn all shares except the one which prover wants to hide.
-        let mut tree_openings: Vec<TreeOpening<SEED_SIZE>> =
-            vec![
+        let mut tree_openings: Box<[TreeOpening<SEED_SIZE>; NUM_REPETITIONS]> =
+            Box::new(core::array::from_fn(|_| {
                 vec![
                     SeedTree::<NUM_PARTIES, SEED_SIZE>::zero_seed();
                     SeedTree::<NUM_PARTIES, SEED_SIZE>::depth() as usize
-                ];
-                NUM_REPETITIONS
-            ];
+                ]
+            }));
 
         for i in 0..NUM_REPETITIONS {
             core::mem::swap(
@@ -226,6 +398,8 @@ impl<
         cfg_iter_mut!(tree_openings).enumerate().for_each(|(i, t)| {
             *t = seed_trees[i].open_seeds(indices_to_hide[i]);
         });
+
+        // All variables are already boxed arrays, no need to convert
 
         Ok(Self {
             challenge,
@@ -289,10 +463,14 @@ impl<
             get_indices_to_hide::<D>(&self.challenge, NUM_REPETITIONS as u16, NUM_PARTIES as u16);
         transcript.append_message(SALT_LABEL, &self.salt);
 
-        let mut cts: Vec<Vec<CT>> = (0..NUM_REPETITIONS)
-            .map(|_| (0..NUM_PARTIES).map(|_| CT::default()).collect())
-            .collect();
-        let mut comms = vec![vec![G::zero(); NUM_PARTIES]; NUM_REPETITIONS];
+        let mut cts: Box<[Box<[CT; NUM_PARTIES]>; NUM_REPETITIONS]> =
+            Box::new(core::array::from_fn(|_| {
+                Box::new(core::array::from_fn(|_| CT::default()))
+            }));
+        let mut comms: Box<[Box<[G; NUM_PARTIES]>; NUM_REPETITIONS]> =
+            Box::new(core::array::from_fn(|_| {
+                Box::new(core::array::from_fn(|_| G::zero()))
+            }));
 
         let zero_ff = G::ScalarField::zero();
 
@@ -348,7 +526,8 @@ impl<
 
                 // Reconstruct commitments to the shares
                 // Create ciphertexts for revealed share
-                let mut c = vec![G::Group::zero(); NUM_PARTIES];
+                let mut c: Box<[G::Group; NUM_PARTIES]> =
+                    Box::new(core::array::from_fn(|_| G::Group::zero()));
                 cfg_iter_mut!(c)
                     .zip(cfg_iter_mut!(ct))
                     .enumerate()
@@ -373,7 +552,7 @@ impl<
                 // Since the sum of all shares is the witness, sum of all commitments to the shares will be the final commitment and
                 // thus the commitment to the unrevealed share is the difference of final commitment and sum of revealed shares' commitments
                 c[hidden_party_index] = commitment.into_group() - cfg_iter!(c).sum::<G::Group>();
-                *cm = G::Group::normalize_batch(&c).try_into().unwrap();
+                *cm = G::Group::normalize_batch(c.as_ref()).try_into().unwrap();
             });
 
         for i in 0..NUM_REPETITIONS {
@@ -406,7 +585,7 @@ impl<
             get_indices_to_hide::<D>(&self.challenge, NUM_REPETITIONS as u16, NUM_PARTIES as u16);
         // Choose a random subset of size `SUBSET_SIZE` from the indices of `hidden_indices`
         let mut challenge_for_subset_gen = self.challenge.clone();
-        for o in &self.tree_openings {
+        for o in self.tree_openings.iter() {
             for n in o {
                 challenge_for_subset_gen.extend_from_slice(n);
             }
@@ -418,7 +597,8 @@ impl<
         );
 
         let witness_count = self.ciphertexts[0].batch_size();
-        let mut compressed_cts: Vec<CT> = (0..SUBSET_SIZE).map(|_| CT::default()).collect();
+        let mut compressed_cts: Box<[CT; SUBSET_SIZE]> =
+            Box::new(core::array::from_fn(|_| CT::default()));
 
         // Get the revealed shares
         let seed_trees_ = (0..SUBSET_SIZE).map(|i| {
@@ -606,7 +786,7 @@ mod tests {
                         .verify::<Blake2b512, Shake256>(&commitment, &comm_key, &pk.0, &g, &mut verifier_transcript)
                         .unwrap();
                     println!("Proof verified in: {:?}", start.elapsed());
-                    println!("Proof size: {:?}", proof.compressed_size());
+                    // println!("Proof size: {:?}", proof.compressed_size());
 
                     let invalid_comm = (commitment + G::rand(&mut rng)).into_affine();
                     let mut verifier_transcript = new_merlin_transcript(b"test");
@@ -629,7 +809,7 @@ mod tests {
                     let start = Instant::now();
                     let ct = proof.compress::<$subset_size, Blake2b512, Shake256>().unwrap();
                     println!("Ciphertext compressed in: {:?}", start.elapsed());
-                    println!("Ciphertext size: {:?}", ct.compressed_size());
+                    // println!("Ciphertext size: {:?}", ct.compressed_size());
 
                     for i in 0..$subset_size {
                         assert_eq!(ct.0[i].batch_size(), num_witnesses);

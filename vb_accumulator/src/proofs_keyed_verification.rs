@@ -29,6 +29,7 @@ use ark_std::{
 };
 use core::mem;
 use digest::Digest;
+use dock_crypto_utils::randomized_mult_checker::RandomizedMultChecker;
 #[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkObjectBytes;
 use kvac::bbdt_2016::keyed_proof::{
@@ -191,17 +192,17 @@ impl<G: AffineRepr> MembershipWitnessValidityProof<G> {
             .challenge_contribution(&params.0, &public_key.0, &mut challenge_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
-        if !self.wit_proof.verify(&y, &witness.0, &challenge) {
-            return Err(VBAccumulatorError::InvalidMembershipValidityProof);
-        }
-        if !self.sk_proof.verify(
-            &public_key.0,
-            &params.0,
-            &challenge,
-            &self.wit_proof.response,
-        ) {
-            return Err(VBAccumulatorError::InvalidMembershipValidityProof);
-        }
+        self.wit_proof
+            .verify(&y, &witness.0, &challenge)
+            .map_err(|_| VBAccumulatorError::InvalidMembershipValidityProof)?;
+        self.sk_proof
+            .verify(
+                &public_key.0,
+                &params.0,
+                &challenge,
+                &self.wit_proof.response,
+            )
+            .map_err(|_| VBAccumulatorError::InvalidMembershipValidityProof)?;
         Ok(())
     }
 
@@ -261,17 +262,17 @@ impl<G: AffineRepr> NonMembershipWitnessValidityProof<G> {
             .challenge_contribution(&params.0, &public_key.0, &mut challenge_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
-        if !self.wit_proof.verify(&y, &witness.C, &challenge) {
-            return Err(VBAccumulatorError::InvalidMembershipValidityProof);
-        }
-        if !self.sk_proof.verify(
-            &public_key.0,
-            &params.0,
-            &challenge,
-            &self.wit_proof.response,
-        ) {
-            return Err(VBAccumulatorError::InvalidMembershipValidityProof);
-        }
+        self.wit_proof
+            .verify(&y, &witness.C, &challenge)
+            .map_err(|_| VBAccumulatorError::InvalidMembershipValidityProof)?;
+        self.sk_proof
+            .verify(
+                &public_key.0,
+                &params.0,
+                &challenge,
+                &self.wit_proof.response,
+            )
+            .map_err(|_| VBAccumulatorError::InvalidMembershipValidityProof)?;
         Ok(())
     }
 
@@ -352,6 +353,28 @@ impl<G: AffineRepr> MembershipProof<G> {
         Ok(())
     }
 
+    pub fn verify_partial_using_randomized_mult_checker(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: G,
+        secret_key: &SecretKey<G::ScalarField>,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) -> Result<(), VBAccumulatorError> {
+        // Check A_bar = A' * secret_key (cannot be deferred)
+        if self.0.A_bar != (self.0.A_prime * secret_key.0).into() {
+            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
+        }
+        self.0
+            .verify_partial_schnorr_proof_using_randomized_mult_checker(
+                resp_for_element,
+                accumulator,
+                challenge,
+                rmc,
+            );
+        Ok(())
+    }
+
     pub fn challenge_contribution<W: Write>(
         &self,
         accumulator_value: &G,
@@ -379,6 +402,32 @@ impl<G: AffineRepr> MembershipProof<G> {
         self.0
             .verify_partial_schnorr_proof(resp_for_element, accumulator, challenge)?;
         Ok(())
+    }
+
+    pub fn verify_partial_schnorr_proof_using_randomized_mult_checker(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: G,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        self.0
+            .verify_partial_schnorr_proof_using_randomized_mult_checker(
+                resp_for_element,
+                accumulator,
+                challenge,
+                rmc,
+            )
+    }
+
+    pub fn verify_schnorr_proof_using_randomized_mult_checker(
+        &self,
+        accumulator: G,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        self.0
+            .verify_schnorr_proof_using_randomized_mult_checker(accumulator, challenge, rmc)
     }
 
     pub fn to_keyed_proof(&self) -> KeyedMembershipProof<G> {
@@ -627,9 +676,9 @@ impl<G: AffineRepr> NonMembershipProof<G> {
             self.C_prime.into_group().neg().into(),
             params.0.into_group().neg().into(),
         ];
-        if !self.sc_resp_2.verify(&self.C_hat, Q, challenge) {
-            return Err(VBAccumulatorError::IncorrectRandomizedWitness);
-        }
+        self.sc_resp_2
+            .verify(&self.C_hat, Q, challenge)
+            .map_err(|_| VBAccumulatorError::IncorrectRandomizedWitness)?;
 
         let mut missing_responses = BTreeMap::from([(2, self.sc_resp_2.response)]);
         if !self.sc_resp.responses.contains_key(&1) {

@@ -322,13 +322,14 @@ where
         let cs = ns.cs();
 
         f().and_then(|vk| {
+            let vk = vk.borrow();
             let VerifyingKey {
                 alpha_g1,
                 beta_g2,
                 gamma_g2,
                 delta_g2,
                 gamma_abc_g1,
-            } = vk.borrow().clone();
+            } = vk;
             let alpha_g1 =
                 P::G1Var::new_variable(ark_relations::ns!(cs, "alpha_g1"), || Ok(alpha_g1), mode)?;
             let beta_g2 =
@@ -365,7 +366,8 @@ where
         let cs = ns.cs();
 
         f().and_then(|proof| {
-            let Proof { a, b, c } = proof.borrow().clone();
+            let proof = proof.borrow();
+            let Proof { a, b, c } = proof;
             let a = P::G1Var::new_variable(ark_relations::ns!(cs, "a"), || Ok(a), mode)?;
             let b = P::G2Var::new_variable(ark_relations::ns!(cs, "b"), || Ok(b), mode)?;
             let c = P::G1Var::new_variable(ark_relations::ns!(cs, "c"), || Ok(c), mode)?;

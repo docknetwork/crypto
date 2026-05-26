@@ -74,6 +74,7 @@ impl<E: Pairing> PublicKeyG2<E> {
 
     /// Public key shouldn't be 0. A verifier on receiving this must first check that its
     /// valid and only then use it for any signature or proof of knowledge of signature verification.
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         !self.0.is_zero()
     }

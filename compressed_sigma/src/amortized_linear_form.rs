@@ -228,14 +228,13 @@ fn calculate_Q<G: AffineRepr>(
     challenge: &G::ScalarField,
     new_challenge: &G::ScalarField,
 ) -> G::Group {
-    let challenge_powers = get_n_powers(challenge.clone(), Ps.len());
+    let challenge_powers = get_n_powers(*challenge, Ps.len());
     let P = G::Group::msm_unchecked(Ps, &challenge_powers);
-    let Y = challenge_powers
+    let Y: G::ScalarField = challenge_powers
         .iter()
         .zip(ys.iter())
         .map(|(c, y)| *c * y)
-        .reduce(|a, b| a + b)
-        .unwrap();
+        .sum();
 
     // Q = P + k * (new_challenge*(Y + t)) + A
     P + k.mul(*new_challenge * (Y + t)) + A

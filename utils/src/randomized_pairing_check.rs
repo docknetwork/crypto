@@ -5,6 +5,10 @@ use ark_ec::{
 use ark_ff::{One, PrimeField, Zero};
 use ark_std::{cfg_iter, ops::MulAssign, rand::Rng, vec, vec::Vec, UniformRand};
 
+use ahash::RandomState;
+
+use crate::error::UtilsError;
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -24,18 +28,22 @@ use rayon::prelude::*;
 pub struct RandomizedPairingChecker<E: Pairing> {
     /// a miller loop result that is to be multiplied by other miller loop results
     /// before going into a final exponentiation result
-    left: MillerLoopOutput<E>,
+    pub left: MillerLoopOutput<E>,
     /// a right side result which is already in the right subgroup Gt which is to
     /// be compared to the left side when "final_exponentiatiat"-ed
-    right: PairingOutput<E>,
+    pub right: PairingOutput<E>,
     /// If true, delays the computation of miller loops till the end (unless overridden) trading off
     /// memory for CPU time.
-    lazy: bool,
+    pub lazy: bool,
     /// Keeps the pairs of G1, G2 elements that need to be used in miller loops when running lazily
-    pending: (Vec<E::G1Prepared>, Vec<E::G2Prepared>),
-    random: E::ScalarField,
+    pub pending: (Vec<E::G1Prepared>, Vec<E::G2Prepared>),
+    pub random: E::ScalarField,
     /// For each pairing equation, its multiplied by `self.random`
-    current_random: E::ScalarField,
+    pub current_random: E::ScalarField,
+    /// Flag to detect forgotten `verify()`.
+    verified: bool,
+    /// Flag to detect a canceled checker.
+    cancelled: bool,
 }
 
 impl<E: Pairing> RandomizedPairingChecker<E> {
@@ -49,6 +57,8 @@ impl<E: Pairing> RandomizedPairingChecker<E> {
             pending: (vec![], vec![]),
             random,
             current_random: E::ScalarField::one(),
+            verified: false,
+            cancelled: false,
         }
     }
 
@@ -158,13 +168,9 @@ impl<E: Pairing> RandomizedPairingChecker<E> {
             .collect::<Vec<_>>();
         if lazy {
             self.pending.0.append(&mut a_m);
-            self.pending
-                .1
-                .append(&mut b.into_iter().map(|b| b.into()).collect());
+            self.pending.1.extend(b.into_iter().map(|b| b.into()));
             self.pending.0.append(&mut c_m);
-            self.pending
-                .1
-                .append(&mut d.into_iter().map(|d| d.into()).collect());
+            self.pending.1.extend(d.into_iter().map(|d| d.into()));
         } else {
             self.left.0.mul_assign(E::multi_miller_loop(a_m, b).0);
             self.left.0.mul_assign(E::multi_miller_loop(c_m, d).0);
@@ -201,7 +207,8 @@ impl<E: Pairing> RandomizedPairingChecker<E> {
     }
 
     /// Verify that all added pairing equations are satisfied.
-    pub fn verify(&self) -> bool {
+    pub fn verify(mut self) -> Result<(), UtilsError> {
+        self.verified = true;
         debug_assert_eq!(self.pending.0.len(), self.pending.1.len());
         let left = if !self.pending.0.is_empty() {
             let mut p = E::multi_miller_loop(self.pending.0.clone(), self.pending.1.clone());
@@ -210,7 +217,29 @@ impl<E: Pairing> RandomizedPairingChecker<E> {
         } else {
             self.left
         };
-        E::final_exponentiation(left).unwrap() == self.right
+        if E::final_exponentiation(left).unwrap() == self.right {
+            Ok(())
+        } else {
+            Err(UtilsError::PairingCheckFailed)
+        }
+    }
+
+    /// Cancel the checker. This is useful when the verifier wants to cancel the checker if it is not needed anymore,
+    /// say a different check failed which fails verification anyway
+    pub fn cancel(&mut self) {
+        self.cancelled = true;
+    }
+}
+
+impl<E: Pairing> Drop for RandomizedPairingChecker<E> {
+    fn drop(&mut self) {
+        if !self.verified && !self.cancelled && !self.pending.0.is_empty() {
+            panic!(
+                "RandomizedPairingChecker was dropped without calling `verify()`. \
+                This means all accumulated pairings were never performed. \
+                This indicates a bug in caller's verifier code"
+            );
+        }
     }
 }
 
@@ -276,7 +305,7 @@ mod test {
             checker.add_multiple_sources_and_target(&a1, &b1, &out1);
             checker.add_multiple_sources_and_target(&a2, &b2, &out2);
             checker.add_multiple_sources_and_target(&a3, &b3, &out3);
-            assert!(checker.verify());
+            checker.verify().unwrap();
             let l_str = if lazy { "lazy-" } else { "" };
             println!(
                 "Time taken with {}checker {} us",
@@ -288,7 +317,7 @@ mod test {
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
             checker.add_multiple_sources_and_target(&a1, &b1, &out2);
             checker.add_multiple_sources_and_target(&a2, &b2, &out1);
-            assert!(!checker.verify());
+            assert!(checker.verify().is_err());
         }
 
         let b1_prep = b1.iter().map(|b| G2Prepared::from(*b)).collect::<Vec<_>>();
@@ -301,7 +330,7 @@ mod test {
             checker.add_multiple_sources_and_target(&a1, b1_prep.clone(), &out1);
             checker.add_multiple_sources_and_target(&a2, b2_prep.clone(), &out2);
             checker.add_multiple_sources_and_target(&a3, b3_prep.clone(), &out3);
-            assert!(checker.verify());
+            checker.verify().unwrap();
             let l_str = if lazy { "lazy-" } else { "" };
             println!(
                 "Time taken with prepared G2 and {}checker {} us",
@@ -333,7 +362,7 @@ mod test {
         for lazy in [true, false] {
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
             checker.add_multiple_sources(&a1, &b1, &a1_rev, &b1_rev);
-            assert!(checker.verify());
+            checker.verify().unwrap();
         }
 
         for lazy in [true, false] {
@@ -342,7 +371,7 @@ mod test {
             checker.add_multiple_sources(&a1, &b1, &a1_rev, &b1_rev);
             checker.add_multiple_sources(&a2, &b2, &a2_rev, &b2_rev);
             checker.add_multiple_sources(&a3, &b3, &a3_rev, &b3_rev);
-            assert!(checker.verify());
+            checker.verify().unwrap();
             let l_str = if lazy { "lazy-" } else { "" };
             println!(
                 "Time taken with {}checker {} us",
@@ -357,7 +386,7 @@ mod test {
             checker.add_multiple_sources(&a1, b1_prep.clone(), &a1_rev, b1_rev_prep.clone());
             checker.add_multiple_sources(&a2, b2_prep.clone(), &a2_rev, b2_rev_prep.clone());
             checker.add_multiple_sources(&a3, b3_prep.clone(), &a3_rev, b3_rev_prep.clone());
-            assert!(checker.verify());
+            checker.verify().unwrap();
             let l_str = if lazy { "lazy-" } else { "" };
             println!(
                 "Time taken with prepared G2 and {}checker {} us",
@@ -375,7 +404,7 @@ mod test {
             checker.add_multiple_sources(&a1, &b1, &a1_rev, &b1_rev);
             checker.add_multiple_sources(&a2, &b2, &a2_rev, &b2_rev);
             checker.add_multiple_sources(&a3, &b3, &a3_rev, &b3_rev);
-            assert!(checker.verify());
+            checker.verify().unwrap();
             let l_str = if lazy { "lazy-" } else { "" };
             println!(
                 "Time taken with {}checker {} us",
@@ -387,13 +416,13 @@ mod test {
         for lazy in [true, false] {
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
             checker.add_sources(&a1[0], b1[0], &a1[0], b1[0]);
-            assert!(checker.verify());
+            checker.verify().unwrap();
 
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
             checker.add_sources(&a1[0], b1[0], &a1[0], b1[0]);
             checker.add_sources(&a1[1], b1[1], &a1[1], b1[1]);
             checker.add_sources(&a1[2], b1[2], &a1[2], b1[2]);
-            assert!(checker.verify());
+            checker.verify().unwrap();
         }
 
         for lazy in [true, false] {
@@ -403,19 +432,19 @@ mod test {
 
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
             checker.add_sources_and_target(&a1[0], b1[0], &out_0);
-            assert!(checker.verify());
+            checker.verify().unwrap();
 
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
             checker.add_sources_and_target(&a1[0], b1[0], &out_0);
             checker.add_sources_and_target(&a1[1], b1[1], &out_1);
             checker.add_sources_and_target(&a1[2], b1[2], &out_2);
-            assert!(checker.verify());
+            checker.verify().unwrap();
 
             // Fail on wrong output
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, lazy);
             let wrong_out = Bls12_381::pairing(&a1[0], b1[1]);
             checker.add_sources_and_target(&a1[0], b1[0], &wrong_out);
-            assert!(!checker.verify());
+            assert!(checker.verify().is_err());
         }
     }
 }

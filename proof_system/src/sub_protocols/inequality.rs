@@ -11,7 +11,9 @@ use ark_std::{
     rand::RngCore,
     vec, UniformRand,
 };
-use dock_crypto_utils::commitment::PedersenCommitmentKey;
+use dock_crypto_utils::{
+    commitment::PedersenCommitmentKey, randomized_mult_checker::RandomizedMultChecker,
+};
 use schnorr_pok::inequality::DiscreteLogInequalityProtocol;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -148,6 +150,7 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
         challenge: &G::ScalarField,
         proof: &InequalityProof<G>,
         comm_key_as_slice: &[G],
+        mult_checker: &mut Option<RandomizedMultChecker<G>>,
         resp_for_message: G::ScalarField,
     ) -> Result<(), ProofSystemError> {
         proof
@@ -164,7 +167,7 @@ impl<'a, G: AffineRepr> InequalityProtocol<'a, G> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key_as_slice, proof.comm);
 
-        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp)
+        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp, mult_checker)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

@@ -34,7 +34,8 @@ rand_core = "0.6.4"
 
 [features]
 default = [ "parallel", "serde" ]
-std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "serde/std"]
+std = [ "ark-ff/std", "ark-ec/std", "ark-std/std", "ark-serialize/std", "dock_crypto_utils/std", "serde/std" ]
 print-trace = [ "ark-std/print-trace", "dock_crypto_utils/print-trace" ]
+asm = ["ark-ff/asm", "dock_crypto_utils/asm"]
 parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon", "dock_crypto_utils/parallel" ]
 serde = ["dep:serde", "serde_with", "dock_crypto_utils/serde"]

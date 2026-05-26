@@ -117,6 +117,7 @@ impl<E: Pairing> GipaProofLego<E> {
         (nproofs as f32).log2().ceil() as usize
     }
 
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         let log_proofs = Self::log_proofs(self.nproofs as usize);
         self.comms_ab.len() == log_proofs

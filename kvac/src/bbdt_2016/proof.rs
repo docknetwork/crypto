@@ -249,19 +249,19 @@ impl<G: AffineRepr> PoKOfMAC<G> {
         f: impl Into<G>,
     ) -> Result<(), KVACError> {
         let f = f.into();
-        if !self.sc_E.verify(
-            &self.E,
-            &self.C,
-            &f,
-            challenge,
-            self.sc_resp_msgs
-                .get_response(self.sc_resp_msgs.len() - 1)?,
-        ) {
-            return Err(KVACError::InvalidSchnorrProof);
-        }
-        if !self.sc_C.verify(&self.C, &self.E, &f, challenge) {
-            return Err(KVACError::InvalidSchnorrProof);
-        }
+        self.sc_E
+            .verify(
+                &self.E,
+                &self.C,
+                &f,
+                challenge,
+                self.sc_resp_msgs
+                    .get_response(self.sc_resp_msgs.len() - 1)?,
+            )
+            .map_err(|_| KVACError::InvalidSchnorrProof)?;
+        self.sc_C
+            .verify(&self.C, &self.E, &f, challenge)
+            .map_err(|_| KVACError::InvalidSchnorrProof)?;
         let mut bases = Vec::with_capacity(3 + params.g_vec.len() - revealed_msgs.len());
         let mut bases_revealed = Vec::with_capacity(revealed_msgs.len());
         let mut exponents = Vec::with_capacity(revealed_msgs.len());

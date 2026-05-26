@@ -243,6 +243,7 @@ macro_rules! gen_tests {
                     None,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .is_err());

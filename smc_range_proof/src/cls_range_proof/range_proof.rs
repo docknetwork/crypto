@@ -469,7 +469,7 @@ mod tests {
                             &mut pairing_checker,
                         )
                         .unwrap();
-                    assert!(pairing_checker.verify());
+                    pairing_checker.verify().unwrap();
                     verifying_with_rpc_time += start.elapsed();
 
                     let mut bytes = vec![];

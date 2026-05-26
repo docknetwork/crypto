@@ -1,6 +1,7 @@
+use ahash::RandomState;
 use alloc::string::ToString;
 use ark_ec::Group;
-use ark_std::collections::BTreeMap;
+use hashbrown::HashMap;
 
 /// Solve discrete log using brute force.
 /// `max` is the maximum value of the discrete log and this returns `x` such that `1 <= x <= max` and `base * x = target`
@@ -52,7 +53,7 @@ fn solve_discrete_log_bsgs_inner<G: Group>(
         return Some(0);
     }
     // Create a map of `base * i -> i` for `i` in `[1, num_baby_steps]`
-    let mut baby_steps = BTreeMap::new();
+    let mut baby_steps = HashMap::with_hasher(RandomState::new());
     baby_steps.insert(base.to_string(), 1);
     let mut cur = base;
     for i in 2..=num_baby_steps {
@@ -62,13 +63,13 @@ fn solve_discrete_log_bsgs_inner<G: Group>(
         }
         baby_steps.insert(cur.to_string(), i);
     }
-    let base_m = cur;
-    let mut cur = target;
-    for i in 0..num_giant_steps {
+    let giant_step = cur;
+    let mut cur = target - giant_step;
+    for i in 1..num_giant_steps {
         if let Some(b) = baby_steps.get(&cur.to_string()) {
             return Some(i * num_baby_steps + b);
         }
-        cur = cur - base_m;
+        cur = cur - giant_step;
     }
     None
 }

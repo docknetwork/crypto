@@ -8,6 +8,7 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
+use dock_crypto_utils::randomized_mult_checker::RandomizedMultChecker;
 use schnorr_pok::{SchnorrChallengeContributor, SchnorrCommitment};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -166,10 +167,21 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
         &self,
         challenge: &G::ScalarField,
         proof: &PedersenCommitmentProof<G>,
+        rmc: &mut Option<RandomizedMultChecker<G>>,
     ) -> Result<(), SchnorrError> {
-        proof
-            .response
-            .is_valid(self.commitment_key, &self.commitment, &proof.t, challenge)
+        if let Some(rmc) = rmc.as_mut() {
+            proof.response.verify_using_randomized_mult_checker(
+                self.commitment_key.to_vec(),
+                self.commitment,
+                proof.t,
+                challenge,
+                rmc,
+            )
+        } else {
+            proof
+                .response
+                .is_valid(self.commitment_key, &self.commitment, &proof.t, challenge)
+        }
     }
 
     pub fn verify_partial_proof_contribution(
@@ -177,14 +189,26 @@ impl<'a, G: AffineRepr> SchnorrProtocol<'a, G> {
         challenge: &G::ScalarField,
         proof: &PedersenCommitmentPartialProof<G>,
         missing_responses: BTreeMap<usize, G::ScalarField>,
+        rmc: &mut Option<RandomizedMultChecker<G>>,
     ) -> Result<(), SchnorrError> {
-        proof.response.is_valid(
-            self.commitment_key,
-            &self.commitment,
-            &proof.t,
-            challenge,
-            missing_responses,
-        )
+        if let Some(rmc) = rmc.as_mut() {
+            proof.response.verify_using_randomized_mult_checker(
+                self.commitment_key.to_vec(),
+                self.commitment,
+                proof.t,
+                challenge,
+                missing_responses,
+                rmc,
+            )
+        } else {
+            proof.response.is_valid(
+                self.commitment_key,
+                &self.commitment,
+                &proof.t,
+                challenge,
+                missing_responses,
+            )
+        }
     }
 
     pub fn compute_challenge_contribution<W: Write>(

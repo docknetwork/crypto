@@ -8,7 +8,10 @@ use crate::{error::ProofSystemError, statement_proof::StatementProof};
 use ark_ec::pairing::Pairing;
 
 use ark_std::{io::Write, rand::RngCore};
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use short_group_sig::common::ProvingKey;
 use vb_accumulator::{
     kb_positive_accumulator::{

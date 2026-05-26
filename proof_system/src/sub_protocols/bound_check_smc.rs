@@ -6,6 +6,7 @@ use crate::{
     sub_protocols::{enforce_and_get_u64, schnorr::SchnorrProtocol},
 };
 use ark_ec::pairing::Pairing;
+use ark_ff::One;
 use ark_serialize::CanonicalSerialize;
 use ark_std::{
     collections::{BTreeMap, BTreeSet},
@@ -13,7 +14,10 @@ use ark_std::{
     rand::RngCore,
     vec, UniformRand,
 };
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use smc_range_proof::prelude::{CCSArbitraryRangeProofProtocol, CLSRangeProofProtocol};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -170,6 +174,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
         comm_key_as_slice: &[E::G1Affine],
         params: SmcParamsWithPairingAndCommitmentKey<E>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
         resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         let comm_key = &self.params_and_comm_key.comm_key;
@@ -184,6 +189,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
                         comm_key,
                         params.params,
                         pc,
+                        mult_checker,
                     )
                     .map_err(|e| {
                         ProofSystemError::SmcRangeProofContributionFailed(self.id as u32, e)
@@ -211,6 +217,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
                         comm_key,
                         params.params,
                         pc,
+                        mult_checker,
                     )
                     .map_err(|e| {
                         ProofSystemError::SmcRangeProofContributionFailed(self.id as u32, e)
@@ -233,7 +240,7 @@ impl<'a, E: Pairing> BoundCheckSmcProtocol<'a, E> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key_as_slice, proof.comm);
         let missing_resp = BTreeMap::from([(0, resp_for_message)]);
-        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp)
+        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp, mult_checker)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

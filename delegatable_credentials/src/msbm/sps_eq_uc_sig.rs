@@ -148,13 +148,13 @@ impl<E: Pairing> Signature<E> {
 
         // Verify proof of knowledge of randomness in the commitment
         for (i, proof) in commitment_to_randomness_proof.into_iter().enumerate() {
-            if !proof.verify(
-                &commitment_to_randomness[i],
-                set_comm_srs.get_P1(),
-                challenge,
-            ) {
-                return Err(DelegationError::InvalidSchnorrProof);
-            }
+            proof
+                .verify(
+                    &commitment_to_randomness[i],
+                    set_comm_srs.get_P1(),
+                    challenge,
+                )
+                .map_err(|_| DelegationError::InvalidSchnorrProof)?;
         }
         let mut commitments = Vec::with_capacity(k);
 

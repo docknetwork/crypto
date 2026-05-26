@@ -4,7 +4,10 @@ use ark_serialize::SerializationError;
 use ark_std::fmt::Debug;
 #[cfg(feature = "serde")]
 use dock_crypto_utils::serde_utils::ArkSerializationError;
-use dock_crypto_utils::try_iter::{IndexIsOutOfBounds, InvalidPair};
+use dock_crypto_utils::{
+    error::UtilsError,
+    try_iter::{IndexIsOutOfBounds, InvalidPair},
+};
 use oblivious_transfer_protocols::{error::OTError, ParticipantId};
 use schnorr_pok::error::SchnorrError;
 use secret_sharing_and_dkg::error::SSError;
@@ -30,6 +33,7 @@ pub enum BBSPlusError {
     #[cfg_attr(feature = "serde", serde(with = "ArkSerializationError"))]
     Serialization(SerializationError),
     SchnorrError(SchnorrError),
+    UtilsError(UtilsError),
     MessageIndicesMustBeUniqueAndSorted(InvalidPair<usize>),
     MessageIndexIsOutOfBounds(IndexIsOutOfBounds),
     OTError(OTError),
@@ -69,6 +73,12 @@ pub enum BBSPlusError {
 impl From<SchnorrError> for BBSPlusError {
     fn from(e: SchnorrError) -> Self {
         Self::SchnorrError(e)
+    }
+}
+
+impl From<UtilsError> for BBSPlusError {
+    fn from(e: UtilsError) -> Self {
+        Self::UtilsError(e)
     }
 }
 

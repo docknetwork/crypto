@@ -15,7 +15,8 @@ use ark_std::{
 };
 use digest::Digest;
 use dock_crypto_utils::{
-    aliases::FullDigest, elgamal::BatchedHashedElgamalCiphertext, transcript::Transcript,
+    aliases::FullDigest, elgamal::BatchedHashedElgamalCiphertext,
+    randomized_mult_checker::RandomizedMultChecker, transcript::Transcript,
 };
 use sha3::Shake256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -53,8 +54,10 @@ pub mod rdkgith_decls {
     pub const NUM_PARTIES: usize = 192;
     pub const THRESHOLD: usize = 36;
     pub const SUBSET_SIZE: usize = 145;
+    pub const NUM_CIPHERTEXTS: usize = NUM_PARTIES - THRESHOLD;
 
-    pub type Proof<G> = RdkgithProof<G, BatchedHashedElgamalCiphertext<G>, NUM_PARTIES, THRESHOLD>;
+    pub type Proof<G> =
+        RdkgithProof<G, BatchedHashedElgamalCiphertext<G>, NUM_PARTIES, THRESHOLD, NUM_CIPHERTEXTS>;
     pub type Ciphertext<G> =
         CompressedCiphertext<G, BatchedHashedElgamalCiphertext<G>, SUBSET_SIZE>;
 }
@@ -155,6 +158,7 @@ macro_rules! impl_common_funcs {
             proof: &$proof_struct_name<$group>,
             transcript: &mut impl Transcript,
             missing_resps: BTreeMap<usize, $group::ScalarField>,
+            mult_checker: &mut Option<RandomizedMultChecker<$group>>,
         ) -> Result<(), ProofSystemError> {
             let witness_count = proof.ve_proof.witness_count();
             let comm_key = &self.comm_key[..witness_count];
@@ -169,7 +173,7 @@ macro_rules! impl_common_funcs {
             .map_err(|e| ProofSystemError::VerifiableEncryptionFailed(self.id as u32, e))?;
             // NOTE: value of id is dummy
             let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
-            sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resps)
+            sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resps, mult_checker)
                 .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
         }
     };

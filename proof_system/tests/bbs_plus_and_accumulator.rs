@@ -250,6 +250,7 @@ macro_rules! gen_tests {
                     None,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .is_err());
@@ -272,6 +273,7 @@ macro_rules! gen_tests {
                     Some(b"random...".to_vec()),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .is_err());
@@ -302,6 +304,7 @@ macro_rules! gen_tests {
                     nonce,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -462,6 +465,7 @@ macro_rules! gen_tests {
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -512,6 +516,7 @@ macro_rules! gen_tests {
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .is_err());
@@ -564,6 +569,7 @@ macro_rules! gen_tests {
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .is_err());
@@ -684,6 +690,7 @@ macro_rules! gen_tests {
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -800,6 +807,7 @@ macro_rules! gen_tests {
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -921,6 +929,7 @@ macro_rules! gen_tests {
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -1036,6 +1045,7 @@ macro_rules! gen_tests {
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -1161,6 +1171,7 @@ macro_rules! gen_tests {
                     nonce.clone(),
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -1391,6 +1402,7 @@ macro_rules! gen_tests {
                     nonce,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -1917,6 +1929,7 @@ macro_rules! gen_tests {
                     None,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();

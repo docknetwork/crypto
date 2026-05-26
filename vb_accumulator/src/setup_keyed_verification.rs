@@ -38,6 +38,7 @@ impl<G: AffineRepr> SetupParams<G> {
     }
 
     /// Params shouldn't be 0
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         !self.0.is_zero()
     }
@@ -64,6 +65,7 @@ impl<G: AffineRepr> PublicKey<G> {
     }
 
     /// Public key shouldn't be 0
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         !self.0.is_zero()
     }
@@ -119,7 +121,7 @@ mod tests {
 
         let challenge_verifier =
             compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib_verifier);
-        assert!(proof.verify(&pk.0, base, &challenge_verifier));
+        proof.verify(&pk.0, base, &challenge_verifier).unwrap();
         assert_eq!(chal_contrib_prover, chal_contrib_verifier);
         assert_eq!(challenge_prover, challenge_verifier);
 

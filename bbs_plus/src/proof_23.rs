@@ -40,11 +40,15 @@ use dock_crypto_utils::{
     expect_equality,
     extend_some::ExtendSome,
     misc::rand,
+    randomized_mult_checker::RandomizedMultChecker,
     randomized_pairing_check::RandomizedPairingChecker,
     signature::{MessageOrBlinding, MultiMessageSignatureParams},
 };
 use itertools::{multiunzip, MultiUnzip};
-use schnorr_pok::{error::SchnorrError, SchnorrCommitment, SchnorrResponse};
+use schnorr_pok::{
+    error::SchnorrError, verify_pairing_or_rmc, verify_schnorr_resp_or_rmc, SchnorrCommitment,
+    SchnorrResponse,
+};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde")]
@@ -256,42 +260,46 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         pk: impl Into<PreparedPublicKeyG2<E>>,
         params: impl Into<PreparedSignatureParams23G1<E>>,
     ) -> Result<(), BBSPlusError> {
-        let params = params.into();
-        let g1 = params.g1;
-        let g2 = params.g2;
-        let h = params.h;
-        self.verify_except_pairings(revealed_msgs, challenge, g1, h)?;
-
-        // Verify the randomized signature
-        if !E::multi_pairing(
-            [
-                E::G1Prepared::from(self.A_bar),
-                E::G1Prepared::from(-(self.B_bar.into_group())),
-            ],
-            [pk.into().0, g2],
-        )
-        .is_zero()
-        {
-            return Err(BBSPlusError::PairingCheckFailed);
-        }
-        Ok(())
+        self._verify_internal(revealed_msgs, challenge, pk, params, None, None)
     }
 
-    pub fn verify_with_randomized_pairing_checker(
+    pub fn verify_with_randomized_pairing_and_mult_checker(
         &self,
         revealed_msgs: &BTreeMap<usize, E::ScalarField>,
         challenge: &E::ScalarField,
         pk: impl Into<PreparedPublicKeyG2<E>>,
         params: impl Into<PreparedSignatureParams23G1<E>>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
+    ) -> Result<(), BBSPlusError> {
+        self._verify_internal(revealed_msgs, challenge, pk, params, pairing_checker, rmc)
+    }
+
+    fn _verify_internal(
+        &self,
+        revealed_msgs: &BTreeMap<usize, E::ScalarField>,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKeyG2<E>>,
+        params: impl Into<PreparedSignatureParams23G1<E>>,
+        mut pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), BBSPlusError> {
         let params = params.into();
         let g1 = params.g1;
         let g2 = params.g2;
         let h = params.h;
-        self.verify_except_pairings(revealed_msgs, challenge, g1, h)?;
-        pairing_checker.add_sources(&self.A_bar, pk.into().0, &self.B_bar, g2);
-        Ok(())
+        self.verify_except_pairings(revealed_msgs, challenge, g1, h, rmc)?;
+
+        let pk = pk.into().0;
+        verify_pairing_or_rmc!(
+            E,
+            pairing_checker,
+            &self.A_bar,
+            pk,
+            &self.B_bar,
+            g2,
+            BBSPlusError::PairingCheckFailed,
+        )
     }
 
     /// For the verifier to independently calculate the challenge
@@ -344,6 +352,7 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         challenge: &E::ScalarField,
         g1: E::G1Affine,
         h: Vec<E::G1Affine>,
+        mut rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), BBSPlusError> {
         let mut bases = Vec::with_capacity(2 + h.len() - revealed_msgs.len());
         bases.push(self.A_bar);
@@ -351,8 +360,7 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         let mut bases_revealed = Vec::with_capacity(revealed_msgs.len());
         let mut exponents = Vec::with_capacity(revealed_msgs.len());
         for i in 0..h.len() {
-            if revealed_msgs.contains_key(&i) {
-                let message = revealed_msgs.get(&i).unwrap();
+            if let Some(message) = revealed_msgs.get(&i) {
                 bases_revealed.push(h[i]);
                 exponents.push(*message);
             } else {
@@ -362,10 +370,7 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         let c_m_j = E::G1::msm_unchecked(&bases_revealed, &exponents) + g1;
         bases.insert(0, c_m_j.into_affine());
 
-        match self
-            .sc_resp
-            .is_valid(&bases, &self.B_bar, &self.T, challenge)
-        {
+        match verify_schnorr_resp_or_rmc!(rmc, self.sc_resp, bases, self.B_bar, self.T, challenge) {
             Ok(()) => (),
             Err(SchnorrError::InvalidResponse) => {
                 return Err(BBSPlusError::FirstSchnorrVerificationFailed)
@@ -383,11 +388,12 @@ impl<E: Pairing> PoKOfSignature23G1Proof<E> {
         challenge: &E::ScalarField,
         g1: E::G1Affine,
         h: Vec<E::G1Affine>,
+        rmc: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), BBSPlusError> {
         if self.A_bar.is_zero() {
             return Err(BBSPlusError::ZeroSignature);
         }
-        self.verify_schnorr_proofs(revealed_msgs, challenge, g1, h)
+        self.verify_schnorr_proofs(revealed_msgs, challenge, g1, h, rmc)
     }
 }
 
@@ -964,16 +970,17 @@ pub mod tests {
         let start = Instant::now();
         for proof in proofs.clone() {
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     &BTreeMap::new(),
                     &challenge_verifier,
                     keypair.public_key.clone(),
                     params.clone(),
-                    &mut pairing_checker,
+                    Some(&mut pairing_checker),
+                    None,
                 )
                 .unwrap();
         }
-        assert!(pairing_checker.verify());
+        pairing_checker.verify().unwrap();
         println!(
             "Time to verify {} sigs using randomized pairing checker: {:?}",
             sig_count,
@@ -984,16 +991,17 @@ pub mod tests {
         let start = Instant::now();
         for proof in proofs.clone() {
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     &BTreeMap::new(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
-                    &mut pairing_checker,
+                    Some(&mut pairing_checker),
+                    None,
                 )
                 .unwrap();
         }
-        assert!(pairing_checker.verify());
+        pairing_checker.verify().unwrap();
         println!(
             "Time to verify {} sigs using prepared public key and params and randomized pairing checker: {:?}",
             sig_count,

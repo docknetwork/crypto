@@ -293,7 +293,7 @@ mod tests {
             let mut checker = RandomizedMultChecker::new_using_rng(&mut rng);
             resp.verify_using_randomized_mult_checker(bases, y, comm.t, &challenge, &mut checker)
                 .unwrap();
-            assert!(checker.verify());
+            checker.verify().unwrap();
         };
     }
 

@@ -139,9 +139,9 @@ impl<E: Pairing> CredentialShow<E> {
                 issuer_public_key,
                 set_comm_srs,
             )?;
-        if !self.schnorr.verify(&self.pseudonym.0, &P1, challenge) {
-            return Err(DelegationError::InvalidSchnorrProof);
-        }
+        self.schnorr
+            .verify(&self.pseudonym.0, &P1, challenge)
+            .map_err(|_| DelegationError::InvalidSchnorrProof)?;
         Ok(())
     }
 

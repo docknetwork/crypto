@@ -22,7 +22,10 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use legogroth16::{
     calculate_d, create_random_proof, generate_random_parameters, rerandomize_proof_1,
     verify_proof, PreparedVerifyingKey, Proof, ProvingKey, VerifyingKey,
@@ -182,6 +185,7 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
         comm_key: &[E::G1Affine],
         pvk: &PreparedVerifyingKey<E>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
         resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         let pub_inp = &[
@@ -210,7 +214,7 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.snark_proof.d);
         let missing_resp = BTreeMap::from([(0, resp_for_message)]);
-        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp)
+        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp, mult_checker)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
@@ -219,13 +223,14 @@ impl<'a, E: Pairing> BoundCheckLegoGrothProtocol<'a, E> {
         challenge: &E::ScalarField,
         proof: &BoundCheckLegoGroth16ProofWhenAggregatingSnarks<E>,
         comm_key: &[E::G1Affine],
+        mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
         resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         // NOTE: value of id is dummy
         let sp = SchnorrProtocol::new(10000, comm_key, proof.commitment);
         let missing_resp = BTreeMap::from([(0, resp_for_message)]);
         // The aggregated snark proof is verified outside of this function, in  `Proof::verify`
-        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp)
+        sp.verify_partial_proof_contribution(challenge, &proof.sp, missing_resp, mult_checker)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 

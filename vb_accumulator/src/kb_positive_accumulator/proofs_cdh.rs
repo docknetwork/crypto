@@ -11,7 +11,10 @@ use crate::{
 use ark_ec::pairing::Pairing;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec, UniformRand};
-use dock_crypto_utils::randomized_pairing_check::RandomizedPairingChecker;
+use dock_crypto_utils::{
+    randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use short_group_sig::{
     bb_sig_pok::{PoKOfSignatureG1, PoKOfSignatureG1Protocol},
     common::ProvingKey,
@@ -131,37 +134,6 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
         Ok(())
     }
 
-    pub fn verify_with_randomized_pairing_checker(
-        &self,
-        accumulator_value: &E::G1Affine,
-        challenge: &E::ScalarField,
-        pk: impl Into<PreparedPublicKey<E>>,
-        params: impl Into<PreparedSetupParams<E>>,
-        proving_key: &ProvingKey<E::G1Affine>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
-    ) -> Result<(), VBAccumulatorError> {
-        let pk = pk.into();
-        let params = params.into();
-        self.sig_proof.verify_with_randomized_pairing_checker(
-            challenge,
-            pk.sig,
-            params.sig.g1,
-            params.sig.g2,
-            proving_key,
-            pairing_checker,
-        )?;
-        self.accum_proof
-            .verify_partial_with_randomized_pairing_checker(
-                self.sig_proof.get_resp_for_randomness(),
-                accumulator_value,
-                challenge,
-                pk.accum,
-                params.accum,
-                pairing_checker,
-            )?;
-        Ok(())
-    }
-
     pub fn verify_partial(
         &self,
         resp_for_element: &E::ScalarField,
@@ -181,6 +153,7 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
             params.sig.g2,
             proving_key,
         )?;
+
         self.accum_proof.verify_partial(
             self.sig_proof.get_resp_for_randomness(),
             accumulator_value,
@@ -188,10 +161,47 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
             pk.accum,
             params.accum,
         )?;
+
         Ok(())
     }
 
-    pub fn verify_partial_with_randomized_pairing_checker(
+    pub fn verify_with_randomized_pairing_and_mult_checker(
+        &self,
+        accumulator_value: &E::G1Affine,
+        challenge: &E::ScalarField,
+        pk: impl Into<PreparedPublicKey<E>>,
+        params: impl Into<PreparedSetupParams<E>>,
+        proving_key: &ProvingKey<E::G1Affine>,
+        mut pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mut mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
+    ) -> Result<(), VBAccumulatorError> {
+        let pk = pk.into();
+        let params = params.into();
+        self.sig_proof
+            .verify_with_randomized_pairing_and_mult_checker(
+                challenge,
+                pk.sig,
+                params.sig.g1,
+                params.sig.g2,
+                proving_key,
+                pairing_checker.as_mut().map(|x| &mut **x),
+                mult_checker.as_mut().map(|x| &mut **x),
+            )?;
+        self.accum_proof
+            .verify_partial_with_randomized_pairing_and_mult_checker(
+                self.sig_proof.get_resp_for_randomness(),
+                accumulator_value,
+                challenge,
+                pk.accum,
+                params.accum,
+                pairing_checker.as_mut().map(|x| &mut **x),
+                mult_checker.as_mut().map(|x| &mut **x),
+            )?;
+
+        Ok(())
+    }
+
+    pub fn verify_partial_with_randomized_pairing_and_mult_checker(
         &self,
         resp_for_element: &E::ScalarField,
         accumulator_value: &E::G1Affine,
@@ -199,29 +209,35 @@ impl<E: Pairing> KBPositiveAccumulatorMembershipProof<E> {
         pk: impl Into<PreparedPublicKey<E>>,
         params: impl Into<PreparedSetupParams<E>>,
         proving_key: &ProvingKey<E::G1Affine>,
-        pairing_checker: &mut RandomizedPairingChecker<E>,
+        pairing_checker: Option<&mut RandomizedPairingChecker<E>>,
+        mult_checker: Option<&mut RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), VBAccumulatorError> {
+        let mut pairing_checker = pairing_checker;
+        let mut mult_checker = mult_checker;
         let pk = pk.into();
         let params = params.into();
         self.sig_proof
-            .verify_partial_with_randomized_pairing_checker(
+            .verify_partial_with_randomized_pairing_and_mult_checker(
                 resp_for_element,
                 challenge,
                 pk.sig,
                 params.sig.g1,
                 params.sig.g2,
                 proving_key,
-                pairing_checker,
+                pairing_checker.as_mut().map(|x| &mut **x),
+                mult_checker.as_mut().map(|x| &mut **x),
             )?;
         self.accum_proof
-            .verify_partial_with_randomized_pairing_checker(
+            .verify_partial_with_randomized_pairing_and_mult_checker(
                 self.sig_proof.get_resp_for_randomness(),
                 accumulator_value,
                 challenge,
                 pk.accum,
                 params.accum,
-                pairing_checker,
+                pairing_checker.as_mut().map(|x| &mut **x),
+                mult_checker.as_mut().map(|x| &mut **x),
             )?;
+
         Ok(())
     }
 
@@ -345,20 +361,21 @@ mod tests {
 
             let start = Instant::now();
             proof
-                .verify_with_randomized_pairing_checker(
+                .verify_with_randomized_pairing_and_mult_checker(
                     accumulator.value(),
                     &challenge_verifier,
                     prepared_pk.clone(),
                     prepared_params.clone(),
                     &prk,
-                    &mut pairing_checker,
+                    Some(&mut pairing_checker),
+                    None,
                 )
                 .unwrap();
             proof_verif_with_rpc_duration += start.elapsed();
         }
 
         let start = Instant::now();
-        assert!(pairing_checker.verify());
+        pairing_checker.verify().unwrap();
         proof_verif_with_rpc_duration += start.elapsed();
 
         println!(

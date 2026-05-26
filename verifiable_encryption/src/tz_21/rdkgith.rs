@@ -31,8 +31,10 @@ use crate::{
 };
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut, rand::RngCore, vec, vec::Vec};
+use ark_serialize::{
+    CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Valid, Validate,
+};
+use ark_std::{boxed::Box, cfg_into_iter, cfg_iter, cfg_iter_mut, rand::RngCore, vec, vec::Vec};
 use digest::Digest;
 use dock_crypto_utils::{
     aliases::FullDigest,
@@ -56,38 +58,208 @@ const CHALLENGE_LABEL: &'static [u8; 9] = b"challenge";
 /// Ciphertext and the proof of encryption. `CT` is the variant of Elgamal encryption used. See test for usage
 /// Some of the struct fields like, `ciphertexts`, `poly_commitments` etc. could be created as arrays rather than vectors
 /// as their length depends on the generic constants but as the constants are large, it causes stack-overflow.
-#[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RdkgithProof<
     G: AffineRepr,
     CT: BatchCiphertext<G>,
     const NUM_PARTIES: usize,
     const THRESHOLD: usize,
+    const NUM_CIPHERTEXTS: usize,
 > {
     pub challenge: Vec<u8>,
     /// Commitment to the coefficients of polynomials
-    pub poly_commitments: Vec<G>,
+    pub poly_commitments: Box<[G; THRESHOLD]>,
     /// Ciphertexts of the shares. The first element of the tuple is the party index
     // Following could be made a map indexed with u16 to speed up computation (lookups) by trading off memory
-    pub ciphertexts: Vec<(u16, CT)>,
+    pub ciphertexts: Box<[(u16, CT); NUM_CIPHERTEXTS]>,
     /// Revealed shares and randomness used for encryption. The first element of the tuple is the party index, second is the
     /// shares of each witness for that party
-    pub shares_and_enc_rands: Vec<(u16, Vec<G::ScalarField>, CT::Randomness)>,
+    pub shares_and_enc_rands: Box<[(u16, Vec<G::ScalarField>, CT::Randomness); THRESHOLD]>,
 }
 
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug)]
 pub struct CompressedCiphertext<G: AffineRepr, CT: BatchCiphertext<G>, const SUBSET_SIZE: usize>(
     /// Ciphertexts
-    Vec<CT>,
+    Box<[CT; SUBSET_SIZE]>,
     /// This is helper data for making the decryptor more efficient. The decryptor could compute this
     /// on its own from the proof.
-    Vec<G::ScalarField>,
+    Box<[G::ScalarField; SUBSET_SIZE]>,
 );
 
-impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRESHOLD: usize>
-    RdkgithProof<G, CT, NUM_PARTIES, THRESHOLD>
+// Serialization implementations for RdkgithProof
+impl<
+        G: AffineRepr,
+        CT: BatchCiphertext<G> + CanonicalSerialize,
+        const NUM_PARTIES: usize,
+        const THRESHOLD: usize,
+        const NUM_CIPHERTEXTS: usize,
+    > CanonicalSerialize for RdkgithProof<G, CT, NUM_PARTIES, THRESHOLD, NUM_CIPHERTEXTS>
+{
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        mut writer: W,
+        compress: Compress,
+    ) -> Result<(), SerializationError> {
+        self.challenge.serialize_with_mode(&mut writer, compress)?;
+        // Use slice (&[T]) to write a length prefix, matching Vec-based deserialization.
+        (&self.poly_commitments[..]).serialize_with_mode(&mut writer, compress)?;
+        (&self.ciphertexts[..]).serialize_with_mode(&mut writer, compress)?;
+        (&self.shares_and_enc_rands[..]).serialize_with_mode(&mut writer, compress)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self, compress: Compress) -> usize {
+        self.challenge.serialized_size(compress)
+            + (&self.poly_commitments[..]).serialized_size(compress)
+            + (&self.ciphertexts[..]).serialized_size(compress)
+            + (&self.shares_and_enc_rands[..]).serialized_size(compress)
+    }
+}
+
+impl<
+        G: AffineRepr,
+        CT: BatchCiphertext<G> + CanonicalDeserialize,
+        const NUM_PARTIES: usize,
+        const THRESHOLD: usize,
+        const NUM_CIPHERTEXTS: usize,
+    > CanonicalDeserialize for RdkgithProof<G, CT, NUM_PARTIES, THRESHOLD, NUM_CIPHERTEXTS>
+{
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+    ) -> Result<Self, SerializationError> {
+        let challenge = Vec::<u8>::deserialize_with_mode(&mut reader, compress, validate)?;
+        let poly_commitments_vec =
+            Vec::<G>::deserialize_with_mode(&mut reader, compress, validate)?;
+        let ciphertexts_vec =
+            Vec::<(u16, CT)>::deserialize_with_mode(&mut reader, compress, validate)?;
+        let shares_and_enc_rands_vec =
+            Vec::<(u16, Vec<G::ScalarField>, CT::Randomness)>::deserialize_with_mode(
+                &mut reader,
+                compress,
+                validate,
+            )?;
+
+        // Convert Vec to Box<[T; N]> with compile-time size guarantee
+        let poly_commitments: Box<[G; THRESHOLD]> = poly_commitments_vec
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| SerializationError::InvalidData)?;
+        let ciphertexts: Box<[(u16, CT); NUM_CIPHERTEXTS]> = ciphertexts_vec
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| SerializationError::InvalidData)?;
+        let shares_and_enc_rands: Box<[(u16, Vec<G::ScalarField>, CT::Randomness); THRESHOLD]> =
+            shares_and_enc_rands_vec
+                .into_boxed_slice()
+                .try_into()
+                .map_err(|_| SerializationError::InvalidData)?;
+
+        Ok(Self {
+            challenge,
+            poly_commitments,
+            ciphertexts,
+            shares_and_enc_rands,
+        })
+    }
+}
+
+impl<
+        G: AffineRepr,
+        CT: BatchCiphertext<G> + Valid,
+        const NUM_PARTIES: usize,
+        const THRESHOLD: usize,
+        const NUM_CIPHERTEXTS: usize,
+    > Valid for RdkgithProof<G, CT, NUM_PARTIES, THRESHOLD, NUM_CIPHERTEXTS>
+{
+    fn check(&self) -> Result<(), SerializationError> {
+        self.challenge.check()?;
+        for pc in self.poly_commitments.iter() {
+            pc.check()?;
+        }
+        for (_, ct) in self.ciphertexts.iter() {
+            ct.check()?;
+        }
+        for (_, shares, rand) in self.shares_and_enc_rands.iter() {
+            shares.check()?;
+            rand.check()?;
+        }
+        Ok(())
+    }
+}
+
+// Serialization implementations for CompressedCiphertext
+impl<G: AffineRepr, CT: BatchCiphertext<G> + CanonicalSerialize, const SUBSET_SIZE: usize>
+    CanonicalSerialize for CompressedCiphertext<G, CT, SUBSET_SIZE>
+{
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        mut writer: W,
+        compress: Compress,
+    ) -> Result<(), SerializationError> {
+        // Use slice (&[T]) to write a length prefix, matching Vec-based deserialization.
+        (&self.0[..]).serialize_with_mode(&mut writer, compress)?;
+        (&self.1[..]).serialize_with_mode(&mut writer, compress)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self, compress: Compress) -> usize {
+        (&self.0[..]).serialized_size(compress) + (&self.1[..]).serialized_size(compress)
+    }
+}
+
+impl<G: AffineRepr, CT: BatchCiphertext<G> + CanonicalDeserialize, const SUBSET_SIZE: usize>
+    CanonicalDeserialize for CompressedCiphertext<G, CT, SUBSET_SIZE>
+{
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+    ) -> Result<Self, SerializationError> {
+        let ciphertexts_vec = Vec::<CT>::deserialize_with_mode(&mut reader, compress, validate)?;
+        let helper_data_vec =
+            Vec::<G::ScalarField>::deserialize_with_mode(&mut reader, compress, validate)?;
+
+        // Convert Vec to Box<[T; N]> with compile-time size guarantee
+        let ciphertexts: Box<[CT; SUBSET_SIZE]> = ciphertexts_vec
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| SerializationError::InvalidData)?;
+        let helper_data: Box<[G::ScalarField; SUBSET_SIZE]> = helper_data_vec
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| SerializationError::InvalidData)?;
+
+        Ok(Self(ciphertexts, helper_data))
+    }
+}
+
+impl<G: AffineRepr, CT: BatchCiphertext<G> + Valid, const SUBSET_SIZE: usize> Valid
+    for CompressedCiphertext<G, CT, SUBSET_SIZE>
+{
+    fn check(&self) -> Result<(), SerializationError> {
+        for ct in self.0.iter() {
+            ct.check()?;
+        }
+        for hd in self.1.iter() {
+            hd.check()?;
+        }
+        Ok(())
+    }
+}
+
+impl<
+        G: AffineRepr,
+        CT: BatchCiphertext<G>,
+        const NUM_PARTIES: usize,
+        const THRESHOLD: usize,
+        const NUM_CIPHERTEXTS: usize,
+    > RdkgithProof<G, CT, NUM_PARTIES, THRESHOLD, NUM_CIPHERTEXTS>
 {
     // assert_eq! does not compile in stable Rust
     const CHECK_THRESHOLD: () = assert!(THRESHOLD <= NUM_PARTIES);
+    const CHECK_NUM_CIPHERTEXTS: () = assert!(NUM_CIPHERTEXTS == NUM_PARTIES - THRESHOLD);
 
     /// Create verifiable encryption of vector `witnesses` that are also committed in a Pedersen commitment
     /// created with the commitment key `comm_key`. The encryption key is `enc_key` and group generator
@@ -102,6 +274,7 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
         transcript: &mut impl Transcript,
     ) -> Result<Self, VerifiableEncryptionError> {
         let () = Self::CHECK_THRESHOLD;
+        let () = Self::CHECK_NUM_CIPHERTEXTS;
         let witness_count = witnesses.len();
         if comm_key.len() != witness_count {
             return Err(VerifiableEncryptionError::UnexpectedCommitmentKeySize(
@@ -113,16 +286,18 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
         let enc_key_table = WindowTable::new(NUM_PARTIES * witness_count, enc_key.into_group());
         let enc_gen_table = WindowTable::new(NUM_PARTIES * witness_count, enc_gen.into_group());
 
-        let mut commitments = vec![G::zero(); THRESHOLD];
+        let mut commitments: Box<[G; THRESHOLD]> = Box::new(core::array::from_fn(|_| G::zero()));
         let mut polys = Vec::with_capacity(witness_count);
-        let mut shares: Vec<Vec<G::ScalarField>> = (0..NUM_PARTIES)
-            .map(|_| vec![G::ScalarField::zero(); witness_count])
-            .collect();
+        let mut shares: Box<[Vec<G::ScalarField>; NUM_PARTIES]> =
+            Box::new(core::array::from_fn(|_| {
+                vec![G::ScalarField::zero(); witness_count]
+            }));
         // Create randomness for encryption of each share
-        let mut enc_rands: Vec<CT::Randomness> = (0..NUM_PARTIES)
-            .map(|_| CT::get_randomness_from_rng(rng, witness_count))
-            .collect();
-        let mut cts: Vec<CT> = (0..NUM_PARTIES).map(|_| CT::default()).collect();
+        let mut enc_rands: Box<[CT::Randomness; NUM_PARTIES]> =
+            Box::new(core::array::from_fn(|_| {
+                CT::get_randomness_from_rng(rng, witness_count)
+            }));
+        let mut cts: Box<[CT; NUM_PARTIES]> = Box::new(core::array::from_fn(|_| CT::default()));
 
         // Secret share each witness such that `THRESHOLD` + 1 shares are needed to reconstruct
         for (i, w) in witnesses.into_iter().enumerate() {
@@ -169,17 +344,16 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
         let indices_to_hide =
             get_unique_indices_to_hide::<D>(&challenge, num_hidden, NUM_PARTIES as u16);
 
-        let mut ciphertexts: Vec<(u16, CT)> = (0..num_hidden).map(|_| (0, CT::default())).collect();
-        let mut shares_and_enc_rands: Vec<(u16, Vec<G::ScalarField>, CT::Randomness)> = (0
-            ..THRESHOLD)
-            .map(|_| {
+        let mut ciphertexts: Box<[(u16, CT); NUM_CIPHERTEXTS]> =
+            Box::new(core::array::from_fn(|_| (0, CT::default())));
+        let mut shares_and_enc_rands: Box<[(u16, Vec<G::ScalarField>, CT::Randomness); THRESHOLD]> =
+            Box::new(core::array::from_fn(|_| {
                 (
                     0,
                     Vec::with_capacity(witness_count),
                     CT::Randomness::default(),
                 )
-            })
-            .collect();
+            }));
 
         // Prepare `THRESHOLD` number of shares and encryption randomness and `NUM_PARTIES_MINUS_THRESHOLD` number of ciphertexts to share with the verifier
         let mut ctx_idx = 0;
@@ -279,19 +453,19 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
         let enc_key_table = WindowTable::new(NUM_PARTIES * witness_count, enc_key.into_group());
         let enc_gen_table = WindowTable::new(NUM_PARTIES * witness_count, enc_gen.into_group());
 
-        let mut cts: Vec<CT> = (0..NUM_PARTIES).map(|_| CT::default()).collect();
+        let mut cts: Box<[CT; NUM_PARTIES]> = Box::new(core::array::from_fn(|_| CT::default()));
 
         cfg_iter_mut!(cts).enumerate().for_each(|(i, ct)| {
             if hidden_indices.contains(&(i as u16)) {
                 // Ciphertexts given in the proof
-                for (k, c) in &self.ciphertexts {
+                for (k, c) in self.ciphertexts.iter() {
                     if i as u16 == *k {
                         *ct = c.clone();
                         break;
                     }
                 }
             } else {
-                for (k, s, r) in &self.shares_and_enc_rands {
+                for (k, s, r) in self.shares_and_enc_rands.iter() {
                     // Create ciphertexts for shares and randomness given in the proof
                     if i as u16 == *k {
                         *ct = CT::new::<D>(s, r, &enc_key_table, &enc_gen_table);
@@ -407,7 +581,8 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
             }
         }
         let witness_count = self.ciphertexts[0].1.batch_size();
-        let mut compressed_cts: Vec<CT> = (0..SUBSET_SIZE).map(|_| CT::default()).collect();
+        let mut compressed_cts: Box<[CT; SUBSET_SIZE]> =
+            Box::new(core::array::from_fn(|_| CT::default()));
 
         // Party indices for which shares are revealed
         let mut opened_indices = Vec::with_capacity(THRESHOLD);
@@ -421,7 +596,7 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
 
         // Choose a random subset of size `SUBSET_SIZE` from the indices of `hidden_indices`
         let mut challenge_for_subset_gen = self.challenge.clone();
-        for (i, s, r) in &self.shares_and_enc_rands {
+        for (i, s, r) in self.shares_and_enc_rands.iter() {
             challenge_for_subset_gen.push((i & 255) as u8);
             challenge_for_subset_gen.push(((i >> 8) & 255) as u8);
             for s_i in s {
@@ -445,7 +620,8 @@ impl<G: AffineRepr, CT: BatchCiphertext<G>, const NUM_PARTIES: usize, const THRE
             lagrange_basis_at_0_for_all::<G::ScalarField>(opened_indices.clone()).unwrap();
 
         // Lagrange basis for each index in `subset`
-        let mut lagrange_basis_for_hidden_indices = vec![G::ScalarField::zero(); SUBSET_SIZE];
+        let mut lagrange_basis_for_hidden_indices: Box<[G::ScalarField; SUBSET_SIZE]> =
+            Box::new(core::array::from_fn(|_| G::ScalarField::zero()));
         cfg_iter_mut!(lagrange_basis_for_hidden_indices)
             .enumerate()
             .for_each(|(i, l_i)| {
@@ -595,6 +771,7 @@ mod tests {
                         $ct_type,
                         $parties,
                         $threshold,
+                        { $parties - $threshold },
                     >::new::<_, Blake2b512>(
                         &mut rng,
                         witnesses.clone(),

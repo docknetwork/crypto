@@ -131,9 +131,14 @@ impl<G: AffineRepr> ChunkedCommitment<G> {
     ) -> Vec<G::Group> {
         let radix = G::ScalarField::from(radix);
         // factors = [radix^{chunks_count - 1}, radix^{chunks_count - 2}, ..., 1]
-        let mut factors = vec![];
-        for i in 1..chunks_count {
-            factors.push(radix.pow([(chunks_count - i) as u64]));
+        let mut factors = Vec::with_capacity(chunks_count as usize);
+        let mut power = G::ScalarField::one();
+        for _ in 1..chunks_count {
+            power *= radix;
+        }
+        for _ in 1..chunks_count {
+            factors.push(power);
+            power *= radix.inverse().unwrap();
         }
         factors.push(G::ScalarField::one());
         multiply_field_elems_with_same_group_elem(g, &factors)

@@ -210,15 +210,12 @@ impl<G: AffineRepr> ProofOfValidityOfMAC<G> {
             .challenge_contribution(&params.g_0, &public_key.0, &mut challenge_bytes)
             .unwrap();
         let challenge = compute_random_oracle_challenge::<G::ScalarField, D>(&challenge_bytes);
-        if !self.sc_B.verify(&B, &mac.A, &challenge) {
-            return Err(KVACError::InvalidMACProof);
-        }
-        if !self
-            .sc_pk
+        self.sc_B
+            .verify(&B, &mac.A, &challenge)
+            .map_err(|_| KVACError::InvalidMACProof)?;
+        self.sc_pk
             .verify(&public_key.0, &params.g_0, &challenge, &self.sc_B.response)
-        {
-            return Err(KVACError::InvalidMACProof);
-        }
+            .map_err(|_| KVACError::InvalidMACProof)?;
         Ok(())
     }
 }

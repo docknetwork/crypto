@@ -22,7 +22,10 @@ use ark_std::{
     vec::Vec,
     UniformRand,
 };
-use dock_crypto_utils::{ff::powers, randomized_pairing_check::RandomizedPairingChecker};
+use dock_crypto_utils::{
+    ff::powers, randomized_mult_checker::RandomizedMultChecker,
+    randomized_pairing_check::RandomizedPairingChecker,
+};
 use saver::{
     commitment::ChunkedCommitment,
     encryption::{Ciphertext, Encryption},
@@ -254,6 +257,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         pgens: impl Into<PreparedEncryptionGens<E>>,
         pek: impl Into<PreparedEncryptionKey<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
         resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         let pek = pek.into();
@@ -305,6 +309,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
             ck_comm_ct,
             ck_comm_chunks,
             ck_comm_combined,
+            mult_checker,
             resp_for_message,
         )
     }
@@ -321,6 +326,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         ck_comm_ct: &[E::G1Affine],
         ck_comm_chunks: &[E::G1Affine],
         ck_comm_combined: &[E::G1Affine],
+        mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
         resp_for_message: E::ScalarField,
     ) -> Result<(), ProofSystemError> {
         // if ciphertext.enc_chunks.len() != (s_pr_ciphertext.response.len() - 1) {
@@ -349,13 +355,23 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
                 .map(|(i, r)| (i, *r)),
         );
         sp_ciphertext
-            .verify_proof_contribution(challenge, s_pr_ciphertext)
+            .verify_proof_contribution(challenge, s_pr_ciphertext, mult_checker)
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
         sp_chunks
-            .verify_partial_proof_contribution(challenge, s_pr_chunks, missing_chunks_resp)
+            .verify_partial_proof_contribution(
+                challenge,
+                s_pr_chunks,
+                missing_chunks_resp,
+                mult_checker,
+            )
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))?;
         sp_combined
-            .verify_partial_proof_contribution(challenge, s_pr_combined, missing_msg_resp)
+            .verify_partial_proof_contribution(
+                challenge,
+                s_pr_combined,
+                missing_msg_resp,
+                mult_checker,
+            )
             .map_err(|e| ProofSystemError::SchnorrProofContributionFailed(self.id as u32, e))
     }
 
@@ -365,6 +381,7 @@ impl<'a, E: Pairing> SaverProtocol<'a, E> {
         pgens: impl Into<PreparedEncryptionGens<E>>,
         pek: impl Into<PreparedEncryptionKey<E>>,
         pairing_checker: &mut Option<RandomizedPairingChecker<E>>,
+        _mult_checker: &mut Option<RandomizedMultChecker<E::G1Affine>>,
     ) -> Result<(), ProofSystemError> {
         let r = E::ScalarField::rand(rng);
         let r_powers = powers(

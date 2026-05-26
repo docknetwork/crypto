@@ -573,8 +573,8 @@ mod tests {
                     &mut checker_2,
                 )
                 .unwrap();
-            assert!(checker_1.verify());
-            assert!(checker_2.verify());
+            checker_1.verify().unwrap();
+            checker_2.verify().unwrap();
             ver_rmc_time.push(start.elapsed());
 
             if i == 0 {

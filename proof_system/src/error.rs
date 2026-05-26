@@ -79,6 +79,7 @@ pub enum ProofSystemError {
     SnarckpackSrsNotProvided,
     NotASaverStatementProof,
     RandomizedPairingCheckFailed,
+    RandomizedMultCheckFailed,
     SameStatementIdsFoundInMultipleAggregations(Vec<usize>),
     NoAggregateGroth16ProofFound,
     InvalidNumberOfAggregateGroth16Proofs(usize, usize),

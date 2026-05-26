@@ -74,7 +74,7 @@ pub fn decrypt_and_verify(
     .unwrap();
 }
 
-pub fn decrypt_and_verify_with_randomized_pairing_checker(
+pub fn decrypt_and_verify_with_randomized_pairing_and_mult_checker(
     pairing_checker: &mut RandomizedPairingChecker<Bls12_381>,
     proof: &Proof<Bls12_381>,
     stmt_idx: usize,
@@ -252,6 +252,7 @@ macro_rules! gen_tests {
                     None,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -270,6 +271,7 @@ macro_rules! gen_tests {
                     None,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(true),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .unwrap();
@@ -298,7 +300,7 @@ macro_rules! gen_tests {
 
             let start = Instant::now();
             let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, true);
-            decrypt_and_verify_with_randomized_pairing_checker(
+            decrypt_and_verify_with_randomized_pairing_and_mult_checker(
                 &mut checker,
                 &proof,
                 1,
@@ -309,7 +311,7 @@ macro_rules! gen_tests {
                 prepared_enc_gens.clone(),
                 chunk_bit_size,
             );
-            assert!(checker.verify());
+            checker.verify().unwrap();
             println!(
                 "Time taken to decrypt and verify 1 encrypted message in signature over {} messages using randomized pairing checker {:?}",
                 msg_count,
@@ -438,6 +440,7 @@ macro_rules! gen_tests {
                     None,
                     VerifierConfig {
                         use_lazy_randomized_pairing_checks: Some(false),
+                        use_lazy_randomized_mult_checks: Some(false),
                     },
                 )
                 .is_err());
@@ -621,6 +624,7 @@ macro_rules! gen_tests {
                         None,
                         VerifierConfig {
                             use_lazy_randomized_pairing_checks: Some(false),
+                            use_lazy_randomized_mult_checks: Some(false),
                         },
                     )
                     .unwrap();
@@ -640,6 +644,7 @@ macro_rules! gen_tests {
                         None,
                         VerifierConfig {
                             use_lazy_randomized_pairing_checks: Some(true),
+                            use_lazy_randomized_mult_checks: Some(false),
                         },
                     )
                     .unwrap();
@@ -673,7 +678,7 @@ macro_rules! gen_tests {
                 let start = Instant::now();
                 let mut checker = RandomizedPairingChecker::<Bls12_381>::new_using_rng(&mut rng, true);
                 for (i, j) in enc_msg_indices.iter().enumerate() {
-                    decrypt_and_verify_with_randomized_pairing_checker(
+                    decrypt_and_verify_with_randomized_pairing_and_mult_checker(
                         &mut checker,
                         &proof,
                         i + 1,
@@ -685,7 +690,7 @@ macro_rules! gen_tests {
                         chunk_bit_size,
                     );
                 }
-                assert!(checker.verify());
+                checker.verify().unwrap();
                 println!(
                     "Time taken to decrypt and verify {} encrypted messages in signature over {} messages using randomized pairing checker {:?}",
                     enc_msg_indices.len(),
@@ -1121,6 +1126,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
                 None,
                 VerifierConfig {
                     use_lazy_randomized_pairing_checks: Some(false),
+                    use_lazy_randomized_mult_checks: Some(false),
                 },
             )
             .unwrap();
@@ -1138,6 +1144,7 @@ fn pok_of_bbs_plus_sig_and_verifiable_encryption_for_different_decryptors() {
                 None,
                 VerifierConfig {
                     use_lazy_randomized_pairing_checks: Some(false),
+                    use_lazy_randomized_mult_checks: Some(false),
                 },
             )
             .unwrap();
@@ -1444,6 +1451,7 @@ fn pok_of_bbs_plus_sig_and_bounded_message_and_verifiable_encryption() {
             None,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();

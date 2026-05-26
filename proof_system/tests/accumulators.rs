@@ -195,6 +195,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -315,6 +316,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -437,6 +439,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -560,6 +563,7 @@ fn pok_of_bbs_plus_sig_and_vb_and_kb_universal_accumulator_with_cdh_proof() {
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -676,6 +680,7 @@ start.elapsed()
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -811,6 +816,7 @@ start.elapsed()
             nonce.clone(),
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();
@@ -1040,6 +1046,7 @@ start.elapsed()
             nonce,
             VerifierConfig {
                 use_lazy_randomized_pairing_checks: Some(false),
+                use_lazy_randomized_mult_checks: Some(false),
             },
         )
         .unwrap();

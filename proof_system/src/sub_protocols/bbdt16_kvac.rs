@@ -12,6 +12,7 @@ use dock_crypto_utils::{
     expect_equality,
     iter::take_while_satisfy,
     misc::seq_inc_by_n_from,
+    randomized_mult_checker::RandomizedMultChecker,
     signature::{MessageOrBlinding, MultiMessageSignatureParams},
     try_iter::CheckLeft,
 };
@@ -147,8 +148,17 @@ impl<'a, G: AffineRepr> PoKOfMACSubProtocol<'a, G> {
         &self,
         challenge: &G::ScalarField,
         proof: &PoKOfMAC<G>,
+        mult_checker: &mut Option<RandomizedMultChecker<G>>,
     ) -> Result<(), KVACError> {
-        proof.verify_schnorr_proof(self.revealed_messages, challenge, &self.mac_params)
+        match mult_checker {
+            Some(mc) => proof.verify_schnorr_proof_using_randomized_mult_checker(
+                self.revealed_messages,
+                challenge,
+                &self.mac_params,
+                mc,
+            ),
+            None => proof.verify_schnorr_proof(self.revealed_messages, challenge, &self.mac_params),
+        }
     }
 
     pub fn verify_partial_schnorr_proof_contribution(
@@ -156,13 +166,23 @@ impl<'a, G: AffineRepr> PoKOfMACSubProtocol<'a, G> {
         challenge: &G::ScalarField,
         proof: &PoKOfMAC<G>,
         missing_responses: BTreeMap<usize, G::ScalarField>,
+        mult_checker: &mut Option<RandomizedMultChecker<G>>,
     ) -> Result<(), KVACError> {
-        proof.verify_partial_schnorr_proof(
-            self.revealed_messages,
-            challenge,
-            &self.mac_params,
-            missing_responses,
-        )
+        match mult_checker {
+            Some(mc) => proof.verify_partial_schnorr_proof_using_randomized_mult_checker(
+                self.revealed_messages,
+                challenge,
+                &self.mac_params,
+                missing_responses,
+                mc,
+            ),
+            None => proof.verify_partial_schnorr_proof(
+                self.revealed_messages,
+                challenge,
+                &self.mac_params,
+                missing_responses,
+            ),
+        }
     }
 
     pub fn verify_mac_and_schnorr_proof_contribution(
@@ -170,13 +190,23 @@ impl<'a, G: AffineRepr> PoKOfMACSubProtocol<'a, G> {
         challenge: &G::ScalarField,
         proof: &PoKOfMAC<G>,
         secret_key: &SecretKey<G::ScalarField>,
+        mult_checker: &mut Option<RandomizedMultChecker<G>>,
     ) -> Result<(), KVACError> {
-        proof.verify(
-            self.revealed_messages,
-            challenge,
-            secret_key,
-            &self.mac_params,
-        )
+        match mult_checker {
+            Some(mc) => proof.verify_using_randomized_mult_checker(
+                self.revealed_messages,
+                challenge,
+                secret_key,
+                &self.mac_params,
+                mc,
+            ),
+            None => proof.verify(
+                self.revealed_messages,
+                challenge,
+                secret_key,
+                &self.mac_params,
+            ),
+        }
     }
 
     pub fn verify_mac_and_partial_schnorr_proof_contribution(
@@ -185,13 +215,24 @@ impl<'a, G: AffineRepr> PoKOfMACSubProtocol<'a, G> {
         proof: &PoKOfMAC<G>,
         secret_key: &SecretKey<G::ScalarField>,
         missing_responses: BTreeMap<usize, G::ScalarField>,
+        mult_checker: &mut Option<RandomizedMultChecker<G>>,
     ) -> Result<(), KVACError> {
-        proof.verify_partial(
-            self.revealed_messages,
-            challenge,
-            secret_key,
-            &self.mac_params,
-            missing_responses,
-        )
+        match mult_checker {
+            Some(mc) => proof.verify_partial_using_randomized_mult_checker(
+                self.revealed_messages,
+                challenge,
+                secret_key,
+                &self.mac_params,
+                missing_responses,
+                mc,
+            ),
+            None => proof.verify_partial(
+                self.revealed_messages,
+                challenge,
+                secret_key,
+                &self.mac_params,
+                missing_responses,
+            ),
+        }
     }
 }

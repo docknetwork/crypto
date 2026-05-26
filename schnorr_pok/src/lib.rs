@@ -49,6 +49,7 @@ pub mod discrete_log;
 pub mod discrete_log_pairing;
 pub mod error;
 pub mod inequality;
+pub mod macros;
 pub mod mult_relations;
 pub mod partial;
 pub mod pok_generalized_pedersen;

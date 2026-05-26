@@ -17,6 +17,7 @@ use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{io::Write, rand::RngCore, vec::Vec};
 use digest::Digest;
+use dock_crypto_utils::randomized_mult_checker::RandomizedMultChecker;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -179,6 +180,39 @@ impl<G: AffineRepr> KBUniversalAccumulatorMembershipProof<G> {
             .verify_partial_schnorr_proof(resp_for_element, accumulator, challenge)
     }
 
+    pub fn verify_partial_schnorr_proof_using_randomized_mult_checker(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: G,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        self.0
+            .verify_partial_schnorr_proof_using_randomized_mult_checker(
+                resp_for_element,
+                accumulator,
+                challenge,
+                rmc,
+            )
+    }
+
+    pub fn verify_partial_using_randomized_mult_checker(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: G,
+        secret_key: &SecretKey<G::ScalarField>,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify_partial_using_randomized_mult_checker(
+            resp_for_element,
+            accumulator,
+            secret_key,
+            challenge,
+            rmc,
+        )
+    }
+
     pub fn to_keyed_proof(&self) -> KBUniversalAccumulatorKeyedMembershipProof<G> {
         KBUniversalAccumulatorKeyedMembershipProof(self.0.to_keyed_proof())
     }
@@ -278,6 +312,39 @@ impl<G: AffineRepr> KBUniversalAccumulatorNonMembershipProof<G> {
     ) -> Result<(), VBAccumulatorError> {
         self.0
             .verify_partial_schnorr_proof(resp_for_element, accumulator, challenge)
+    }
+
+    pub fn verify_partial_schnorr_proof_using_randomized_mult_checker(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: G,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) {
+        self.0
+            .verify_partial_schnorr_proof_using_randomized_mult_checker(
+                resp_for_element,
+                accumulator,
+                challenge,
+                rmc,
+            )
+    }
+
+    pub fn verify_partial_using_randomized_mult_checker(
+        &self,
+        resp_for_element: &G::ScalarField,
+        accumulator: G,
+        secret_key: &SecretKey<G::ScalarField>,
+        challenge: &G::ScalarField,
+        rmc: &mut RandomizedMultChecker<G>,
+    ) -> Result<(), VBAccumulatorError> {
+        self.0.verify_partial_using_randomized_mult_checker(
+            resp_for_element,
+            accumulator,
+            secret_key,
+            challenge,
+            rmc,
+        )
     }
 
     pub fn to_keyed_proof(&self) -> KBUniversalAccumulatorKeyedNonMembershipProof<G> {

@@ -54,6 +54,7 @@ impl<E: Pairing> SignatureParams<E> {
         }
     }
 
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         !(self.g1.is_zero() || self.g2.is_zero())
     }
